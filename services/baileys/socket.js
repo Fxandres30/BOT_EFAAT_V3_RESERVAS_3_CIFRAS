@@ -15,6 +15,7 @@ const sockets = new Map();
 async function createSocket(sessionId) {
 
      if (sockets.has(sessionId)) {
+        console.log("Socket ya existe:", sessionId);
         return sockets.get(sessionId);
     }
 
