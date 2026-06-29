@@ -14,6 +14,10 @@ const sockets = new Map();
 
 async function createSocket(sessionId) {
 
+     if (sockets.has(sessionId)) {
+        return sockets.get(sessionId);
+    }
+
     const authFolder = path.join(
         __dirname,
         "../../auth",
@@ -168,11 +172,21 @@ async function disconnectSocket(sessionId) {
 
     sockets.delete(sessionId);
 
+    await supabase
+        .from("sesiones")
+        .update({
+            estado: "desconectado",
+            telefono: null,
+            qr: null
+        })
+        .eq("id", sessionId);
+
     return true;
 
 }
 
 module.exports = {
     createSocket,
-    disconnectSocket
+    disconnectSocket,
+    sockets
 };
