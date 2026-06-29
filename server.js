@@ -22,10 +22,9 @@ app.listen(4000, async () => {
     console.log(" http://localhost:4000");
     console.log("================================");
 
-    await restaurarSesiones();
+    // await restaurarSesiones();
 
 });
-
 const supabase = require("./lib/supabase");
 const { createSocket } = require("./services/baileys/socket");
 

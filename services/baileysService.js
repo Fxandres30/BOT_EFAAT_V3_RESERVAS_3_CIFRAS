@@ -1,14 +1,8 @@
-const {
-
-    createSocket,
-
-    disconnectSocket
-
-} = require("./baileys/socket");
+const manager = require("./baileys/manager");
 
 async function connect(sessionId) {
 
-    await createSocket(sessionId);
+    await manager.start(sessionId);
 
     return {
 
@@ -22,7 +16,7 @@ async function connect(sessionId) {
 
 async function disconnect(sessionId) {
 
-    await disconnectSocket(sessionId);
+    await manager.stop(sessionId);
 
     return {
 
@@ -34,10 +28,24 @@ async function disconnect(sessionId) {
 
 }
 
+async function status(sessionId) {
+
+    return {
+
+        success: true,
+
+        connected: manager.has(sessionId)
+
+    };
+
+}
+
 module.exports = {
 
     connect,
 
-    disconnect
+    disconnect,
+
+    status
 
 };
