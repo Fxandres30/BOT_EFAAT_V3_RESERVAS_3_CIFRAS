@@ -1,27 +1,59 @@
 const QRCode = require("qrcode");
+
 const supabase = require("../../lib/supabase");
 
-async function guardarQR(sessionId, qr) {
+const {
+    iniciarTimeout
+} = require("./timeout");
+
+async function guardarQR(
+    sessionId,
+    qr,
+    sock,
+    contexto
+) {
 
     console.log("QR RECIBIDO");
 
     try {
 
-        const qrBase64 = await QRCode.toDataURL(qr);
+        const qrBase64 =
+            await QRCode.toDataURL(qr);
 
-        const { error } = await supabase
-            .from("sesiones")
-            .update({
-                qr: qrBase64,
-                estado: "esperando_qr"
-            })
-            .eq("id", sessionId);
+        const { error } =
+            await supabase
+
+                .from("sesiones")
+
+                .update({
+
+                    qr: qrBase64,
+                    estado: "esperando_qr"
+
+                })
+
+                .eq("id", sessionId);
 
         console.log("QR ERROR:", error);
 
-    } catch (err) {
+        iniciarTimeout(
 
-        console.log("ERROR GENERANDO QR:", err);
+            sessionId,
+            sock,
+            contexto.sockets
+
+        );
+
+    }
+
+    catch (err) {
+
+        console.log(
+
+            "ERROR GENERANDO QR:",
+            err
+
+        );
 
     }
 
