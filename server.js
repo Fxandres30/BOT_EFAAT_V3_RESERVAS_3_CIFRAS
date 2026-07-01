@@ -8,6 +8,11 @@ const cors = require("cors");
 
 const sessionsRoutes = require("./routes/sessions");
 
+const supabase = require("./lib/supabase");
+
+const manager =
+require("./services/baileys/manager");
+
 const app = express();
 
 app.use(cors());
@@ -22,36 +27,92 @@ app.listen(4000, async () => {
     console.log(" http://localhost:4000");
     console.log("================================");
 
-    // await restaurarSesiones();
+    await restaurarSesiones();
 
 });
-const supabase = require("./lib/supabase");
-const { createSocket } = require("./services/baileys/socket");
 
 async function restaurarSesiones() {
 
     const { data, error } = await supabase
         .from("sesiones")
-        .select("id");
+        .select("id, estado, activa");
 
     if (error) {
+
         console.log(error);
+
         return;
+
     }
 
-    console.log(`Restaurando ${data.length} sesiones...`);
+    const sesiones = data.filter(
 
-    for (const sesion of data) {
+        s => s.estado === "conectado"
+
+    );
+
+    console.log(
+
+        `Restaurando ${sesiones.length} sesiones...`
+
+    );
+
+    for (const sesion of sesiones) {
 
         try {
 
-            await createSocket(sesion.id);
+            await manager.start(
 
-            console.log("✅", sesion.id);
+                sesion.id
 
-        } catch (err) {
+            );
 
-            console.log("❌", sesion.id, err.message);
+            console.log(
+
+                "✅ Restaurada:",
+
+                sesion.id
+
+            );
+
+        }
+
+        catch (err) {
+
+            console.log(
+
+                "❌",
+
+                sesion.id,
+
+                err.message
+
+            );
+
+        }
+
+    }
+
+    // Restaurar la sesión activa guardada en la BD
+    const activa = data.find(
+
+        s => s.activa === true
+
+    );
+
+    if (activa) {
+
+        const ok = manager.setActive(
+
+            activa.id
+
+        );
+
+        if (!ok) {
+
+            console.log(
+                "⚠️ La sesión marcada como activa no está conectada."
+            );
 
         }
 

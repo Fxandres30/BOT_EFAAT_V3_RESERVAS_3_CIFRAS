@@ -9,15 +9,20 @@ async function desconectado(
 ) {
 
     const {
+
         sockets,
-        createSocket
+        manager
+
     } = contexto;
 
     console.log("STATUS:", statusCode);
 
+    // ==========================
+    // REINICIO
+    // ==========================
     if (statusCode === DisconnectReason.restartRequired) {
 
-        console.log("REINICIANDO SOCKET...");
+        console.log("🔄 Reiniciando socket...");
 
         sockets.delete(sessionId);
 
@@ -25,15 +30,19 @@ async function desconectado(
 
     }
 
+    // ==========================
+    // SESIÓN CERRADA
+    // ==========================
     if (statusCode === DisconnectReason.loggedOut) {
 
-        console.log("SESION CERRADA");
+        console.log("❌ Sesión cerrada");
 
         await supabase
             .from("sesiones")
             .update({
 
                 estado: "desconectado",
+                telefono: null,
                 qr: null
 
             })
@@ -41,11 +50,34 @@ async function desconectado(
 
         sockets.delete(sessionId);
 
+        // Si era la sesión activa,
+        // buscar otra automáticamente.
+        if (manager.isActive(sessionId)) {
+
+            manager.activeSession = null;
+
+            const disponibles = manager.getAll();
+
+            if (disponibles.length > 0) {
+
+                manager.setActive(
+
+                    disponibles[0]
+
+                );
+
+            }
+
+        }
+
         return;
 
     }
 
-    console.log("RECONEXION...");
+    // ==========================
+    // RECONEXIÓN
+    // ==========================
+    console.log("♻️ Reconectando...");
 
     sockets.delete(sessionId);
 

@@ -1,4 +1,7 @@
-const baileysService = require("../services/baileysService");
+const baileysService = require("../../services/baileysService");
+const manager = require("../../services/baileys/manager");
+const supabase = require("../../lib/supabase");
+
 
 async function connect(req, res) {
 
@@ -82,12 +85,57 @@ async function status(req, res) {
 
 }
 
+async function setActive(req, res) {
+
+    try {
+
+        const { sessionId } = req.body;
+
+        await supabase
+            .from("sesiones")
+            .update({ activa: false });
+
+        await supabase
+            .from("sesiones")
+            .update({ activa: true })
+            .eq("id", sessionId);
+
+        manager.setActive(sessionId);
+
+        res.json({
+            success: true
+        });
+
+    } catch (err) {
+
+        res.status(500).json({
+            success: false,
+            error: err.message
+        });
+
+    }
+
+}
+
+async function getActive(req, res) {
+
+    const { data } = await supabase
+        .from("sesiones")
+        .select("*")
+        .eq("activa", true)
+        .maybeSingle();
+
+    res.json(data);
+
+}
+
 module.exports = {
 
     connect,
-
     disconnect,
+    status,
 
-    status
+    setActive,
+    getActive
 
 };

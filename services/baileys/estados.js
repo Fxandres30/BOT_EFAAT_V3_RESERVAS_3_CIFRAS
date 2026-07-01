@@ -9,50 +9,77 @@ function registrarEstados(
 ) {
 
     sock.ev.on(
+
         "connection.update",
+
         async (update) => {
 
-            console.log("UPDATE:", update);
+            try {
 
-            const {
-                connection,
-                qr,
-                lastDisconnect
-            } = update;
+                console.log("UPDATE:", update);
 
-            if (qr) {
+                const {
 
-                await guardarQR(
-
-                    sessionId,
+                    connection,
                     qr,
-                    sock,
-                    contexto
+                    lastDisconnect
 
-                );
+                } = update;
 
-            }
+                // ==========================
+                // QR
+                // ==========================
+                if (qr) {
 
-            if (connection === "open") {
+                    await guardarQR(
 
-                await conectado(
-                    sessionId,
-                    sock
-                );
+                        sessionId,
+                        qr,
+                        sock,
+                        contexto
 
-            }
+                    );
 
-            if (connection === "close") {
+                }
 
-                const statusCode =
-                    lastDisconnect?.error?.output?.statusCode;
+                // ==========================
+                // CONECTADO
+                // ==========================
+                if (connection === "open") {
 
-                await desconectado(
+                    await conectado(
 
-                    sessionId,
-                    statusCode,
-                    contexto
+                        sessionId,
+                        sock,
+                        contexto
 
+                    );
+
+                }
+
+                // ==========================
+                // DESCONECTADO
+                // ==========================
+                if (connection === "close") {
+
+                    const statusCode =
+                        lastDisconnect?.error?.output?.statusCode;
+
+                    await desconectado(
+
+                        sessionId,
+                        statusCode,
+                        contexto
+
+                    );
+
+                }
+
+            } catch (err) {
+
+                console.error(
+                    "❌ Error en connection.update:",
+                    err
                 );
 
             }

@@ -6,7 +6,6 @@ const {
 const path = require("path");
 
 const supabase = require("../../lib/supabase");
-const registrarEstados = require("./estados");
 
 const sockets = new Map();
 
@@ -16,21 +15,28 @@ async function createSocket(sessionId) {
 
     if (existente) {
 
-        console.log("Socket ya existe:", sessionId);
+        console.log("🟢 Socket ya existe:", sessionId);
 
         return existente;
 
     }
 
     const authFolder = path.join(
+
         __dirname,
+
         "../../auth",
+
         sessionId
+
     );
 
     const {
+
         state,
+
         saveCreds
+
     } = await useMultiFileAuthState(authFolder);
 
     const sock = makeWASocket({
@@ -39,20 +45,20 @@ async function createSocket(sessionId) {
 
     });
 
-    sockets.set(sessionId, sock);
+    sockets.set(
 
-    sock.ev.on(
-        "creds.update",
-        saveCreds
+        sessionId,
+
+        sock
+
     );
 
-    registrarEstados(
-        sock,
-        sessionId,
-        {
-            sockets,
-            createSocket
-        }
+    sock.ev.on(
+
+        "creds.update",
+
+        saveCreds
+
     );
 
     return sock;
@@ -73,11 +79,16 @@ async function disconnectSocket(sessionId) {
 
         await sock.logout();
 
-    } catch (err) {
+    }
+
+    catch (err) {
 
         console.log(
+
             "ERROR AL CERRAR SESIÓN:",
+
             err
+
         );
 
     }
@@ -85,14 +96,19 @@ async function disconnectSocket(sessionId) {
     sockets.delete(sessionId);
 
     await supabase
+
         .from("sesiones")
+
         .update({
 
             estado: "desconectado",
+
             telefono: null,
+
             qr: null
 
         })
+
         .eq("id", sessionId);
 
     return true;
@@ -114,9 +130,13 @@ function hasSocket(sessionId) {
 module.exports = {
 
     createSocket,
+
     disconnectSocket,
+
     getSocket,
+
     hasSocket,
+
     sockets
 
 };
