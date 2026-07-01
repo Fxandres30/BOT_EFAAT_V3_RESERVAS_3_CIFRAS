@@ -26,7 +26,7 @@ module.exports = async (sock, message) => {
 
         {
 
-            text: "👋 Hola, aquí estoy."
+            text: "Hola, aquí estoy."
 
         }
 
