@@ -1,28 +1,16 @@
 const { DisconnectReason } = require("@whiskeysockets/baileys");
-
 const supabase = require("../../lib/supabase");
 
-async function desconectado(
-    sessionId,
-    statusCode,
-    contexto
-) {
+async function desconectado(sessionId, statusCode, contexto) {
 
-    const {
-
-        sockets,
-        manager
-
-    } = contexto;
+    const { sockets, manager } = contexto;
 
     console.log("STATUS:", statusCode);
 
-    // ==========================
-    // REINICIO
-    // ==========================
+    // Reinicio requerido
     if (statusCode === DisconnectReason.restartRequired) {
 
-        console.log("🔄 Reiniciando socket...");
+        console.log("🔄 Reiniciando...");
 
         sockets.delete(sessionId);
 
@@ -30,41 +18,31 @@ async function desconectado(
 
     }
 
-    // ==========================
-    // SESIÓN CERRADA
-    // ==========================
+    // Logout REAL
     if (statusCode === DisconnectReason.loggedOut) {
 
-        console.log("❌ Sesión cerrada");
+        console.log("❌ Logout");
+
+        sockets.delete(sessionId);
 
         await supabase
             .from("sesiones")
             .update({
-
                 estado: "desconectado",
                 telefono: null,
                 qr: null
-
             })
             .eq("id", sessionId);
 
-        sockets.delete(sessionId);
-
-        // Si era la sesión activa,
-        // buscar otra automáticamente.
         if (manager.isActive(sessionId)) {
 
             manager.activeSession = null;
 
             const disponibles = manager.getAll();
 
-            if (disponibles.length > 0) {
+            if (disponibles.length) {
 
-                manager.setActive(
-
-                    disponibles[0]
-
-                );
+                manager.setActive(disponibles[0]);
 
             }
 
@@ -74,14 +52,16 @@ async function desconectado(
 
     }
 
-    // ==========================
-    // RECONEXIÓN
-    // ==========================
+    // Cualquier otro cierre => reconectar
     console.log("♻️ Reconectando...");
 
     sockets.delete(sessionId);
 
-    return manager.start(sessionId);
+    setTimeout(() => {
+
+        manager.start(sessionId);
+
+    }, 2000);
 
 }
 

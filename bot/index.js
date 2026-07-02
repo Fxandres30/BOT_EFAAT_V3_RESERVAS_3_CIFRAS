@@ -21,10 +21,7 @@ function conectar(socket, sessionId) {
     // Quitar listener de la sesión anterior
     if (socketActual && sesionActual) {
 
-        unregisterMessages(
-            socketActual,
-            sesionActual
-        );
+        unregisterMessages(sesionActual);
 
     }
 

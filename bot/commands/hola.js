@@ -1,6 +1,7 @@
 module.exports = async (sock, message) => {
 
-    if (!message.message) return;
+    if (!message.message)
+        return;
 
     const texto =
         message.message.conversation ||

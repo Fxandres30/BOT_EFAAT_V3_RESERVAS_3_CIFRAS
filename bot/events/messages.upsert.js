@@ -1,22 +1,11 @@
-const messageHandler =
-require("../handlers/messageHandler");
+const messageHandler = require("../handlers/messageHandler");
 
-// Un listener por sesión
 const listeners = new Map();
 
 function registerMessages(sock, sessionId) {
 
-    // Si ya existe, no volver a registrarlo
-    if (listeners.has(sessionId)) {
-
-        console.log(
-            "👂 Ya estaba escuchando:",
-            sessionId
-        );
-
-        return;
-
-    }
+    // Si ya existía, eliminarlo primero
+    unregisterMessages(sock, sessionId);
 
     const listener = async ({ messages }) => {
 
@@ -24,20 +13,11 @@ function registerMessages(sock, sessionId) {
 
             try {
 
-                await messageHandler(
-
-                    sock,
-
-                    message
-
-                );
+                await messageHandler(sock, message);
 
             } catch (err) {
 
-                console.log(
-                    "❌ Error procesando mensaje:",
-                    err.message
-                );
+                console.log("❌ Error procesando mensaje:", err.message);
 
             }
 
@@ -45,61 +25,35 @@ function registerMessages(sock, sessionId) {
 
     };
 
-    sock.ev.on(
+    sock.ev.on("messages.upsert", listener);
 
-        "messages.upsert",
-
+    listeners.set(sessionId, {
+        sock,
         listener
+    });
 
-    );
-
-    listeners.set(
-
-        sessionId,
-
-        listener
-
-    );
-
-    console.log(
-        "👂 Escuchando:",
-        sessionId
-    );
+    console.log("👂 Escuchando:", sessionId);
 
 }
 
-function unregisterMessages(sock, sessionId) {
+function unregisterMessages(sessionId) {
 
-    const listener =
-        listeners.get(sessionId);
+    const data = listeners.get(sessionId);
 
-    if (!listener) {
+    if (!data) return;
 
-        return;
-
-    }
-
-    sock.ev.off(
-
+    data.sock.ev.off(
         "messages.upsert",
-
-        listener
-
+        data.listener
     );
 
     listeners.delete(sessionId);
 
-    console.log(
-        "🔇 Listener eliminado:",
-        sessionId
-    );
+    console.log("🔇 Listener eliminado:", sessionId);
 
 }
 
 module.exports = {
-
     registerMessages,
-
     unregisterMessages
-
 };

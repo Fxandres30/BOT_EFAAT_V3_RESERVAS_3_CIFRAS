@@ -45,6 +45,78 @@ async function createSocket(sessionId) {
 
     });
 
+    const originalSendMessage =
+    sock.sendMessage.bind(sock);
+
+sock.sendMessage = async (
+    jid,
+    content,
+    options
+) => {
+
+    try {
+
+        // Mostrar "escribiendo..."
+        await sock.sendPresenceUpdate(
+            "composing",
+            jid
+        );
+
+        // Obtener el texto
+        const texto =
+            content?.text || "";
+
+        // Tiempo base
+        let tiempo = 700;
+
+// Simular velocidad de escritura
+tiempo += texto.length * 45;
+
+// Variación humana
+tiempo += Math.floor(
+    Math.random() * 1800
+);
+
+// Nunca menos de 1 segundo
+tiempo = Math.max(
+    tiempo,
+    1000
+);
+
+// Nunca más de 8 segundos
+tiempo = Math.min(
+    tiempo,
+    8000
+);
+        await new Promise(resolve =>
+            setTimeout(resolve, tiempo)
+        );
+
+        // Dejar de escribir
+        await sock.sendPresenceUpdate(
+            "paused",
+            jid
+        );
+
+    }
+
+    catch (e) {
+
+        console.log(
+            "Error en presencia:",
+            e.message
+        );
+
+    }
+
+    return originalSendMessage(
+        jid,
+        content,
+        options
+    );
+
+};
+
     sockets.set(
 
         sessionId,
