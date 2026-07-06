@@ -21,6 +21,36 @@ async function createSocket(sessionId) {
 
     }
 
+    const {
+
+    data: session,
+
+    error
+
+} = await supabase
+
+    .from("sesiones")
+
+    .select("*")
+
+    .eq("id", sessionId)
+
+    .single();
+
+if (error) {
+
+    console.log(
+
+        "❌ Error obteniendo sesión:",
+
+        error.message
+
+    );
+
+    return null;
+
+}
+
     const authFolder = path.join(
 
         __dirname,
@@ -44,6 +74,20 @@ async function createSocket(sessionId) {
         auth: state
 
     });
+
+    sock.context = {
+
+    sessionId: session.id,
+
+    usuarioId: session.usuario_id,
+
+    telefono: session.telefono,
+
+    nombreSesion: session.nombre,
+
+    estado: session.estado
+
+};
 
     const originalSendMessage =
     sock.sendMessage.bind(sock);

@@ -91,22 +91,23 @@ async function setActive(req, res) {
 
         const { sessionId } = req.body;
 
-        await supabase
-            .from("sesiones")
-            .update({ activa: false });
+        const ok = await manager.setActive(sessionId);
 
-        await supabase
-            .from("sesiones")
-            .update({ activa: true })
-            .eq("id", sessionId);
+        if (!ok) {
 
-        manager.setActive(sessionId);
+            return res.status(404).json({
+                success: false
+            });
+
+        }
 
         res.json({
             success: true
         });
 
-    } catch (err) {
+    }
+
+    catch (err) {
 
         res.status(500).json({
             success: false,

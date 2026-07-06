@@ -1,19 +1,10 @@
+const eventHandler = require("./eventHandler");
 const commandHandler = require("./commandHandler");
 
-module.exports = async (
+module.exports = async (sock, message) => {
 
-    sock,
+    await eventHandler(sock, message);
 
-    message
-
-) => {
-
-    await commandHandler(
-
-        sock,
-
-        message
-
-    );
+    await commandHandler(sock, message);
 
 };

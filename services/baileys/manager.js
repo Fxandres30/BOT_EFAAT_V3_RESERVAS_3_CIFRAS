@@ -8,6 +8,7 @@ const {
 } = require("./socket");
 
 const registrarEstados = require("./estados");
+const supabase = require("../../lib/supabase");
 
 class SessionManager extends EventEmitter {
 
@@ -68,7 +69,7 @@ class SessionManager extends EventEmitter {
 
             if (disponibles.length > 0) {
 
-                this.setActive(disponibles[0]);
+                await this.setActive(disponibles[0]);
 
             }
 
@@ -96,50 +97,73 @@ class SessionManager extends EventEmitter {
 
     }
 
-    setActive(sessionId) {
+    async setActive(sessionId) {
 
-        console.log("========== SET ACTIVE ==========");
-        console.log("Session recibida:", sessionId);
-        console.log("Sockets conectados:", this.getAll());
-        console.log("================================");
+    console.log("========== SET ACTIVE ==========");
+    console.log("Session recibida:", sessionId);
+    console.log("Sockets conectados:", this.getAll());
+    console.log("================================");
 
-        if (!this.has(sessionId)) {
+    if (!this.has(sessionId)) {
 
-            console.log("❌ La sesión no está conectada.");
+        console.log("❌ La sesión no está conectada.");
 
-            return false;
+        return false;
 
-        }
+    }
 
-        if (this.activeSession === sessionId) {
+    if (this.activeSession === sessionId) {
 
-            console.log("ℹ️ Ya era la sesión activa.");
-
-            return true;
-
-        }
-
-        this.activeSession = sessionId;
-
-        console.log("⭐ Nueva sesión activa:", sessionId);
-
-        this.emit(
-
-            "activeChanged",
-
-            {
-
-                sessionId,
-
-                socket: this.get(sessionId)
-
-            }
-
-        );
+        console.log("ℹ️ Ya era la sesión activa.");
 
         return true;
 
     }
+
+    // Actualizar memoria
+    this.activeSession = sessionId;
+
+    // Buscar el usuario dueño de la sesión
+    const { data: sesion, error: errorSesion } = await supabase
+        .from("sesiones")
+        .select("usuario_id")
+        .eq("id", sessionId)
+        .single();
+
+    if (errorSesion) {
+
+        console.error("ERROR BUSCANDO SESIÓN:", errorSesion);
+
+        return false;
+
+    }
+
+    // Desactivar todas las sesiones de ese usuario
+    const r1 = await supabase
+        .from("sesiones")
+        .update({ activa: false })
+        .eq("usuario_id", sesion.usuario_id);
+
+    console.log("UPDATE FALSE:", r1);
+
+    // Activar únicamente la seleccionada
+    const r2 = await supabase
+        .from("sesiones")
+        .update({ activa: true })
+        .eq("id", sessionId);
+
+    console.log("UPDATE TRUE:", r2);
+
+    console.log("⭐ Nueva sesión activa:", sessionId);
+
+    this.emit("activeChanged", {
+        sessionId,
+        socket: this.get(sessionId)
+    });
+
+    return true;
+
+}
 
     getActiveSession() {
 
