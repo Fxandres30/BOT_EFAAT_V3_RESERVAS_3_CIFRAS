@@ -1,19 +1,28 @@
 const { detectarEvento } = require("../funciones/eventos/detectarEvento");
 
-function obtenerTexto(message) {
-
-    const msg = message.message;
+function obtenerContenido(msg) {
 
     if (!msg)
-        return "";
+        return null;
 
-    // Mensajes temporales
-    const contenido =
+    return (
         msg.ephemeralMessage?.message ||
         msg.viewOnceMessage?.message ||
         msg.viewOnceMessageV2?.message ||
         msg.viewOnceMessageV2Extension?.message ||
-        msg;
+        msg.documentWithCaptionMessage?.message ||
+        msg.editedMessage?.message ||
+        msg
+    );
+
+}
+
+function obtenerTexto(message) {
+
+    const contenido = obtenerContenido(message.message);
+
+    if (!contenido)
+        return "";
 
     return (
         contenido.conversation ||
@@ -21,7 +30,11 @@ function obtenerTexto(message) {
         contenido.imageMessage?.caption ||
         contenido.videoMessage?.caption ||
         contenido.documentMessage?.caption ||
-        contenido.editedMessage?.message?.conversation ||
+        contenido.documentWithCaptionMessage?.message?.documentMessage?.caption ||
+        contenido.buttonsResponseMessage?.selectedDisplayText ||
+        contenido.listResponseMessage?.title ||
+        contenido.templateButtonReplyMessage?.selectedDisplayText ||
+        contenido.interactiveResponseMessage?.body?.text ||
         ""
     );
 
@@ -29,10 +42,7 @@ function obtenerTexto(message) {
 
 module.exports = async (sock, message) => {
 
-    if (!message.message)
-        return;
-
-    if (message.key.fromMe)
+    if (!message?.message)
         return;
 
     const grupoId = message.key.remoteJid;
@@ -45,9 +55,14 @@ module.exports = async (sock, message) => {
     console.log("==================================");
     console.log("📩 Tipo de mensaje:");
     console.log(Object.keys(message.message));
+    console.log("📤 fromMe:", message.key.fromMe);
     console.log("📄 Texto detectado:");
     console.log(texto || "(vacío)");
     console.log("==================================");
+
+    // Si no hay texto ni caption no hay nada que analizar
+    if (!texto)
+        return;
 
     await detectarEvento(
         sock,
