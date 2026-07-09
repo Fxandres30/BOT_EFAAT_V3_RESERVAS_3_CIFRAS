@@ -37,70 +37,65 @@ function extraerEventos(texto) {
     if (!palabrasClave.some(p => limpio.includes(p)))
         return null;
 
-    const match = limpio.match(/(\d{1,2})\s?(\d{2})\s?(am|pm)/i);
+    // Busca la línea de la lotería
+    const lineaEvento = texto
+        .split("\n")
+        .find(l => l.includes("🎰"));
 
-    if (!match)
+    if (!lineaEvento)
         return null;
 
-    let [, h, m, periodo] = match;
+    // Antioqueñita Tarde - 04:00 pm
+    const eventoMatch = lineaEvento.match(/\*?(.+?)\s*-\s*(\d{1,2}):(\d{2})\s*(am|pm)/i);
+
+    if (!eventoMatch)
+        return null;
+
+    let [, nombre, h, m, periodo] = eventoMatch;
 
     h = parseInt(h);
 
-    if (periodo === "pm" && h !== 12)
+    if (periodo.toLowerCase() === "pm" && h !== 12)
         h += 12;
 
-    if (periodo === "am" && h === 12)
+    if (periodo.toLowerCase() === "am" && h === 12)
         h = 0;
 
     const hora = `${String(h).padStart(2, "0")}:${m}`;
 
     const horaCierre = calcularCierre(hora);
 
-    const limpioTexto = normalizarTexto(texto);
+    nombre = nombre
+        .replace(/[🎰*]/g, "")
+        .trim();
 
-    const lineaHora =
-        texto.split("\n").find(l => /am|pm/i.test(l)) || "";
+    const valorMatch = texto.match(
+        /valor\s*n[uú]mero\s*:\s*\*?\$?([\d.]+)/i
+    );
 
-    const limpioNombre =
-        normalizarTexto(lineaHora)
-            .replace(/\d{1,2}\s?\d{2}\s?(am|pm)/i, "")
-            .trim();
-
-    const nombre =
-        limpioNombre
-            .split(" ")
-            .map(p => p.charAt(0).toUpperCase() + p.slice(1))
-            .join(" ") || "Evento";
-
-    const valorMatch =
-        limpioTexto.match(/valor\s*(numero)?\s*([\d\s]+)/i);
-
-    let valor = "No definido";
+    let valor = "$0";
 
     if (valorMatch) {
 
-        valor = `$${valorMatch[2].replace(/\s+/g, "")}`;
+        valor = "$" + valorMatch[1].replace(/\./g, "");
 
     }
 
-    const premios =
-        texto
-            .split("\n")
-            .map(l => l.trim())
-            .filter(l => {
-
-                const n = normalizarTexto(l);
-
-                return /\d{3,}/.test(n) && !n.includes("valor");
-
-            });
+    const premios = texto
+        .split("\n")
+        .filter(l => l.includes("🍀") || l.includes("🎁"))
+        .map(l => l.trim());
 
     return {
 
         nombre,
+
         hora,
+
         horaCierre,
+
         valor,
+
         premios
 
     };
@@ -110,6 +105,7 @@ function extraerEventos(texto) {
 module.exports = {
 
     extraerEventos,
+
     calcularCierre
 
 };
