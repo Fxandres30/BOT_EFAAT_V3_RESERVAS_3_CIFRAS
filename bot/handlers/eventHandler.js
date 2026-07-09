@@ -14,7 +14,13 @@ module.exports = async (sock, message) => {
     const texto =
         message.message.conversation ||
         message.message.extendedTextMessage?.text ||
+        message.message.imageMessage?.caption ||
+        message.message.videoMessage?.caption ||
+        message.message.documentMessage?.caption ||
         "";
+
+    console.log("📄 Texto detectado:");
+    console.log(texto);
 
     await detectarEvento(
         sock,
