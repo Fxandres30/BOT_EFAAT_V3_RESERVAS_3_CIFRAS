@@ -3,14 +3,15 @@ const supabase = require("../../../lib/supabase");
 async function guardarEvento({
 
     sock,
-
     grupoId,
-
     evento,
-
     eventoAnterior
 
 }) {
+
+    console.log("====================================");
+    console.log("💾 GUARDAR EVENTO");
+    console.log("====================================");
 
     let grupoNombre = null;
     let participantes = 0;
@@ -21,18 +22,26 @@ async function guardarEvento({
         const metadata = await sock.groupMetadata(grupoId);
 
         grupoNombre = metadata.subject;
-
         participantes = metadata.participants?.length || 0;
-
         descripcionGrupo = metadata.desc || null;
 
     } catch (err) {
 
         console.log("⚠ No se pudo obtener la información del grupo");
+        console.error(err);
 
     }
 
     const context = sock.context || {};
+
+    console.log("📌 Context:");
+    console.log(context);
+
+    console.log("📌 Evento:");
+    console.log(evento);
+
+    console.log("📌 Evento anterior:");
+    console.log(eventoAnterior);
 
     const hoy = new Date().toISOString().split("T")[0];
 
@@ -76,48 +85,48 @@ async function guardarEvento({
 
     };
 
-    // =========================================
+    console.log("📦 Datos a guardar:");
+    console.log(datos);
+
+    // ===============================
     // ACTUALIZAR
-    // =========================================
+    // ===============================
 
     if (eventoAnterior) {
 
+        console.log("♻ Actualizando evento...");
+
         const { data, error } = await supabase
-
             .from("eventos_bot")
-
             .update(datos)
-
             .eq("id", eventoAnterior.id)
-
             .select()
-
             .single();
 
         if (error) {
 
             console.log("❌ Error actualizando evento");
-
-            console.log(error.message);
+            console.error(error);
 
             return null;
 
         }
 
-        console.log("♻ Evento actualizado");
+        console.log("✅ Evento actualizado");
+        console.log(data);
 
         return data;
 
     }
 
-    // =========================================
+    // ===============================
     // CREAR
-    // =========================================
+    // ===============================
+
+    console.log("🆕 Creando nuevo evento...");
 
     const { data, error } = await supabase
-
         .from("eventos_bot")
-
         .insert({
 
             ...datos,
@@ -137,22 +146,20 @@ async function guardarEvento({
             abierto: true
 
         })
-
         .select()
-
         .single();
 
     if (error) {
 
         console.log("❌ Error creando evento");
-
-        console.log(error.message);
+        console.error(error);
 
         return null;
 
     }
 
-    console.log("✅ Evento creado");
+    console.log("✅ Evento creado correctamente");
+    console.log(data);
 
     return data;
 
