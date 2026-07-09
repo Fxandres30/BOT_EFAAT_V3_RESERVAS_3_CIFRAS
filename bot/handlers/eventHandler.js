@@ -1,5 +1,19 @@
 const { detectarEvento } = require("../funciones/eventos/detectarEvento");
 
+function obtenerTexto(message) {
+
+    return (
+        message.message?.conversation ||
+        message.message?.extendedTextMessage?.text ||
+        message.message?.imageMessage?.caption ||
+        message.message?.videoMessage?.caption ||
+        message.message?.documentMessage?.caption ||
+        message.message?.editedMessage?.message?.conversation ||
+        ""
+    );
+
+}
+
 module.exports = async (sock, message) => {
 
     if (!message.message)
@@ -11,13 +25,7 @@ module.exports = async (sock, message) => {
     if (!message.key.remoteJid.endsWith("@g.us"))
         return;
 
-    const texto =
-        message.message.conversation ||
-        message.message.extendedTextMessage?.text ||
-        message.message.imageMessage?.caption ||
-        message.message.videoMessage?.caption ||
-        message.message.documentMessage?.caption ||
-        "";
+    const texto = obtenerTexto(message);
 
     console.log("📄 Texto detectado:");
     console.log(texto);
