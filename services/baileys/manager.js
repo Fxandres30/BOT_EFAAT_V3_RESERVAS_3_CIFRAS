@@ -55,9 +55,9 @@ if (!sesion) {
 
 }
 
-if (sesion.estado === "desconectado") {
+if (!sesion) {
 
-    console.log(`⛔ La sesión ${sessionId} está desconectada. No se iniciará nuevamente.`);
+    console.log(`⚠️ La sesión ${sessionId} no existe.`);
 
     return null;
 
