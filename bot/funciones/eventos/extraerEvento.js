@@ -8,7 +8,7 @@ function calcularCierre(horaFin) {
 
     fecha.setHours(h, m, 0, 0);
 
-    const cierre = new Date(fecha.getTime() - (3 * 60 * 1000));
+    const cierre = new Date(fecha.getTime() - (2 * 60 * 1000));
 
     return `${String(cierre.getHours()).padStart(2, "0")}:${String(cierre.getMinutes()).padStart(2, "0")}`;
 

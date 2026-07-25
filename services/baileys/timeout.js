@@ -40,7 +40,7 @@ function iniciarTimeout(sessionId, sock, sockets) {
 
         timers.delete(sessionId);
 
-    }, 1000 * 60 * 3); // 3 minutos
+    }, 1000 * 60 * 2); // 2 minutos
 
     timers.set(sessionId, timer);
 
