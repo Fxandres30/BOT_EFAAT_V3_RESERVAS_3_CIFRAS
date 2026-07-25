@@ -7,10 +7,11 @@ require("./eventHandler");
 const commandHandler =
 require("./commandHandler");
 
-module.exports = async (
+module.exports = async ({
     sock,
-    message
-) => {
+    message,
+    session
+}) => {
 
     const ctx =
         await obtenerContexto(
@@ -20,6 +21,9 @@ module.exports = async (
 
     if (!ctx)
         return;
+
+    // Si quieres conservar la sesión
+    ctx.session = session;
 
     await eventHandler(ctx);
 

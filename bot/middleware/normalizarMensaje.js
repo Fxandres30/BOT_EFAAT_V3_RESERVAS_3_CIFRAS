@@ -5,30 +5,49 @@ function obtenerContenido(msg) {
     if (!msg)
         return null;
 
-    return (
+    while (true) {
 
-        msg.ephemeralMessage?.message ||
+        if (msg.ephemeralMessage) {
+            msg = msg.ephemeralMessage.message;
+            continue;
+        }
 
-        msg.viewOnceMessage?.message ||
+        if (msg.viewOnceMessage) {
+            msg = msg.viewOnceMessage.message;
+            continue;
+        }
 
-        msg.viewOnceMessageV2?.message ||
+        if (msg.viewOnceMessageV2) {
+            msg = msg.viewOnceMessageV2.message;
+            continue;
+        }
 
-        msg.viewOnceMessageV2Extension?.message ||
+        if (msg.viewOnceMessageV2Extension) {
+            msg = msg.viewOnceMessageV2Extension.message;
+            continue;
+        }
 
-        msg.documentWithCaptionMessage?.message ||
+        if (msg.documentWithCaptionMessage) {
+            msg = msg.documentWithCaptionMessage.message;
+            continue;
+        }
 
-        msg.editedMessage?.message ||
+        if (msg.editedMessage) {
+            msg = msg.editedMessage.message;
+            continue;
+        }
 
-        msg
+        break;
 
-    );
+    }
+
+    return msg;
 
 }
 
 module.exports = function (message) {
 
-    const contenido =
-        obtenerContenido(message.message);
+    const contenido = obtenerContenido(message.message);
 
     if (!contenido) {
 
@@ -54,8 +73,6 @@ module.exports = function (message) {
 
         contenido.documentMessage?.caption ||
 
-        contenido.documentWithCaptionMessage?.message?.documentMessage?.caption ||
-
         contenido.buttonsResponseMessage?.selectedDisplayText ||
 
         contenido.listResponseMessage?.title ||
@@ -70,8 +87,7 @@ module.exports = function (message) {
 
         textoOriginal,
 
-        texto:
-            normalizarTexto(textoOriginal)
+        texto: normalizarTexto(textoOriginal)
 
     };
 

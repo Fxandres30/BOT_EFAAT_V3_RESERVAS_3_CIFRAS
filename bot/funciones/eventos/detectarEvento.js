@@ -1,70 +1,111 @@
-const { extraerEventos } = require("./extraerEvento");
+const { extraerEvento } = require("./extraerEvento");
 const { consultarEvento } = require("./consultarEvento");
 const { guardarEvento } = require("./guardarEvento");
 const { obtenerConfiguracion } = require("./configEvento");
 
-async function detectarEvento(sock, grupoId, texto) {
+async function detectarEvento(ctx) {
 
-    console.log("==================================");
-    console.log("📨 DETECTAR EVENTO");
-    console.log("Grupo:", grupoId);
-    console.log("Texto:");
-    console.log(texto);
-    console.log("==================================");
+    try {
 
-    if (!texto) {
+        const { sock, grupo, textoOriginal } = ctx;
 
-        console.log("❌ Texto vacío");
+        const grupoId =
+            grupo?.remoteJid ||
+            ctx.chat.remoteJid;
 
-        return;
+        console.log("==================================");
+        console.log("📨 DETECTAR EVENTO");
+        console.log("Grupo:", grupoId);
+        console.log("==================================");
+
+        if (!textoOriginal?.trim()) {
+
+            console.log("❌ Texto vacío");
+
+            return null;
+
+        }
+
+        const evento = extraerEvento(textoOriginal);
+
+        if (!evento) {
+
+            console.log("❌ No es un evento");
+
+            return null;
+
+        }
+
+        console.log("🎯 Evento detectado");
+
+        console.table({
+
+            nombre: evento.nombre,
+            hora: evento.hora,
+            valor: evento.valor,
+            premios: evento.premios.length
+
+        });
+
+        const config = obtenerConfiguracion(evento.valor);
+
+        if (!config) {
+
+            console.log("❌ No existe configuración para:", evento.valor);
+
+            return null;
+
+        }
+
+        console.table(config);
+
+        const eventoCompleto = {
+
+            ...evento,
+
+            tabla: config.tabla,
+
+            cifras: config.cifras,
+
+            cantidad_numeros: config.cantidad
+
+        };
+
+        const eventoAnterior =
+            await consultarEvento(grupoId);
+
+        console.log(
+            "📋 Evento anterior:",
+            eventoAnterior
+                ? `${eventoAnterior.nombre_evento} (${eventoAnterior.hora_fin})`
+                : "No existe"
+        );
+
+        await guardarEvento({
+
+            sock,
+
+            grupoId,
+
+            evento: eventoCompleto,
+
+            eventoAnterior
+
+        });
+
+        console.log("✅ Evento guardado correctamente");
+
+        return eventoCompleto;
+
+    } catch (error) {
+
+        console.error("❌ Error detectando evento");
+
+        console.error(error);
+
+        return null;
 
     }
-
-    const evento = extraerEventos(texto);
-
-    console.log("🎯 Resultado extraerEventos:", evento);
-
-    if (!evento) {
-
-        console.log("❌ No es un evento");
-
-        return;
-
-    }
-
-    const config = obtenerConfiguracion(evento.valor);
-
-    console.log("⚙ Configuración:", config);
-
-    if (!config) {
-
-        console.log("❌ No existe configuración para:", evento.valor);
-
-        return;
-
-    }
-
-    evento.tabla = config.tabla;
-    evento.cifras = config.cifras;
-    evento.cantidad_numeros = config.cantidad;
-
-    console.log("🎉 Evento detectado correctamente");
-
-    const eventoAnterior =
-        await consultarEvento(grupoId);
-
-    console.log("📋 Evento anterior:", eventoAnterior);
-
-    const guardado = await guardarEvento({
-
-        sock,
-        grupoId,
-        evento,
-        eventoAnterior
-
-    });
-
-    console.log("💾 Resultado guardarEvento:", guardado);
 
 }
 

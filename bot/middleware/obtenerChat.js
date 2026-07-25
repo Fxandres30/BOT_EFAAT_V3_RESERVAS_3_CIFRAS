@@ -1,6 +1,14 @@
 module.exports = function obtenerChat(message) {
 
+    if (!message || !message.key) {
+        return null;
+    }
+
     const remoteJid = message.key.remoteJid;
+
+    if (!remoteJid) {
+        return null;
+    }
 
     const esGrupo =
         remoteJid.endsWith("@g.us");

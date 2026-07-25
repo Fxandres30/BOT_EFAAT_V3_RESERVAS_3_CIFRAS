@@ -18,31 +18,37 @@ async function conectado(
     const numero =
         sock.user?.id?.split(":")[0] || null;
 
-    const { error } = await supabase
+    try {
 
-        .from("sesiones")
+        const { error } = await supabase
 
-        .update({
+            .from("sesiones")
 
-            telefono: numero,
+            .update({
 
-            estado: "conectado",
+                telefono: numero,
 
-            qr: null,
+                estado: "conectado",
 
-            qr_generado_en: null,
+                qr: null,
 
-            qr_expira_en: null
+                qr_generado_en: null,
 
-        })
+                qr_expira_en: null
 
-        .eq("id", sessionId);
+            })
 
-    if (error) {
+            .eq("id", sessionId);
 
-        console.error("OPEN ERROR:", error);
+        if (error) {
 
-        return;
+            console.error("⚠️ Error actualizando la sesión:", error);
+
+        }
+
+    } catch (err) {
+
+        console.error("⚠️ Error conectando con Supabase:", err);
 
     }
 

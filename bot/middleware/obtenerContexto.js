@@ -22,7 +22,11 @@ module.exports = async (
         obtenerChat(message);
 
     const usuario =
-        await obtenerUsuario(chat);
+    await obtenerUsuario({
+        chat,
+        message,
+        session: sock.context
+    });
 
     const grupo =
         await obtenerGrupo(chat);

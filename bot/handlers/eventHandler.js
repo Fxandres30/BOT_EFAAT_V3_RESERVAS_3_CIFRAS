@@ -2,11 +2,9 @@ const { detectarEvento } = require("../funciones/eventos/detectarEvento");
 
 module.exports = async (ctx) => {
 
-    // Solo los grupos tienen eventos
     if (!ctx.chat.esGrupo) {
 
         ctx.evento = null;
-
         return;
 
     }
@@ -19,10 +17,13 @@ module.exports = async (ctx) => {
     console.log(ctx.textoOriginal || "(vacío)");
     console.log("==================================");
 
-    if (!ctx.textoOriginal)
+    if (!ctx.textoOriginal) {
+
+        ctx.evento = null;
         return;
 
-    // Detectar el evento y guardarlo en el contexto
+    }
+
     ctx.evento = await detectarEvento(ctx);
 
 };

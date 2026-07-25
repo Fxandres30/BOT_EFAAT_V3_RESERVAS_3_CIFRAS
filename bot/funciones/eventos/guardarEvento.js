@@ -28,20 +28,10 @@ async function guardarEvento({
     } catch (err) {
 
         console.log("⚠ No se pudo obtener la información del grupo");
-        console.error(err);
 
     }
 
     const context = sock.context || {};
-
-    console.log("📌 Context:");
-    console.log(context);
-
-    console.log("📌 Evento:");
-    console.log(evento);
-
-    console.log("📌 Evento anterior:");
-    console.log(eventoAnterior);
 
     const hoy = new Date().toISOString().split("T")[0];
 
@@ -85,8 +75,24 @@ async function guardarEvento({
 
     };
 
-    console.log("📦 Datos a guardar:");
-    console.log(datos);
+    console.log("📋 Resumen del evento");
+    console.table({
+
+        grupo: grupoNombre,
+
+        evento: evento.nombre,
+
+        hora: evento.hora,
+
+        valor: `$${evento.valor}`,
+
+        premios: evento.premios.length,
+
+        tabla: evento.tabla,
+
+        participantes
+
+    });
 
     // ===============================
     // ACTUALIZAR
@@ -94,7 +100,7 @@ async function guardarEvento({
 
     if (eventoAnterior) {
 
-        console.log("♻ Actualizando evento...");
+        console.log(`♻ Actualizando: ${eventoAnterior.nombre_evento} → ${evento.nombre}`);
 
         const { data, error } = await supabase
             .from("eventos_bot")
@@ -112,8 +118,7 @@ async function guardarEvento({
 
         }
 
-        console.log("✅ Evento actualizado");
-        console.log(data);
+        console.log("✅ Evento actualizado correctamente");
 
         return data;
 
@@ -123,7 +128,7 @@ async function guardarEvento({
     // CREAR
     // ===============================
 
-    console.log("🆕 Creando nuevo evento...");
+    console.log(`🆕 Creando evento: ${evento.nombre}`);
 
     const { data, error } = await supabase
         .from("eventos_bot")
@@ -159,7 +164,6 @@ async function guardarEvento({
     }
 
     console.log("✅ Evento creado correctamente");
-    console.log(data);
 
     return data;
 

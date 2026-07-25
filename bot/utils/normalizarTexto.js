@@ -5,25 +5,23 @@ function normalizarTexto(texto = "") {
     }
 
     return texto
-
         .toString()
-
         .toLowerCase()
 
-        // quitar tildes
+        // Quitar tildes
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
 
-        // quitar emojis
+        // Quitar emojis
         .replace(
             /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu,
             ""
         )
 
-        // caracteres raros → espacio
-        .replace(/[^a-z0-9\s]/g, " ")
+        // Mantener letras, números y algunos caracteres útiles
+        .replace(/[^a-z0-9\s:/$.-]/g, " ")
 
-        // espacios múltiples
+        // Eliminar espacios repetidos
         .replace(/\s+/g, " ")
 
         .trim();
@@ -31,7 +29,5 @@ function normalizarTexto(texto = "") {
 }
 
 module.exports = {
-
     normalizarTexto
-
 };

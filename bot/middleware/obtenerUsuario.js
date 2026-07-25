@@ -2,13 +2,22 @@ const {
     obtenerUsuarioGlobal
 } = require("../funciones/usuarios/obtenerUsuarioGlobal");
 
-module.exports = async function (chat) {
+module.exports = async function (ctx) {
 
-    const jid =
+    let jid;
 
-        chat.participante ||
+    // Si el mensaje lo envió el propio bot
+    if (ctx.message.key.fromMe) {
 
-        chat.remoteJid;
+        jid = ctx.session.telefono + "@s.whatsapp.net";
+
+    } else {
+
+        jid =
+            ctx.chat.participante ||
+            ctx.chat.remoteJid;
+
+    }
 
     return await obtenerUsuarioGlobal(jid);
 
