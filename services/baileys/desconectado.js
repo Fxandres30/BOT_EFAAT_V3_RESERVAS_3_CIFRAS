@@ -22,7 +22,6 @@ async function desconectado(sessionId, statusCode, contexto) {
             .eq("id", sessionId);
 
         return;
-
     }
 
     // Reinicio requerido
@@ -33,7 +32,6 @@ async function desconectado(sessionId, statusCode, contexto) {
         sockets.delete(sessionId);
 
         return manager.start(sessionId);
-
     }
 
     // Logout o QR expirado
@@ -64,7 +62,16 @@ async function desconectado(sessionId, statusCode, contexto) {
             .eq("id", sessionId);
 
         return;
+    }
 
+    // ⛔ No reconectar si el QR terminó de generar intentos
+    if (statusCode === 408) {
+
+        console.log("⌛ Fin de intentos del QR. No se reconecta.");
+
+        sockets.delete(sessionId);
+
+        return;
     }
 
     // Errores temporales

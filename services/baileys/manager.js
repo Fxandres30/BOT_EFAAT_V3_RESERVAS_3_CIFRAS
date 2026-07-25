@@ -33,6 +33,36 @@ class SessionManager extends EventEmitter {
 
     console.log("🚀 Iniciando sesión:", sessionId);
 
+    const { data: sesion, error } = await supabase
+    .from("sesiones")
+    .select("estado")
+    .eq("id", sessionId)
+    .maybeSingle();
+
+if (error) {
+
+    console.error("❌ Error obteniendo sesión:", error.message);
+
+    return null;
+
+}
+
+if (!sesion) {
+
+    console.log(`⚠️ La sesión ${sessionId} ya no existe.`);
+
+    return null;
+
+}
+
+if (sesion.estado === "desconectado") {
+
+    console.log(`⛔ La sesión ${sessionId} está desconectada. No se iniciará nuevamente.`);
+
+    return null;
+
+}
+
     const socket = await createSocket(sessionId);
 
     registrarEstados(

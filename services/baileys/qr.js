@@ -22,21 +22,29 @@ async function guardarQR(
         // Consultar el estado actual de la sesión
         const { data: session, error: selectError } = await supabase
 
-            .from("sesiones")
+    .from("sesiones")
 
-            .select("qr_generado_en, qr_expira_en")
+    .select("qr_generado_en, qr_expira_en")
 
-            .eq("id", sessionId)
+    .eq("id", sessionId)
 
-            .single();
+    .maybeSingle();
 
-        if (selectError) {
+if (selectError) {
 
-            console.error(selectError);
+    console.error("❌ Error obteniendo sesión:", selectError.message);
 
-            return;
+    return;
 
-        }
+}
+
+if (!session) {
+
+    console.log(`⚠️ La sesión ${sessionId} ya no existe. Ignorando QR.`);
+
+    return;
+
+}
 
         // Primer QR
         if (!session.qr_generado_en) {

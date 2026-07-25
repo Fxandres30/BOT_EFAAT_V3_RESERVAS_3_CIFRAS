@@ -8,6 +8,14 @@ function registrarEstados(
     contexto
 ) {
 
+    if (!sock) {
+
+        console.error(`❌ Socket nulo para la sesión ${sessionId}`);
+
+        return;
+
+    }
+
     sock.ev.on(
 
         "connection.update",
@@ -29,12 +37,10 @@ function registrarEstados(
                 if (qr) {
 
                     await guardarQR(
-
                         sessionId,
                         qr,
                         sock,
                         contexto
-
                     );
 
                 }
@@ -42,11 +48,9 @@ function registrarEstados(
                 if (connection === "open") {
 
                     await conectado(
-
                         sessionId,
                         sock,
                         contexto
-
                     );
 
                 }
@@ -57,11 +61,9 @@ function registrarEstados(
                         lastDisconnect?.error?.output?.statusCode;
 
                     await desconectado(
-
                         sessionId,
                         statusCode,
                         contexto
-
                     );
 
                 }
