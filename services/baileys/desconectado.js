@@ -7,6 +7,24 @@ async function desconectado(sessionId, statusCode, contexto) {
 
     console.log("STATUS:", statusCode);
 
+    // WhatsApp rechazó la sesión
+    if (statusCode === 403) {
+
+        console.log("❌ Sesión rechazada por WhatsApp:", sessionId);
+
+        sockets.delete(sessionId);
+
+        await supabase
+            .from("sesiones")
+            .update({
+                estado: "bloqueado"
+            })
+            .eq("id", sessionId);
+
+        return;
+
+    }
+
     // Reinicio requerido
     if (statusCode === DisconnectReason.restartRequired) {
 
@@ -18,42 +36,39 @@ async function desconectado(sessionId, statusCode, contexto) {
 
     }
 
-    // Logout REAL
-    if (statusCode === DisconnectReason.loggedOut) {
+    // Logout o QR expirado
+    if (
+        statusCode === 401 ||
+        statusCode === DisconnectReason.loggedOut
+    ) {
 
-        console.log("❌ Logout");
+        console.log("❌ Logout / QR expirado");
 
         sockets.delete(sessionId);
 
         await supabase
             .from("sesiones")
             .update({
+
                 estado: "desconectado",
+
                 telefono: null,
-                qr: null
+
+                qr: null,
+
+                qr_generado_en: null,
+
+                qr_expira_en: null
+
             })
             .eq("id", sessionId);
-
-        if (manager.isActive(sessionId)) {
-
-            manager.activeSession = null;
-
-            const disponibles = manager.getAll();
-
-            if (disponibles.length) {
-
-                manager.setActive(disponibles[0]);
-
-            }
-
-        }
 
         return;
 
     }
 
-    // Cualquier otro cierre => reconectar
-    console.log("♻️ Reconectando...");
+    // Errores temporales
+    console.log("♻️ Reconexión temporal...");
 
     sockets.delete(sessionId);
 
@@ -61,7 +76,7 @@ async function desconectado(sessionId, statusCode, contexto) {
 
         manager.start(sessionId);
 
-    }, 2000);
+    }, 5000);
 
 }
 

@@ -1,7 +1,13 @@
 function normalizarTexto(texto = "") {
 
+    if (texto == null) {
+        return "";
+    }
+
     return texto
+
         .toString()
+
         .toLowerCase()
 
         // quitar tildes

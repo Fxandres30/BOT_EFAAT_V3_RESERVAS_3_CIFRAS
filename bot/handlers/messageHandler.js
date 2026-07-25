@@ -1,10 +1,28 @@
-const eventHandler = require("./eventHandler");
-const commandHandler = require("./commandHandler");
+const obtenerContexto =
+require("../middleware/obtenerContexto");
 
-module.exports = async (sock, message) => {
+const eventHandler =
+require("./eventHandler");
 
-    await eventHandler(sock, message);
+const commandHandler =
+require("./commandHandler");
 
-    await commandHandler(sock, message);
+module.exports = async (
+    sock,
+    message
+) => {
+
+    const ctx =
+        await obtenerContexto(
+            sock,
+            message
+        );
+
+    if (!ctx)
+        return;
+
+    await eventHandler(ctx);
+
+    await commandHandler(ctx);
 
 };

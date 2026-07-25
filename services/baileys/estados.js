@@ -26,9 +26,6 @@ function registrarEstados(
 
                 } = update;
 
-                // ==========================
-                // QR
-                // ==========================
                 if (qr) {
 
                     await guardarQR(
@@ -42,9 +39,6 @@ function registrarEstados(
 
                 }
 
-                // ==========================
-                // CONECTADO
-                // ==========================
                 if (connection === "open") {
 
                     await conectado(
@@ -57,9 +51,6 @@ function registrarEstados(
 
                 }
 
-                // ==========================
-                // DESCONECTADO
-                // ==========================
                 if (connection === "close") {
 
                     const statusCode =

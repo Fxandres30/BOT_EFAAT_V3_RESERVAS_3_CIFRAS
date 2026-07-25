@@ -22,15 +22,21 @@ function iniciarTimeout(sessionId, sock, sockets) {
         sockets.delete(sessionId);
 
         await supabase
-            .from("sesiones")
-            .update({
+    .from("sesiones")
+    .update({
 
-                estado: "desconectado",
-                qr: null,
-                telefono: null
+        estado: "desconectado",
 
-            })
-            .eq("id", sessionId);
+        qr: null,
+
+        telefono: null,
+
+        qr_generado_en: null,
+
+        qr_expira_en: null
+
+    })
+    .eq("id", sessionId);
 
         timers.delete(sessionId);
 

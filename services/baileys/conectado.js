@@ -10,6 +10,7 @@ async function conectado(
     contexto
 ) {
 
+    // Cancelar el contador del QR
     cancelarTimeout(sessionId);
 
     console.log("🟢 CONECTADO:", sessionId);
@@ -18,32 +19,53 @@ async function conectado(
         sock.user?.id?.split(":")[0] || null;
 
     const { error } = await supabase
+
         .from("sesiones")
+
         .update({
 
             telefono: numero,
+
             estado: "conectado",
-            qr: null
+
+            qr: null,
+
+            qr_generado_en: null,
+
+            qr_expira_en: null
 
         })
+
         .eq("id", sessionId);
 
-    console.log("OPEN ERROR:", error);
+    if (error) {
+
+        console.error("OPEN ERROR:", error);
+
+        return;
+
+    }
 
     // Si todavía no existe una sesión activa,
     // esta será la primera.
     if (!contexto.manager.getActiveSession()) {
 
-        contexto.manager.setActive(sessionId);
+        const ok = await contexto.manager.setActive(sessionId);
+
+        if (!ok) {
+
+            console.error("❌ No se pudo establecer la sesión activa.");
+
+            return;
+
+        }
 
     }
 
-    // Esperar un instante para que el manager
-    // termine de actualizar la sesión activa.
+    // Esperar un momento para iniciar el bot
     setTimeout(() => {
 
-        const iniciarBot =
-            require("../../bot");
+        const iniciarBot = require("../../bot");
 
         iniciarBot();
 

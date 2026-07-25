@@ -41,10 +41,11 @@ function registerMessages(sock, sessionId) {
                     message.key.id
                 );
 
-                await messageHandler(
-                    sock,
-                    message
-                );
+                await messageHandler({
+    sock,
+    message,
+    session: sock.context
+});
 
             }
 

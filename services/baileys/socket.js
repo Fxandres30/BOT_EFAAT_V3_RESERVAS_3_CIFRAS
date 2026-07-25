@@ -213,19 +213,23 @@ async function disconnectSocket(sessionId) {
 
     await supabase
 
-        .from("sesiones")
+    .from("sesiones")
 
-        .update({
+    .update({
 
-            estado: "desconectado",
+        estado: "desconectado",
 
-            telefono: null,
+        telefono: null,
 
-            qr: null
+        qr: null,
 
-        })
+        qr_generado_en: null,
 
-        .eq("id", sessionId);
+        qr_expira_en: null
+
+    })
+
+    .eq("id", sessionId);
 
     return true;
 
