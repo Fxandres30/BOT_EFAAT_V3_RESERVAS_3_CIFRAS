@@ -44,7 +44,7 @@ async function guardarQR(
             const ahora = new Date();
 
             const expira = new Date(
-                ahora.getTime() + (2 * 60 * 1000)
+                ahora.getTime() + (5 * 60 * 1000)
             );
 
             const { error } = await supabase
