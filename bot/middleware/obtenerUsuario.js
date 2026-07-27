@@ -6,7 +6,6 @@ module.exports = async function (ctx) {
 
     let jid;
 
-    // Si el mensaje lo envió el propio bot
     if (ctx.message.key.fromMe) {
 
         jid = ctx.session.telefono + "@s.whatsapp.net";
@@ -19,6 +18,12 @@ module.exports = async function (ctx) {
 
     }
 
-    return await obtenerUsuarioGlobal(jid);
+    return await obtenerUsuarioGlobal({
+
+        jid,
+
+        nombre: ctx.chat.pushName || null
+
+    });
 
 };

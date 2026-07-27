@@ -22,16 +22,20 @@ module.exports = async (
         obtenerChat(message);
 
     const usuario =
-    await obtenerUsuario({
-        chat,
-        message,
-        session: sock.context
-    });
+        await obtenerUsuario({
+
+            chat,
+
+            message,
+
+            session: sock.context
+
+        });
 
     const grupo =
         await obtenerGrupo(chat);
 
-    const texto =
+    const resultadoTexto =
         normalizarMensaje(message);
 
     return {
@@ -47,14 +51,14 @@ module.exports = async (
         grupo,
 
         textoOriginal:
-            texto.textoOriginal,
+            resultadoTexto.textoOriginal || null,
 
         texto:
-            texto.texto,
+            resultadoTexto.texto || null,
 
         numeros:
             extraerNumeros(
-                texto.texto
+                resultadoTexto.texto || ""
             )
 
     };

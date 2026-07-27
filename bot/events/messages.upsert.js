@@ -42,19 +42,22 @@ function registerMessages(sock, sessionId) {
                 );
 
                 await messageHandler({
-    sock,
-    message,
-    session: sock.context
-});
+
+                    sock,
+
+                    session: context,
+
+                    message,
+
+                    tipo
+
+                });
 
             }
 
             catch (err) {
 
-                console.error(
-                    "❌ Error procesando mensaje:"
-                );
-
+                console.error("❌ Error procesando mensaje:");
                 console.error(err);
 
             }
@@ -63,17 +66,11 @@ function registerMessages(sock, sessionId) {
 
     };
 
-    sock.ev.on(
-        "messages.upsert",
-        listener
-    );
+    sock.ev.on("messages.upsert", listener);
 
     listeners.set(sessionId, {
-
         sock,
-
         listener
-
     });
 
     console.log(`

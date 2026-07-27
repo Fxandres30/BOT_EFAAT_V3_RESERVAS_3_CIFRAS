@@ -1,75 +1,148 @@
 const supabase = require("../../../lib/supabase");
 
-async function obtenerUsuarioGlobal(jidUsuario) {
+async function obtenerUsuarioGlobal({
 
-    let telefono = null;
-    let lid = null;
+    jid,
+    telefono = null,
+    lid = null,
+    nombre = null
 
-    // TELEFONO
-    if (jidUsuario.includes("@s.whatsapp.net")) {
+}) {
 
-        telefono = jidUsuario
+    // Extraer teléfono del JID
+    if (!telefono && jid?.includes("@s.whatsapp.net")) {
+
+        telefono = jid
             .replace("@s.whatsapp.net", "")
             .replace(/^57/, "");
+
     }
 
-    // LID
-    if (jidUsuario.includes("@lid")) {
-        lid = jidUsuario;
+    // Extraer LID del JID
+    if (!lid && jid?.includes("@lid")) {
+        lid = jid;
     }
 
-    let telefonoFinal = telefono;
-    let lidFinal = lid;
+    let usuario = null;
 
-    // SI VIENE TELEFONO → BUSCAR LID
-    if (telefonoFinal) {
+    // ==========================
+    // Buscar por LID
+    // ==========================
+
+    if (lid) {
 
         const { data } = await supabase
-            .from("usuarios")
-            .select("lid")
-            .eq("telefono", telefonoFinal)
-            .limit(1);
 
-        if (data?.length) {
-            lidFinal = data[0].lid;
+            .from("usuarios")
+
+            .select("*")
+
+            .eq("lid", lid)
+
+            .maybeSingle();
+
+        if (data) {
+            usuario = data;
         }
+
     }
 
-    // SI VIENE LID → BUSCAR TELEFONO
-    if (!telefonoFinal && lidFinal) {
+    // ==========================
+    // Buscar por teléfono
+    // ==========================
+
+    if (!usuario && telefono) {
 
         const { data } = await supabase
+
             .from("usuarios")
-            .select("telefono")
-            .eq("lid", lidFinal)
-            .limit(1);
 
-        if (data?.length) {
+            .select("*")
 
-            telefonoFinal = data[0].telefono;
+            .eq("telefono", telefono)
 
-        } else {
+            .maybeSingle();
 
-            console.log("⚠️ LID sin teléfono:", lidFinal);
+        if (data) {
+            usuario = data;
+        }
+
+    }
+
+    // ==========================
+    // Existe
+    // ==========================
+
+    if (usuario) {
+
+        const cambios = {};
+
+        // Completar teléfono
+        if (!usuario.telefono && telefono) {
+            cambios.telefono = telefono;
+        }
+
+        // Completar LID
+        if (!usuario.lid && lid) {
+            cambios.lid = lid;
+        }
+
+        // Actualizar nombre
+        if (nombre && usuario.nombre !== nombre) {
+            cambios.nombre = nombre;
+        }
+
+        cambios.ultima_actividad = new Date();
+
+        if (Object.keys(cambios).length > 0) {
+
+            await supabase
+
+                .from("usuarios")
+
+                .update(cambios)
+
+                .eq("id", usuario.id);
+
+            usuario = {
+
+                ...usuario,
+
+                ...cambios
+
+            };
 
         }
+
+        return usuario;
+
     }
 
-    if (!telefonoFinal && !lidFinal) {
-        return null;
-    }
+    // ==========================
+    // Crear usuario
+    // ==========================
 
-    return {
+    const { data: nuevo } = await supabase
 
-        telefono: telefonoFinal,
+        .from("usuarios")
 
-        lid: lidFinal,
+        .insert({
 
-        jid: telefonoFinal
-            ? `${telefonoFinal}@s.whatsapp.net`
-            : lidFinal
+            telefono,
 
-    };
+            lid,
+
+            nombre,
+
+            ultima_actividad: new Date()
+
+        })
+
+        .select()
+
+        .single();
+
+    return nuevo;
 
 }
 

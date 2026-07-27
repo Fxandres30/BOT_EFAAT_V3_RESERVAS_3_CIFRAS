@@ -1,32 +1,16 @@
-const obtenerContexto =
-require("../middleware/obtenerContexto");
+const dispatcher = require("./dispatcher");
 
-const eventHandler =
-require("./eventHandler");
+module.exports = async (data) => {
 
-const commandHandler =
-require("./commandHandler");
+    try {
 
-module.exports = async ({
-    sock,
-    message,
-    session
-}) => {
+        await dispatcher(data);
 
-    const ctx =
-        await obtenerContexto(
-            sock,
-            message
-        );
+    } catch (error) {
 
-    if (!ctx)
-        return;
+        console.error("❌ Error en messageHandler:");
+        console.error(error);
 
-    // Si quieres conservar la sesión
-    ctx.session = session;
-
-    await eventHandler(ctx);
-
-    await commandHandler(ctx);
+    }
 
 };

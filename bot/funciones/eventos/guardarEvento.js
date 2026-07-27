@@ -38,37 +38,25 @@ async function guardarEvento({
     const datos = {
 
         usuario_id: context.usuarioId ?? null,
-
         session_id: context.sessionId ?? null,
-
         telefono_bot: context.telefono ?? null,
 
         grupo_id: grupoId,
-
         grupo_nombre: grupoNombre,
-
         participantes,
-
         descripcion_grupo: descripcionGrupo,
 
         nombre_evento: evento.nombre,
-
         hora_fin: evento.hora,
-
         hora_cierre: evento.horaCierre,
-
         fecha_evento: hoy,
 
         estado: "abierto",
 
         valor: evento.valor,
-
         premios: evento.premios,
-
         tabla: evento.tabla,
-
         cifras: evento.cifras,
-
         cantidad_numeros: evento.cantidad_numeros,
 
         actualizado_en: new Date()
@@ -76,20 +64,15 @@ async function guardarEvento({
     };
 
     console.log("📋 Resumen del evento");
+
     console.table({
 
         grupo: grupoNombre,
-
         evento: evento.nombre,
-
         hora: evento.hora,
-
         valor: `$${evento.valor}`,
-
         premios: evento.premios.length,
-
         tabla: evento.tabla,
-
         participantes
 
     });
@@ -112,7 +95,7 @@ async function guardarEvento({
         if (error) {
 
             console.log("❌ Error actualizando evento");
-            console.error(error);
+            console.dir(error, { depth: null });
 
             return null;
 
@@ -130,42 +113,66 @@ async function guardarEvento({
 
     console.log(`🆕 Creando evento: ${evento.nombre}`);
 
-    const { data, error } = await supabase
+    console.log("====================================");
+    console.log("🧪 PROBANDO TABLA eventos_bot");
+    console.log("====================================");
+
+    const pruebaSelect = await supabase
         .from("eventos_bot")
-        .insert({
+        .select("*")
+        .limit(1);
 
-            ...datos,
+    console.log("RESULTADO SELECT:");
+    console.dir(pruebaSelect, { depth: null });
 
-            creado_en: new Date(),
+    const registro = {
 
-            reservados: 0,
+        ...datos,
 
-            pagados: 0,
+        creado_en: new Date(),
 
-            pendientes: 0,
+        reservados: 0,
 
-            libres: evento.cantidad_numeros,
+        pagados: 0,
 
-            activo: true,
+        pendientes: 0,
 
-            abierto: true
+        libres: evento.cantidad_numeros,
 
-        })
-        .select()
-        .single();
+        activo: true,
 
-    if (error) {
+        abierto: true
 
-        console.log("❌ Error creando evento");
-        console.error(error);
+    };
+
+    console.log("====================================");
+    console.log("📦 DATOS A INSERTAR");
+    console.log("====================================");
+    console.dir(registro, { depth: null });
+
+    const resultado = await supabase
+        .from("eventos_bot")
+        .insert(registro)
+        .select();
+
+    console.log("====================================");
+    console.log("📥 RESPUESTA INSERT");
+    console.log("====================================");
+    console.dir(resultado, { depth: null });
+
+    if (resultado.error) {
+
+        console.log("❌ ERROR INSERTANDO EVENTO");
+        console.dir(resultado.error, { depth: null });
 
         return null;
 
     }
 
-    console.log("✅ Evento creado correctamente");
+    console.log("✅ EVENTO CREADO");
+    console.dir(resultado.data, { depth: null });
 
-    return data;
+    return resultado.data[0];
 
 }
 

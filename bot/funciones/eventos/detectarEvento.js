@@ -21,7 +21,6 @@ async function detectarEvento(ctx) {
         if (!textoOriginal?.trim()) {
 
             console.log("❌ Texto vacío");
-
             return null;
 
         }
@@ -31,7 +30,6 @@ async function detectarEvento(ctx) {
         if (!evento) {
 
             console.log("❌ No es un evento");
-
             return null;
 
         }
@@ -52,7 +50,6 @@ async function detectarEvento(ctx) {
         if (!config) {
 
             console.log("❌ No existe configuración para:", evento.valor);
-
             return null;
 
         }
@@ -64,15 +61,12 @@ async function detectarEvento(ctx) {
             ...evento,
 
             tabla: config.tabla,
-
             cifras: config.cifras,
-
             cantidad_numeros: config.cantidad
 
         };
 
-        const eventoAnterior =
-            await consultarEvento(grupoId);
+        const eventoAnterior = await consultarEvento(grupoId);
 
         console.log(
             "📋 Evento anterior:",
@@ -81,26 +75,33 @@ async function detectarEvento(ctx) {
                 : "No existe"
         );
 
-        await guardarEvento({
+        // ===============================
+        // GUARDAR EVENTO
+        // ===============================
+
+        const eventoGuardado = await guardarEvento({
 
             sock,
-
             grupoId,
-
             evento: eventoCompleto,
-
             eventoAnterior
 
         });
 
+        if (!eventoGuardado) {
+
+            console.log("❌ No se pudo guardar el evento");
+            return null;
+
+        }
+
         console.log("✅ Evento guardado correctamente");
 
-        return eventoCompleto;
+        return eventoGuardado;
 
     } catch (error) {
 
         console.error("❌ Error detectando evento");
-
         console.error(error);
 
         return null;

@@ -2,7 +2,6 @@ const supabase = require("../../lib/supabase");
 
 module.exports = async function obtenerGrupo(chat) {
 
-    // Si el mensaje es privado
     if (!chat.esGrupo) {
 
         return null;
@@ -30,6 +29,15 @@ module.exports = async function obtenerGrupo(chat) {
 
     }
 
-    return data;
+    return {
+
+        ...data,
+
+        nombre:
+            data.nombre ||
+            data.grupo_nombre ||
+            null
+
+    };
 
 };
