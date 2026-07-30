@@ -31,3 +31,7 @@ function verificarHoraCierre(evento) {
     return horaActual >= horaCierre;
 
 }
+
+module.exports = {
+    verificarHoraCierre
+};
