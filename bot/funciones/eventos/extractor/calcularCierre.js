@@ -1,4 +1,4 @@
-function calcularCierre(horaEvento, minutosAntes = 2) {
+function calcularCierre(horaEvento, minutosAntes = 4) {
 
     if (!horaEvento)
         return null;

@@ -2,6 +2,7 @@ const { extraerEvento } = require("./extraerEvento");
 const { consultarEvento } = require("./consultarEvento");
 const { guardarEvento } = require("./guardarEvento");
 const { obtenerConfiguracion } = require("./configEvento");
+const { abrirGrupo } = require("./grupos/abrirGrupo");
 
 async function detectarEvento(ctx) {
 
@@ -96,6 +97,27 @@ async function detectarEvento(ctx) {
         }
 
         console.log("✅ Evento guardado correctamente");
+
+        // ===============================
+// ABRIR GRUPO
+// ===============================
+
+const grupoAbierto = await abrirGrupo({
+
+    sock,
+    grupoId
+
+});
+
+if (!grupoAbierto) {
+
+    console.log("⚠ No se pudo abrir el grupo");
+
+} else {
+
+    console.log("🔓 Grupo abierto correctamente");
+
+}
 
         return eventoGuardado;
 

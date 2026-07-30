@@ -16,7 +16,10 @@ async function guardarMensajeGrupo({
 
     try {
 
-        // Ignorar mensajes internos de WhatsApp
+        // ==========================================
+        // Ignorar mensajes internos
+        // ==========================================
+
         if (
             msg.message &&
             Object.keys(msg.message).length === 1 &&
@@ -25,9 +28,24 @@ async function guardarMensajeGrupo({
             return null;
         }
 
+        // ==========================================
+        // Autor del mensaje
+        // ==========================================
+
         const jidUsuario =
+
             msg.key.participant ||
-            msg.key.remoteJid;
+
+            msg.participant ||
+
+            msg.key.remoteJid ||
+
+            sock?.user?.id ||
+
+            null;
+
+        if (!jidUsuario)
+            return null;
 
         const usuario = await obtenerUsuarioGlobal({
 
@@ -40,30 +58,47 @@ async function guardarMensajeGrupo({
         if (!usuario)
             return null;
 
-        // ===============================
+        // ==========================================
+        // Timestamp (Baileys v7)
+        // ==========================================
+
+        const timestampWhatsapp =
+
+            msg.messageTimestamp?.toNumber?.() ??
+
+            Number(msg.messageTimestamp) ??
+
+            null;
+
+        // ==========================================
         // Tipo de mensaje
-        // ===============================
+        // ==========================================
 
         let tipoMensaje = "texto";
 
         if (msg.message?.imageMessage)
+
             tipoMensaje = "imagen";
 
         else if (msg.message?.videoMessage)
+
             tipoMensaje = "video";
 
         else if (msg.message?.audioMessage)
+
             tipoMensaje = "audio";
 
         else if (msg.message?.documentMessage)
+
             tipoMensaje = "documento";
 
         else if (msg.message?.stickerMessage)
+
             tipoMensaje = "sticker";
 
-        // ===============================
-        // Contexto del mensaje citado
-        // ===============================
+        // ==========================================
+        // Contexto citado
+        // ==========================================
 
         const contextInfo =
 
@@ -84,31 +119,41 @@ async function guardarMensajeGrupo({
             null;
 
         const quotedId =
-            contextInfo?.stanzaId || null;
+
+            contextInfo?.stanzaId ||
+
+            null;
 
         const quotedParticipant =
-            contextInfo?.participant || null;
 
-        // ===============================
+            contextInfo?.participant ||
+
+            null;
+
+        // ==========================================
         // Teléfono
-        // ===============================
+        // ==========================================
 
         let telefono = usuario.telefono;
 
-        if (msg.key.fromMe && !telefono) {
+        if (!telefono && sock?.user?.id) {
 
-            telefono =
-                sock?.context?.telefono ||
+            telefono = sock.user.id
 
-                msg.key.remoteJid
-                    ?.replace("@s.whatsapp.net", "")
-                    ?.replace("@lid", "");
+                .split("@")[0]
+
+                .split(":")[0]
+
+                .replace(/^57/, "");
 
         }
 
-        // ===============================
+        if (telefono === "null")
+            telefono = null;
+
+        // ==========================================
         // Media
-        // ===============================
+        // ==========================================
 
         const media =
 
@@ -122,9 +167,17 @@ async function guardarMensajeGrupo({
 
             null;
 
-        // ===============================
+        const fileSize =
+
+            media?.fileLength?.toNumber?.() ??
+
+            Number(media?.fileLength) ??
+
+            null;
+
+        // ==========================================
         // Guardar
-        // ===============================
+        // ==========================================
 
         const { data, error } = await supabase
 
@@ -150,43 +203,61 @@ async function guardarMensajeGrupo({
 
                 from_me: msg.key.fromMe,
 
-                autor_jid:
-                    msg.key.participant ||
-                    msg.key.remoteJid,
+                autor_jid: jidUsuario,
 
                 participant_jid:
-                    msg.key.participant || null,
+
+                    msg.key.participant ||
+
+                    null,
 
                 remote_jid:
-                    msg.key.remoteJid,
+
+                    msg.key.remoteJid ||
+
+                    null,
 
                 tipo_mensaje: tipoMensaje,
 
                 texto:
-                    texto?.trim() || null,
+
+                    texto?.trim() ||
+
+                    null,
 
                 quoted_id: quotedId,
 
                 quoted_participant:
+
                     quotedParticipant,
 
                 timestamp_whatsapp:
-                    msg.messageTimestamp || null,
+
+                    timestampWhatsapp,
 
                 editado:
+
                     !!msg.message?.editedMessage,
 
                 eliminado:
+
                     !!msg.message?.protocolMessage,
 
                 mime_type:
-                    media?.mimetype || null,
+
+                    media?.mimetype ||
+
+                    null,
 
                 file_name:
-                    media?.fileName || null,
+
+                    media?.fileName ||
+
+                    null,
 
                 file_size:
-                    media?.fileLength || null,
+
+                    fileSize,
 
                 media_url: null,
 
@@ -196,10 +267,6 @@ async function guardarMensajeGrupo({
 
                 estado: "nuevo"
 
-                // Si agregas una columna JSONB llamada "raw"
-                // puedes guardar también:
-                // raw: msg
-
             })
 
             .select()
@@ -208,8 +275,10 @@ async function guardarMensajeGrupo({
 
         if (error) {
 
-            console.error("❌ Error guardando mensaje:");
+            console.error("================================");
+            console.error("❌ ERROR GUARDANDO MENSAJE");
             console.error(error);
+            console.error("================================");
 
             return null;
 
@@ -221,8 +290,10 @@ async function guardarMensajeGrupo({
 
     catch (err) {
 
-        console.error("❌ Excepción guardando mensaje:");
+        console.error("================================");
+        console.error("❌ EXCEPCIÓN GUARDANDO MENSAJE");
         console.error(err);
+        console.error("================================");
 
         return null;
 

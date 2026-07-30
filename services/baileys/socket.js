@@ -4,70 +4,73 @@ const {
 } = require("@whiskeysockets/baileys");
 
 const path = require("path");
-
 const supabase = require("../../lib/supabase");
 
 const sockets = new Map();
 
 async function createSocket(sessionId) {
 
+    console.log("================================");
+    console.log("🚀 CREATE SOCKET");
+    console.log("SESSION:", sessionId);
+    console.log("================================");
+
     const existente = sockets.get(sessionId);
 
     if (existente) {
 
-        console.log("🟢 Socket ya existe:", sessionId);
+        console.log("🟢 Socket ya existe");
 
         return existente;
 
     }
 
     const {
+        data: session,
+        error
+    } = await supabase
+        .from("sesiones")
+        .select("*")
+        .eq("id", sessionId)
+        .single();
 
-    data: session,
+    if (error) {
 
-    error
+        console.error("❌ Error obteniendo sesión");
+        console.error(error);
 
-} = await supabase
+        return null;
 
-    .from("sesiones")
+    }
 
-    .select("*")
-
-    .eq("id", sessionId)
-
-    .single();
-
-if (error) {
-
-    console.log(
-
-        "❌ Error obteniendo sesión:",
-
-        error.message
-
-    );
-
-    return null;
-
-}
+    console.log("✅ Sesión encontrada");
 
     const authFolder = path.join(
-
         __dirname,
-
         "../../auth",
-
         sessionId
-
     );
 
+    console.log("📂 AUTH:", authFolder);
+
     const {
-
         state,
-
         saveCreds
-
     } = await useMultiFileAuthState(authFolder);
+
+    console.log("================================");
+    console.log("AUTH");
+    console.log("================================");
+
+    console.log("REGISTERED:", state.creds.registered);
+    console.log("ME:", state.creds.me);
+    console.log("ACCOUNT:", state.creds.account);
+
+    console.log("NOISE:", !!state.creds.noiseKey);
+    console.log("IDENTITY:", !!state.creds.signedIdentityKey);
+    console.log("SIGNED PREKEY:", !!state.creds.signedPreKey);
+
+    console.log("================================");
 
     const sock = makeWASocket({
 
@@ -75,107 +78,47 @@ if (error) {
 
     });
 
+    console.log("✅ SOCKET CREADO");
+
+    console.log("sock.user:", sock.user);
+
     sock.context = {
 
-    sessionId: session.id,
+        sessionId: session.id,
+        usuarioId: session.usuario_id,
+        telefono: session.telefono,
+        nombreSesion: session.nombre,
+        estado: session.estado
 
-    usuarioId: session.usuario_id,
+    };
 
-    telefono: session.telefono,
+    sock.ev.on("creds.update", (...args) => {
 
-    nombreSesion: session.nombre,
+        console.log("💾 CREDS.UPDATE");
 
-    estado: session.estado
+        saveCreds(...args);
 
-};
+    });
 
-    const originalSendMessage =
-    sock.sendMessage.bind(sock);
+    sock.ev.on("connection.update", update => {
 
-sock.sendMessage = async (
-    jid,
-    content,
-    options
-) => {
+        console.log("================================");
+        console.log("CONNECTION.UPDATE");
+        console.log("================================");
 
-    try {
+        console.dir(update, {
+            depth: null
+        });
 
-        // Mostrar "escribiendo..."
-        await sock.sendPresenceUpdate(
-            "composing",
-            jid
-        );
+    });
 
-        // Obtener el texto
-        const texto =
-            content?.text || "";
+    sock.ev.on("messages.upsert", () => {
 
-        // Tiempo base
-        let tiempo = 700;
+        console.log("📨 MESSAGE");
 
-// Simular velocidad de escritura
-tiempo += texto.length * 45;
+    });
 
-// Variación humana
-tiempo += Math.floor(
-    Math.random() * 1800
-);
-
-// Nunca menos de 1 segundo
-tiempo = Math.max(
-    tiempo,
-    1000
-);
-
-// Nunca más de 8 segundos
-tiempo = Math.min(
-    tiempo,
-    8000
-);
-        await new Promise(resolve =>
-            setTimeout(resolve, tiempo)
-        );
-
-        // Dejar de escribir
-        await sock.sendPresenceUpdate(
-            "paused",
-            jid
-        );
-
-    }
-
-    catch (e) {
-
-        console.log(
-            "Error en presencia:",
-            e.message
-        );
-
-    }
-
-    return originalSendMessage(
-        jid,
-        content,
-        options
-    );
-
-};
-
-    sockets.set(
-
-        sessionId,
-
-        sock
-
-    );
-
-    sock.ev.on(
-
-        "creds.update",
-
-        saveCreds
-
-    );
+    sockets.set(sessionId, sock);
 
     return sock;
 
@@ -195,41 +138,27 @@ async function disconnectSocket(sessionId) {
 
         await sock.logout();
 
-    }
+    } catch (err) {
 
-    catch (err) {
-
-        console.log(
-
-            "ERROR AL CERRAR SESIÓN:",
-
-            err
-
-        );
+        console.error("ERROR LOGOUT");
+        console.error(err);
 
     }
 
     sockets.delete(sessionId);
 
     await supabase
+        .from("sesiones")
+        .update({
 
-    .from("sesiones")
+            estado: "desconectado",
+            telefono: null,
+            qr: null,
+            qr_generado_en: null,
+            qr_expira_en: null
 
-    .update({
-
-        estado: "desconectado",
-
-        telefono: null,
-
-        qr: null,
-
-        qr_generado_en: null,
-
-        qr_expira_en: null
-
-    })
-
-    .eq("id", sessionId);
+        })
+        .eq("id", sessionId);
 
     return true;
 
@@ -250,13 +179,9 @@ function hasSocket(sessionId) {
 module.exports = {
 
     createSocket,
-
     disconnectSocket,
-
     getSocket,
-
     hasSocket,
-
     sockets
 
 };

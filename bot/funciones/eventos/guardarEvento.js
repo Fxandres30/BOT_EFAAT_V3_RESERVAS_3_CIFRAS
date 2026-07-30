@@ -53,6 +53,10 @@ async function guardarEvento({
 
         estado: "abierto",
 
+         // 👇 AGREGA ESTO
+    activo: true,
+    abierto: true,
+
         valor: evento.valor,
         premios: evento.premios,
         tabla: evento.tabla,

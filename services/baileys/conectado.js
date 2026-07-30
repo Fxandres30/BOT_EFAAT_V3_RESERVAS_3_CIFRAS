@@ -42,18 +42,19 @@ async function conectado(
 
         if (error) {
 
-            console.error("⚠️ Error actualizando la sesión:", error);
+            console.error("⚠️ Error actualizando la sesión:");
+            console.dir(error, { depth: null });
 
         }
 
     } catch (err) {
 
-        console.error("⚠️ Error conectando con Supabase:", err);
+        console.error("⚠️ Error conectando con Supabase:");
+        console.dir(err, { depth: null });
 
     }
 
-    // Si todavía no existe una sesión activa,
-    // esta será la primera.
+    // Establecer sesión activa si aún no existe
     if (!contexto.manager.getActiveSession()) {
 
         const ok = await contexto.manager.setActive(sessionId);
@@ -68,12 +69,12 @@ async function conectado(
 
     }
 
-    // Esperar un momento para iniciar el bot
+    // Esperar un momento e iniciar el bot
     setTimeout(() => {
 
         const iniciarBot = require("../../bot");
 
-        iniciarBot();
+        iniciarBot(sock, sessionId);
 
     }, 1000);
 

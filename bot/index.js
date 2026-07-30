@@ -5,18 +5,32 @@ const {
     unregisterMessages
 } = require("./events/messages.upsert");
 
+const {
+    iniciarWorkerEventos
+} = require("./funciones/eventos/lifecycle/iniciarWorkerEventos");
+
 let socketActual = null;
 let sesionActual = null;
 let iniciado = false;
 
 function conectar(socket, sessionId) {
 
-    if (sesionActual === sessionId) {
+    if (!socket || !sessionId) {
+
         return;
+
+    }
+
+    if (sesionActual === sessionId) {
+
+        return;
+
     }
 
     if (socketActual) {
+
         unregisterMessages(sesionActual);
+
     }
 
     socketActual = socket;
@@ -26,9 +40,15 @@ function conectar(socket, sessionId) {
 
     registerMessages(socket, sessionId);
 
+    // =====================================
+    // Iniciar worker de eventos
+    // =====================================
+
+    iniciarWorkerEventos(socket);
+
 }
 
-function iniciarBot() {
+function iniciarBot(sock, sessionId) {
 
     if (!iniciado) {
 
@@ -42,10 +62,21 @@ function iniciarBot() {
 
     }
 
-    const socket = manager.getActiveSocket();
-    const sessionId = manager.getActiveSession();
+    // Si conectado.js envía socket y sessionId,
+    // usamos esos directamente.
+    if (sock && sessionId) {
 
-    if (!socket || !sessionId) {
+        conectar(sock, sessionId);
+
+        return;
+
+    }
+
+    // Fallback a la sesión activa
+    const socket = manager.getActiveSocket();
+    const session = manager.getActiveSession();
+
+    if (!socket || !session) {
 
         console.log("⚠️ No existe una sesión activa.");
 
@@ -53,7 +84,7 @@ function iniciarBot() {
 
     }
 
-    conectar(socket, sessionId);
+    conectar(socket, session);
 
 }
 

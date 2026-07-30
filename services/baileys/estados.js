@@ -27,11 +27,9 @@ function registrarEstados(
                 console.log("UPDATE:", update);
 
                 const {
-
                     connection,
                     qr,
                     lastDisconnect
-
                 } = update;
 
                 if (qr) {
@@ -56,6 +54,15 @@ function registrarEstados(
                 }
 
                 if (connection === "close") {
+
+                    // 👇 NUEVO: imprimir TODO el error
+                    console.log("========== LAST DISCONNECT ==========");
+                    console.dir(lastDisconnect, { depth: null });
+                    console.log("=====================================");
+
+                    console.log("========== ERROR ==========");
+                    console.dir(lastDisconnect?.error, { depth: null });
+                    console.log("===========================");
 
                     const statusCode =
                         lastDisconnect?.error?.output?.statusCode;

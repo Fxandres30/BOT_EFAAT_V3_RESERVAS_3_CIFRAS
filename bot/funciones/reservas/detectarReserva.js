@@ -9,8 +9,7 @@ async function detectarReserva({
 
     evento,
     texto,
-    nombre,
-    telefono,
+    usuario,
     lib
 
 }) {
@@ -28,72 +27,127 @@ async function detectarReserva({
     const reservas = await consultarReservas(evento, numeros);
 
     const resultado = validarReservas(
+
         reservas,
-        telefono,
+
+        usuario?.telefono,
+
         lib
+
     );
 
+    // ===============================
     // Todos ya son míos
+    // ===============================
+
     if (
+
         resultado.disponibles.length === 0 &&
+
         resultado.ocupadosPorOtros.length === 0 &&
+
         resultado.yaSonMios.length > 0
+
     ) {
+
         return null;
+
     }
 
-    // Todos ocupados por otros
+    // ===============================
+    // Todos ocupados
+    // ===============================
+
     if (
+
         resultado.disponibles.length === 0 &&
+
         resultado.ocupadosPorOtros.length > 0
+
     ) {
 
         return {
+
             ok: false,
+
             mensaje:
 `❌ Los números solicitados ya están ocupados.
 
 🔒 Ocupados: ${resultado.ocupadosPorOtros.map(n => n.numero).join(", ")}`
+
         };
 
     }
 
-    // Reservar únicamente los disponibles
-    const reservados = resultado.disponibles.map(n => n.numero);
+    // ===============================
+    // Reservar disponibles
+    // ===============================
 
-    await reservarNumeros({
+    const reservados =
+        resultado.disponibles.map(n => n.numero);
+
+    const reserva = await reservarNumeros({
 
         evento,
+
         numeros: reservados,
-        comprador: nombre,
-        contacto: telefono,
+
+        usuario,
+
+        comprador: usuario?.nombre,
+
+        contacto: usuario?.telefono,
+
         lib
 
     });
+
+    if (!reserva || reserva.length === 0) {
+
+        return {
+
+            ok: false,
+
+            mensaje:
+"❌ No fue posible realizar la reserva. Intenta nuevamente."
+
+        };
+
+    }
 
     await actualizarEvento(evento);
 
     const ocupados =
         resultado.ocupadosPorOtros.map(n => n.numero);
 
-    let mensaje = `✅ Reserva realizada correctamente.\n\n`;
+    let mensaje = "✅ Reserva realizada correctamente.\n\n";
+
     mensaje += `🎟️ Reservados: ${reservados.join(", ")}`;
 
     if (ocupados.length) {
+
         mensaje += `\n\n⚠️ Ya estaban ocupados: ${ocupados.join(", ")}`;
+
     }
 
     return {
 
         ok: true,
+
         reservados,
+
         ocupados,
-        mensaje
+
+        mensaje,
+
+        usuario
 
     };
 
 }
 
 module.exports = {
+
     detectarReserva
+
 };
