@@ -1,5 +1,7 @@
 const supabase = require("../../../lib/supabase");
 
+const TIEMPO_CACHE_MINUTOS = 10;
+
 async function sincronizarGrupo({
 
     sock,
@@ -9,21 +11,60 @@ async function sincronizarGrupo({
 
     try {
 
-        // Obtener información actual del grupo desde WhatsApp
+        // Buscar si el grupo ya existe
+        const { data: grupoExistente, error: errorBusqueda } = await supabase
+
+            .from("grupos")
+
+            .select("*")
+
+            .eq("jid", grupoId)
+
+            .maybeSingle();
+
+        if (errorBusqueda) {
+
+            console.error(errorBusqueda);
+            return null;
+
+        }
+
+        // Si fue sincronizado hace menos de 10 minutos, no volver a consultar WhatsApp
+        if (grupoExistente?.actualizado_en) {
+
+            const ultimaActualizacion = new Date(grupoExistente.actualizado_en);
+            const ahora = new Date();
+
+            const minutos =
+                (ahora - ultimaActualizacion) / 1000 / 60;
+
+            if (minutos < TIEMPO_CACHE_MINUTOS) {
+
+                return grupoExistente;
+
+            }
+
+        }
+
+        // Obtener información actual del grupo
         const metadata = await sock.groupMetadata(grupoId);
 
-        let enlace = null;
+        let enlace = grupoExistente?.enlace || null;
 
-        try {
+        // Solo consultar el enlace si aún no existe
+        if (!enlace) {
 
-            const codigo = await sock.groupInviteCode(grupoId);
+            try {
 
-            enlace = `https://chat.whatsapp.com/${codigo}`;
+                const codigo = await sock.groupInviteCode(grupoId);
 
-        } catch (_) {
+                enlace = `https://chat.whatsapp.com/${codigo}`;
 
-            // El bot puede no tener permisos
-            enlace = null;
+            } catch (_) {
+
+                enlace = null;
+
+            }
 
         }
 
@@ -53,18 +94,7 @@ async function sincronizarGrupo({
 
         };
 
-        // Buscar si ya existe
-        const { data: grupoExistente } = await supabase
-
-            .from("grupos")
-
-            .select("id")
-
-            .eq("jid", grupoId)
-
-            .maybeSingle();
-
-        // Si existe → actualizar
+        // Actualizar
         if (grupoExistente) {
 
             const { data, error } = await supabase
@@ -82,8 +112,7 @@ async function sincronizarGrupo({
             if (error) {
 
                 console.error(error);
-
-                return null;
+                return grupoExistente;
 
             }
 
@@ -93,7 +122,7 @@ async function sincronizarGrupo({
 
         }
 
-        // Si no existe → crear
+        // Crear
         const { data, error } = await supabase
 
             .from("grupos")
@@ -115,7 +144,6 @@ async function sincronizarGrupo({
         if (error) {
 
             console.error(error);
-
             return null;
 
         }
@@ -124,9 +152,15 @@ async function sincronizarGrupo({
 
         return data;
 
-    }
+    } catch (err) {
 
-    catch (err) {
+        if (err?.message?.includes("rate-overlimit")) {
+
+            console.log("⚠️ WhatsApp limitó temporalmente groupMetadata().");
+
+            return null;
+
+        }
 
         console.error(err);
 
