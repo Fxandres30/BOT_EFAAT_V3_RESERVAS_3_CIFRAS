@@ -28,22 +28,28 @@ module.exports = async ({
 
 }) => {
 
+    console.log("1️⃣ Entró a dispatcher");
+
     const ctx = await obtenerContexto(
         sock,
         message
     );
 
-    if (!ctx)
+    console.log("2️⃣ Contexto obtenido");
+
+    if (!ctx) {
+
+        console.log("⛔ ctx es null");
         return;
+
+    }
 
     ctx.session = session;
     ctx.tipoConexion = tipo;
 
-    // ==========================
-    // Flujo de grupos
-    // ==========================
-
     if (ctx.chat.esGrupo) {
+
+        console.log("3️⃣ Antes de sincronizarGrupo");
 
         ctx.grupo = await sincronizarGrupo({
 
@@ -53,12 +59,15 @@ module.exports = async ({
 
         });
 
-        // Puedes dejar estos logs mientras haces pruebas
+        console.log("4️⃣ Después de sincronizarGrupo");
+
         console.log("================================");
         console.log("📝 TEXTO ANTES DE GUARDAR");
         console.log("texto:", ctx.texto);
         console.log("textoOriginal:", ctx.textoOriginal);
         console.log("================================");
+
+        console.log("5️⃣ Antes de guardarMensajeGrupo");
 
         const mensaje = await guardarMensajeGrupo({
 
@@ -74,7 +83,11 @@ module.exports = async ({
 
         });
 
+        console.log("6️⃣ Después de guardarMensajeGrupo");
+
         if (mensaje) {
+
+            console.log("7️⃣ Antes de clasificarMensaje");
 
             await clasificarMensaje({
 
@@ -84,20 +97,22 @@ module.exports = async ({
 
             });
 
+            console.log("8️⃣ Después de clasificarMensaje");
+
         }
 
     }
 
-    // ==========================
-    // Eventos
-    // ==========================
+    console.log("9️⃣ Antes de eventHandler");
 
     await eventHandler(ctx);
 
-    // ==========================
-    // Comandos
-    // ==========================
+    console.log("🔟 Después de eventHandler");
+
+    console.log("1️⃣1️⃣ Antes de commandHandler");
 
     await commandHandler(ctx);
+
+    console.log("1️⃣2️⃣ FIN dispatcher");
 
 };
