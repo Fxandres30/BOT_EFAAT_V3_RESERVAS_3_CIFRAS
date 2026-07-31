@@ -9,10 +9,6 @@ const {
     clasificarMensaje
 } = require("../funciones/mensajes/clasificarMensaje");
 
-const {
-    sincronizarGrupo
-} = require("../funciones/grupos/sincronizarGrupo");
-
 const eventHandler =
 require("./eventHandler");
 
@@ -49,25 +45,7 @@ module.exports = async ({
 
     if (ctx.chat.esGrupo) {
 
-        console.log("3️⃣ Antes de sincronizarGrupo");
-
-        ctx.grupo = await sincronizarGrupo({
-
-            sock,
-
-            grupoId: ctx.chat.remoteJid
-
-        });
-
-        console.log("4️⃣ Después de sincronizarGrupo");
-
-        console.log("================================");
-        console.log("📝 TEXTO ANTES DE GUARDAR");
-        console.log("texto:", ctx.texto);
-        console.log("textoOriginal:", ctx.textoOriginal);
-        console.log("================================");
-
-        console.log("5️⃣ Antes de guardarMensajeGrupo");
+        console.log("3️⃣ Guardando mensaje del grupo");
 
         const mensaje = await guardarMensajeGrupo({
 
@@ -79,15 +57,15 @@ module.exports = async ({
 
             grupoId: ctx.chat.remoteJid,
 
-            grupoNombre: ctx.grupo?.nombre || null
+            grupoNombre: null
 
         });
 
-        console.log("6️⃣ Después de guardarMensajeGrupo");
+        console.log("4️⃣ Mensaje guardado");
 
         if (mensaje) {
 
-            console.log("7️⃣ Antes de clasificarMensaje");
+            console.log("5️⃣ Clasificando mensaje");
 
             await clasificarMensaje({
 
@@ -97,22 +75,20 @@ module.exports = async ({
 
             });
 
-            console.log("8️⃣ Después de clasificarMensaje");
+            console.log("6️⃣ Clasificación terminada");
 
         }
 
     }
 
-    console.log("9️⃣ Antes de eventHandler");
+    console.log("7️⃣ eventHandler");
 
     await eventHandler(ctx);
 
-    console.log("🔟 Después de eventHandler");
-
-    console.log("1️⃣1️⃣ Antes de commandHandler");
+    console.log("8️⃣ commandHandler");
 
     await commandHandler(ctx);
 
-    console.log("1️⃣2️⃣ FIN dispatcher");
+    console.log("9️⃣ FIN dispatcher");
 
 };

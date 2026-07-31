@@ -3,6 +3,10 @@ const {
     useMultiFileAuthState
 } = require("@whiskeysockets/baileys");
 
+const {
+    registerGroups
+} = require("../../bot/events/groups");
+
 const path = require("path");
 const supabase = require("../../lib/supabase");
 
@@ -77,6 +81,8 @@ async function createSocket(sessionId) {
         auth: state
 
     });
+
+    registerGroups(sock);
 
     console.log("✅ SOCKET CREADO");
 

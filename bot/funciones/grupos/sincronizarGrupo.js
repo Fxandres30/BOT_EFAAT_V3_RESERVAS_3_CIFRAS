@@ -2,6 +2,12 @@ const supabase = require("../../../lib/supabase");
 
 const TIEMPO_CACHE_MINUTOS = 10;
 
+// Cache en memoria
+const cacheGrupos = new Map();
+
+// Grupos que actualmente se están sincronizando
+const sincronizando = new Set();
+
 async function sincronizarGrupo({
 
     sock,
@@ -9,10 +15,42 @@ async function sincronizarGrupo({
 
 }) {
 
+    // Si ya se está sincronizando este grupo, devolver el cache si existe
+    if (sincronizando.has(grupoId)) {
+
+        const cache = cacheGrupos.get(grupoId);
+
+        if (cache)
+            return cache.data;
+
+        return null;
+
+    }
+
+    // Revisar cache en memoria
+    const cache = cacheGrupos.get(grupoId);
+
+    if (cache) {
+
+        const minutos =
+            (Date.now() - cache.time) / 1000 / 60;
+
+        if (minutos < TIEMPO_CACHE_MINUTOS)
+            return cache.data;
+
+    }
+
+    sincronizando.add(grupoId);
+
     try {
 
-        // Buscar si el grupo ya existe
-        const { data: grupoExistente, error: errorBusqueda } = await supabase
+        // Buscar grupo en Supabase
+        const {
+
+            data: grupoExistente,
+            error: errorBusqueda
+
+        } = await supabase
 
             .from("grupos")
 
@@ -25,20 +63,28 @@ async function sincronizarGrupo({
         if (errorBusqueda) {
 
             console.error(errorBusqueda);
+
             return null;
 
         }
 
-        // Si fue sincronizado hace menos de 10 minutos, no volver a consultar WhatsApp
+        // Si Supabase tiene datos recientes, usar esos
         if (grupoExistente?.actualizado_en) {
 
-            const ultimaActualizacion = new Date(grupoExistente.actualizado_en);
-            const ahora = new Date();
+            const ultimaActualizacion =
+                new Date(grupoExistente.actualizado_en);
 
             const minutos =
-                (ahora - ultimaActualizacion) / 1000 / 60;
+                (Date.now() - ultimaActualizacion.getTime()) / 1000 / 60;
 
             if (minutos < TIEMPO_CACHE_MINUTOS) {
+
+                cacheGrupos.set(grupoId, {
+
+                    data: grupoExistente,
+                    time: Date.now()
+
+                });
 
                 return grupoExistente;
 
@@ -46,21 +92,24 @@ async function sincronizarGrupo({
 
         }
 
-        // Obtener información actual del grupo
-        const metadata = await sock.groupMetadata(grupoId);
+        // Consultar WhatsApp SOLO cuando realmente sea necesario
+        const metadata =
+            await sock.groupMetadata(grupoId);
 
-        let enlace = grupoExistente?.enlace || null;
+        let enlace =
+            grupoExistente?.enlace || null;
 
-        // Solo consultar el enlace si aún no existe
         if (!enlace) {
 
             try {
 
-                const codigo = await sock.groupInviteCode(grupoId);
+                const codigo =
+                    await sock.groupInviteCode(grupoId);
 
-                enlace = `https://chat.whatsapp.com/${codigo}`;
+                enlace =
+                    `https://chat.whatsapp.com/${codigo}`;
 
-            } catch (_) {
+            } catch {
 
                 enlace = null;
 
@@ -80,24 +129,35 @@ async function sincronizarGrupo({
 
             owner: metadata.owner || null,
 
-            participantes: metadata.participants?.length || 0,
+            participantes:
+                metadata.participants?.length || 0,
 
-            announce: metadata.announce ?? false,
+            announce:
+                metadata.announce ?? false,
 
-            restrict: metadata.restrict ?? false,
+            restrict:
+                metadata.restrict ?? false,
 
-            member_add_mode: metadata.memberAddMode ?? false,
+            member_add_mode:
+                metadata.memberAddMode ?? false,
 
-            join_approval_mode: metadata.joinApprovalMode ?? false,
+            join_approval_mode:
+                metadata.joinApprovalMode ?? false,
 
             actualizado_en: new Date()
 
         };
 
-        // Actualizar
+        let resultado;
+
         if (grupoExistente) {
 
-            const { data, error } = await supabase
+            const {
+
+                data,
+                error
+
+            } = await supabase
 
                 .from("grupos")
 
@@ -112,45 +172,65 @@ async function sincronizarGrupo({
             if (error) {
 
                 console.error(error);
-                return grupoExistente;
+
+                resultado = grupoExistente;
+
+            } else {
+
+                console.log("🔄 Grupo actualizado:", data.nombre);
+
+                resultado = data;
 
             }
 
-            console.log("🔄 Grupo actualizado:", data.nombre);
+        } else {
 
-            return data;
+            const {
+
+                data,
+                error
+
+            } = await supabase
+
+                .from("grupos")
+
+                .insert({
+
+                    ...registro,
+
+                    activo: true,
+
+                    creado_en: new Date()
+
+                })
+
+                .select()
+
+                .single();
+
+            if (error) {
+
+                console.error(error);
+
+                return null;
+
+            }
+
+            console.log("✅ Grupo registrado:", data.nombre);
+
+            resultado = data;
 
         }
 
-        // Crear
-        const { data, error } = await supabase
+        // Guardar en cache
+        cacheGrupos.set(grupoId, {
 
-            .from("grupos")
+            data: resultado,
+            time: Date.now()
 
-            .insert({
+        });
 
-                ...registro,
-
-                activo: true,
-
-                creado_en: new Date()
-
-            })
-
-            .select()
-
-            .single();
-
-        if (error) {
-
-            console.error(error);
-            return null;
-
-        }
-
-        console.log("✅ Grupo registrado:", data.nombre);
-
-        return data;
+        return resultado;
 
     } catch (err) {
 
@@ -158,13 +238,28 @@ async function sincronizarGrupo({
 
             console.log("⚠️ WhatsApp limitó temporalmente groupMetadata().");
 
+            // Si hay cache devolverlo
+            const cache = cacheGrupos.get(grupoId);
+
+            if (cache)
+                return cache.data;
+
             return null;
 
         }
 
         console.error(err);
 
+        const cache = cacheGrupos.get(grupoId);
+
+        if (cache)
+            return cache.data;
+
         return null;
+
+    } finally {
+
+        sincronizando.delete(grupoId);
 
     }
 
