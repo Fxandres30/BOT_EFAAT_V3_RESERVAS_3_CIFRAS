@@ -25,9 +25,14 @@ function registerMessages(sock, sessionId) {
             try {
 
                 if (!message.message) {
+
                     console.log("⏭️ Mensaje vacío, ignorado");
+
                     continue;
+
                 }
+
+                const traceId = message.key.id;
 
                 const remoto = message.key.remoteJid;
 
@@ -35,31 +40,41 @@ function registerMessages(sock, sessionId) {
 
                 if (remoto.endsWith("@g.us"))
                     tipo = "GRUPO";
+
                 else if (remoto === "status@broadcast")
                     tipo = "ESTADO";
+
                 else if (remoto.endsWith("@newsletter"))
                     tipo = "NEWSLETTER";
 
-                console.log(`📩 [${tipo}] ${remoto} | ${message.key.id}`);
+                console.log(`📩 [${tipo}] ${remoto} | ${traceId}`);
 
-                console.log("➡️ ANTES messageHandler");
+                console.log(`➡️ ANTES messageHandler [${traceId}]`);
 
-                console.time("⏱ messageHandler");
+                console.time(`messageHandler-${traceId}`);
 
                 await messageHandler({
+
                     sock,
+
                     session: context,
+
                     message,
+
                     tipo
+
                 });
 
-                console.timeEnd("⏱ messageHandler");
+                console.timeEnd(`messageHandler-${traceId}`);
 
-                console.log("✅ DESPUÉS messageHandler");
+                console.log(`✅ DESPUÉS messageHandler [${traceId}]`);
 
-            } catch (err) {
+            }
 
-                console.error("❌ Error procesando mensaje");
+            catch (err) {
+
+                console.error(`❌ Error procesando mensaje [${message.key.id}]`);
+
                 console.error(err);
 
             }
@@ -77,13 +92,17 @@ function registerMessages(sock, sessionId) {
 
     console.log(`
 ═══════════════════════════════════════
+
 🤖 BOT ESCUCHANDO
 
 📱 Número : ${context.telefono || "Desconocido"}
+
 🆔 Sesión : ${sessionId}
+
 👤 Usuario : ${context.usuarioId || "Sin usuario"}
 
 📡 Listener registrado correctamente
+
 ═══════════════════════════════════════
 `);
 
@@ -98,13 +117,19 @@ function unregisterMessages(sessionId) {
 
     console.log(`🗑️ Eliminando listener: ${sessionId}`);
 
-    data.sock.ev.off("messages.upsert", data.listener);
+    data.sock.ev.off(
+        "messages.upsert",
+        data.listener
+    );
 
     listeners.delete(sessionId);
 
 }
 
 module.exports = {
+
     registerMessages,
+
     unregisterMessages
+
 };

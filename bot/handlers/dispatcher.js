@@ -26,22 +26,25 @@ module.exports = async ({
 
     const inicio = Date.now();
 
+    // Un identificador único para este mensaje
+    const traceId = message.key.id;
+
     try {
 
         console.log("================================");
-        console.log("🚀 INICIO DISPATCHER");
+        console.log(`🚀 INICIO DISPATCHER [${traceId}]`);
         console.log("================================");
 
         console.log("1️⃣ Entró a dispatcher");
 
-        console.time("⏱ obtenerContexto");
+        console.time(`obtenerContexto-${traceId}`);
 
         const ctx = await obtenerContexto(
             sock,
             message
         );
 
-        console.timeEnd("⏱ obtenerContexto");
+        console.timeEnd(`obtenerContexto-${traceId}`);
 
         console.log("2️⃣ Contexto obtenido");
 
@@ -60,7 +63,7 @@ module.exports = async ({
 
             console.log("3️⃣ Guardando mensaje del grupo");
 
-            console.time("⏱ guardarMensajeGrupo");
+            console.time(`guardarMensajeGrupo-${traceId}`);
 
             const mensaje = await guardarMensajeGrupo({
 
@@ -76,7 +79,7 @@ module.exports = async ({
 
             });
 
-            console.timeEnd("⏱ guardarMensajeGrupo");
+            console.timeEnd(`guardarMensajeGrupo-${traceId}`);
 
             console.log("4️⃣ Mensaje guardado");
 
@@ -84,7 +87,7 @@ module.exports = async ({
 
                 console.log("5️⃣ Clasificando mensaje");
 
-                console.time("⏱ clasificarMensaje");
+                console.time(`clasificarMensaje-${traceId}`);
 
                 await clasificarMensaje({
 
@@ -94,7 +97,7 @@ module.exports = async ({
 
                 });
 
-                console.timeEnd("⏱ clasificarMensaje");
+                console.timeEnd(`clasificarMensaje-${traceId}`);
 
                 console.log("6️⃣ Clasificación terminada");
 
@@ -104,30 +107,30 @@ module.exports = async ({
 
         console.log("7️⃣ eventHandler");
 
-        console.time("⏱ eventHandler");
+        console.time(`eventHandler-${traceId}`);
 
         await eventHandler(ctx);
 
-        console.timeEnd("⏱ eventHandler");
+        console.timeEnd(`eventHandler-${traceId}`);
 
         console.log("8️⃣ commandHandler");
 
-        console.time("⏱ commandHandler");
+        console.time(`commandHandler-${traceId}`);
 
         await commandHandler(ctx);
 
-        console.timeEnd("⏱ commandHandler");
+        console.timeEnd(`commandHandler-${traceId}`);
 
         console.log("9️⃣ FIN dispatcher");
 
         console.log(
-            `✅ Dispatcher terminado en ${Date.now() - inicio} ms`
+            `✅ Dispatcher terminado en ${Date.now() - inicio} ms [${traceId}]`
         );
 
     } catch (error) {
 
         console.log("================================");
-        console.log("❌ ERROR EN DISPATCHER");
+        console.log(`❌ ERROR EN DISPATCHER [${traceId}]`);
         console.log("================================");
 
         console.error(error);
