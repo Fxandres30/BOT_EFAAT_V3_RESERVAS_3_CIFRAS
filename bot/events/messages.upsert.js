@@ -8,18 +8,26 @@ function registerMessages(sock, sessionId) {
 
     const context = sock.context || {};
 
-    const listener = async ({ messages }) => {
+    const listener = async ({ messages, type }) => {
 
-        console.log(
-            `\n📨 ${messages.length} mensaje(s) recibido(s) | 📱 ${context.telefono || "Sin número"}`
-        );
+        console.log("================================");
+        console.log("📨 MESSAGES.UPSERT");
+        console.log("TYPE:", type);
+        console.log("MENSAJES:", messages?.length || 0);
+        console.log("================================");
+
+        if (!messages || messages.length === 0) {
+            return;
+        }
 
         for (const message of messages) {
 
             try {
 
-                if (!message.message)
+                if (!message.message) {
+                    console.log("⏭️ Mensaje vacío, ignorado");
                     continue;
+                }
 
                 const remoto = message.key.remoteJid;
 
@@ -27,37 +35,31 @@ function registerMessages(sock, sessionId) {
 
                 if (remoto.endsWith("@g.us"))
                     tipo = "GRUPO";
-
                 else if (remoto === "status@broadcast")
                     tipo = "ESTADO";
-
                 else if (remoto.endsWith("@newsletter"))
                     tipo = "NEWSLETTER";
 
-                console.log(
-                    `📩 [${tipo}]`,
-                    remoto,
-                    "|",
-                    message.key.id
-                );
+                console.log(`📩 [${tipo}] ${remoto} | ${message.key.id}`);
+
+                console.log("➡️ ANTES messageHandler");
+
+                console.time("⏱ messageHandler");
 
                 await messageHandler({
-
                     sock,
-
                     session: context,
-
                     message,
-
                     tipo
-
                 });
 
-            }
+                console.timeEnd("⏱ messageHandler");
 
-            catch (err) {
+                console.log("✅ DESPUÉS messageHandler");
 
-                console.error("❌ Error procesando mensaje:");
+            } catch (err) {
+
+                console.error("❌ Error procesando mensaje");
                 console.error(err);
 
             }
@@ -75,17 +77,13 @@ function registerMessages(sock, sessionId) {
 
     console.log(`
 ═══════════════════════════════════════
-
 🤖 BOT ESCUCHANDO
 
 📱 Número : ${context.telefono || "Desconocido"}
-
 🆔 Sesión : ${sessionId}
-
 👤 Usuario : ${context.usuarioId || "Sin usuario"}
 
-📡 Estado : Escuchando mensajes
-
+📡 Listener registrado correctamente
 ═══════════════════════════════════════
 `);
 
@@ -98,25 +96,15 @@ function unregisterMessages(sessionId) {
     if (!data)
         return;
 
-    data.sock.ev.off(
-        "messages.upsert",
-        data.listener
-    );
+    console.log(`🗑️ Eliminando listener: ${sessionId}`);
+
+    data.sock.ev.off("messages.upsert", data.listener);
 
     listeners.delete(sessionId);
-
-    console.log(`
-🔇 Listener eliminado
-
-🆔 Sesión : ${sessionId}
-`);
 
 }
 
 module.exports = {
-
     registerMessages,
-
     unregisterMessages
-
 };

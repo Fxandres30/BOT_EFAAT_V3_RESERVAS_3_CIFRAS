@@ -24,71 +24,120 @@ module.exports = async ({
 
 }) => {
 
-    console.log("1️⃣ Entró a dispatcher");
+    const inicio = Date.now();
 
-    const ctx = await obtenerContexto(
-        sock,
-        message
-    );
+    try {
 
-    console.log("2️⃣ Contexto obtenido");
+        console.log("================================");
+        console.log("🚀 INICIO DISPATCHER");
+        console.log("================================");
 
-    if (!ctx) {
+        console.log("1️⃣ Entró a dispatcher");
 
-        console.log("⛔ ctx es null");
-        return;
+        console.time("⏱ obtenerContexto");
 
-    }
-
-    ctx.session = session;
-    ctx.tipoConexion = tipo;
-
-    if (ctx.chat.esGrupo) {
-
-        console.log("3️⃣ Guardando mensaje del grupo");
-
-        const mensaje = await guardarMensajeGrupo({
-
+        const ctx = await obtenerContexto(
             sock,
+            message
+        );
 
-            msg: message,
+        console.timeEnd("⏱ obtenerContexto");
 
-            texto: ctx.texto,
+        console.log("2️⃣ Contexto obtenido");
 
-            grupoId: ctx.chat.remoteJid,
+        if (!ctx) {
 
-            grupoNombre: null
+            console.log("⛔ ctx es null");
 
-        });
+            return;
 
-        console.log("4️⃣ Mensaje guardado");
+        }
 
-        if (mensaje) {
+        ctx.session = session;
+        ctx.tipoConexion = tipo;
 
-            console.log("5️⃣ Clasificando mensaje");
+        if (ctx.chat.esGrupo) {
 
-            await clasificarMensaje({
+            console.log("3️⃣ Guardando mensaje del grupo");
 
-                mensaje,
+            console.time("⏱ guardarMensajeGrupo");
 
-                ctx
+            const mensaje = await guardarMensajeGrupo({
+
+                sock,
+
+                msg: message,
+
+                texto: ctx.texto,
+
+                grupoId: ctx.chat.remoteJid,
+
+                grupoNombre: null
 
             });
 
-            console.log("6️⃣ Clasificación terminada");
+            console.timeEnd("⏱ guardarMensajeGrupo");
+
+            console.log("4️⃣ Mensaje guardado");
+
+            if (mensaje) {
+
+                console.log("5️⃣ Clasificando mensaje");
+
+                console.time("⏱ clasificarMensaje");
+
+                await clasificarMensaje({
+
+                    mensaje,
+
+                    ctx
+
+                });
+
+                console.timeEnd("⏱ clasificarMensaje");
+
+                console.log("6️⃣ Clasificación terminada");
+
+            }
+
+        }
+
+        console.log("7️⃣ eventHandler");
+
+        console.time("⏱ eventHandler");
+
+        await eventHandler(ctx);
+
+        console.timeEnd("⏱ eventHandler");
+
+        console.log("8️⃣ commandHandler");
+
+        console.time("⏱ commandHandler");
+
+        await commandHandler(ctx);
+
+        console.timeEnd("⏱ commandHandler");
+
+        console.log("9️⃣ FIN dispatcher");
+
+        console.log(
+            `✅ Dispatcher terminado en ${Date.now() - inicio} ms`
+        );
+
+    } catch (error) {
+
+        console.log("================================");
+        console.log("❌ ERROR EN DISPATCHER");
+        console.log("================================");
+
+        console.error(error);
+
+        if (error?.stack) {
+
+            console.error(error.stack);
 
         }
 
     }
-
-    console.log("7️⃣ eventHandler");
-
-    await eventHandler(ctx);
-
-    console.log("8️⃣ commandHandler");
-
-    await commandHandler(ctx);
-
-    console.log("9️⃣ FIN dispatcher");
 
 };

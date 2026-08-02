@@ -15,19 +15,33 @@ let iniciado = false;
 
 function conectar(socket, sessionId) {
 
+    console.log("================================");
+    console.log("🔄 CONECTAR");
+    console.log("Session nueva :", sessionId);
+    console.log("Session actual:", sesionActual);
+    console.log("Socket nuevo  :", socket === socketActual ? "NO" : "SI");
+    console.log("================================");
+
     if (!socket || !sessionId) {
 
-        return;
-
-    }
-
-    if (sesionActual === sessionId) {
+        console.log("❌ Socket o sessionId inválidos");
 
         return;
 
     }
 
-    if (socketActual) {
+    // Solo salir si ES EXACTAMENTE el mismo socket
+    if (socketActual === socket && sesionActual === sessionId) {
+
+        console.log("ℹ️ Ya estaba conectado exactamente el mismo socket.");
+
+        return;
+
+    }
+
+    if (socketActual && sesionActual) {
+
+        console.log("🗑️ Eliminando listeners anteriores");
 
         unregisterMessages(sesionActual);
 
@@ -36,23 +50,29 @@ function conectar(socket, sessionId) {
     socketActual = socket;
     sesionActual = sessionId;
 
-    console.log(`🤖 BOT ESCUCHANDO: ${sessionId}`);
+    console.log("✅ Registrando listeners");
 
     registerMessages(socket, sessionId);
 
-    // =====================================
-    // Iniciar worker de eventos
-    // =====================================
+    console.log("✅ Iniciando worker");
 
     iniciarWorkerEventos(socket);
+
+    console.log("✅ Conexión preparada");
 
 }
 
 function iniciarBot(sock, sessionId) {
 
+    console.log("🚀 iniciarBot()");
+
     if (!iniciado) {
 
+        console.log("📡 Registrando activeChanged");
+
         manager.on("activeChanged", ({ socket, sessionId }) => {
+
+            console.log("⭐ activeChanged recibido:", sessionId);
 
             conectar(socket, sessionId);
 
@@ -62,9 +82,9 @@ function iniciarBot(sock, sessionId) {
 
     }
 
-    // Si conectado.js envía socket y sessionId,
-    // usamos esos directamente.
     if (sock && sessionId) {
+
+        console.log("➡️ Inicio directo");
 
         conectar(sock, sessionId);
 
@@ -72,7 +92,6 @@ function iniciarBot(sock, sessionId) {
 
     }
 
-    // Fallback a la sesión activa
     const socket = manager.getActiveSocket();
     const session = manager.getActiveSession();
 
@@ -83,6 +102,8 @@ function iniciarBot(sock, sessionId) {
         return;
 
     }
+
+    console.log("➡️ Inicio por sesión activa");
 
     conectar(socket, session);
 

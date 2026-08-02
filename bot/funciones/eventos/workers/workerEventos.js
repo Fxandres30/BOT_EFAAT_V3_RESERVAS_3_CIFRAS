@@ -3,35 +3,51 @@ const { procesarEvento } = require("../lifecycle/procesarEvento");
 
 async function workerEventos(sock) {
 
-    const { data: eventos, error } = await supabase
-        .from("eventos_bot")
-        .select("*")
-        .eq("activo", true);
+    try {
 
-    if (error) {
+        const { data: eventos, error } = await supabase
+            .from("eventos_bot")
+            .select("*")
+            .eq("activo", true);
 
-        console.log("❌ Error obteniendo eventos");
-        console.dir(error, { depth: null });
-        return;
+        if (error) {
 
-    }
+            console.error("❌ Error obteniendo eventos");
+            console.error(error);
 
-    if (!eventos || eventos.length === 0) {
+            return;
 
-        return;
+        }
 
-    }
+        if (!eventos || eventos.length === 0) {
 
-    console.log(`📋 Eventos activos: ${eventos.length}`);
+            return;
 
-    for (const evento of eventos) {
+        }
 
-        await procesarEvento({
+        // Procesar eventos sin imprimir logs cada minuto
+        for (const evento of eventos) {
 
-            sock,
-            evento
+            try {
 
-        });
+                await procesarEvento({
+                    sock,
+                    evento
+                });
+
+            } catch (error) {
+
+                console.error(`❌ Error procesando evento ${evento.id}`);
+                console.error(error);
+
+            }
+
+        }
+
+    } catch (error) {
+
+        console.error("❌ Error en workerEventos");
+        console.error(error);
 
     }
 
