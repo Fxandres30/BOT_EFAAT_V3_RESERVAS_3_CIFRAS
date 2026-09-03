@@ -1,0 +1,41 @@
+.session-header{
+
+    display:flex;
+
+    justify-content:space-between;
+
+    align-items:flex-start;
+
+    margin-bottom:10px;
+
+    padding-bottom:10px;
+
+    border-bottom:1px solid #edf1f5;
+
+    transition:.25s;
+
+}
+
+/* Conectado */
+
+.session-header.connected{
+
+    border-bottom-color:#22c55e33;
+
+}
+
+/* Esperando QR */
+
+.session-header.waiting{
+
+    border-bottom-color:#f59e0b33;
+
+}
+
+/* Desconectado */
+
+.session-header.disconnected{
+
+    border-bottom-color:#ef444433;
+
+}

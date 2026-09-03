@@ -1,0 +1,211 @@
+.dashboard-title{
+
+    margin-bottom:25px;
+
+    font-size:28px;
+
+    font-weight:700;
+
+    color:#1e293b;
+
+}
+
+.cards{
+
+    display:grid;
+
+    grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+
+    gap:20px;
+
+    width:100%;
+
+}
+
+.card{
+
+    background:white;
+
+    border-radius:18px;
+
+    padding:24px;
+
+    box-shadow:0 10px 25px rgba(0,0,0,.06);
+
+    border:1px solid #edf2f7;
+
+    transition:.25s;
+
+    display:flex;
+
+    flex-direction:column;
+
+    justify-content:center;
+
+    gap:10px;
+
+    min-height:150px;
+
+}
+
+.card:hover{
+
+    transform:translateY(-5px);
+
+    box-shadow:0 18px 35px rgba(0,0,0,.10);
+
+}
+
+.card .icon{
+
+    font-size:28px;
+
+}
+
+.card h3{
+
+    margin:0;
+
+    font-size:34px;
+
+    font-weight:700;
+
+    color:#111827;
+
+}
+
+.card small{
+
+    color:#64748b;
+
+    font-size:15px;
+
+}
+
+/* Línea superior por color */
+
+.card.green{
+
+    border-top:5px solid #22c55e;
+
+}
+
+.card.blue{
+
+    border-top:5px solid #3b82f6;
+
+}
+
+.card.orange{
+
+    border-top:5px solid #f97316;
+
+}
+
+.card.purple{
+
+    border-top:5px solid #8b5cf6;
+
+}
+
+.card.cyan{
+
+    border-top:5px solid #06b6d4;
+
+}
+
+.card.pink{
+
+    border-top:5px solid #ec4899;
+
+}
+
+.card.yellow{
+
+    border-top:5px solid #eab308;
+
+}
+
+.card.success{
+
+    border-top:5px solid #16a34a;
+
+}
+
+/* ===========================
+   TABLET
+=========================== */
+@media (max-width:768px){
+
+    .cards{
+
+        grid-template-columns:repeat(2,1fr);
+
+        gap:14px;
+
+    }
+
+    .card{
+
+        padding:16px;
+
+        min-height:120px;
+
+        border-radius:14px;
+
+    }
+
+    .card .icon{
+
+        width:42px;
+
+        height:42px;
+
+        font-size:20px;
+
+    }
+
+    .card h3{
+
+        font-size:26px;
+
+    }
+
+    .card small{
+
+        font-size:13px;
+
+    }
+
+}
+/* ===========================
+   MÓVIL
+=========================== */
+
+@media (max-width:360px){
+
+    .cards{
+
+        gap:10px;
+
+    }
+
+    .card{
+
+        padding:12px;
+
+    }
+
+    .card h3{
+
+        font-size:22px;
+
+    }
+
+    .card small{
+
+        font-size:12px;
+
+    }
+
+}

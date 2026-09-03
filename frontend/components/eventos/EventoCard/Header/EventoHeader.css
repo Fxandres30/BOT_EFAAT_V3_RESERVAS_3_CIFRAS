@@ -1,0 +1,125 @@
+.eventoHeader{
+
+    display:flex;
+
+    justify-content:space-between;
+
+    align-items:flex-start;
+
+    gap:20px;
+
+}
+
+.eventoHeaderLeft{
+
+    flex:1;
+
+    display:flex;
+
+    flex-direction:column;
+
+    gap:8px;
+
+}
+
+.eventoEstado{
+
+    display:inline-flex;
+
+    align-items:center;
+
+    gap:6px;
+
+    width:max-content;
+
+    padding:5px 12px;
+
+    border-radius:999px;
+
+    background:#dcfce7;
+
+    color:#15803d;
+
+    font-size:11px;
+
+    font-weight:700;
+
+}
+
+.eventoHeader h2{
+
+    font-size:24px;
+
+    line-height:1.2;
+
+    font-weight:700;
+
+    color:#0f172a;
+
+}
+
+.eventoMeta{
+
+    display:flex;
+
+    flex-wrap:wrap;
+
+    gap:10px;
+
+}
+
+.eventoMeta span{
+
+    display:flex;
+
+    align-items:center;
+
+    gap:5px;
+
+    padding:4px 10px;
+
+    border-radius:999px;
+
+    background:#f8fafc;
+
+    border:1px solid #e2e8f0;
+
+    color:#64748b;
+
+    font-size:12px;
+
+    font-weight:600;
+
+}
+
+.eventoHeaderRight{
+
+    display:flex;
+
+    gap:8px;
+
+}
+
+.headerBadge{
+
+    display:flex;
+
+    align-items:center;
+
+    gap:6px;
+
+    padding:8px 12px;
+
+    border-radius:12px;
+
+    background:#f8fafc;
+
+    border:1px solid #e2e8f0;
+
+    font-size:14px;
+
+    font-weight:700;
+
+    color:#334155;
+
+}

@@ -1,0 +1,165 @@
+.chats-page {
+
+    padding: 28px;
+    max-width: 1100px;
+    margin: 0 auto;
+
+}
+
+.chats-titulo {
+
+    font-size: 26px;
+    font-weight: 700;
+    color: #111827;
+    margin: 0 0 6px;
+
+}
+
+.chats-subtitulo {
+
+    color: #64748b;
+    font-size: 13px;
+    margin: 0 0 20px;
+
+}
+
+.chats-layout {
+
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 16px;
+    height: 65vh;
+
+}
+
+.chats-lista-grupos {
+
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    padding: 10px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+}
+
+.chats-grupo-item {
+
+    text-align: left;
+    border: none;
+    background: none;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
+    color: #334155;
+    cursor: pointer;
+
+}
+
+.chats-grupo-item:hover {
+
+    background: #f1f5f9;
+
+}
+
+.chats-grupo-item.activo {
+
+    background: #2563eb;
+    color: #fff;
+
+}
+
+.chats-mensajes {
+
+    background: #e5ddd5;
+    border-radius: 16px;
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+}
+
+.chats-vacio {
+
+    color: #64748b;
+    text-align: center;
+    margin-top: 20px;
+    font-size: 14px;
+
+}
+
+.chats-burbuja {
+
+    background: #fff;
+    border-radius: 10px;
+    padding: 8px 12px;
+    max-width: 70%;
+    align-self: flex-start;
+    box-shadow: 0 1px 1px rgba(0,0,0,.08);
+
+}
+
+.chats-burbuja.propia {
+
+    background: #dcf8c6;
+    align-self: flex-end;
+
+}
+
+.chats-burbuja-autor {
+
+    font-size: 12px;
+    font-weight: 700;
+    color: #2563eb;
+    margin-bottom: 2px;
+
+}
+
+.chats-burbuja-texto {
+
+    font-size: 14px;
+    color: #111827;
+    white-space: pre-wrap;
+    word-break: break-word;
+
+}
+
+.chats-burbuja-hora {
+
+    font-size: 11px;
+    color: #94a3b8;
+    text-align: right;
+    margin-top: 2px;
+
+}
+
+@media (max-width: 800px) {
+
+    .chats-page {
+        padding: 16px;
+    }
+
+    .chats-layout {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+
+    .chats-lista-grupos {
+        flex-direction: row;
+        overflow-x: auto;
+        max-height: none;
+    }
+
+    .chats-mensajes {
+        height: 55vh;
+    }
+
+    .chats-burbuja {
+        max-width: 88%;
+    }
+
+}

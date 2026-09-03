@@ -1,0 +1,32 @@
+-- Fase 5.5 — Activar/desactivar por TIPO DE RESPUESTA completo, desde el
+-- panel /mensajes.
+--
+-- Reutiliza la tabla existente public.configuracion_seleccion_mensajes
+-- (Fase 5.4), que YA tiene el constraint unique(usuario_id, tipo_respuesta)
+-- que esta funcionalidad necesita ("como máximo una configuración por
+-- usuario + tipo") y ya está aislada por usuario vía RLS. No se crea
+-- ninguna tabla nueva.
+--
+-- El interruptor controla SOLO si el BOT puede ENVIAR una respuesta de
+-- ese tipo. NUNCA controla:
+--   - la existencia/edición de las 150 plantillas (public.plantillas_mensaje,
+--     sin cambios en esta migración),
+--   - el modo de selección 🎲 aleatorio / 🔄 rotación / ⭐ fijo (columnas
+--     existentes de esta misma tabla, sin cambios),
+--   - ninguna operación de negocio real (reservas, eventos, pagos,
+--     sesiones) — esta tabla siempre fue solo de PRESENTACIÓN, nunca de
+--     negocio.
+--
+-- DEFAULT SEGURO: habilitada = true, así que:
+--   - las filas ya existentes quedan habilitadas automáticamente
+--     (Postgres rellena el DEFAULT en las filas existentes al añadir una
+--     columna NOT NULL DEFAULT),
+--   - cualquier tipo sin fila de configuración todavía (usuario que nunca
+--     tocó el interruptor) sigue respondiendo exactamente igual que antes
+--     de esta migración (ver estaRespuestaHabilitada() en configMensajes.js).
+--
+-- Ejecutar manualmente en el SQL Editor de Supabase (no hay CLI/psql
+-- configurado en este proyecto).
+
+alter table public.configuracion_seleccion_mensajes
+    add column if not exists habilitada boolean not null default true;

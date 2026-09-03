@@ -1,0 +1,211 @@
+.delete-overlay{
+
+    position:fixed;
+
+    inset:0;
+
+    background:rgba(0,0,0,.45);
+
+    backdrop-filter:blur(5px);
+
+    display:flex;
+
+    justify-content:center;
+
+    align-items:center;
+
+    z-index:99999;
+
+    animation:fadeIn .18s ease;
+
+}
+
+.delete-modal{
+
+    width:430px;
+
+    max-width:92vw;
+
+    background:#fff;
+
+    border-radius:22px;
+
+    padding:30px;
+
+    text-align:center;
+
+    box-shadow:
+
+        0 20px 60px rgba(0,0,0,.18);
+
+    animation:scaleIn .18s ease;
+
+}
+
+.delete-icon{
+
+    width:72px;
+
+    height:72px;
+
+    margin:auto;
+
+    border-radius:50%;
+
+    background:#fee2e2;
+
+    color:#dc2626;
+
+    display:flex;
+
+    justify-content:center;
+
+    align-items:center;
+
+    font-size:30px;
+
+    margin-bottom:20px;
+
+}
+
+.delete-modal h2{
+
+    margin:0;
+
+    color:#111827;
+
+    font-size:28px;
+
+}
+
+.delete-modal p{
+
+    margin-top:14px;
+
+    color:#4b5563;
+
+    line-height:1.6;
+
+}
+
+.warning{
+
+    background:#fff7ed;
+
+    color:#b45309;
+
+    padding:14px;
+
+    border-radius:12px;
+
+    margin-top:20px;
+
+    font-size:14px;
+
+}
+
+.delete-buttons{
+
+    display:flex;
+
+    gap:15px;
+
+    margin-top:28px;
+
+}
+
+.delete-buttons button{
+
+    flex:1;
+
+    height:50px;
+
+    border:none;
+
+    border-radius:12px;
+
+    font-weight:600;
+
+    cursor:pointer;
+
+    transition:.2s;
+
+}
+
+.delete-buttons button:hover{
+
+    transform:translateY(-2px);
+
+}
+
+.cancel{
+
+    background:#f3f4f6;
+
+    color:#374151;
+
+}
+
+.cancel:hover{
+
+    background:#e5e7eb;
+
+}
+
+.delete{
+
+    background:#dc2626;
+
+    color:white;
+
+}
+
+.delete:hover{
+
+    background:#b91c1c;
+
+}
+
+.delete:disabled{
+
+    opacity:.6;
+
+    cursor:not-allowed;
+
+}
+
+@keyframes fadeIn{
+
+    from{
+
+        opacity:0;
+
+    }
+
+    to{
+
+        opacity:1;
+
+    }
+
+}
+
+@keyframes scaleIn{
+
+    from{
+
+        opacity:0;
+
+        transform:scale(.92);
+
+    }
+
+    to{
+
+        opacity:1;
+
+        transform:scale(1);
+
+    }
+
+}

@@ -1,0 +1,61 @@
+.phone-box{
+
+    width:100%;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    gap:10px;
+
+    padding:12px 14px;
+
+    border-radius:14px;
+
+    font-size:15px;
+
+    font-weight:600;
+
+    transition:.25s;
+
+}
+
+.phone-box svg{
+
+    font-size:16px;
+
+}
+
+.phone-box.connected{
+
+    background:#F8FAFC;
+
+    border:1px solid #E2E8F0;
+
+    color:#374151;
+
+}
+
+.phone-box.connected svg{
+
+    color:#22C55E;
+
+}
+
+.phone-box.empty{
+
+    background:#FEF2F2;
+
+    border:1px solid #FECACA;
+
+    color:#991B1B;
+
+}
+
+.phone-box.empty svg{
+
+    color:#EF4444;
+
+}

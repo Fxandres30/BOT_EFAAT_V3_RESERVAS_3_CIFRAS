@@ -1,0 +1,39 @@
+.session-badge{
+
+    display:inline-flex;
+
+    align-items:center;
+
+    gap:8px;
+
+    padding:7px 14px;
+
+    border-radius:999px;
+
+    background:#FFF7D6;
+
+    color:#C28A00;
+
+    font-size:13px;
+
+    font-weight:700;
+
+    border:1px solid #F6D770;
+
+    transition:.25s;
+
+}
+
+.session-badge svg{
+
+    font-size:13px;
+
+}
+
+.session-badge:hover{
+
+    transform:translateY(-1px);
+
+    box-shadow:0 6px 15px rgba(194,138,0,.15);
+
+}

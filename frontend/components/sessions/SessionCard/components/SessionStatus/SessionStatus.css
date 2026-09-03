@@ -1,0 +1,141 @@
+.session-status{
+
+    display:inline-flex;
+
+    align-items:center;
+
+    gap:8px;
+
+    padding:8px 14px;
+
+    border-radius:999px;
+
+    font-size:13px;
+
+    font-weight:700;
+
+    user-select:none;
+
+    transition:all .25s ease;
+
+}
+
+/* Punto */
+
+.pulse{
+
+    width:10px;
+
+    height:10px;
+
+    border-radius:50%;
+
+    animation:pulse 1.8s infinite;
+
+}
+
+/* Texto */
+
+.status-text{
+
+    white-space:nowrap;
+
+}
+
+/* -------------------- */
+/* Conectado */
+/* -------------------- */
+
+.session-status.connected{
+
+    background:#DCFCE7;
+
+    color:#15803D;
+
+}
+
+.session-status.connected .pulse{
+
+    background:#22C55E;
+
+    box-shadow:0 0 0 rgba(34,197,94,.6);
+
+}
+
+/* -------------------- */
+/* Esperando QR */
+/* -------------------- */
+
+.session-status.waiting{
+
+    background:#FEF3C7;
+
+    color:#B45309;
+
+}
+
+.session-status.waiting .pulse{
+
+    background:#F59E0B;
+
+    box-shadow:0 0 0 rgba(245,158,11,.6);
+
+}
+
+/* -------------------- */
+/* Desconectado */
+/* -------------------- */
+
+.session-status.disconnected{
+
+    background:#FEE2E2;
+
+    color:#B91C1C;
+
+}
+
+.session-status.disconnected .pulse{
+
+    background:#EF4444;
+
+    box-shadow:0 0 0 rgba(239,68,68,.6);
+
+}
+
+/* Hover */
+
+.session-status:hover{
+
+    transform:translateY(-1px);
+
+}
+
+/* Animación */
+
+@keyframes pulse{
+
+    0%{
+
+        transform:scale(.95);
+
+        box-shadow:0 0 0 0 currentColor;
+
+    }
+
+    70%{
+
+        transform:scale(1);
+
+        box-shadow:0 0 0 8px transparent;
+
+    }
+
+    100%{
+
+        transform:scale(.95);
+
+        box-shadow:0 0 0 0 transparent;
+
+    }
+
+}

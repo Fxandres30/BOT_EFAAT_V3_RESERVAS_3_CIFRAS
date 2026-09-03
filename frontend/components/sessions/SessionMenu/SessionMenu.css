@@ -1,0 +1,154 @@
+.session-menu{
+
+    position:relative;
+
+    display:flex;
+
+    justify-content:flex-end;
+
+    z-index:9999;
+
+}
+/* ========================= */
+/* Botón */
+/* ========================= */
+
+.menu-btn{
+
+    width:40px;
+
+    height:40px;
+
+    border:none;
+
+    border-radius:12px;
+
+    background:#F8FAFC;
+
+    color:#4B5563;
+
+    display:flex;
+
+    justify-content:center;
+
+    align-items:center;
+
+    cursor:pointer;
+
+    transition:.25s;
+
+}
+
+.menu-btn:hover{
+
+    background:#EEF2FF;
+
+    color:#2563EB;
+
+    transform:scale(1.05);
+
+}
+
+.menu-btn svg{
+
+    font-size:15px;
+
+}
+
+/* ========================= */
+/* Dropdown */
+/* ========================= */
+
+.menu-dropdown{
+
+    position:absolute;
+
+    top:48px;
+
+    right:0;
+
+    width:250px;
+
+    background:#fff;
+
+    border-radius:18px;
+
+    border:1px solid #E5E7EB;
+
+    padding:10px;
+
+    box-shadow:
+
+        0 20px 45px rgba(0,0,0,.12);
+
+    z-index:99999;
+
+    animation:menuShow .18s ease;
+
+}
+
+/* ========================= */
+/* Opciones */
+/* ========================= */
+
+.menu-dropdown button{
+
+    width:100%;
+
+    height:42px;
+
+    border:none;
+
+    background:none;
+
+    border-radius:12px;
+
+    display:flex;
+
+    align-items:center;
+
+    gap:12px;
+
+    padding:0 14px;
+
+    cursor:pointer;
+
+    font-size:14px;
+
+    font-weight:500;
+
+    color:#374151;
+
+    transition:.18s;
+
+}
+
+.menu-dropdown button:hover{
+
+    background:#F8FAFC;
+
+}
+
+/* ========================= */
+/* Animación */
+/* ========================= */
+
+@keyframes menuShow{
+
+    from{
+
+        opacity:0;
+
+        transform:translateY(-8px) scale(.97);
+
+    }
+
+    to{
+
+        opacity:1;
+
+        transform:none;
+
+    }
+
+}

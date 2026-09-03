@@ -1,0 +1,341 @@
+.mensajes-page {
+
+    padding: 28px;
+    max-width: 1400px;
+    margin: 0 auto;
+
+}
+
+.mensajes-loading {
+
+    padding: 60px 28px;
+    text-align: center;
+    color: #64748b;
+
+}
+
+.mensajes-titulo {
+
+    font-size: 26px;
+    font-weight: 700;
+    color: #111827;
+    margin: 0 0 6px;
+
+}
+
+.mensajes-subtitulo {
+
+    color: #64748b;
+    font-size: 14px;
+    max-width: 700px;
+    margin: 0 0 12px;
+
+}
+
+.mensajes-resumen-global {
+
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+    background: #f1f5f9;
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 999px;
+    margin: 0 0 20px;
+
+}
+
+.mensajes-resumen-error {
+
+    font-size: 12px;
+    color: #b91c1c;
+    margin: 0 0 20px;
+
+}
+
+.mensajes-layout {
+
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 20px;
+    align-items: start;
+
+}
+
+.mensajes-lista-tipos {
+
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    padding: 12px;
+    position: sticky;
+    top: 90px;
+
+}
+
+.mensajes-categoria {
+
+    margin-bottom: 14px;
+
+}
+
+.mensajes-categoria-titulo {
+
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #94a3b8;
+    padding: 6px 10px;
+    margin: 0;
+
+}
+
+.mensajes-item {
+
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border: none;
+    background: none;
+    border-radius: 10px;
+    text-align: left;
+    font-size: 14px;
+    cursor: pointer;
+    color: #334155;
+    transition: .15s;
+
+}
+
+.mensajes-item:hover {
+
+    background: #f1f5f9;
+
+}
+
+.mensajes-item.activo {
+
+    background: #2563eb;
+    color: #fff;
+
+}
+
+.mensajes-item.futuro {
+
+    color: #94a3b8;
+    font-style: italic;
+
+}
+
+.mensajes-item.futuro.activo {
+
+    background: #94a3b8;
+    color: #fff;
+
+}
+
+.mensajes-cargando-tipo,
+.mensajes-futuro {
+
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    padding: 40px 28px;
+    color: #64748b;
+    text-align: center;
+
+}
+
+.mensajes-futuro h2 {
+
+    color: #111827;
+    margin: 0 0 10px;
+
+}
+
+.mensajes-error {
+
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 16px;
+    padding: 28px;
+
+}
+
+.mensajes-error h2 {
+
+    color: #b91c1c;
+    margin: 0 0 8px;
+    font-size: 18px;
+
+}
+
+.mensajes-error p {
+
+    color: #7f1d1d;
+    font-size: 13px;
+    margin: 0;
+
+}
+
+.mensajes-tipo-header {
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+
+}
+
+.mensajes-tipo-header h2 {
+
+    margin: 0;
+    font-size: 20px;
+    color: #111827;
+
+}
+
+.mensajes-tipo-contador {
+
+    font-size: 13px;
+    font-weight: 600;
+    color: #64748b;
+    background: #f1f5f9;
+    padding: 4px 10px;
+    border-radius: 999px;
+
+}
+
+/* Fase 5.5 — interruptor por tipo de respuesta (sidebar). */
+
+.tipo-interruptor {
+
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 999px;
+    flex-shrink: 0;
+
+}
+
+.tipo-interruptor:hover {
+
+    filter: brightness(1.15);
+
+}
+
+/* Fase 5.5 — interruptor grande, en la cabecera del tipo seleccionado. */
+
+.mensajes-tipo-header-derecha {
+
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+}
+
+.tipo-interruptor-grande {
+
+    font-size: 12px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    padding: 5px 12px;
+    border-radius: 999px;
+    transition: .15s;
+
+}
+
+.tipo-interruptor-grande.on {
+
+    background: #dcfce7;
+    color: #166534;
+
+}
+
+.tipo-interruptor-grande.on:hover {
+
+    background: #bbf7d0;
+
+}
+
+.tipo-interruptor-grande.off {
+
+    background: #fee2e2;
+    color: #991b1b;
+
+}
+
+.tipo-interruptor-grande.off:hover {
+
+    background: #fecaca;
+
+}
+
+.mensajes-tipo-nota-desactivado {
+
+    font-size: 12px;
+    color: #991b1b;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+    padding: 8px 12px;
+    margin: 0 0 14px;
+
+}
+
+.mensajes-contenido-tipo {
+
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 20px;
+    align-items: start;
+
+}
+
+@media (max-width: 1100px) {
+
+    .mensajes-contenido-tipo {
+        grid-template-columns: 1fr;
+    }
+
+}
+
+@media (max-width: 900px) {
+
+    .mensajes-page {
+        padding: 16px;
+    }
+
+    .mensajes-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .mensajes-lista-tipos {
+        position: static;
+        display: flex;
+        overflow-x: auto;
+        gap: 6px;
+        padding: 10px;
+    }
+
+    .mensajes-categoria {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 0;
+    }
+
+    .mensajes-categoria-titulo {
+        white-space: nowrap;
+    }
+
+    .mensajes-item {
+        white-space: nowrap;
+        width: auto;
+    }
+
+}

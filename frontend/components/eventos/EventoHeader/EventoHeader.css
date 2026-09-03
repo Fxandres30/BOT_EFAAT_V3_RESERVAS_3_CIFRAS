@@ -1,0 +1,41 @@
+.eventoHeader{
+
+    display:flex;
+
+    justify-content:space-between;
+
+    align-items:center;
+
+}
+
+.eventoHeader h1{
+
+    font-size:32px;
+
+    font-weight:700;
+
+}
+
+.eventoHeader p{
+
+    margin-top:6px;
+
+    color:#64748b;
+
+}
+
+.eventoHeader button{
+
+    border:none;
+
+    background:#2563eb;
+
+    color:white;
+
+    padding:12px 20px;
+
+    border-radius:12px;
+
+    cursor:pointer;
+
+}

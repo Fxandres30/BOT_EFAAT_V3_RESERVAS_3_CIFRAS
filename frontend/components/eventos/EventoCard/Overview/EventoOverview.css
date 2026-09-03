@@ -1,0 +1,133 @@
+.eventoOverview{
+
+    display:flex;
+
+    flex-direction:column;
+
+    gap:18px;
+
+    margin-top:22px;
+
+}
+
+/* Barra */
+
+.progress{
+
+    width:100%;
+
+    height:10px;
+
+    border-radius:999px;
+
+    background:#edf2f7;
+
+    overflow:hidden;
+
+}
+
+.progressFill{
+
+    height:100%;
+
+    border-radius:999px;
+
+    background:linear-gradient(
+
+        90deg,
+
+        #22c55e,
+
+        #16a34a
+
+    );
+
+    transition:.4s;
+
+}
+
+.progressText{
+
+    text-align:center;
+
+    font-size:14px;
+
+    color:#475569;
+
+}
+
+/* Estadísticas */
+
+.overviewStats{
+
+    display:grid;
+
+    grid-template-columns:repeat(4,1fr);
+
+    gap:10px;
+
+}
+
+.overviewStats div{
+
+    display:flex;
+
+    justify-content:center;
+
+    align-items:center;
+
+    gap:8px;
+
+    padding:14px;
+
+    background:#f8fafc;
+
+    border-radius:14px;
+
+    font-weight:700;
+
+}
+
+/* Información */
+
+.overviewInfo{
+
+    display:grid;
+
+    grid-template-columns:repeat(4,1fr);
+
+    gap:10px;
+
+}
+
+.overviewInfo div{
+
+    display:flex;
+
+    flex-direction:column;
+
+    gap:6px;
+
+    padding:14px;
+
+    border-radius:14px;
+
+    background:#ffffff;
+
+    border:1px solid #e2e8f0;
+
+}
+
+.overviewInfo span{
+
+    font-size:12px;
+
+    color:#64748b;
+
+}
+
+.overviewInfo strong{
+
+    font-size:15px;
+
+}

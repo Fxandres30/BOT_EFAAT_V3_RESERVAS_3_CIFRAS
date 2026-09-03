@@ -1,0 +1,315 @@
+.sidebar{
+
+    width:270px;
+
+    height:100vh;
+    height:100dvh;
+
+    background:#111827;
+
+    color:white;
+
+    display:flex;
+
+    flex-direction:column;
+
+    padding:22px;
+
+    position:fixed;
+
+    left:0;
+
+    top:0;
+
+    z-index:1000;
+
+    overflow-y:auto;
+
+    transition:left .35s ease;
+
+}
+/* Header */
+
+.sidebarHeader{
+
+    display:flex;
+
+    align-items:center;
+
+    gap:15px;
+
+    margin-bottom:35px;
+
+}
+
+.logoCircle{
+
+    width:56px;
+
+    height:56px;
+
+    border-radius:50%;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    background:linear-gradient(135deg,#2563eb,#3b82f6);
+
+    font-size:22px;
+
+    font-weight:bold;
+
+    box-shadow:0 10px 25px rgba(37,99,235,.35);
+
+}
+
+.sidebarHeader h2{
+
+    margin:0;
+
+    font-size:32px;
+
+}
+
+.sidebarHeader span{
+
+    color:#94a3b8;
+
+    font-size:13px;
+
+}
+
+/* Menu */
+
+.menuGroup{
+
+    margin-bottom:28px;
+
+}
+
+.menuTitle{
+
+    color:#64748b;
+
+    font-size:11px;
+
+    text-transform:uppercase;
+
+    letter-spacing:2px;
+
+    margin-bottom:10px;
+
+}
+
+.menuItem{
+
+    display:flex;
+
+    align-items:center;
+
+    gap:12px;
+
+    padding:14px 16px;
+
+    border-radius:12px;
+
+    color:#cbd5e1;
+
+    text-decoration:none;
+
+    transition:.25s;
+
+    margin-bottom:6px;
+
+    position:relative;
+
+}
+
+.menuItem:hover{
+
+    background:#1f2937;
+
+    color:white;
+
+    transform:translateX(5px);
+
+}
+
+.menuItem.active{
+
+    background:linear-gradient(90deg,#2563eb,#3b82f6);
+
+    color:white;
+
+    box-shadow:0 10px 25px rgba(37,99,235,.30);
+
+}
+
+.menuItem.active::before{
+
+    content:"";
+
+    position:absolute;
+
+    left:-12px;
+
+    width:4px;
+
+    top:8px;
+
+    bottom:8px;
+
+    border-radius:20px;
+
+    background:#60a5fa;
+
+}
+
+/* Footer */
+
+.sidebarFooter{
+
+    margin-top:auto;
+
+    display:flex;
+
+    flex-direction:column;
+
+    gap:10px;
+
+    padding-top:20px;
+
+    border-top:1px solid rgba(255,255,255,.08);
+
+}
+
+.sidebarUser{
+
+    display:flex;
+
+    align-items:center;
+
+    gap:10px;
+
+    padding:0 4px;
+
+    min-width:0;
+
+}
+
+.sidebarUserIcon{
+
+    font-size:18px;
+
+    flex-shrink:0;
+
+}
+
+.sidebarUserEmail{
+
+    color:#cbd5e1;
+
+    font-size:13px;
+
+    white-space:nowrap;
+
+    overflow:hidden;
+
+    text-overflow:ellipsis;
+
+}
+
+.sidebarLogout{
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    gap:8px;
+
+    width:100%;
+
+    padding:12px 16px;
+
+    border:none;
+
+    border-radius:12px;
+
+    background:#1f2937;
+
+    color:#f87171;
+
+    font-size:14px;
+
+    font-weight:600;
+
+    cursor:pointer;
+
+    transition:.2s;
+
+}
+
+.sidebarLogout:hover{
+
+    background:#dc2626;
+
+    color:#fff;
+
+}
+
+.sidebarLogout:disabled{
+
+    opacity:.6;
+
+    cursor:default;
+
+}
+
+/* ===========================
+   TABLET
+=========================== */
+
+@media(max-width:1100px){
+
+.sidebar{
+
+    width:230px;
+
+}
+
+.sidebarHeader h2{
+
+    font-size:26px;
+
+}
+
+}
+
+/* ===========================
+   CELULAR
+=========================== */
+@media(max-width:900px){
+
+.sidebar{
+
+    left:-100%;
+
+    width:290px;
+    max-width:85vw;
+
+    box-shadow:18px 0 40px rgba(0,0,0,.35);
+
+}
+
+.sidebar.open{
+
+    left:0;
+
+}
+
+}

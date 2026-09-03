@@ -1,0 +1,215 @@
+.rename-overlay{
+
+    position:fixed;
+
+    inset:0;
+
+    background:rgba(0,0,0,.45);
+
+    backdrop-filter:blur(5px);
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    z-index:99999;
+
+    animation:fadeIn .18s ease;
+
+}
+
+.rename-modal{
+
+    width:420px;
+
+    max-width:92vw;
+
+    background:#fff;
+
+    border-radius:22px;
+
+    padding:28px;
+
+    box-shadow:
+
+        0 20px 60px rgba(0,0,0,.18);
+
+    animation:scaleIn .2s ease;
+
+}
+
+.rename-modal h2{
+
+    margin:0;
+
+    font-size:28px;
+
+    font-weight:700;
+
+    color:#1f2937;
+
+    text-align:center;
+
+}
+
+.rename-modal p{
+
+    margin:12px 0 22px;
+
+    text-align:center;
+
+    color:#6b7280;
+
+    line-height:1.5;
+
+    font-size:15px;
+
+}
+
+.rename-modal input{
+
+    width:100%;
+
+    height:54px;
+
+    border-radius:14px;
+
+    border:2px solid #e5e7eb;
+
+    padding:0 18px;
+
+    font-size:16px;
+
+    transition:.2s;
+
+    outline:none;
+
+}
+
+.rename-modal input:focus{
+
+    border-color:#2563eb;
+
+    box-shadow:
+
+        0 0 0 4px rgba(37,99,235,.12);
+
+}
+
+.rename-buttons{
+
+    margin-top:24px;
+
+    display:flex;
+
+    gap:14px;
+
+}
+
+.rename-buttons button{
+
+    flex:1;
+
+    height:48px;
+
+    border:none;
+
+    border-radius:12px;
+
+    font-size:15px;
+
+    font-weight:600;
+
+    cursor:pointer;
+
+    transition:.18s;
+
+}
+
+.rename-buttons button:hover{
+
+    transform:translateY(-2px);
+
+}
+
+.rename-buttons button:active{
+
+    transform:scale(.98);
+
+}
+
+.cancel{
+
+    background:#f3f4f6;
+
+    color:#374151;
+
+}
+
+.cancel:hover{
+
+    background:#e5e7eb;
+
+}
+
+.save{
+
+    background:#2563eb;
+
+    color:#fff;
+
+}
+
+.save:hover{
+
+    background:#1d4ed8;
+
+}
+
+.save:disabled{
+
+    opacity:.6;
+
+    cursor:not-allowed;
+
+    transform:none;
+
+}
+
+@keyframes fadeIn{
+
+    from{
+
+        opacity:0;
+
+    }
+
+    to{
+
+        opacity:1;
+
+    }
+
+}
+
+@keyframes scaleIn{
+
+    from{
+
+        opacity:0;
+
+        transform:scale(.92);
+
+    }
+
+    to{
+
+        opacity:1;
+
+        transform:scale(1);
+
+    }
+
+}

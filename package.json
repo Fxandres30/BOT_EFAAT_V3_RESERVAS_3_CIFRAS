@@ -1,25 +1,14 @@
 {
-  "name": "bot_efaat_v3",
+  "name": "efaat_v3",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "description": "Orquestador raiz del proyecto EFAAT_V3 (backend + frontend)",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "backend": "npm start --prefix backend",
+    "frontend": "npm run dev --prefix frontend",
+    "dev": "concurrently -n backend,frontend -c blue,green \"npm:backend\" \"npm:frontend\""
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.123.0",
-    "@supabase/supabase-js": "^2.108.2",
-    "@whiskeysockets/baileys": "^7.0.0-rc14",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "pino": "^10.3.1",
-    "qrcode": "^1.5.4",
-    "qrcode-terminal": "^0.12.0"
+  "devDependencies": {
+    "concurrently": "^9.1.0"
   }
 }

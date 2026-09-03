@@ -1,0 +1,57 @@
+.session-bot-status{
+
+    display:flex;
+
+    justify-content:center;
+
+    align-items:center;
+
+    gap:8px;
+
+    flex-wrap:wrap;
+
+    margin:14px 18px;
+
+}
+
+.session-badge{
+
+    display:flex;
+
+    align-items:center;
+
+    gap:6px;
+
+    padding:8px 14px;
+
+    border-radius:999px;
+
+    font-size:.78rem;
+
+    font-weight:600;
+
+}
+
+.bot-active{
+
+    background:#dbeafe;
+
+    color:#1d4ed8;
+
+}
+
+.bot-principal{
+
+    background:#fef3c7;
+
+    color:#b45309;
+
+}
+
+.bot-waiting{
+
+    background:#f3f4f6;
+
+    color:#4b5563;
+
+}
