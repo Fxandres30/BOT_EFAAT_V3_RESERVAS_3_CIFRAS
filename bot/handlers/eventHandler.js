@@ -1,6 +1,7 @@
 const { detectarEvento } = require("../funciones/eventos/detectarEvento");
 const { detectarReserva } = require("../funciones/reservas/detectarReserva");
 const { consultarEvento } = require("../funciones/eventos/consultarEvento");
+const { responderReserva } = require("../ai/responderReserva");
 
 module.exports = async (ctx) => {
 
@@ -90,5 +91,9 @@ module.exports = async (ctx) => {
     console.log("📦 Resultado reserva");
     console.dir(resultado, { depth: null });
     console.log("==================================");
+
+    // FASE 1 IA: solo responde cuando la reserva fue exitosa.
+    // No modifica reservas ni Supabase; ver bot/ai/responderReserva.js
+    await responderReserva(ctx);
 
 };
