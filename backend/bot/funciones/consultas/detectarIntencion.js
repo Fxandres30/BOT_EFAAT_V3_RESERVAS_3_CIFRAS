@@ -28,16 +28,23 @@ const {
 // (ver guarda más abajo) — así "qué números debo" nunca se confunde con
 // una pregunta de dinero.
 //
-// Dos niveles, a propósito:
-//   BASE      -> ya existían antes de esta fase, son inequívocas de pago
-//                incluso si el mensaje trae un número ("¿cuánto debo por
-//                el 25?" sigue siendo pago, no reserva ni numero_especifico).
-//   EXTENDIDA -> nuevas en esta fase ("pagado", "pagar"). Solo se
-//                evalúan cuando NO hay ningún número en el mensaje,
-//                porque "pagado" también es un disparador de
-//                numero_especifico ("el 25 ya está pagado" debe seguir
-//                siendo una consulta de ESE número, no de pago general).
-const PAGO_PALABRAS_BASE = ["debo", "debe", "llevo", "falta", "pague"];
+// Tres niveles, a propósito:
+//   FUERTE    -> inequívocas de dinero. Cuentan como pago incluso si el
+//                mensaje trae un número ("¿cuánto debo por el 25?" sigue
+//                siendo pago, no reserva ni numero_especifico).
+//   DÉBIL     -> "llevo"/"falta" también aparecen en frases de RESERVA
+//                ("me llevo el 44") y de CANTIDAD ("cuántos llevo"). Solo
+//                cuentan como pago cuando NO hay ningún número en el
+//                mensaje y NO es una pregunta de cantidad en plural
+//                ("cuántos/cuántas ..."). Así "cuánto llevo" sigue siendo
+//                pago, "me llevo el 44" es reserva y "cuántos llevo" es
+//                cantidad.
+//   EXTENDIDA -> "pagado"/"pagar". Solo sin ningún número (colisiona con
+//                numero_especifico: "el 25 ya está pagado" debe seguir
+//                siendo una consulta de ESE número) y sin pregunta de
+//                cantidad en plural.
+const PAGO_PALABRAS_FUERTE = ["debo", "debe", "pague"];
+const PAGO_PALABRAS_DEBIL = ["llevo", "falta"];
 const PAGO_PALABRAS_EXTENDIDA = ["pagado", "pagar"];
 const PAGO_FRASES = ["cuanto es lo mio"];
 
@@ -49,10 +56,13 @@ const PAGO_FRASES = ["cuanto es lo mio"];
 // así que estos mensajes NUNCA se clasificaban como reserva real.
 const FRASES_PUEDO = ["puedo reservar", "puedo agarrar", "puedo escoger", "puedo elegir"];
 
+// SOLO preguntas reales sobre el ESTADO o el DUEÑO de un número concreto.
+// NO se incluyen palabras de posesión sueltas ("mío", "es mío", "tengo"):
+// "mío el 55", "el 91 es mío", "45 para mí" son RESERVAS — el cliente está
+// TOMANDO el número, no preguntando por su estado. numero_especifico se
+// reserva para "¿está libre el 45?", "¿quién tiene el 45?", "¿el 45 está
+// ocupado?".
 const NUMERO_ESPECIFICO_FRASES = [
-    "tengo",
-    "es mio",
-    "mio",
     "paso con",
     "que paso",
     "que pasa",
@@ -63,9 +73,34 @@ const NUMERO_ESPECIFICO_FRASES = [
     "esta pagado",
     "esta disponible",
     "quien tiene",
+    "tiene",        // 3ª persona ("¿alguien tiene el 45?", "¿lo tiene alguien?")
+                    // — NUNCA aparece en una orden de reserva ("tengo", en
+                    // cambio, ya lo bloquea validarTextoReserva.js).
     "consulta",
     ...FRASES_PUEDO
 ];
+
+// Palabras de disponibilidad/estado que, junto a un número y SIN ninguna
+// señal de que el cliente está tomando el número, indican una pregunta
+// sobre ESE número ("¿el 45 sigue libre?", "¿el 45 disponible?").
+const NUMERO_ESPECIFICO_ESTADO = ["libre", "libres", "disponible", "disponibles"];
+
+// Verbos/expresiones de "tomar" un número. Si aparecen, el mensaje es una
+// reserva aunque también mencione "libre"/"disponible" ("quiero el 45 que
+// esté libre").
+const TOMA_PALABRAS = ["quiero", "dame", "damelo", "separa", "separame", "aparta", "apartame", "reservame", "cojo", "pido", "pongo", "ponme", "apunto", "apuntame", "regalame", "anota", "anotame"];
+const TOMA_FRASES = ["para mi", "pa mi"];
+
+// Señal INEQUÍVOCA de que el cliente está tomando el número (incluye la
+// posesión "mío" y "me llevo"). Usada por el paso 0.5 para resolver la
+// ambigüedad "toma + condición de disponibilidad" a favor de la reserva.
+const TOMA_RESERVA_PALABRAS = [...TOMA_PALABRAS, "mio", "mios"];
+const TOMA_RESERVA_FRASES = [...TOMA_FRASES, "me llevo"];
+
+// "quiero SABER si el 45 está libre" -> aquí "quiero" es pregunta, no
+// orden. Si aparece un verbo de conocimiento, la toma NO cuenta y el
+// mensaje se resuelve como consulta de estado (numero_especifico).
+const VERBOS_CONOCIMIENTO = ["saber", "consultar", "preguntar", "averiguar"];
 
 const DISPONIBILIDAD_PALABRAS = ["disponible", "disponibles", "libre", "libres", "queda", "quedan"];
 
@@ -110,6 +145,11 @@ function detectarIntencion(texto = "") {
     const tokens = normalizado.split(" ").filter(Boolean);
     const numeros = extraerNumeros(texto);
 
+    // Pregunta de CONTEO en plural ("cuántos", "cuántas"): señal fuerte de
+    // que se pregunta por una CANTIDAD, no por dinero. Coincidencia exacta
+    // a propósito — "cuánto" (singular, dinero) NO debe activarla.
+    const esContarPlural = tokens.some(t => t === "cuantos" || t === "cuantas");
+
     if (tokens.length < MINIMO_TOKENS_PARA_CONSULTA) {
         return resolverComoReservaOninguna(texto, numeros);
     }
@@ -122,15 +162,21 @@ function detectarIntencion(texto = "") {
 
     if (!mencionaNumeroPalabra) {
 
-        if (contieneAlguna(tokens, PAGO_PALABRAS_BASE)) {
+        if (contieneAlguna(tokens, PAGO_PALABRAS_FUERTE)) {
             return { tipo: "consulta_pago", numeros };
         }
 
-        // Disparadores ampliados: solo sin ningún número en el mensaje
-        // (ver comentario en la constante, arriba).
-        if (numeros.length === 0) {
+        // Disparadores débiles y ampliados: solo cuando NO hay ningún
+        // número en el mensaje y NO es una pregunta de conteo en plural
+        // (ver comentarios de las constantes, arriba). Así "me llevo el
+        // 44" queda como reserva y "cuántos llevo" como cantidad.
+        if (numeros.length === 0 && !esContarPlural) {
 
-            if (contieneAlguna(tokens, PAGO_PALABRAS_EXTENDIDA) || contieneAlgunaFrase(tokens, PAGO_FRASES)) {
+            if (
+                contieneAlguna(tokens, PAGO_PALABRAS_DEBIL) ||
+                contieneAlguna(tokens, PAGO_PALABRAS_EXTENDIDA) ||
+                contieneAlgunaFrase(tokens, PAGO_FRASES)
+            ) {
                 return { tipo: "consulta_pago", numeros };
             }
 
@@ -138,9 +184,40 @@ function detectarIntencion(texto = "") {
 
     }
 
-    // 1. Número específico: requiere una pregunta de estado/posesión/
-    // disponibilidad + un número concreto.
+    // 0.5 Toma explícita + número -> RESERVA, aunque el mensaje traiga
+    // además una condición de disponibilidad ("sepárame el 45 ¿está
+    // libre?", "dame el 45 si está libre"). Va ANTES de numero_especifico
+    // para resolver esa ambigüedad. NO aplica si hay un verbo de
+    // conocimiento ("quiero SABER si el 45 está libre" sigue siendo
+    // numero_especifico). El criterio de reserva sigue siendo el de
+    // siempre: validarTextoReserva (sin modificar) + un número.
+    if (
+        numeros.length > 0 &&
+        !contieneAlguna(tokens, VERBOS_CONOCIMIENTO) &&
+        (
+            contieneAlguna(tokens, TOMA_RESERVA_PALABRAS) ||
+            contieneAlgunaFrase(tokens, TOMA_RESERVA_FRASES)
+        ) &&
+        validarTextoReserva(texto)
+    ) {
+        return { tipo: "reserva", numeros };
+    }
+
+    // 1. Número específico: pregunta de estado/dueño + un número concreto.
     if (numeros.length > 0 && contieneAlgunaFrase(tokens, NUMERO_ESPECIFICO_FRASES)) {
+        return { tipo: "numero_especifico", numeros };
+    }
+
+    // 1b. Número + palabra de disponibilidad ("¿el 45 sigue libre?"), SOLO
+    // si el mensaje no expresa que el cliente está tomando el número
+    // (posesión / "quiero" / "dame" / etc.). Si expresa toma, es reserva.
+    if (
+        numeros.length > 0 &&
+        contieneAlguna(tokens, NUMERO_ESPECIFICO_ESTADO) &&
+        !contieneAlguna(tokens, POSESION_PALABRAS) &&
+        !contieneAlguna(tokens, TOMA_PALABRAS) &&
+        !contieneAlgunaFrase(tokens, TOMA_FRASES)
+    ) {
         return { tipo: "numero_especifico", numeros };
     }
 

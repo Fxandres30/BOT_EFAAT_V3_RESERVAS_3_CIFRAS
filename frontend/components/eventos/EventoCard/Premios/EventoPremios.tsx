@@ -46,7 +46,8 @@ export default function EventoPremios({
         <section className="eventoPremios">
 
             <div className="premiosHeader">
-                🏆 Premios
+                <span>🏆 Premios</span>
+                <span className="premiosCount">{premios.length}</span>
             </div>
 
             <div className="premiosLista">

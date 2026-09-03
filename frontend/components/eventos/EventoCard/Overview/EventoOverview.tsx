@@ -28,95 +28,123 @@ export default function EventoOverview({
 
         <section className="eventoOverview">
 
-            {/* Progreso */}
+            {/* 🎟️ Progreso */}
 
-            <EventoProgress
+            <div className="overviewBlock">
 
-                reservados={evento.reservados ?? 0}
+                <span className="overviewBlockTitle">🎟️ Progreso</span>
 
-                total={evento.cantidad_numeros ?? 100}
+                <EventoProgress
 
-                horaCierre={evento.hora_cierre}
+                    reservados={evento.reservados ?? 0}
 
-            />
+                    total={evento.cantidad_numeros ?? 100}
 
-            {/* Estadísticas */}
+                    horaCierre={evento.hora_cierre}
 
-            <div className="overviewStats">
+                />
 
-                <div>
+            </div>
 
-                    <Ticket size={16}/>
+            {/* 🔢 Números */}
 
-                    <span>{evento.reservados}</span>
+            <div className="overviewBlock">
 
-                </div>
+                <span className="overviewBlockTitle">🔢 Números</span>
 
-                <div>
+                <div className="overviewStats">
 
-                    <CheckCircle2 size={16}/>
+                    <div className="statItem stat-reservados">
 
-                    <span>{evento.pagados}</span>
+                        <Ticket size={16}/>
 
-                </div>
+                        <strong>{evento.reservados}</strong>
 
-                <div>
+                        <span>Reservados</span>
 
-                    <AlertTriangle size={16}/>
+                    </div>
 
-                    <span>{evento.pendientes}</span>
+                    <div className="statItem stat-pagados">
 
-                </div>
+                        <CheckCircle2 size={16}/>
 
-                <div>
+                        <strong>{evento.pagados}</strong>
 
-                    <Circle size={16}/>
+                        <span>Pagados</span>
 
-                    <span>{evento.libres}</span>
+                    </div>
+
+                    <div className="statItem stat-pendientes">
+
+                        <AlertTriangle size={16}/>
+
+                        <strong>{evento.pendientes}</strong>
+
+                        <span>Pendientes</span>
+
+                    </div>
+
+                    <div className="statItem stat-libres">
+
+                        <Circle size={16}/>
+
+                        <strong>{evento.libres}</strong>
+
+                        <span>Libres</span>
+
+                    </div>
 
                 </div>
 
             </div>
 
-            {/* Información */}
+            {/* 🕐 Horarios */}
 
-            <div className="overviewInfo">
+            <div className="overviewBlock">
 
-                <div>
+                <span className="overviewBlockTitle">🕐 Horarios</span>
 
-                    <Clock3 size={15}/>
+                <div className="overviewInfo">
 
-                    <span>Sorteo</span>
+                    <div>
 
-                    <strong>{evento.hora_fin}</strong>
+                        <Clock3 size={15}/>
 
-                </div>
+                        <span>Sorteo</span>
 
-                <div>
+                        <strong>{evento.hora_fin}</strong>
 
-                    <Lock size={15}/>
+                    </div>
 
-                    <span>Cierre</span>
+                    <div>
 
-                    <strong>{evento.hora_cierre}</strong>
+                        <Lock size={15}/>
 
-                </div>
+                        <span>Cierre</span>
 
-                <div>
+                        <strong>{evento.hora_cierre}</strong>
 
-                    <TimerReset size={15}/>
+                    </div>
 
-                    <span>Libera</span>
+                    <div>
 
-                    <strong>{evento.hora_liberacion}</strong>
+                        <TimerReset size={15}/>
 
-                </div>
+                        <span>Libera</span>
 
-                <div>
+                        <strong>{evento.hora_liberacion || "—"}</strong>
 
-                    <Hash size={15}/>
+                    </div>
 
-                    <span>{evento.cifras} cifras</span>
+                    <div>
+
+                        <Hash size={15}/>
+
+                        <span>Cifras</span>
+
+                        <strong>{evento.cifras}</strong>
+
+                    </div>
 
                 </div>
 

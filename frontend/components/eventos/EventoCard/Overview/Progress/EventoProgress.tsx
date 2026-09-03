@@ -33,7 +33,7 @@ export default function EventoProgress({
 
                 <span>
 
-                    Progreso del evento
+                    {reservados} / {total} números
 
                 </span>
 
@@ -65,7 +65,7 @@ export default function EventoProgress({
 
                 <span>
 
-                    {reservados} / {total} números
+                    Cierra a las
 
                 </span>
 

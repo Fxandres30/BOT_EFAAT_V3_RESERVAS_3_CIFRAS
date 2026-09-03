@@ -16,9 +16,16 @@ export default function EventoCard({
 
 }: Props) {
 
+    const estadoClass =
+        (evento?.estado || "").toLowerCase() === "abierto"
+            ? "abierto"
+            : (evento?.estado || "").toLowerCase() === "cerrado"
+            ? "cerrado"
+            : "neutro";
+
     return (
 
-        <article className="eventoCard">
+        <article className={`eventoCard ${estadoClass}`}>
 
             {/* Encabezado */}
 

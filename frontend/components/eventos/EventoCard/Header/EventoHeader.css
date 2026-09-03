@@ -8,17 +8,21 @@
 
     gap:20px;
 
+    flex-wrap:wrap;
+
 }
 
 .eventoHeaderLeft{
 
     flex:1;
 
+    min-width:220px;
+
     display:flex;
 
     flex-direction:column;
 
-    gap:8px;
+    gap:10px;
 
 }
 
@@ -36,13 +40,35 @@
 
     border-radius:999px;
 
+    font-size:11px;
+
+    font-weight:700;
+
+    letter-spacing:.02em;
+
+}
+
+.eventoEstado.estado-abierto{
+
     background:#dcfce7;
 
     color:#15803d;
 
-    font-size:11px;
+}
 
-    font-weight:700;
+.eventoEstado.estado-cerrado{
+
+    background:#fee2e2;
+
+    color:#b91c1c;
+
+}
+
+.eventoEstado.estado-neutro{
+
+    background:#f1f5f9;
+
+    color:#475569;
 
 }
 
@@ -98,6 +124,8 @@
 
     gap:8px;
 
+    flex-wrap:wrap;
+
 }
 
 .headerBadge{
@@ -106,7 +134,7 @@
 
     align-items:center;
 
-    gap:6px;
+    gap:8px;
 
     padding:8px 12px;
 
@@ -116,10 +144,38 @@
 
     border:1px solid #e2e8f0;
 
+    color:#334155;
+
+}
+
+.headerBadgeText{
+
+    display:flex;
+
+    flex-direction:column;
+
+    line-height:1.15;
+
+}
+
+.headerBadgeText small{
+
+    font-size:10px;
+
+    font-weight:600;
+
+    color:#94a3b8;
+
+    text-transform:uppercase;
+
+    letter-spacing:.03em;
+
+}
+
+.headerBadgeText span{
+
     font-size:14px;
 
     font-weight:700;
-
-    color:#334155;
 
 }

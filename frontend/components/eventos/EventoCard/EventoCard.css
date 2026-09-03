@@ -1,5 +1,7 @@
 .eventoCard{
 
+    position:relative;
+
     display:flex;
 
     flex-direction:column;
@@ -16,9 +18,35 @@
 
     border:1px solid #e2e8f0;
 
+    overflow:hidden;
+
     transition:.25s;
 
 }
+
+.eventoCard::before{
+
+    content:"";
+
+    position:absolute;
+
+    top:0;
+
+    left:0;
+
+    width:100%;
+
+    height:4px;
+
+    background:#cbd5e1;
+
+}
+
+.eventoCard.abierto::before{ background:#22c55e; }
+
+.eventoCard.cerrado::before{ background:#ef4444; }
+
+.eventoCard.neutro::before{ background:#cbd5e1; }
 
 .eventoCard:hover{
 

@@ -17,6 +17,21 @@ interface Props {
 
 }
 
+// Solo presentación: mapea el estado REAL del evento a una clase de color.
+// No cambia el valor ni la lógica; si el estado es desconocido usa el
+// estilo neutro.
+function claseEstado(estado?:string){
+
+    const e = (estado || "").toLowerCase();
+
+    if (e === "abierto") return "estado-abierto";
+
+    if (e === "cerrado") return "estado-cerrado";
+
+    return "estado-neutro";
+
+}
+
 export default function EventoHeader({
 
     evento
@@ -29,7 +44,7 @@ export default function EventoHeader({
 
             <div className="eventoHeaderLeft">
 
-                <div className="eventoEstado">
+                <div className={`eventoEstado ${claseEstado(evento.estado)}`}>
 
                     <CheckCircle2 size={13}/>
 
@@ -69,7 +84,7 @@ export default function EventoHeader({
 
                         <Ticket size={13}/>
 
-                        {evento.cantidad_numeros}
+                        {evento.cantidad_numeros} números
 
                     </span>
 
@@ -83,7 +98,13 @@ export default function EventoHeader({
 
                     <CircleDollarSign size={15}/>
 
-                    ${evento.valor}
+                    <div className="headerBadgeText">
+
+                        <small>Valor</small>
+
+                        <span>${evento.valor}</span>
+
+                    </div>
 
                 </div>
 
@@ -91,7 +112,13 @@ export default function EventoHeader({
 
                     <Clock3 size={15}/>
 
-                    {evento.hora_fin}
+                    <div className="headerBadgeText">
+
+                        <small>Sorteo</small>
+
+                        <span>{evento.hora_fin}</span>
+
+                    </div>
 
                 </div>
 
