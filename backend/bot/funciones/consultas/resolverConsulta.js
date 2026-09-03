@@ -32,9 +32,13 @@ async function resolverConsulta({ tipo, numeros, evento, usuario }) {
 
             const numerosDelUsuario = await consultarMisNumeros({ evento, usuario });
 
-            const mensaje = numerosDelUsuario.length
-                ? `Tus números reservados son: ${numerosDelUsuario.join(", ")}`
-                : "No tienes números reservados actualmente.";
+            const cantidad = numerosDelUsuario.length;
+
+            const mensaje = cantidad === 0
+                ? "No tienes números reservados actualmente."
+                : cantidad === 1
+                    ? `Tu número reservado es: ${numerosDelUsuario[0]}`
+                    : `Tus números reservados son: ${numerosDelUsuario.join(", ")}`;
 
             return { tipo, numerosDelUsuario, mensaje };
 

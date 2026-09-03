@@ -1,8 +1,41 @@
+const supabase = require("../../../lib/supabase");
 const { extraerEvento } = require("./extraerEvento");
 const { consultarEvento } = require("./consultarEvento");
 const { guardarEvento } = require("./guardarEvento");
 const { obtenerConfiguracion } = require("./configEvento");
 const { abrirGrupo } = require("./grupos/abrirGrupo");
+
+// Reintento breve y acotado (3 intentos, 300 ms aparte) SOLO para registrar
+// que la apertura falló (abierto=false). Riesgo que cierra: si WhatsApp
+// falla Y esta escritura también fallara al primer intento, el evento
+// quedaría con abierto=true "mintiendo" y la reconciliación del worker
+// (que filtra por abierto===false) nunca lo encontraría. Con 3 intentos
+// cortos, ambos fallando a la vez es prácticamente descartable. No es una
+// tabla ni un estado nuevo: reintenta la MISMA escritura de siempre.
+async function marcarAperturaFallida(eventoId) {
+
+    const intentos = 3;
+
+    for (let i = 1; i <= intentos; i++) {
+
+        const { error } = await supabase
+            .from("eventos_bot")
+            .update({ abierto: false })
+            .eq("id", eventoId);
+
+        if (!error) return true;
+
+        console.error(`❌ No se pudo registrar abierto=false (intento ${i}/${intentos}):`, error.message);
+
+        if (i < intentos) {
+            await new Promise(r => setTimeout(r, 300));
+        }
+
+    }
+
+    return false;
+
+}
 
 async function detectarEvento(ctx) {
 
@@ -111,7 +144,40 @@ const grupoAbierto = await abrirGrupo({
 
 if (!grupoAbierto) {
 
-    console.log("⚠ No se pudo abrir el grupo");
+    // WhatsApp NO confirmó la apertura (típicamente rate-overlimit tras
+    // agotar los reintentos de la cola). NO se reporta como exitosa:
+    // se registra abierto=false en el evento YA guardado para que el
+    // worker de eventos lo reintente. El flujo de detección NO se rompe:
+    // el evento existe (activo=true) y las reservas siguen funcionando.
+
+    console.log("⚠ No se pudo abrir el grupo en WhatsApp — se registra abierto=false para reintento.");
+
+    let registrado = false;
+
+    try {
+
+        registrado = await marcarAperturaFallida(eventoGuardado.id);
+
+    } catch (e) {
+
+        console.error("❌ No se pudo registrar abierto=false:", e?.message);
+
+    }
+
+    if (registrado) {
+
+        eventoGuardado.abierto = false;
+
+    } else {
+
+        // No se pudo registrar ni tras los reintentos: se deja constancia
+        // clara en el log. El evento sigue existiendo (activo=true) y
+        // podrá autocorregirse si el mismo mensaje se detecta de nuevo en
+        // el grupo (guardarEvento vuelve a escribir abierto=true y se
+        // reintenta abrir). No se inventa un estado nuevo para esto.
+        console.error(`⚠️ Evento ${eventoGuardado.id}: quedó sin poder registrar el fallo de apertura tras los reintentos.`);
+
+    }
 
 } else {
 

@@ -1,4 +1,5 @@
 const supabase = require("../../../lib/supabase");
+const { groupMetadata } = require("../../../services/baileys/groupQueue");
 
 async function guardarEvento({
 
@@ -19,7 +20,10 @@ async function guardarEvento({
 
     try {
 
-        const metadata = await sock.groupMetadata(grupoId);
+        // groupMetadata() es IQ -> pasa por la cola central para no
+        // competir con abrir/cerrar grupo. try/catch existente intacto:
+        // si falla, se sigue con grupoNombre=null (comportamiento previo).
+        const metadata = await groupMetadata(sock, grupoId);
 
         grupoNombre = metadata.subject;
         participantes = metadata.participants?.length || 0;

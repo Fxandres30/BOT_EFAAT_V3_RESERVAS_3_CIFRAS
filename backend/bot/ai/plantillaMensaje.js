@@ -54,6 +54,17 @@ function construirVariables(ctx, resultado) {
 
     }
 
+    // Fase 5.6 (presentación): "cantidad principal" = de qué números está
+    // hablando la frase en cada tipo, para poder decir "tu número es" (1) o
+    // "tus números son" (varios) sin tocar la lógica de negocio de arriba.
+    // Reservados manda cuando hay (reserva_completa/parcial, mis_numeros,
+    // mis_reservas); si no hay reservados se cae a solicitados (numero_ocupado,
+    // todos_ocupados, numero_especifico). "disponibilidad" no tiene dueño
+    // ("tu número" no aplica a números de otros), así que no participa.
+    const cantidadPrincipal = numerosReservados.length > 0
+        ? numerosReservados.length
+        : numerosSolicitados.length;
+
     return {
 
         cliente: ctx.usuario?.nombre || "",
@@ -66,7 +77,9 @@ function construirVariables(ctx, resultado) {
         hora: ctx.evento?.hora_fin || "",
         // "precio" es el valor por número del evento (dato real, eventos_bot.valor).
         precio: ctx.evento?.valor != null ? String(ctx.evento.valor) : "",
-        cantidad: resultado?.cantidad != null ? String(resultado.cantidad) : ""
+        cantidad: resultado?.cantidad != null ? String(resultado.cantidad) : "",
+        tu_numero_tus_numeros: cantidadPrincipal === 1 ? "tu número" : "tus números",
+        es_son: cantidadPrincipal === 1 ? "es" : "son"
 
     };
 

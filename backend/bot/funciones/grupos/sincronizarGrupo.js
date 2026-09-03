@@ -1,4 +1,5 @@
 const supabase = require("../../../lib/supabase");
+const { groupMetadata } = require("../../../services/baileys/groupQueue");
 
 const TIEMPO_CACHE_MINUTOS = 10;
 
@@ -92,9 +93,15 @@ async function sincronizarGrupo({
 
         }
 
-        // Consultar WhatsApp SOLO cuando realmente sea necesario
+        // Consultar WhatsApp SOLO cuando realmente sea necesario.
+        // Pasa por la cola central de IQ de grupo (concurrencia 1 +
+        // espaciado + backoff). El Set `sincronizando` de arriba sigue
+        // evitando trabajo duplicado del MISMO grupo; la cola serializa
+        // el IQ entre grupos y operaciones distintas. El catch de abajo
+        // (rate-overlimit -> cache) queda como red de seguridad si la
+        // cola agota reintentos.
         const metadata =
-            await sock.groupMetadata(grupoId);
+            await groupMetadata(sock, grupoId);
 
         let enlace =
             grupoExistente?.enlace || null;

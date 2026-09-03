@@ -31,7 +31,9 @@ const V = {
     fecha: { variable: "fecha", etiqueta: "Fecha del evento", mostrarCampo: "mostrar_fecha" },
     hora: { variable: "hora", etiqueta: "Hora del evento", mostrarCampo: "mostrar_hora" },
     precio: { variable: "precio", etiqueta: "Precio por número", mostrarCampo: "mostrar_precio" },
-    cantidad: { variable: "cantidad", etiqueta: "Cantidad de números", mostrarCampo: "" }
+    cantidad: { variable: "cantidad", etiqueta: "Cantidad de números", mostrarCampo: "" },
+    tuNumeroTusNumeros: { variable: "tu_numero_tus_numeros", etiqueta: "\"tu número\" / \"tus números\" (automático)", mostrarCampo: "" },
+    esSon: { variable: "es_son", etiqueta: "\"es\" / \"son\" (automático)", mostrarCampo: "" }
 };
 
 export const TIPOS_MENSAJE: TipoMensaje[] = [
@@ -42,7 +44,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         icono: "✅",
         nombre: "Reserva completada",
         descripcion: "Todos los números solicitados quedaron reservados.",
-        variables: [V.cliente, V.evento, V.solicitados, V.reservados, V.fecha, V.hora, V.precio],
+        variables: [V.cliente, V.evento, V.solicitados, V.reservados, V.fecha, V.hora, V.precio, V.tuNumeroTusNumeros, V.esSon],
         ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: "27, 45", numeros_reservados: "27, 45", fecha: "2026-09-03", hora: "22:30", precio: "5000" },
         soportado: true
     },
@@ -52,7 +54,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         icono: "⚠️",
         nombre: "Reserva parcial",
         descripcion: "Algunos números se reservaron, otros ya estaban ocupados.",
-        variables: [V.cliente, V.evento, V.solicitados, V.reservados, V.ocupados, V.fecha, V.hora, V.precio],
+        variables: [V.cliente, V.evento, V.solicitados, V.reservados, V.ocupados, V.fecha, V.hora, V.precio, V.tuNumeroTusNumeros, V.esSon],
         ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: "27, 45", numeros_reservados: "27", numeros_ocupados: "45", fecha: "2026-09-03", hora: "22:30", precio: "5000" },
         soportado: true
     },
@@ -62,7 +64,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         icono: "🔒",
         nombre: "Número ocupado",
         descripcion: "El único número solicitado ya estaba ocupado.",
-        variables: [V.cliente, V.evento, V.solicitados, V.fecha, V.hora],
+        variables: [V.cliente, V.evento, V.solicitados, V.fecha, V.hora, V.tuNumeroTusNumeros, V.esSon],
         ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: "27", fecha: "2026-09-03", hora: "22:30" },
         soportado: true
     },
@@ -72,7 +74,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         icono: "🚫",
         nombre: "Todos los números solicitados ocupados",
         descripcion: "Ninguno de los números solicitados estaba disponible.",
-        variables: [V.cliente, V.evento, V.solicitados, V.fecha, V.hora],
+        variables: [V.cliente, V.evento, V.solicitados, V.fecha, V.hora, V.tuNumeroTusNumeros, V.esSon],
         ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: "27, 45", fecha: "2026-09-03", hora: "22:30" },
         soportado: true
     },
@@ -82,7 +84,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         icono: "🎫",
         nombre: "Mis números",
         descripcion: "El cliente pregunta qué números tiene.",
-        variables: [V.cliente, V.evento, V.reservados],
+        variables: [V.cliente, V.evento, V.reservados, V.tuNumeroTusNumeros, V.esSon],
         ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: "01, 27, 48" },
         soportado: true
     },
@@ -92,7 +94,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         icono: "📋",
         nombre: "Mis reservas",
         descripcion: "El cliente pregunta qué tiene reservado.",
-        variables: [V.cliente, V.evento, V.reservados],
+        variables: [V.cliente, V.evento, V.reservados, V.tuNumeroTusNumeros, V.esSon],
         ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: "01, 27, 48" },
         soportado: true
     },
@@ -112,7 +114,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         icono: "🔎",
         nombre: "Consulta de número específico",
         descripcion: "El cliente pregunta si un número es suyo, de otro, o está libre.",
-        variables: [V.cliente, V.evento, V.solicitados],
+        variables: [V.cliente, V.evento, V.solicitados, V.tuNumeroTusNumeros, V.esSon],
         ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: "25" },
         soportado: true
     },
