@@ -158,6 +158,8 @@ export default function Sidebar({
 
                                     href={item.href}
 
+                                    prefetch={false}
+
                                     onClick={onClose}
 
                                     className={
