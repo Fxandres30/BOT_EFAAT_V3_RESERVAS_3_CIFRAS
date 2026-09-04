@@ -26,6 +26,8 @@ interface Props {
 
     onCloseDelete: () => void;
 
+    onDeleted?: () => void;
+
 }
 
 export default function SessionModals({
@@ -48,7 +50,9 @@ export default function SessionModals({
 
     onCloseRename,
 
-    onCloseDelete
+    onCloseDelete,
+
+    onDeleted
 
 }: Props) {
 
@@ -91,6 +95,8 @@ export default function SessionModals({
                 nombre={nombre}
 
                 onClose={onCloseDelete}
+
+                onDeleted={onDeleted}
 
             />
 

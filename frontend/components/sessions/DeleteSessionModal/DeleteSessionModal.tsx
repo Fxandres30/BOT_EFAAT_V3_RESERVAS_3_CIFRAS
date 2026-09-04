@@ -18,6 +18,8 @@ type Props = {
 
     onClose: () => void;
 
+    onDeleted?: () => void;
+
 };
 
 export default function DeleteSessionModal({
@@ -28,7 +30,9 @@ export default function DeleteSessionModal({
 
     nombre,
 
-    onClose
+    onClose,
+
+    onDeleted
 
 }: Props) {
 
@@ -45,6 +49,12 @@ export default function DeleteSessionModal({
         try{
 
             await deleteSession(sessionId);
+
+            // No dependemos solo de Supabase Realtime (el evento DELETE
+            // puede no llegar, p.ej. si la tabla no tiene REPLICA IDENTITY
+            // FULL): refrescamos la lista explícitamente para que la card
+            // desaparezca de inmediato, aquí mismo.
+            onDeleted?.();
 
             onClose();
 

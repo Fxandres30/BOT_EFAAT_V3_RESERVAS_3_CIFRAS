@@ -32,8 +32,17 @@ export async function POST(req: Request) {
         const text = await res.text();
 
         if (!res.ok) {
+
+            let parsed: any = null;
+
+            try {
+                parsed = text ? JSON.parse(text) : null;
+            } catch {
+                parsed = null;
+            }
+
             return NextResponse.json(
-                {
+                parsed ?? {
                     success: false,
                     message: text || "Error al conectar con el bot."
                 },

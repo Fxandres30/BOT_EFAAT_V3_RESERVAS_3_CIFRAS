@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 
 import { supabase } from "@/lib/supabase";
 
-import { connectSession } from "@/services/sessions/connectSession";
+import { connectSession, isSessionNotFound } from "@/services/sessions/connectSession";
 import { disconnectSession } from "@/services/sessions/disconnectSession";
 import { getSession } from "@/services/sessions/getSession";
 
 export function useSession(
     id: string,
-    estadoInicial: string
+    estadoInicial: string,
+    onSessionNotFound?: () => void
 ) {
 
     const [loading, setLoading] = useState(false);
@@ -120,7 +121,22 @@ setOpen(true);
         // ==========================
         setLoading(true);
 
-        await connectSession(id);
+        const res = await connectSession(id);
+
+        if (isSessionNotFound(res)) {
+
+            setLoading(false);
+
+            alert(
+                "Esta sesión ya no existe (fue eliminada). " +
+                "Actualiza la lista y crea o selecciona una sesión válida."
+            );
+
+            onSessionNotFound?.();
+
+            return;
+
+        }
 
     }
 

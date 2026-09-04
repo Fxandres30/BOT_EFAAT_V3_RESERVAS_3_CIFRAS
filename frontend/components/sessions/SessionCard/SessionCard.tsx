@@ -16,7 +16,7 @@ import { useSession } from "./hooks/useSession";
 
 import { setActiveSession } from "@/services/sessions/setActiveSession";
 import { setPreferredSession } from "@/services/sessions/setPreferredSession";
-import { connectSession } from "@/services/sessions/connectSession";
+import { connectSession, isSessionNotFound } from "@/services/sessions/connectSession";
 
 interface Props {
 
@@ -32,6 +32,8 @@ interface Props {
 
     activa: boolean;
 
+    onRefresh?: () => void;
+
 }
 
 export default function SessionCard({
@@ -46,7 +48,9 @@ export default function SessionCard({
 
     principal,
 
-    activa
+    activa,
+
+    onRefresh
 
 }: Props) {
 
@@ -68,7 +72,7 @@ export default function SessionCard({
 
     cerrarQR
 
-} = useSession(id, estado);
+} = useSession(id, estado, onRefresh);
 
     const conectado =
         estadoActual === "conectado";
@@ -128,7 +132,18 @@ export default function SessionCard({
 
                             try {
 
-                                await connectSession(id);
+                                const res = await connectSession(id);
+
+                                if (isSessionNotFound(res)) {
+
+                                    alert(
+                                        "Esta sesión ya no existe (fue eliminada). " +
+                                        "Actualiza la lista y crea o selecciona una sesión válida."
+                                    );
+
+                                    onRefresh?.();
+
+                                }
 
                             }
 
@@ -204,6 +219,7 @@ export default function SessionCard({
     nombre={nombre}
     onCloseRename={() => setRenameOpen(false)}
     onCloseDelete={() => setDeleteOpen(false)}
+    onDeleted={onRefresh}
 />
 
         </>

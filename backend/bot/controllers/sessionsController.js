@@ -13,6 +13,12 @@ async function connect(req, res) {
 
         const data = await baileysService.connect(sessionId);
 
+        if (data.success === false && data.code === "SESSION_NOT_FOUND") {
+
+            return res.status(404).json(data);
+
+        }
+
         res.json(data);
 
     } catch (error) {

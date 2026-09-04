@@ -10,6 +10,11 @@ const {
 const registrarEstados = require("./estados");
 const supabase = require("../../lib/supabase");
 
+// Señal inequívoca para "la fila de Supabase no existe" — se distingue del
+// null que se devuelve para un error real de Supabase, así quien llama
+// (baileysService.connect) puede reaccionar distinto en cada caso.
+const SESSION_NOT_FOUND = "SESSION_NOT_FOUND";
+
 // Utilidades de SOLO LECTURA para logs de trazabilidad (no afectan al
 // algoritmo de failover ni a la selección de sesión).
 const {
@@ -67,15 +72,7 @@ if (!sesion) {
 
     console.log(`⚠️ La sesión ${sessionId} ya no existe.`);
 
-    return null;
-
-}
-
-if (!sesion) {
-
-    console.log(`⚠️ La sesión ${sessionId} no existe.`);
-
-    return null;
+    return SESSION_NOT_FOUND;
 
 }
 
@@ -523,4 +520,10 @@ if (!sesion) {
 
 }
 
-module.exports = new SessionManager();
+const manager = new SessionManager();
+
+// Constante pública para que los llamadores (p.ej. baileysService) puedan
+// comparar el resultado de start() sin depender de un string mágico duplicado.
+manager.SESSION_NOT_FOUND = SESSION_NOT_FOUND;
+
+module.exports = manager;

@@ -99,6 +99,7 @@ sessions.map((session:any)=>(
     estado={session.estado}
     principal={session.principal}
     activa={session.activa}
+    onRefresh={load}
 />
 
 ))
