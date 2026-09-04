@@ -1,0 +1,84 @@
+diff --git a/backend/services/baileys/send.js b/backend/services/baileys/send.js
+index 09fe07db..39f08aeb 100644
+--- a/backend/services/baileys/send.js
++++ b/backend/services/baileys/send.js
+@@ -85,13 +85,64 @@ async function sendMessage({ sock, jid, text, quoted } = {}) {
+             longitudTexto: texto.length
+         });
+ 
+-        // Enviar mensaje (citando el mensaje original cuando esté disponible)
+-        return await socketActivo.sendMessage(
++        // ===== INSTRUMENTACIÓN TEMPORAL DE DIAGNÓSTICO (a eliminar) =====
++        // Compara la identidad exacta del socket que llegó como ctx.sock
++        // contra el socket que el manager considera activo AHORA MISMO, y
++        // envuelve la llamada real de Baileys en un Promise.race puramente
++        // observacional: si tarda más de 10s se registra el timeout de
++        // diagnóstico, pero se sigue esperando la promesa real y se
++        // devuelve/lanza exactamente lo que Baileys resuelva o rechace —
++        // el comportamiento del envío NO cambia.
++        const socketManagerActivo = manager.getActiveSocket();
++
++        console.log("[REAL SEND 1] antes de socketActivo.sendMessage", {
++            jid,
++            sessionId: idSesion.sessionId,
++            estadoSesion: idSesion.estado,
++            ctxSockEsMismaReferenciaQueActiveSocket: socketActivo === socketManagerActivo,
++            ctxSockSessionId: idSesion.sessionId,
++            activeSocketSessionId: identidadDesdeSocket(socketManagerActivo).sessionId,
++            activeSocketEstado: identidadDesdeSocket(socketManagerActivo).estado,
++            usoFallbackSocketActivo: !sock
++        });
++
++        const DIAG_TIMEOUT = Symbol("diag-timeout");
++
++        const sendPromise = socketActivo.sendMessage(
+             jid,
+             { text: texto },
+             quoted ? { quoted } : undefined
+         );
+ 
++        const diagTimeoutPromise = new Promise(resolve => {
++            setTimeout(() => resolve(DIAG_TIMEOUT), 10000);
++        });
++
++        const raceResultado = await Promise.race([sendPromise, diagTimeoutPromise]);
++
++        if (raceResultado === DIAG_TIMEOUT) {
++
++            console.log("[REAL SEND TIMEOUT] sendMessage no resolvió en 10s", {
++                jid,
++                sessionId: idSesion.sessionId,
++                ctxSockEsMismaReferenciaQueActiveSocket: socketActivo === manager.getActiveSocket()
++            });
++
++        }
++
++        const resultado = raceResultado === DIAG_TIMEOUT
++            ? await sendPromise
++            : raceResultado;
++
++        console.log("[REAL SEND 2] sendMessage RESOLVIÓ", {
++            jid,
++            tardoMasDe10s: raceResultado === DIAG_TIMEOUT
++        });
++        // ===== FIN INSTRUMENTACIÓN TEMPORAL =====
++
++        // Enviar mensaje (citando el mensaje original cuando esté disponible)
++        return resultado;
++
+     }
+ 
+     catch (error) {
+@@ -99,6 +150,12 @@ async function sendMessage({ sock, jid, text, quoted } = {}) {
+         // Trazabilidad del fallo de envío — SOLO log, se re-lanza igual.
+         const idSesion = identidadDesdeSocket(socketActivo);
+ 
++        console.log("[REAL SEND ERROR]", {
++            jid,
++            sessionId: idSesion.sessionId,
++            motivo: error.message
++        });
++
+         console.log("📤 [WHATSAPP SEND ERROR]", {
+             sesion: idSesion.nombre,
+             sessionId: idSesion.sessionId,
