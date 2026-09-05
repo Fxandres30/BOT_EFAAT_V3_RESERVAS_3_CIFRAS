@@ -1,20 +1,33 @@
 const supabase = require("../../../lib/supabase");
 
-const {
-    obtenerUsuarioGlobal
-} = require("../usuarios/obtenerUsuarioGlobal");
-
 async function guardarMensajeGrupo({
 
     msg,
     texto,
     grupoId,
     grupoNombre,
-    sock
+    usuario = null
 
 }) {
 
     try {
+
+        // ==========================================
+        // fromMe: el bot no es un cliente. No se resuelve ni se crea
+        // identidad para sus propios mensajes, y por diseño tampoco se
+        // registran en mensajes_grupos_sorteos (no aportan valor y evita
+        // cualquier ambigüedad de esquema con usuario_id). El bloqueo de
+        // identidad para fromMe ya ocurrió antes, en
+        // bot/middleware/obtenerUsuario.js — esto es una segunda barrera.
+        // ==========================================
+
+        if (msg.key.fromMe) {
+
+            console.log("⏭️ guardarMensajeGrupo: fromMe=true — no se registra ni se resuelve identidad de cliente.");
+
+            return null;
+
+        }
 
         // ==========================================
         // Ignorar mensajes internos
@@ -29,7 +42,9 @@ async function guardarMensajeGrupo({
         }
 
         // ==========================================
-        // Autor del mensaje
+        // Autor del mensaje (solo metadato para la fila; NO es resolución
+        // de identidad — esa ya se hizo una única vez en obtenerContexto /
+        // obtenerUsuario.js, y se recibe aquí como `usuario`).
         // ==========================================
 
         const jidUsuario =
@@ -40,20 +55,19 @@ async function guardarMensajeGrupo({
 
             msg.key.remoteJid ||
 
-            sock?.user?.id ||
-
             null;
 
         if (!jidUsuario)
             return null;
 
-        const usuario = await obtenerUsuarioGlobal({
-
-            jid: jidUsuario,
-
-            nombre: msg.pushName || null
-
-        });
+        // ==========================================
+        // Identidad ya resuelta por el pipeline (ctx.usuario). Si no vino
+        // resuelta (p. ej. no se pudo determinar el JID, o hubo una
+        // contingencia de identidad), no se registra el mensaje — igual
+        // que el comportamiento anterior cuando obtenerUsuarioGlobal
+        // devolvía null. NUNCA se vuelve a llamar aquí a
+        // obtenerUsuarioGlobal: eso es lo que causaba la doble resolución.
+        // ==========================================
 
         if (!usuario)
             return null;
@@ -133,20 +147,12 @@ async function guardarMensajeGrupo({
         // ==========================================
         // Teléfono
         // ==========================================
+        // NOTA: ya no hay fallback a sock.user.id (número del propio bot).
+        // Ese fallback era el vestigio del camino fromMe, que ahora se
+        // corta arriba antes de llegar aquí; para un mensaje real, si el
+        // usuario resuelto no tiene teléfono, se registra tal cual (null).
 
-        let telefono = usuario.telefono;
-
-        if (!telefono && sock?.user?.id) {
-
-            telefono = sock.user.id
-
-                .split("@")[0]
-
-                .split(":")[0]
-
-                .replace(/^57/, "");
-
-        }
+        let telefono = usuario.telefono || null;
 
         if (telefono === "null")
             telefono = null;

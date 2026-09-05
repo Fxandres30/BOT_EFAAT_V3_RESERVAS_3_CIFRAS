@@ -65,9 +65,10 @@ module.exports = async ({
 
             console.time(`guardarMensajeGrupo-${traceId}`);
 
+            // Se reutiliza ctx.usuario (ya resuelto una única vez por
+            // obtenerContexto → obtenerUsuario.js). guardarMensajeGrupo NO
+            // vuelve a llamar a obtenerUsuarioGlobal.
             const mensaje = await guardarMensajeGrupo({
-
-                sock,
 
                 msg: message,
 
@@ -75,7 +76,9 @@ module.exports = async ({
 
                 grupoId: ctx.chat.remoteJid,
 
-                grupoNombre: null
+                grupoNombre: null,
+
+                usuario: ctx.usuario
 
             });
 
