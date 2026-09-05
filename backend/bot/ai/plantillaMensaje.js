@@ -1,6 +1,7 @@
 // Variables reales disponibles para plantillas de mensajes (Fase 5.2).
 // Nunca inventa datos: si un dato no existe para ese tipo de resultado,
 // la variable queda vacía (nunca se rellena con un valor inventado).
+const { construirVariablesGramaticales, construirVariablesPorConjunto, calcularNumerosRelevantes } = require("./gramatica");
 const { extraerNumeros } = require("../funciones/reservas/extraerNumeros");
 
 const MOSTRAR_POR_VARIABLE = {
@@ -23,47 +24,40 @@ const MOSTRAR_POR_VARIABLE = {
 
 function construirVariables(ctx, resultado) {
 
-    // Igual que calcularTipoPresentacion: ctx.reserva nunca trae
-    // "resultado.tipo" (ver detectarReserva.js), así que se distingue por
-    // la presencia de ctx.reserva/ctx.consulta, no por ese campo.
-    const tipo = ctx?.reserva ? null : (resultado?.tipo || null);
+    // Fuente única de verdad (gramatica.js) para saber cuántos números
+    // están involucrados en esta respuesta — la misma que usa
+    // contextBuilder.js para informar a Gemini. Nunca se recalcula aquí.
+    const {
+        numerosSolicitados,
+        numerosReservados,
+        numerosOcupados,
+        numerosDisponibles,
+        cantidadPropiedad,
+        cantidadNumeros,
+        cantidadReservados,
+        cantidadOcupados,
+        cantidadDisponibles
+    } = calcularNumerosRelevantes(ctx, resultado);
 
-    let numerosSolicitados = [];
-    let numerosReservados = [];
-    let numerosOcupados = [];
-    let numerosDisponibles = [];
+    // "tu_numero_tus_numeros" es de PROPIEDAD (números del cliente): no
+    // aplica a números de otros, por eso usa cantidadPropiedad y no
+    // cantidadNumeros (en "disponibilidad" cantidadPropiedad siempre es 0).
+    // El resto de pares gramaticales son neutros (número/está/reservado/...)
+    // y usan cantidadNumeros, que sí cubre disponibilidad.
+    const formasPropiedad = construirVariablesGramaticales(cantidadPropiedad);
+    const formasGenerales = construirVariablesGramaticales(cantidadNumeros);
 
-    if (ctx?.reserva) {
-
-        numerosSolicitados = extraerNumeros(ctx.textoOriginal || "");
-        numerosReservados = resultado.reservados || [];
-        numerosOcupados = resultado.ocupados || [];
-
-    } else if (tipo === "mis_numeros" || tipo === "mis_reservas") {
-
-        numerosReservados = resultado.numerosDelUsuario || [];
-
-    } else if (tipo === "numero_especifico") {
-
-        numerosSolicitados = resultado.numero ? [resultado.numero] : [];
-
-    } else if (tipo === "disponibilidad") {
-
-        numerosDisponibles = resultado.numerosDisponibles || [];
-        numerosOcupados = resultado.numerosOcupados || [];
-
-    }
-
-    // Fase 5.6 (presentación): "cantidad principal" = de qué números está
-    // hablando la frase en cada tipo, para poder decir "tu número es" (1) o
-    // "tus números son" (varios) sin tocar la lógica de negocio de arriba.
-    // Reservados manda cuando hay (reserva_completa/parcial, mis_numeros,
-    // mis_reservas); si no hay reservados se cae a solicitados (numero_ocupado,
-    // todos_ocupados, numero_especifico). "disponibilidad" no tiene dueño
-    // ("tu número" no aplica a números de otros), así que no participa.
-    const cantidadPrincipal = numerosReservados.length > 0
-        ? numerosReservados.length
-        : numerosSolicitados.length;
+    // Fase 2 — variables con sufijo "_reservados"/"_ocupados"/"_disponibles":
+    // cada una concuerda SIEMPRE con SU propia lista, nunca con la de otro
+    // conjunto ni con cantidadPropiedad/cantidadNumeros. Necesarias para
+    // plantillas que mencionan más de una lista en el mismo mensaje
+    // (reserva_parcial: reservados Y ocupados; disponibilidad: disponibles
+    // Y ocupados) — ahí una sola cantidad global ya no alcanza.
+    const formasPorConjunto = construirVariablesPorConjunto({
+        reservados: cantidadReservados,
+        ocupados: cantidadOcupados,
+        disponibles: cantidadDisponibles
+    });
 
     return {
 
@@ -78,8 +72,13 @@ function construirVariables(ctx, resultado) {
         // "precio" es el valor por número del evento (dato real, eventos_bot.valor).
         precio: ctx.evento?.valor != null ? String(ctx.evento.valor) : "",
         cantidad: resultado?.cantidad != null ? String(resultado.cantidad) : "",
-        tu_numero_tus_numeros: cantidadPrincipal === 1 ? "tu número" : "tus números",
-        es_son: cantidadPrincipal === 1 ? "es" : "son"
+        cantidad_reservados: String(cantidadReservados),
+        cantidad_ocupados: String(cantidadOcupados),
+        cantidad_disponibles: String(cantidadDisponibles),
+
+        ...formasGenerales,
+        tu_numero_tus_numeros: formasPropiedad.tu_numero_tus_numeros,
+        ...formasPorConjunto
 
     };
 

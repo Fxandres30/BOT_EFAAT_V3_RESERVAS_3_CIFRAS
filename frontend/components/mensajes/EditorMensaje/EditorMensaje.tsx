@@ -107,8 +107,25 @@ export default function EditorMensaje({ tipo, usuarioId, plantilla, onGuardada, 
 
     const variablesDisponibles = tipo.variables;
 
+    // Vista previa — SOLO visual. Cuando el tipo puede producir tanto 1
+    // como 2+ números reales (tipo.ejemploSingular/ejemploPlural), se
+    // muestran ambos casos con datos de ejemplo YA escritos en
+    // tiposMensaje.ts (dos diccionarios fijos, ninguna decisión en tiempo
+    // de ejecución) — así un admin ve que "tu número"/"reservado" no se
+    // rompen con 1, y "tus números"/"reservados" tampoco con varios, sin
+    // que este componente calcule ni decida ninguna forma gramatical.
+    const tieneEjemploDual = !!(tipo.ejemploSingular && tipo.ejemploPlural);
+
     const previa = contenido
         ? aplicarPlantillaPreview(contenido, tipo.ejemplo, variables as Record<string, boolean>)
+        : "(Escribe un contenido para ver la vista previa.)";
+
+    const previaSingular = contenido && tipo.ejemploSingular
+        ? aplicarPlantillaPreview(contenido, tipo.ejemploSingular, variables as Record<string, boolean>)
+        : "(Escribe un contenido para ver la vista previa.)";
+
+    const previaPlural = contenido && tipo.ejemploPlural
+        ? aplicarPlantillaPreview(contenido, tipo.ejemploPlural, variables as Record<string, boolean>)
         : "(Escribe un contenido para ver la vista previa.)";
 
     return (
@@ -151,8 +168,10 @@ export default function EditorMensaje({ tipo, usuarioId, plantilla, onGuardada, 
                 <p className="editor-nota">
                     Variables disponibles para este tipo:{" "}
                     {variablesDisponibles.map((v) => `{{${v.variable}}}`).join(", ")}.
-                    Se sustituyen por datos reales sin usar IA — ninguna variable
-                    fuera de esta lista tendrá dato real aquí.
+                    Se sustituyen por datos reales sin usar IA. Esta lista es la
+                    recomendada para este tipo — el backend admite más variables
+                    de concordancia gramatical (singular/plural) de uso general;
+                    consulta gramatica.js si necesitas una que no aparezca aquí.
                 </p>
 
             </div>
@@ -193,17 +212,43 @@ export default function EditorMensaje({ tipo, usuarioId, plantilla, onGuardada, 
                 Emojis activados
             </label>
 
-            <div className="editor-preview">
+            {tieneEjemploDual ? (
 
-                <p className="editor-preview-titulo">
-                    Vista previa (datos de ejemplo, no reales)
-                </p>
+                <div className="editor-preview">
 
-                <div className="editor-preview-burbuja">
-                    {previa}
+                    <p className="editor-preview-titulo">
+                        Vista previa con 1 número (datos de ejemplo, no reales)
+                    </p>
+
+                    <div className="editor-preview-burbuja">
+                        {previaSingular}
+                    </div>
+
+                    <p className="editor-preview-titulo editor-preview-titulo-plural">
+                        Vista previa con varios números (datos de ejemplo, no reales)
+                    </p>
+
+                    <div className="editor-preview-burbuja">
+                        {previaPlural}
+                    </div>
+
                 </div>
 
-            </div>
+            ) : (
+
+                <div className="editor-preview">
+
+                    <p className="editor-preview-titulo">
+                        Vista previa (datos de ejemplo, no reales)
+                    </p>
+
+                    <div className="editor-preview-burbuja">
+                        {previa}
+                    </div>
+
+                </div>
+
+            )}
 
             <div className="editor-acciones">
 

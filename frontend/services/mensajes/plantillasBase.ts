@@ -3,6 +3,17 @@
 // eliminar o crear más desde el panel (sin límite artificial).
 // Los nombres de estilo son únicamente etiquetas iniciales, no controlan
 // ninguna lógica del BOT.
+//
+// Auditoría de frontend (módulo Mensajes): este archivo usa las variables
+// gramaticales de concordancia singular/plural (backend/bot/ai/gramatica.js
+// + backend/bot/ai/plantillaMensaje.js) allí donde el texto original tenía
+// un problema real de concordancia. El criterio de CADA sustitución es
+// exactamente el mismo, semántico, ya validado en
+// backend/_migracion_propuesta_fase2.js (66 filas migradas en Supabase +
+// 85 sin cambio por ser ya invariantes) — no se inventó ninguna regla
+// nueva aquí. Objetivo: que un usuario nuevo, o un tipo que se quede sin
+// plantillas y se vuelva a sembrar, ya nazca con las plantillas
+// correctas, sin reintroducir "1 números" o "3 número(s)".
 
 export interface PlantillaBase {
     nombre: string;
@@ -32,38 +43,38 @@ function construir(contenidos: string[]): PlantillaBase[] {
 const PLANTILLAS_POR_TIPO: Record<string, PlantillaBase[]> = {
 
     reserva_completa: construir([
-        "¡Listo {{cliente}}! Quedaron reservados: {{numeros_reservados}} 🎟️",
-        "Reservado: {{numeros_reservados}} ✅",
-        "{{cliente}}, tus números {{numeros_reservados}} ya quedaron reservados 👍",
+        "¡Listo {{cliente}}! {{quedo_quedaron}} {{reservado_reservados}}: {{numeros_reservados}} 🎟️",
+        "{{reservado_reservados}}: {{numeros_reservados}} ✅",
+        "{{cliente}}, {{tu_numero_tus_numeros}} {{numeros_reservados}} ya {{quedo_quedaron}} {{reservado_reservados}} 👍",
         "¡Hola {{cliente}}! Con gusto reservamos {{numeros_reservados}} para ti 😊",
-        "¡Genial {{cliente}}! {{numeros_reservados}} son tuyos, mucha suerte 🎉",
-        "{{cliente}}, {{numeros_reservados}} reservados. ¡Que la suerte te acompañe! 🍀",
+        "¡Genial {{cliente}}! {{numeros_reservados}} {{es_son}} {{tuyo_tuyos}}, mucha suerte 🎉",
+        "{{cliente}}, {{numeros_reservados}} {{reservado_reservados}}. ¡Que la suerte te acompañe! 🍀",
         "{{cliente}}, confirmamos la reserva de {{numeros_reservados}} para {{evento}} a las {{hora}}. Valor por número: ${{precio}}.",
-        "Reservados {{numeros_reservados}}.",
-        "Listo {{cliente}}, ya quedaron {{numeros_reservados}} a tu nombre.",
-        "Estimado {{cliente}}, le confirmamos la reserva de los números {{numeros_reservados}} para {{evento}}.",
-        "{{numeros_reservados}} reservados para {{cliente}}.",
-        "{{cliente}}, tus números {{numeros_reservados}} quedaron reservados para {{evento}}, a las {{hora}}.",
-        "{{numeros_reservados}} → reservados a nombre de {{cliente}}.",
-        "¡Wuju {{cliente}}! 🥳 {{numeros_reservados}} son tuyos 🎊🍀✨",
+        "{{reservado_reservados}} {{numeros_reservados}}.",
+        "Listo {{cliente}}, ya {{quedo_quedaron}} {{numeros_reservados}} a tu nombre.",
+        "Estimado {{cliente}}, le confirmamos la reserva de {{numeros_reservados}} para {{evento}}.",
+        "{{numeros_reservados}} {{reservado_reservados}} para {{cliente}}.",
+        "{{cliente}}, {{tu_numero_tus_numeros}} {{numeros_reservados}} {{quedo_quedaron}} {{reservado_reservados}} para {{evento}}, a las {{hora}}.",
+        "{{numeros_reservados}} → {{reservado_reservados}} a nombre de {{cliente}}.",
+        "¡Wuju {{cliente}}! 🥳 {{numeros_reservados}} {{es_son}} {{tuyo_tuyos}} 🎊🍀✨",
         ""
     ]),
 
     reserva_parcial: construir([
-        "{{cliente}}, {{numeros_reservados}} quedaron reservados. {{numeros_ocupados}} ya estaban ocupados.",
-        "Reservados: {{numeros_reservados}}. Ocupados: {{numeros_ocupados}}.",
-        "{{cliente}}, logramos apartar {{numeros_reservados}}. {{numeros_ocupados}} ya no estaban disponibles 🙏",
-        "¡Hola {{cliente}}! Te reservamos {{numeros_reservados}}. Lo sentimos, {{numeros_ocupados}} ya tenían dueño.",
-        "{{cliente}}, ¡{{numeros_reservados}} son tuyos! {{numeros_ocupados}} se adelantaron 😅",
-        "{{numeros_reservados}} reservados para ti, {{cliente}}. ¡Suerte con esos números! ({{numeros_ocupados}} ya estaban tomados)",
-        "{{cliente}}, para {{evento}}: se reservaron {{numeros_reservados}} a tu nombre; {{numeros_ocupados}} ya estaban ocupados por otra persona.",
-        "Reservados: {{numeros_reservados}}. No disponibles: {{numeros_ocupados}}.",
-        "{{cliente}}, {{numeros_reservados}} listos. {{numeros_ocupados}} ya no había.",
-        "Estimado {{cliente}}, se confirma la reserva parcial: {{numeros_reservados}}. Los números {{numeros_ocupados}} no estaban disponibles.",
-        "{{numeros_reservados}} reservados / {{numeros_ocupados}} ocupados.",
-        "{{cliente}}, en {{evento}} quedaron reservados {{numeros_reservados}}; {{numeros_ocupados}} ya no estaban libres.",
-        "Solicitaste varios números: {{numeros_reservados}} confirmados, {{numeros_ocupados}} ya ocupados.",
-        "{{cliente}} 🙌 {{numeros_reservados}} son tuyos, pero {{numeros_ocupados}} ya volaron 😬🔥",
+        "{{cliente}}, {{numeros_reservados}} {{quedo_quedaron}} {{reservado_reservados}}. {{numeros_ocupados}} ya {{estaba_estaban_ocupados}} {{ocupado_ocupados_ocupados}}.",
+        "{{reservado_reservados}}: {{numeros_reservados}}. {{ocupado_ocupados_ocupados}}: {{numeros_ocupados}}.",
+        "{{cliente}}, logramos apartar {{numeros_reservados}}. {{numeros_ocupados}} ya no {{estaba_estaban_ocupados}} {{disponible_disponibles_ocupados}} 🙏",
+        "¡Hola {{cliente}}! Te reservamos {{numeros_reservados}}. Lo sentimos, {{numeros_ocupados}} ya {{estaba_estaban_ocupados}} {{ocupado_ocupados_ocupados}}.",
+        "{{cliente}}, ¡{{numeros_reservados}} {{es_son}} {{tuyo_tuyos}}! {{numeros_ocupados}} ya {{estaba_estaban_ocupados}} {{ocupado_ocupados_ocupados}} 😅",
+        "{{numeros_reservados}} {{reservado_reservados}} para ti, {{cliente}}. ¡Suerte con {{ese_esos}}! ({{numeros_ocupados}} ya {{estaba_estaban_ocupados}} {{ocupado_ocupados_ocupados}})",
+        "{{cliente}}, para {{evento}}: {{quedo_quedaron}} {{reservado_reservados}} {{numeros_reservados}} a tu nombre; {{numeros_ocupados}} ya {{estaba_estaban_ocupados}} {{ocupado_ocupados_ocupados}} por otra persona.",
+        "{{reservado_reservados}}: {{numeros_reservados}}. No {{disponible_disponibles_ocupados}}: {{numeros_ocupados}}.",
+        "{{cliente}}, {{numeros_reservados}} {{reservado_reservados}}. {{numeros_ocupados}} ya no había.",
+        "Estimado {{cliente}}, se confirma la reserva parcial: {{numeros_reservados}}. {{el_numero_los_numeros_ocupados}} {{numeros_ocupados}} no {{estaba_estaban_ocupados}} {{disponible_disponibles_ocupados}}.",
+        "{{numeros_reservados}} {{reservado_reservados}} / {{numeros_ocupados}} {{ocupado_ocupados_ocupados}}.",
+        "{{cliente}}, en {{evento}} {{quedo_quedaron}} {{reservado_reservados}} {{numeros_reservados}}; {{numeros_ocupados}} ya no {{estaba_estaban_ocupados}} {{libre_libres_ocupados}}.",
+        "Solicitaste números: {{numeros_reservados}} {{reservado_reservados}}, {{numeros_ocupados}} ya {{ocupado_ocupados_ocupados}}.",
+        "{{cliente}} 🙌 {{numeros_reservados}} {{es_son}} {{tuyo_tuyos}}, pero {{numeros_ocupados}} ya {{estaba_estaban_ocupados}} {{ocupado_ocupados_ocupados}} 😬🔥",
         ""
     ]),
 
@@ -85,8 +96,14 @@ const PLANTILLAS_POR_TIPO: Record<string, PlantillaBase[]> = {
         ""
     ]),
 
+    // numero_ocupado y todos_ocupados siempre tienen exactamente 1 o ≥2
+    // solicitados respectivamente (calcularTipoPresentacion los distingue
+    // así) — ya son gramaticalmente correctos para cualquier cantidad
+    // dentro de esa regla; no se les aplicó ninguna variable nueva salvo
+    // "Natural" de todos_ocupados, que además corrige de paso un error de
+    // concordancia preexistente ("El números" → con {{el_numero_los_numeros}}).
     todos_ocupados: construir([
-        "{{cliente}}, los números {{numeros_solicitados}} ya están ocupados.",
+        "{{cliente}}, {{el_numero_los_numeros}} {{numeros_solicitados}} ya {{esta_estan}} {{ocupado_ocupados}}.",
         "{{numeros_solicitados}} ya ocupados.",
         "{{cliente}}, esos ya no estaban 🙏 {{numeros_solicitados}} ocupados.",
         "¡Hola {{cliente}}! Lo sentimos, {{numeros_solicitados}} ya fueron tomados.",
@@ -104,59 +121,75 @@ const PLANTILLAS_POR_TIPO: Record<string, PlantillaBase[]> = {
     ]),
 
     mis_numeros: construir([
-        "{{cliente}}, tus números son: {{numeros_reservados}}",
-        "Tus números: {{numeros_reservados}}",
-        "{{cliente}}, estos son los tuyos: {{numeros_reservados}} 😊",
-        "¡Hola {{cliente}}! Estos son tus números: {{numeros_reservados}}",
-        "{{cliente}}, ¡tienes {{numeros_reservados}}! Mucha suerte con ellos 🍀",
-        "{{numeros_reservados}} son tuyos, {{cliente}}. ¡Que ganes! 🎉",
-        "{{cliente}}, según nuestro registro, tus números reservados son: {{numeros_reservados}}.",
+        "{{cliente}}, {{tu_numero_tus_numeros}} {{es_son}}: {{numeros_reservados}}",
+        "{{tu_numero_tus_numeros}}: {{numeros_reservados}}",
+        "{{cliente}}, {{tu_numero_tus_numeros}} {{es_son}}: {{numeros_reservados}} 😊",
+        "¡Hola {{cliente}}! {{tu_numero_tus_numeros}} {{es_son}}: {{numeros_reservados}}",
+        "{{cliente}}, ¡tienes {{numeros_reservados}}! Mucha suerte con {{ese_esos}} 🍀",
+        "{{numeros_reservados}} {{es_son}} {{tuyo_tuyos}}, {{cliente}}. ¡Que ganes! 🎉",
+        "{{cliente}}, según nuestro registro, {{tu_numero_tus_numeros}} {{reservado_reservados}} {{es_son}}: {{numeros_reservados}}.",
         "{{numeros_reservados}}",
         "{{cliente}}, tienes: {{numeros_reservados}}",
-        "Estimado {{cliente}}, sus números registrados son: {{numeros_reservados}}.",
-        "Tuyos: {{numeros_reservados}}",
+        "Estimado {{cliente}}, {{su_numero_sus_numeros}} {{reservado_reservados}} {{es_son}}: {{numeros_reservados}}.",
+        "{{tuyo_tuyos}}: {{numeros_reservados}}",
         "{{cliente}}, para {{evento}} tienes: {{numeros_reservados}}",
-        "Números a tu nombre: {{numeros_reservados}}",
-        "{{cliente}} 🎫 tus números son {{numeros_reservados}} ✨",
+        "{{numero_numeros}} a tu nombre: {{numeros_reservados}}",
+        "{{cliente}} 🎫 {{tu_numero_tus_numeros}} {{es_son}} {{numeros_reservados}} ✨",
         ""
     ]),
 
     mis_reservas: construir([
+        // "esto es lo que tienes reservado" es una construcción neutra
+        // invariante ("esto"/"reservado" concuerdan entre sí, no con la
+        // cantidad de números) — ya es correcta para 1 o para varios, no
+        // necesita ninguna variable de concordancia.
         "{{cliente}}, esto es lo que tienes reservado: {{numeros_reservados}}",
-        "Reservado: {{numeros_reservados}}",
-        "{{cliente}}, tienes reservado: {{numeros_reservados}} 📋",
+        "{{reservado_reservados}}: {{numeros_reservados}}",
+        "{{cliente}}, tienes {{reservado_reservados}}: {{numeros_reservados}} 📋",
         "¡Hola {{cliente}}! Esto tienes reservado hasta ahora: {{numeros_reservados}}",
-        "{{cliente}}, ¡tienes reservado {{numeros_reservados}}! 🎉",
-        "{{numeros_reservados}} reservado a tu nombre, {{cliente}}. ¡Suerte!",
-        "{{cliente}}, en {{evento}} tienes reservado actualmente: {{numeros_reservados}}.",
+        "{{cliente}}, ¡tienes {{reservado_reservados}} {{numeros_reservados}}! 🎉",
+        "{{numeros_reservados}} {{reservado_reservados}} a tu nombre, {{cliente}}. ¡Suerte!",
+        "{{cliente}}, en {{evento}} tienes {{reservado_reservados}} actualmente: {{numeros_reservados}}.",
         "{{numeros_reservados}}",
         "{{cliente}}, tienes: {{numeros_reservados}}",
+        // "su reserva actual es" / "tu reserva es": "reserva" es un
+        // sustantivo singular invariante (contiene 1 o varios números),
+        // no concuerda con la cantidad — ya correctas.
         "Estimado {{cliente}}, su reserva actual es: {{numeros_reservados}}.",
         "Reserva actual: {{numeros_reservados}}",
         "{{cliente}}, para {{evento}} tu reserva es: {{numeros_reservados}}",
-        "Reservado a tu nombre: {{numeros_reservados}}",
-        "{{cliente}} 📋 llevas reservado {{numeros_reservados}} ✨",
+        "{{reservado_reservados}} a tu nombre: {{numeros_reservados}}",
+        "{{cliente}} 📋 llevas {{reservado_reservados}} {{numeros_reservados}} ✨",
         ""
     ]),
 
     cantidad_reservas: construir([
-        "{{cliente}}, tienes {{cantidad}} número(s) reservado(s).",
+        "{{cliente}}, tienes {{cantidad}} {{numero_numeros}} {{reservado_reservados}}.",
         "Tienes {{cantidad}}.",
-        "{{cliente}}, llevas {{cantidad}} número(s) 📋",
-        "¡Hola {{cliente}}! Llevas {{cantidad}} número(s) reservado(s).",
+        "{{cliente}}, llevas {{cantidad}} {{numero_numeros}} 📋",
+        "¡Hola {{cliente}}! Llevas {{cantidad}} {{numero_numeros}} {{reservado_reservados}}.",
         "{{cliente}}, ¡ya tienes {{cantidad}}! Sigue así 🎉",
-        "{{cantidad}} reservados, {{cliente}}. ¡Mucha suerte! 🍀",
-        "{{cliente}}, según nuestro registro tienes actualmente {{cantidad}} número(s) reservado(s).",
+        "{{cantidad}} {{reservado_reservados}}, {{cliente}}. ¡Mucha suerte! 🍀",
+        "{{cliente}}, según nuestro registro tienes actualmente {{cantidad}} {{numero_numeros}} {{reservado_reservados}}.",
         "{{cantidad}}",
         "{{cliente}}, tienes {{cantidad}}.",
+        // "la cantidad de números reservados... es" — "cantidad de X" es
+        // un rótulo de categoría invariante en plural (como "cantidad de
+        // manzanas"); "es" concuerda con "la cantidad" (singular), no con
+        // el conteo. Ya correcta para cualquier valor.
         "Estimado {{cliente}}, la cantidad de números reservados a su nombre es: {{cantidad}}.",
         "Cantidad: {{cantidad}}",
-        "{{cliente}}, para {{evento}} llevas {{cantidad}} número(s).",
+        "{{cliente}}, para {{evento}} llevas {{cantidad}} {{numero_numeros}}.",
+        // "Total de números tuyos" es un rótulo de UI (como "Followers:"),
+        // convención habitual mantenerlo invariante en plural.
         "Total de números tuyos: {{cantidad}}",
-        "{{cliente}} 🔢 llevas {{cantidad}} números ✨",
+        "{{cliente}} 🔢 llevas {{cantidad}} {{numero_numeros}} ✨",
         ""
     ]),
 
+    // numero_especifico siempre trata de EXACTAMENTE 1 número (por diseño
+    // de resolverConsulta.js) — las 15 ya son singulares/neutras y
+    // correctas, no hay nada que concuerde con una cantidad variable.
     numero_especifico: construir([
         "{{cliente}}, sobre el {{numeros_solicitados}}: te cuento su estado.",
         "{{numeros_solicitados}}: revisado.",
@@ -176,23 +209,31 @@ const PLANTILLAS_POR_TIPO: Record<string, PlantillaBase[]> = {
     ]),
 
     disponibilidad: construir([
-        "Números disponibles: {{numeros_disponibles}}",
-        "Libres: {{numeros_disponibles}}",
-        "Quedan disponibles: {{numeros_disponibles}} 😊",
-        "¡Hola! Estos números siguen disponibles: {{numeros_disponibles}}",
-        "¡Todavía hay buenos números! Disponibles: {{numeros_disponibles}} 🎉",
-        "Disponibles: {{numeros_disponibles}}. ¡Elige el tuyo y mucha suerte! 🍀",
-        "Para {{evento}}, los números que aún están disponibles son: {{numeros_disponibles}}. Los ya ocupados son: {{numeros_ocupados}}.",
-        "Disponibles: {{numeros_disponibles}}",
-        "Quedan: {{numeros_disponibles}}",
-        "Se informa que los números disponibles actualmente son: {{numeros_disponibles}}.",
-        "Disponibles ({{numeros_disponibles}}). Ocupados ({{numeros_ocupados}}).",
-        "Para {{evento}}, disponibles: {{numeros_disponibles}}",
-        "Números libres: {{numeros_disponibles}}",
-        "¡Quedan varios! 👀 {{numeros_disponibles}} disponibles 🔥",
+        "{{numero_numeros}} {{disponible_disponibles}}: {{numeros_disponibles}}",
+        "{{libre_libres}}: {{numeros_disponibles}}",
+        "{{queda_quedan}} {{disponible_disponibles}}: {{numeros_disponibles}} 😊",
+        "¡Hola! {{numero_numeros}} {{disponible_disponibles}}: {{numeros_disponibles}}",
+        "¡Todavía {{queda_quedan}} {{el_numero_los_numeros}} {{disponible_disponibles}}! {{numeros_disponibles}} 🎉",
+        "{{numero_numeros}} {{disponible_disponibles}}: {{numeros_disponibles}}. ¡Elige el tuyo y mucha suerte! 🍀",
+        // Dos listas independientes en el mismo mensaje: disponibles usa
+        // las variables base (concuerdan con numeros_disponibles);
+        // ocupados usa el conjunto "_ocupados" (concuerda con
+        // numeros_ocupados de forma independiente — puede ser 1 mientras
+        // disponibles es 3, o al revés).
+        "Para {{evento}}, {{el_numero_los_numeros}} que aún {{esta_estan}} {{disponible_disponibles}} {{es_son}}: {{numeros_disponibles}}. {{el_numero_los_numeros_ocupados}} ya {{ocupado_ocupados_ocupados}} {{es_son_ocupados}}: {{numeros_ocupados}}.",
+        "{{numero_numeros}} {{disponible_disponibles}}: {{numeros_disponibles}}",
+        "{{queda_quedan}}: {{numeros_disponibles}}",
+        "Se informa que {{el_numero_los_numeros}} {{disponible_disponibles}} actualmente {{es_son}}: {{numeros_disponibles}}.",
+        "{{disponible_disponibles}} ({{numeros_disponibles}}). {{ocupado_ocupados_ocupados}} ({{numeros_ocupados}}).",
+        "Para {{evento}}, {{disponible_disponibles}}: {{numeros_disponibles}}",
+        "{{numero_numeros}} {{libre_libres}}: {{numeros_disponibles}}",
+        "¡{{queda_quedan}} {{el_numero_los_numeros}}! 👀 {{numeros_disponibles}} {{disponible_disponibles}} 🔥",
         ""
     ]),
 
+    // info_evento nunca habla de varios números — siempre UN evento. El
+    // "es" que aparece aquí es el verbo copulativo de "Es {{evento}}", sin
+    // relación con conteo; no se migra por eso (mismo criterio que Fase 2).
     info_evento: construir([
         "Este sorteo es: {{evento}}, a las {{hora}}.",
         "{{evento}} — {{hora}}",

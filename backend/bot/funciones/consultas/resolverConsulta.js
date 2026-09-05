@@ -8,6 +8,7 @@ const { consultarCantidad } = require("./consultarCantidad");
 const { consultarNumero } = require("./consultarNumero");
 const { consultarDisponibilidad } = require("./consultarDisponibilidad");
 const { consultarInfoEvento } = require("./consultarInfoEvento");
+const { construirVariablesGramaticales, capitalizar } = require("../../ai/gramatica");
 
 const TEXTO_ESTADO = {
 
@@ -34,11 +35,21 @@ async function resolverConsulta({ tipo, numeros, evento, usuario }) {
 
             const cantidad = numerosDelUsuario.length;
 
-            const mensaje = cantidad === 0
-                ? "No tienes números reservados actualmente."
-                : cantidad === 1
-                    ? `Tu número reservado es: ${numerosDelUsuario[0]}`
-                    : `Tus números reservados son: ${numerosDelUsuario.join(", ")}`;
+            let mensaje;
+
+            if (cantidad === 0) {
+
+                mensaje = "No tienes números reservados actualmente.";
+
+            } else {
+
+                // Fuente única de verdad para singular/plural (gramatica.js)
+                // — nunca una rama ad-hoc distinta a la de plantillaMensaje.js.
+                const g = construirVariablesGramaticales(cantidad);
+
+                mensaje = `${capitalizar(g.tu_numero_tus_numeros)} ${g.reservado_reservados} ${g.es_son}: ${numerosDelUsuario.join(", ")}`;
+
+            }
 
             return { tipo, numerosDelUsuario, mensaje };
 
@@ -48,7 +59,9 @@ async function resolverConsulta({ tipo, numeros, evento, usuario }) {
 
             const cantidad = await consultarCantidad({ evento, usuario });
 
-            const mensaje = `Tienes ${cantidad} número${cantidad === 1 ? "" : "s"} reservado${cantidad === 1 ? "" : "s"}.`;
+            const g = construirVariablesGramaticales(cantidad);
+
+            const mensaje = `Tienes ${cantidad} ${g.numero_numeros} ${g.reservado_reservados}.`;
 
             return { tipo, cantidad, mensaje };
 
@@ -83,9 +96,19 @@ async function resolverConsulta({ tipo, numeros, evento, usuario }) {
             const { numerosDisponibles, numerosOcupados } =
                 await consultarDisponibilidad({ evento });
 
-            const mensaje = numerosDisponibles.length
-                ? `Números disponibles (${numerosDisponibles.length}): ${numerosDisponibles.join(", ")}`
-                : "No quedan números disponibles.";
+            let mensaje;
+
+            if (numerosDisponibles.length === 0) {
+
+                mensaje = "No quedan números disponibles.";
+
+            } else {
+
+                const g = construirVariablesGramaticales(numerosDisponibles.length);
+
+                mensaje = `${capitalizar(g.numero_numeros)} ${g.disponible_disponibles} (${numerosDisponibles.length}): ${numerosDisponibles.join(", ")}`;
+
+            }
 
             return { tipo, numerosDisponibles, numerosOcupados, mensaje };
 

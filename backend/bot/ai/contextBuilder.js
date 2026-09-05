@@ -3,6 +3,43 @@
 // consulta Supabase ni Baileys directamente, y nunca incluye credenciales
 // ni datos de sesión.
 const { extraerNumeros } = require("../funciones/reservas/extraerNumeros");
+const { construirVariablesGramaticales, calcularNumerosRelevantes } = require("./gramatica");
+
+// Gramática explícita para Gemini: la MISMA fuente de verdad que usa
+// plantillaMensaje.js (calcularNumerosRelevantes), nunca una cuenta
+// recalculada aparte. Gemini debe usar EXACTAMENTE estas formas y esta
+// cantidad — nunca inventar ni corregir singular/plural por su cuenta
+// (ver instrucción en prompts/efaat.txt).
+function construirGramaticaParaIA(ctx, resultado) {
+
+    const {
+        cantidadPropiedad,
+        cantidadNumeros,
+        cantidadReservados,
+        cantidadOcupados,
+        cantidadDisponibles
+    } = calcularNumerosRelevantes(ctx, resultado);
+
+    return {
+        cantidadPropiedad,
+        cantidadNumeros,
+        formasPropiedad: construirVariablesGramaticales(cantidadPropiedad),
+        formasGenerales: construirVariablesGramaticales(cantidadNumeros),
+
+        // Fase 2 — cantidades INDEPENDIENTES por lista. reserva_parcial es
+        // el caso real: numerosReservados y numerosOcupados pueden tener
+        // cantidades distintas en la MISMA respuesta. Gemini debe usar
+        // cada una para concordar SOLO con su propia lista — la cantidad
+        // de una nunca determina la concordancia de la otra.
+        cantidadReservados,
+        cantidadOcupados,
+        cantidadDisponibles,
+        formasReservados: construirVariablesGramaticales(cantidadReservados),
+        formasOcupados: construirVariablesGramaticales(cantidadOcupados),
+        formasDisponibles: construirVariablesGramaticales(cantidadDisponibles)
+    };
+
+}
 
 function construirContextoReserva(ctx) {
 
@@ -41,7 +78,9 @@ function construirContextoReserva(ctx) {
 
                 numerosReservados: reserva.reservados || [],
 
-                numerosYaOcupados: reserva.ocupados || []
+                numerosYaOcupados: reserva.ocupados || [],
+
+                gramatica: construirGramaticaParaIA(ctx, reserva)
 
             }
 
@@ -59,7 +98,10 @@ function construirContextoReserva(ctx) {
 
             ...base,
 
-            resultado: datosConsulta
+            resultado: {
+                ...datosConsulta,
+                gramatica: construirGramaticaParaIA(ctx, consulta)
+            }
 
         };
 
