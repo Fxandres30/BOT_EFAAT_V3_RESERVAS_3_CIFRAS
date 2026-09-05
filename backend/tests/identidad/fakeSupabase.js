@@ -2,11 +2,11 @@
 // Fake de Supabase para pruebas de identidad — SOLO para tests.
 // No es un mock de librería genérico: implementa únicamente el subconjunto
 // de la API encadenable de supabase-js que usan obtenerUsuarioGlobal.js,
-// guardarMensajeGrupo.js y consultarMisNumeros.js:
+// guardarMensajeGrupo.js, consultarMisNumeros.js y reservarNumeros.js:
 //
-//   .from(tabla).select(cols).eq(c,v).neq(c,v).limit(n).order(c,opts)
+//   .from(tabla).select(cols).eq(c,v).neq(c,v).in(c,vs).limit(n).order(c,opts)
 //   .from(tabla).insert(obj).select().single()
-//   .from(tabla).update(obj).eq(c,v)
+//   .from(tabla).update(obj).eq(c,v).in(c,vs).select()
 //
 // El builder es "thenable" (implementa .then), igual que el query builder
 // real de supabase-js, así que `await supabase.from(...).eq(...).limit(2)`
@@ -40,12 +40,25 @@ function crearFakeSupabase() {
 
     }
 
+    // Conteo de llamadas por tabla+modo — usado por la prueba de "una sola
+    // resolución de identidad" para comprobar cuántas veces se consultó/
+    // escribió realmente la tabla "usuarios" en todo un pipeline.
+    const llamadas = {};
+
+    function registrarLlamada(nombreTabla, modo) {
+
+        if (!llamadas[nombreTabla]) llamadas[nombreTabla] = { select: 0, insert: 0, update: 0 };
+        if (llamadas[nombreTabla][modo] != null) llamadas[nombreTabla][modo]++;
+
+    }
+
     function crearQuery(nombreTabla) {
 
         let modo = null; // 'select' | 'insert' | 'update'
         let payload = null;
         const filtrosEq = [];
         const filtrosNeq = [];
+        const filtrosIn = [];
         let limiteN = null;
         let ordenCampo = null;
         let ordenAsc = true;
@@ -89,6 +102,13 @@ function crearFakeSupabase() {
 
             },
 
+            in(campo, valores) {
+
+                filtrosIn.push([campo, valores]);
+                return builder;
+
+            },
+
             limit(n) {
 
                 limiteN = n;
@@ -123,13 +143,16 @@ function crearFakeSupabase() {
 
         async function ejecutar() {
 
+            registrarLlamada(nombreTabla, modo);
+
             const filas = tabla(nombreTabla);
 
             if (modo === "select") {
 
                 let resultado = filas.filter(fila =>
                     filtrosEq.every(([c, v]) => fila[c] === v) &&
-                    filtrosNeq.every(([c, v]) => fila[c] !== v)
+                    filtrosNeq.every(([c, v]) => fila[c] !== v) &&
+                    filtrosIn.every(([c, vs]) => vs.includes(fila[c]))
                 );
 
                 if (ordenCampo) {
@@ -191,16 +214,25 @@ function crearFakeSupabase() {
                 }
 
                 const lista = tabla(nombreTabla);
+                const actualizadas = [];
 
                 for (let i = 0; i < lista.length; i++) {
 
-                    const coincide = filtrosEq.every(([c, v]) => lista[i][c] === v);
+                    const coincide =
+                        filtrosEq.every(([c, v]) => lista[i][c] === v) &&
+                        filtrosNeq.every(([c, v]) => lista[i][c] !== v) &&
+                        filtrosIn.every(([c, vs]) => vs.includes(lista[i][c]));
 
-                    if (coincide) lista[i] = { ...lista[i], ...payload };
+                    if (coincide) {
+
+                        lista[i] = { ...lista[i], ...payload };
+                        actualizadas.push(lista[i]);
+
+                    }
 
                 }
 
-                return { data: null, error: null };
+                return { data: actualizadas, error: null };
 
             }
 
@@ -223,7 +255,7 @@ function crearFakeSupabase() {
 
     };
 
-    return { client, tablas, forzarProximoError };
+    return { client, tablas, forzarProximoError, llamadas };
 
 }
 

@@ -13,21 +13,20 @@ async function guardarMensajeGrupo({
     try {
 
         // ==========================================
-        // fromMe: el bot no es un cliente. No se resuelve ni se crea
-        // identidad para sus propios mensajes, y por diseño tampoco se
-        // registran en mensajes_grupos_sorteos (no aportan valor y evita
-        // cualquier ambigüedad de esquema con usuario_id). El bloqueo de
-        // identidad para fromMe ya ocurrió antes, en
-        // bot/middleware/obtenerUsuario.js — esto es una segunda barrera.
+        // fromMe: el bot no es un cliente.
+        // ==========================================
+        // El panel de Chats necesita ver la conversación completa,
+        // incluidas las respuestas del BOT — por eso el mensaje SÍ se
+        // guarda. Pero jamás se resuelve, crea ni actualiza identidad de
+        // cliente para un mensaje propio: usuario_id queda NULL
+        // (mensajes_grupos_sorteos.usuario_id es nullable) y ni siquiera se
+        // referencia `usuario` en esta rama. El bloqueo real de identidad ya
+        // ocurrió antes, en bot/middleware/obtenerUsuario.js (que ni
+        // siquiera intenta resolver para fromMe); aquí simplemente no se
+        // usa lo que llegue en `usuario` cuando fromMe=true.
         // ==========================================
 
-        if (msg.key.fromMe) {
-
-            console.log("⏭️ guardarMensajeGrupo: fromMe=true — no se registra ni se resuelve identidad de cliente.");
-
-            return null;
-
-        }
+        const esFromMe = !!msg.key.fromMe;
 
         // ==========================================
         // Ignorar mensajes internos
@@ -61,15 +60,22 @@ async function guardarMensajeGrupo({
             return null;
 
         // ==========================================
-        // Identidad ya resuelta por el pipeline (ctx.usuario). Si no vino
-        // resuelta (p. ej. no se pudo determinar el JID, o hubo una
-        // contingencia de identidad), no se registra el mensaje — igual
-        // que el comportamiento anterior cuando obtenerUsuarioGlobal
-        // devolvía null. NUNCA se vuelve a llamar aquí a
-        // obtenerUsuarioGlobal: eso es lo que causaba la doble resolución.
+        // Identidad — SOLO para mensajes reales (fromMe=false).
+        //
+        // Para un mensaje real, la identidad ya fue resuelta UNA vez por el
+        // pipeline (obtenerContexto → obtenerUsuario.js → ctx.usuario) y se
+        // recibe aquí como `usuario`. Si no vino resuelta (p. ej. no se
+        // pudo determinar el JID, o hubo una contingencia de identidad), no
+        // se registra el mensaje — igual que el comportamiento anterior
+        // cuando obtenerUsuarioGlobal devolvía null. NUNCA se vuelve a
+        // llamar aquí a obtenerUsuarioGlobal: eso es lo que causaba la
+        // doble resolución.
+        //
+        // Para fromMe, `usuario` se ignora por completo aunque llegara con
+        // algo — el bot nunca es la identidad de un cliente.
         // ==========================================
 
-        if (!usuario)
+        if (!esFromMe && !usuario)
             return null;
 
         // ==========================================
@@ -145,17 +151,32 @@ async function guardarMensajeGrupo({
             null;
 
         // ==========================================
-        // Teléfono
+        // Datos de identidad para la fila — SOLO para mensajes reales.
         // ==========================================
-        // NOTA: ya no hay fallback a sock.user.id (número del propio bot).
-        // Ese fallback era el vestigio del camino fromMe, que ahora se
-        // corta arriba antes de llegar aquí; para un mensaje real, si el
-        // usuario resuelto no tiene teléfono, se registra tal cual (null).
+        // Para fromMe quedan NULL a propósito: el bot no es un cliente y su
+        // teléfono/LID NUNCA debe mezclarse aquí ni usarse como si fuera un
+        // dato de identidad (aunque el registro en sí sí se guarda, para
+        // que el panel de Chats muestre la conversación completa).
 
-        let telefono = usuario.telefono || null;
+        let usuarioId = null;
+        let telefono = null;
+        let lid = null;
+        let nombreUsuario = null;
 
-        if (telefono === "null")
-            telefono = null;
+        if (!esFromMe) {
+
+            usuarioId = usuario.id;
+
+            telefono = usuario.telefono || null;
+
+            if (telefono === "null")
+                telefono = null;
+
+            lid = usuario.lid || null;
+
+            nombreUsuario = usuario.nombre || null;
+
+        }
 
         // ==========================================
         // Media
@@ -197,13 +218,13 @@ async function guardarMensajeGrupo({
 
                 grupo_nombre: grupoNombre || null,
 
-                usuario_id: usuario.id,
+                usuario_id: usuarioId,
 
                 telefono,
 
-                lid: usuario.lid,
+                lid,
 
-                nombre: usuario.nombre,
+                nombre: nombreUsuario,
 
                 push_name: msg.pushName || null,
 

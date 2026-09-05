@@ -33,6 +33,9 @@ const RUTA_OBTENER_USUARIO =
 const RUTA_CONSULTAR_MIS_NUMEROS =
     path.resolve(__dirname, "../../bot/funciones/consultas/consultarMisNumeros.js");
 
+const RUTA_RESERVAR_NUMEROS =
+    path.resolve(__dirname, "../../bot/funciones/reservas/reservarNumeros.js");
+
 // Carga (o recarga) los módulos bajo prueba con un fake de Supabase nuevo y
 // aislado por prueba, para que ninguna prueba contamine a otra.
 function cargarModulos() {
@@ -55,18 +58,21 @@ function cargarModulos() {
     delete require.cache[RUTA_GUARDAR_MENSAJE_GRUPO];
     delete require.cache[RUTA_OBTENER_USUARIO];
     delete require.cache[RUTA_CONSULTAR_MIS_NUMEROS];
+    delete require.cache[RUTA_RESERVAR_NUMEROS];
 
     const obtenerUsuarioGlobalMod = require(RUTA_OBTENER_USUARIO_GLOBAL);
     const { guardarMensajeGrupo } = require(RUTA_GUARDAR_MENSAJE_GRUPO);
     const obtenerUsuario = require(RUTA_OBTENER_USUARIO);
     const { consultarMisNumeros } = require(RUTA_CONSULTAR_MIS_NUMEROS);
+    const { reservarNumeros } = require(RUTA_RESERVAR_NUMEROS);
 
     return {
         fake,
         obtenerUsuarioGlobalMod,
         guardarMensajeGrupo,
         obtenerUsuario,
-        consultarMisNumeros
+        consultarMisNumeros,
+        reservarNumeros
     };
 
 }
@@ -297,12 +303,15 @@ async function main() {
     });
 
     // ======================================================================
-    // 9. fromMe=true → 0 creación de usuarios (en las 3 capas).
+    // 9. fromMe=true → 0 creación de usuarios, PERO el mensaje SÍ se guarda
+    //    (usuario_id = NULL, from_me = true) para que el panel de Chats
+    //    conserve la conversación completa.
     // ======================================================================
-    await test("9. fromMe=true no crea usuarios en obtenerUsuarioGlobal, obtenerUsuario ni guardarMensajeGrupo", async () => {
+    await test("9. fromMe=true: 0 usuarios creados, el mensaje se guarda con usuario_id NULL y from_me true", async () => {
 
         const { fake, obtenerUsuarioGlobalMod, guardarMensajeGrupo, obtenerUsuario } = cargarModulos();
 
+        // Capa 1: obtenerUsuarioGlobal con fromMe:true — blindaje defensivo.
         const r1 = await obtenerUsuarioGlobalMod.obtenerUsuarioGlobal({
             jid: "573106814436@s.whatsapp.net",
             fromMe: true
@@ -311,46 +320,71 @@ async function main() {
         assert.strictEqual(r1, null);
         assert.strictEqual(fake.tablas.usuarios.length, 0);
 
+        // Capa 2: obtenerUsuario (middleware) — nunca intenta resolver.
         const usuarioResuelto = await obtenerUsuario(ctxGrupoFromMe());
 
         assert.strictEqual(usuarioResuelto, null);
         assert.strictEqual(fake.tablas.usuarios.length, 0);
 
+        // Capa 3: guardarMensajeGrupo — SÍ guarda el mensaje, sin identidad.
         const msgFromMe = {
             key: { fromMe: true, id: "MSG1", participant: null, remoteJid: "grupo1@g.us" },
-            message: { conversation: "hola" },
+            message: { conversation: "✅ Reserva realizada correctamente." },
             pushName: null
         };
 
         const mensaje = await guardarMensajeGrupo({
             msg: msgFromMe,
-            texto: "hola",
+            texto: "✅ Reserva realizada correctamente.",
             grupoId: "grupo1@g.us",
-            grupoNombre: null,
-            usuario: usuarioResuelto
+            grupoNombre: "Grupo Sorteo",
+            usuario: usuarioResuelto // null — se ignora igual aunque llegara con algo
         });
 
-        assert.strictEqual(mensaje, null);
-        assert.strictEqual(fake.tablas.usuarios.length, 0);
-        assert.strictEqual((fake.tablas.mensajes_grupos_sorteos || []).length, 0);
+        assert.ok(mensaje, "el mensaje del BOT debe quedar guardado (lo necesita el panel de Chats)");
+        assert.strictEqual(mensaje.usuario_id, null, "usuario_id debe ser NULL para fromMe");
+        assert.strictEqual(mensaje.from_me, true, "from_me debe conservarse como true");
+        assert.strictEqual(mensaje.telefono, null, "no debe filtrarse el teléfono del bot como si fuera identidad");
+        assert.strictEqual(mensaje.lid, null);
+        assert.strictEqual(mensaje.texto, "✅ Reserva realizada correctamente.");
+        assert.strictEqual(mensaje.grupo_id, "grupo1@g.us");
+
+        assert.strictEqual(fake.tablas.usuarios.length, 0, "usuarios sigue en 0 — el mensaje no contamina identidad");
+        assert.strictEqual(fake.tablas.mensajes_grupos_sorteos.length, 1, "el mensaje debe quedar en el historial");
 
     });
 
     // ======================================================================
-    // 10. fromMe=true repetido 100 veces → 0 usuarios nuevos.
+    // 10. fromMe=true repetido 100 veces → 0 usuarios nuevos, y los 100
+    //     mensajes quedan conservados en el historial.
     // ======================================================================
-    await test("10. fromMe=true repetido 100 veces → 0 usuarios nuevos", async () => {
+    await test("10. fromMe=true repetido 100 veces → 0 usuarios nuevos, 100 mensajes conservados", async () => {
 
-        const { fake, obtenerUsuario } = cargarModulos();
+        const { fake, obtenerUsuario, guardarMensajeGrupo } = cargarModulos();
 
         for (let i = 0; i < 100; i++) {
 
-            const r = await obtenerUsuario(ctxGrupoFromMe({ id: `MSG${i}` }));
-            assert.strictEqual(r, null);
+            const ctx = ctxGrupoFromMe({ id: `MSG${i}` });
+
+            const usuarioResuelto = await obtenerUsuario(ctx);
+            assert.strictEqual(usuarioResuelto, null);
+
+            const mensaje = await guardarMensajeGrupo({
+                msg: ctx.message,
+                texto: `mensaje del bot #${i}`,
+                grupoId: "grupo1@g.us",
+                grupoNombre: null,
+                usuario: usuarioResuelto
+            });
+
+            assert.ok(mensaje, `el mensaje #${i} del bot debe guardarse`);
+            assert.strictEqual(mensaje.usuario_id, null);
+            assert.strictEqual(mensaje.from_me, true);
 
         }
 
-        assert.strictEqual(fake.tablas.usuarios.length, 0);
+        assert.strictEqual(fake.tablas.usuarios.length, 0, "0 usuarios nuevos tras 100 mensajes fromMe");
+        assert.strictEqual(fake.tablas.mensajes_grupos_sorteos.length, 100, "los 100 mensajes quedan en el historial");
 
     });
 
@@ -392,6 +426,164 @@ async function main() {
         assert.strictEqual(fake.tablas.usuarios.length, 1, "no debe crear ni buscar una segunda identidad");
         assert.strictEqual(fila.usuario_id, usuario.id);
         assert.strictEqual(fila.telefono, usuario.telefono);
+
+    });
+
+    // ======================================================================
+    // 11-B. Mensaje real con SOLO LID → identifica/crea usuario (pipeline
+    //       completo: obtenerUsuario → guardarMensajeGrupo).
+    // ======================================================================
+    await test("11-B. Mensaje real con solo LID identifica al usuario en todo el pipeline", async () => {
+
+        const { fake, obtenerUsuario, guardarMensajeGrupo } = cargarModulos();
+
+        const ctx = ctxGrupoReal({ participant: "700@lid", pushName: "Cliente LID" });
+
+        const usuario = await obtenerUsuario(ctx);
+
+        assert.ok(usuario);
+        assert.strictEqual(usuario.lid, "700@lid");
+        assert.strictEqual(usuario.telefono, null);
+        assert.strictEqual(fake.tablas.usuarios.length, 1);
+
+        const fila = await guardarMensajeGrupo({
+            msg: ctx.message,
+            texto: "hola",
+            grupoId: "grupo1@g.us",
+            grupoNombre: null,
+            usuario
+        });
+
+        assert.ok(fila);
+        assert.strictEqual(fila.usuario_id, usuario.id);
+        assert.strictEqual(fila.lid, "700@lid");
+
+    });
+
+    // ======================================================================
+    // 11-C. Mensaje real con SOLO teléfono → identifica/crea usuario
+    //       (pipeline completo).
+    // ======================================================================
+    await test("11-C. Mensaje real con solo teléfono identifica al usuario en todo el pipeline", async () => {
+
+        const { fake, obtenerUsuario, guardarMensajeGrupo } = cargarModulos();
+
+        const ctx = ctxGrupoReal({ participant: "3007001111@s.whatsapp.net", pushName: "Cliente Tel" });
+
+        const usuario = await obtenerUsuario(ctx);
+
+        assert.ok(usuario);
+        assert.strictEqual(usuario.telefono, "3007001111");
+        assert.strictEqual(usuario.lid, null);
+        assert.strictEqual(fake.tablas.usuarios.length, 1);
+
+        const fila = await guardarMensajeGrupo({
+            msg: ctx.message,
+            texto: "hola",
+            grupoId: "grupo1@g.us",
+            grupoNombre: null,
+            usuario
+        });
+
+        assert.ok(fila);
+        assert.strictEqual(fila.usuario_id, usuario.id);
+        assert.strictEqual(fila.telefono, "3007001111");
+
+    });
+
+    // ======================================================================
+    // 11-D. Doble resolución: exactamente UNA resolución de identidad por
+    //       mensaje entrante real. Se cuenta cuántas veces se consulta/
+    //       escribe realmente la tabla "usuarios" en todo el pipeline.
+    // ======================================================================
+    await test("11-D. Una sola resolución de identidad por mensaje entrante (conteo de llamadas a 'usuarios')", async () => {
+
+        const { fake, obtenerUsuario, guardarMensajeGrupo } = cargarModulos();
+
+        const ctx = ctxGrupoReal({ participant: "701@lid", pushName: "Cliente Único" });
+
+        const usuario = await obtenerUsuario(ctx);
+        assert.ok(usuario);
+
+        // Para un LID nuevo, la ÚNICA resolución esperada es:
+        // 1 SELECT (buscar por lid, no existe) + 1 INSERT (crear) = 2
+        // llamadas a "usuarios". Ninguna llamada adicional debe originarse
+        // en obtenerUsuario más allá de esa única resolución.
+        const llamadasTrasResolucion = { ...fake.llamadas.usuarios };
+        assert.strictEqual(llamadasTrasResolucion.select, 1);
+        assert.strictEqual(llamadasTrasResolucion.insert, 1);
+        assert.strictEqual(llamadasTrasResolucion.update, 0);
+
+        const fila = await guardarMensajeGrupo({
+            msg: ctx.message,
+            texto: "hola",
+            grupoId: "grupo1@g.us",
+            grupoNombre: null,
+            usuario
+        });
+
+        assert.ok(fila);
+
+        // guardarMensajeGrupo NO debe agregar NINGUNA llamada más a
+        // "usuarios": debe reutilizar `usuario` tal cual.
+        assert.deepStrictEqual(
+            fake.llamadas.usuarios,
+            llamadasTrasResolucion,
+            "guardarMensajeGrupo no debe volver a tocar la tabla 'usuarios'"
+        );
+
+    });
+
+    // ======================================================================
+    // 11-E. Reserva: usuario.id llega intacto hasta usuario_global_id.
+    // ======================================================================
+    // Usa reservarNumeros.js REAL, sin modificar, para probar que el
+    // usuario.id producido por la identidad corregida es exactamente el
+    // que termina escrito en usuario_global_id.
+    await test("11-E. usuario.id llega intacto hasta reservas.usuario_global_id (reservarNumeros real, sin tocar)", async () => {
+
+        const { fake, obtenerUsuario, reservarNumeros } = cargarModulos();
+
+        const ctx = ctxGrupoReal({ participant: "702@lid", pushName: "Comprador" });
+        const usuario = await obtenerUsuario(ctx);
+
+        assert.ok(usuario);
+
+        fake.tablas["numeros_evento_reserva_test"] = [
+            { numero: 45, estado: "libre", usuario_global_id: null },
+            { numero: 46, estado: "libre", usuario_global_id: null }
+        ];
+
+        const evento = {
+            tabla: "numeros_evento_reserva_test",
+            grupo_id: "grupo1@g.us",
+            grupo_nombre: "Grupo Sorteo",
+            id: "evento-1",
+            usuario_id: "tenant-1", // dueño del bot — NO es el comprador
+            telefono_bot: "3000000000"
+        };
+
+        const reservados = await reservarNumeros({
+            evento,
+            numeros: [45],
+            usuario,
+            comprador: usuario.nombre,
+            contacto: usuario.telefono,
+            lib: usuario.lid
+        });
+
+        assert.strictEqual(reservados.length, 1);
+        assert.strictEqual(
+            reservados[0].usuario_global_id,
+            usuario.id,
+            "reservas.usuario_global_id debe ser exactamente usuarios.id del comprador"
+        );
+
+        assert.notStrictEqual(
+            reservados[0].usuario_global_id,
+            evento.usuario_id,
+            "usuario_global_id (comprador) nunca debe confundirse con evento.usuario_id (tenant/dueño del bot)"
+        );
 
     });
 
