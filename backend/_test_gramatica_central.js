@@ -37,7 +37,7 @@ fakeModule("./consultarDisponibilidad", {
     consultarDisponibilidad: async () => ({ numerosDisponibles: mockDisponibles, numerosOcupados: mockOcupados })
 }, CONSULTAS_DIR);
 
-const { construirVariablesGramaticales, calcularNumerosRelevantes } = require("./bot/ai/gramatica.js");
+const { construirVariablesGramaticales, calcularNumerosRelevantes, formatearListaNumeros } = require("./bot/ai/gramatica.js");
 const { construirVariables, aplicarPlantilla, calcularTipoPresentacion } = require("./bot/ai/plantillaMensaje.js");
 const { construirContextoReserva } = require("./bot/ai/contextBuilder.js");
 const { resolverConsulta } = require(path.join(CONSULTAS_DIR, "resolverConsulta.js"));
@@ -240,10 +240,10 @@ function numerosDeCantidad(n) {
             if (n === 0) {
                 assertEq(r.mensaje, "No tienes números reservados actualmente.", `${tipo} fallback (0): mensaje`);
             } else if (n === 1) {
-                assertEq(r.mensaje, `Tu número reservado es: ${mockNumerosDelUsuario[0]}`, `${tipo} fallback (1): mensaje singular`);
+                assertEq(r.mensaje, `Tu número reservado es: ${formatearListaNumeros(mockNumerosDelUsuario)}`, `${tipo} fallback (1): mensaje singular`);
                 assertEq(contienePlarelIncorrectoEn1(r.mensaje), false, `${tipo} fallback (1): sin plural incorrecto → "${r.mensaje}"`);
             } else {
-                assertEq(r.mensaje, `Tus números reservados son: ${mockNumerosDelUsuario.join(", ")}`, `${tipo} fallback (${n}): mensaje plural`);
+                assertEq(r.mensaje, `Tus números reservados son: ${formatearListaNumeros(mockNumerosDelUsuario)}`, `${tipo} fallback (${n}): mensaje plural`);
                 assertEq(contieneSingularIncorrectoEn2Mas(r.mensaje), false, `${tipo} fallback (${n}): sin singular incorrecto → "${r.mensaje}"`);
             }
 
@@ -275,10 +275,10 @@ function numerosDeCantidad(n) {
         if (n === 0) {
             assertEq(r.mensaje, "No quedan números disponibles.", "disponibilidad (0): mensaje");
         } else if (n === 1) {
-            assertEq(r.mensaje, `Número disponible (1): ${mockDisponibles[0]}`, "disponibilidad (1): mensaje singular (bug corregido)");
+            assertEq(r.mensaje, `Número disponible (1): ${formatearListaNumeros(mockDisponibles)}`, "disponibilidad (1): mensaje singular (bug corregido)");
             assertEq(contienePlarelIncorrectoEn1(r.mensaje), false, `disponibilidad (1): sin plural incorrecto → "${r.mensaje}"`);
         } else {
-            assertEq(r.mensaje, `Números disponibles (${n}): ${mockDisponibles.join(", ")}`, `disponibilidad (${n}): mensaje plural`);
+            assertEq(r.mensaje, `Números disponibles (${n}): ${formatearListaNumeros(mockDisponibles)}`, `disponibilidad (${n}): mensaje plural`);
             assertEq(contieneSingularIncorrectoEn2Mas(r.mensaje), false, `disponibilidad (${n}): sin singular incorrecto → "${r.mensaje}"`);
         }
 

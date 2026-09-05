@@ -97,6 +97,25 @@ function construirVariablesPorConjunto(cantidadesPorConjunto) {
 
 }
 
+// FORMATO ÚNICO Y OBLIGATORIO para presentar cualquier lista de números en
+// las plantillas: "( 27 )" para uno solo, "( 27 - 45 - 60 )" para varios.
+// Fuente única de verdad — ninguna plantilla, ni resolverConsulta.js, ni
+// ningún otro archivo debe formatear una lista de números de otra manera
+// (nunca coma, nunca "/", nunca corchetes). Un arreglo vacío se presenta
+// como cadena vacía (no hay lista que mostrar), igual que el
+// comportamiento anterior basado en join().
+function formatearListaNumeros(numeros) {
+
+    const lista = Array.isArray(numeros) ? numeros : [];
+
+    if (lista.length === 0) {
+        return "";
+    }
+
+    return `( ${lista.join(" - ")} )`;
+
+}
+
 // Capitaliza la primera letra — usado para iniciar frase con una variable
 // de gramática ("tu número" -> "Tu número") sin duplicar el diccionario.
 function capitalizar(texto) {
@@ -208,5 +227,6 @@ module.exports = {
     construirVariablesGramaticales,
     construirVariablesPorConjunto,
     calcularNumerosRelevantes,
+    formatearListaNumeros,
     capitalizar
 };

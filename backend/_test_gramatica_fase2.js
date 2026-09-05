@@ -7,7 +7,8 @@
 const {
     construirVariablesGramaticales,
     construirVariablesPorConjunto,
-    calcularNumerosRelevantes
+    calcularNumerosRelevantes,
+    formatearListaNumeros
 } = require("./bot/ai/gramatica.js");
 const { construirVariables, aplicarPlantilla } = require("./bot/ai/plantillaMensaje.js");
 const { construirContextoReserva } = require("./bot/ai/contextBuilder.js");
@@ -114,14 +115,16 @@ console.log("\n=== 4) Ejemplo exacto del pedido: reservados=1, ocupados=2 ===\n"
         "{{numeros_reservados}} {{quedo_quedaron}} {{reservado_reservados}} y {{numeros_ocupados}} {{numero_numeros_ocupados}} {{ocupado_ocupados_ocupados}}",
         vars
     );
-    assertEq(texto.includes("número reservado") || texto.startsWith(ctx.reserva.reservados.join(", ")) , true, "sanity: texto generado no vacío");
+    assertEq(texto.length > 0, true, "sanity: texto generado no vacío");
     // La cláusula de reservados (1) debe ir en singular; la de ocupados (2) en plural.
     assertEq(/reservado\b(?!s)/.test(texto), true, "reservados=1: aparece 'reservado' en singular");
     assertEq(/reservados\b/.test(texto), false, "reservados=1: NUNCA aparece 'reservados' en plural");
     assertEq(/números? ocupados/.test(texto) && /\bocupados\b/.test(texto), true, "ocupados=2: aparece 'ocupados' en plural");
     assertEq(/\bocupado\b(?!s)/.test(texto), false, "ocupados=2: NUNCA aparece 'ocupado' en singular");
     console.log("   texto:", texto);
-    assertEq(texto, `${ctx.reserva.reservados[0]} quedó reservado y ${ctx.reserva.ocupados.join(", ")} números ocupados`, "texto exacto esperado");
+    // Formato central de listas de números (corrección de presentación):
+    // "( 27 )" / "( 27 - 45 )" — nunca coma, nunca "/", nunca corchetes.
+    assertEq(texto, `${formatearListaNumeros(ctx.reserva.reservados)} quedó reservado y ${formatearListaNumeros(ctx.reserva.ocupados)} números ocupados`, "texto exacto esperado");
 }
 
 console.log("\n=== 5) Matriz cruzada reservados × ocupados (0/1/2/3/10 cada uno, + combinaciones pedidas) ===\n");

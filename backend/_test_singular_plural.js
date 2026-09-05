@@ -65,7 +65,7 @@ function ctxBase(extra) {
         assertEq(vars.es_son, "es", "reserva_completa (1): es_son");
         assertEq(calcularTipoPresentacion(ctx, resultado), "reserva_completa", "reserva_completa (1): tipoPresentacion");
         const texto = aplicarPlantilla("{{cliente}}, {{tu_numero_tus_numeros}} {{es_son}}: {{numeros_reservados}} 🎟️", vars);
-        assertEq(texto, "Carlos, tu número es: 45 🎟️", "reserva_completa (1): plantilla nueva con variables");
+        assertEq(texto, "Carlos, tu número es: ( 45 ) 🎟️", "reserva_completa (1): plantilla nueva con variables");
     }
 
     // --- reserva_completa, 3 números ---
@@ -76,7 +76,7 @@ function ctxBase(extra) {
         assertEq(vars.tu_numero_tus_numeros, "tus números", "reserva_completa (3): tu_numero_tus_numeros");
         assertEq(vars.es_son, "son", "reserva_completa (3): es_son");
         const texto = aplicarPlantilla("{{cliente}}, {{tu_numero_tus_numeros}} {{es_son}}: {{numeros_reservados}} 🎟️", vars);
-        assertEq(texto, "Carlos, tus números son: 12, 45, 78 🎟️", "reserva_completa (3): plantilla nueva con variables");
+        assertEq(texto, "Carlos, tus números son: ( 12 - 45 - 78 ) 🎟️", "reserva_completa (3): plantilla nueva con variables");
     }
 
     // --- reserva_completa, 2 números ---
@@ -105,8 +105,11 @@ function ctxBase(extra) {
         const vars = construirVariables(ctx, resultado);
         assertEq(vars.tu_numero_tus_numeros, "tu número", "numero_ocupado (1): tu_numero_tus_numeros");
         assertEq(vars.es_son, "es", "numero_ocupado (1): es_son");
-        const texto = aplicarPlantilla("{{cliente}}, {{tu_numero_tus_numeros}} solicitado ({{numeros_solicitados}}) ya está ocupado.", vars);
-        assertEq(texto, "Carlos, tu número solicitado (45) ya está ocupado.", "numero_ocupado (1): plantilla nueva con variables");
+        // Sin paréntesis manuales alrededor de la variable: {{numeros_solicitados}}
+        // ya los incluye (formato central "( 45 )") — un paréntesis extra
+        // aquí produciría el doble-paréntesis que este cambio elimina.
+        const texto = aplicarPlantilla("{{cliente}}, {{tu_numero_tus_numeros}} solicitado {{numeros_solicitados}} ya está ocupado.", vars);
+        assertEq(texto, "Carlos, tu número solicitado ( 45 ) ya está ocupado.", "numero_ocupado (1): plantilla nueva con variables");
     }
 
     // --- todos_ocupados: 3 solicitados, 0 reservados ---
@@ -131,7 +134,7 @@ function ctxBase(extra) {
             assertEq(vars.tu_numero_tus_numeros, "tu número", `${tipoConsulta} (1): tu_numero_tus_numeros`);
             assertEq(vars.es_son, "es", `${tipoConsulta} (1): es_son`);
             const texto = aplicarPlantilla("{{cliente}}, {{tu_numero_tus_numeros}} {{es_son}}: {{numeros_reservados}} 🎟️", vars);
-            assertEq(texto, "Carlos, tu número es: 45 🎟️", `${tipoConsulta} (1): plantilla nueva con variables`);
+            assertEq(texto, "Carlos, tu número es: ( 45 ) 🎟️", `${tipoConsulta} (1): plantilla nueva con variables`);
         }
 
         // varios números
@@ -142,7 +145,7 @@ function ctxBase(extra) {
             assertEq(vars.tu_numero_tus_numeros, "tus números", `${tipoConsulta} (3): tu_numero_tus_numeros`);
             assertEq(vars.es_son, "son", `${tipoConsulta} (3): es_son`);
             const texto = aplicarPlantilla("{{cliente}}, {{tu_numero_tus_numeros}} {{es_son}}: {{numeros_reservados}} 🎟️", vars);
-            assertEq(texto, "Carlos, tus números son: 12, 45, 78 🎟️", `${tipoConsulta} (3): plantilla nueva con variables`);
+            assertEq(texto, "Carlos, tus números son: ( 12 - 45 - 78 ) 🎟️", `${tipoConsulta} (3): plantilla nueva con variables`);
         }
 
         // 0 números — plantilla nueva no debe quedar rota (aunque su redacción de "0" es
@@ -173,7 +176,7 @@ function ctxBase(extra) {
         const vars = construirVariables(ctx, resultado);
         // Plantilla real ya existente en plantillasBase.ts (mis_numeros, estilo "Natural")
         const texto = aplicarPlantilla("{{cliente}}, tus números son: {{numeros_reservados}}", vars);
-        assertEq(texto, "Carlos, tus números son: 45", "Plantilla existente con 1 número sigue literal (sin auto-corregir)");
+        assertEq(texto, "Carlos, tus números son: ( 45 )", "Plantilla existente con 1 número sigue literal (sin auto-corregir)");
     }
 
     {
@@ -181,7 +184,7 @@ function ctxBase(extra) {
         const ctx = ctxBase({ consulta: resultado });
         const vars = construirVariables(ctx, resultado);
         const texto = aplicarPlantilla("{{cliente}}, tus números son: {{numeros_reservados}}", vars);
-        assertEq(texto, "Carlos, tus números son: 12, 45, 78", "Plantilla existente con varios números — comportamiento previo intacto");
+        assertEq(texto, "Carlos, tus números son: ( 12 - 45 - 78 )", "Plantilla existente con varios números — comportamiento previo intacto");
     }
 
     console.log("\n=== 4) resolverConsulta — fallback fijo mis_numeros / mis_reservas ===\n");
@@ -197,19 +200,19 @@ function ctxBase(extra) {
         mockNumerosDelUsuario = ["45"];
         {
             const r = await resolverConsulta({ tipo, evento: { tabla: "t" }, usuario: { id: "u1" } });
-            assertEq(r.mensaje, "Tu número reservado es: 45", `${tipo} fallback (1): mensaje singular`);
+            assertEq(r.mensaje, "Tu número reservado es: ( 45 )", `${tipo} fallback (1): mensaje singular`);
         }
 
         mockNumerosDelUsuario = ["12", "45"];
         {
             const r = await resolverConsulta({ tipo, evento: { tabla: "t" }, usuario: { id: "u1" } });
-            assertEq(r.mensaje, "Tus números reservados son: 12, 45", `${tipo} fallback (2): mensaje plural`);
+            assertEq(r.mensaje, "Tus números reservados son: ( 12 - 45 )", `${tipo} fallback (2): mensaje plural`);
         }
 
         mockNumerosDelUsuario = ["12", "45", "78"];
         {
             const r = await resolverConsulta({ tipo, evento: { tabla: "t" }, usuario: { id: "u1" } });
-            assertEq(r.mensaje, "Tus números reservados son: 12, 45, 78", `${tipo} fallback (3+): mensaje plural`);
+            assertEq(r.mensaje, "Tus números reservados son: ( 12 - 45 - 78 )", `${tipo} fallback (3+): mensaje plural`);
         }
     }
 

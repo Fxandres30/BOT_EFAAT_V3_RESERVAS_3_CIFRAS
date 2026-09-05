@@ -1,3 +1,5 @@
+import { formatearListaNumeros } from "./formatearListaNumeros";
+
 // Catálogo de tipos de mensaje configurables — debe coincidir exactamente
 // con backend/bot/ai/plantillaMensaje.js (calcularTipoPresentacion).
 // "total" (precio total a pagar) queda fuera intencionalmente: no existe
@@ -108,9 +110,9 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         nombre: "Reserva completada",
         descripcion: "Todos los números solicitados quedaron reservados.",
         variables: [V.cliente, V.evento, V.solicitados, V.reservados, V.fecha, V.hora, V.precio, V.tuNumeroTusNumeros, V.esSon, V.reservadoReservados, V.quedoQuedaron, V.tuyoTuyos, V.numeroNumeros],
-        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: "27, 45", numeros_reservados: "27, 45", fecha: "2026-09-03", hora: "22:30", precio: "5000" },
-        ejemploSingular: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: "45", numeros_reservados: "45", fecha: "2026-09-05", hora: "22:30", precio: "5000", tu_numero_tus_numeros: "tu número", es_son: "es", reservado_reservados: "reservado", quedo_quedaron: "quedó", tuyo_tuyos: "tuyo", numero_numeros: "número" },
-        ejemploPlural: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: "27, 45", numeros_reservados: "27, 45", fecha: "2026-09-05", hora: "22:30", precio: "5000", tu_numero_tus_numeros: "tus números", es_son: "son", reservado_reservados: "reservados", quedo_quedaron: "quedaron", tuyo_tuyos: "tuyos", numero_numeros: "números" },
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: formatearListaNumeros(["27", "45"]), numeros_reservados: formatearListaNumeros(["27", "45"]), fecha: "2026-09-03", hora: "22:30", precio: "5000" },
+        ejemploSingular: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: formatearListaNumeros(["45"]), numeros_reservados: formatearListaNumeros(["45"]), fecha: "2026-09-05", hora: "22:30", precio: "5000", tu_numero_tus_numeros: "tu número", es_son: "es", reservado_reservados: "reservado", quedo_quedaron: "quedó", tuyo_tuyos: "tuyo", numero_numeros: "número" },
+        ejemploPlural: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: formatearListaNumeros(["27", "45"]), numeros_reservados: formatearListaNumeros(["27", "45"]), fecha: "2026-09-05", hora: "22:30", precio: "5000", tu_numero_tus_numeros: "tus números", es_son: "son", reservado_reservados: "reservados", quedo_quedaron: "quedaron", tuyo_tuyos: "tuyos", numero_numeros: "números" },
         soportado: true
     },
     {
@@ -120,19 +122,19 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         nombre: "Reserva parcial",
         descripcion: "Algunos números se reservaron, otros ya estaban ocupados.",
         variables: [V.cliente, V.evento, V.solicitados, V.reservados, V.ocupados, V.fecha, V.hora, V.precio, V.tuNumeroTusNumeros, V.esSon, V.reservadoReservados, V.quedoQuedaron, V.tuyoTuyos, V.eseEsos, V.estabaEstabanOcupados, V.ocupadoOcupadosOcupados, V.disponibleDisponiblesOcupados, V.elNumeroLosNumerosOcupados],
-        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: "27, 45", numeros_reservados: "27", numeros_ocupados: "45", fecha: "2026-09-03", hora: "22:30", precio: "5000" },
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: formatearListaNumeros(["27", "45"]), numeros_reservados: formatearListaNumeros(["27"]), numeros_ocupados: formatearListaNumeros(["45"]), fecha: "2026-09-03", hora: "22:30", precio: "5000" },
         // Reservados=1 (singular) mientras ocupados=2 (plural), a propósito:
         // demuestra que ambas listas concuerdan de forma INDEPENDIENTE en
         // el mismo mensaje — nunca se mezclan entre sí.
         ejemploSingular: {
             cliente: "Carlos", evento: "Lotería De Manizales", fecha: "2026-09-05", hora: "22:30", precio: "5000",
-            numeros_reservados: "45", reservado_reservados: "reservado", quedo_quedaron: "quedó", tuyo_tuyos: "tuyo", ese_esos: "ese número", es_son: "es",
-            numeros_ocupados: "12, 27", estaba_estaban_ocupados: "estaban", ocupado_ocupados_ocupados: "ocupados", disponible_disponibles_ocupados: "disponibles", el_numero_los_numeros_ocupados: "los números"
+            numeros_reservados: formatearListaNumeros(["45"]), reservado_reservados: "reservado", quedo_quedaron: "quedó", tuyo_tuyos: "tuyo", ese_esos: "ese número", es_son: "es",
+            numeros_ocupados: formatearListaNumeros(["12", "27"]), estaba_estaban_ocupados: "estaban", ocupado_ocupados_ocupados: "ocupados", disponible_disponibles_ocupados: "disponibles", el_numero_los_numeros_ocupados: "los números"
         },
         ejemploPlural: {
             cliente: "Carlos", evento: "Lotería De Manizales", fecha: "2026-09-05", hora: "22:30", precio: "5000",
-            numeros_reservados: "12, 27, 45", reservado_reservados: "reservados", quedo_quedaron: "quedaron", tuyo_tuyos: "tuyos", ese_esos: "esos números", es_son: "son",
-            numeros_ocupados: "9", estaba_estaban_ocupados: "estaba", ocupado_ocupados_ocupados: "ocupado", disponible_disponibles_ocupados: "disponible", el_numero_los_numeros_ocupados: "el número"
+            numeros_reservados: formatearListaNumeros(["12", "27", "45"]), reservado_reservados: "reservados", quedo_quedaron: "quedaron", tuyo_tuyos: "tuyos", ese_esos: "esos números", es_son: "son",
+            numeros_ocupados: formatearListaNumeros(["9"]), estaba_estaban_ocupados: "estaba", ocupado_ocupados_ocupados: "ocupado", disponible_disponibles_ocupados: "disponible", el_numero_los_numeros_ocupados: "el número"
         },
         soportado: true
     },
@@ -145,7 +147,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         variables: [V.cliente, V.evento, V.solicitados, V.fecha, V.hora, V.tuNumeroTusNumeros, V.esSon],
         // Siempre exactamente 1 número (calcularTipoPresentacion lo garantiza)
         // — no aplica ejemplo dual, solo se completan las formas singulares.
-        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: "27", fecha: "2026-09-03", hora: "22:30", tu_numero_tus_numeros: "tu número", es_son: "es" },
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: formatearListaNumeros(["27"]), fecha: "2026-09-03", hora: "22:30", tu_numero_tus_numeros: "tu número", es_son: "es" },
         soportado: true
     },
     {
@@ -157,7 +159,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         variables: [V.cliente, V.evento, V.solicitados, V.fecha, V.hora, V.elNumeroLosNumeros, V.estaEstan, V.ocupadoOcupados],
         // Siempre 2+ solicitados (complemento de numero_ocupado) — no
         // aplica ejemplo dual, solo se completan las formas plurales.
-        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: "27, 45", fecha: "2026-09-03", hora: "22:30", el_numero_los_numeros: "los números", esta_estan: "están", ocupado_ocupados: "ocupados" },
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: formatearListaNumeros(["27", "45"]), fecha: "2026-09-03", hora: "22:30", el_numero_los_numeros: "los números", esta_estan: "están", ocupado_ocupados: "ocupados" },
         soportado: true
     },
     {
@@ -167,9 +169,9 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         nombre: "Mis números",
         descripcion: "El cliente pregunta qué números tiene.",
         variables: [V.cliente, V.evento, V.reservados, V.tuNumeroTusNumeros, V.esSon, V.reservadoReservados, V.eseEsos, V.tuyoTuyos, V.suNumeroSusNumeros, V.numeroNumeros],
-        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: "01, 27, 48" },
-        ejemploSingular: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: "27", tu_numero_tus_numeros: "tu número", es_son: "es", reservado_reservados: "reservado", ese_esos: "ese número", tuyo_tuyos: "tuyo", su_numero_sus_numeros: "su número", numero_numeros: "número" },
-        ejemploPlural: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: "01, 27, 48", tu_numero_tus_numeros: "tus números", es_son: "son", reservado_reservados: "reservados", ese_esos: "esos números", tuyo_tuyos: "tuyos", su_numero_sus_numeros: "sus números", numero_numeros: "números" },
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["01", "27", "48"]) },
+        ejemploSingular: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["27"]), tu_numero_tus_numeros: "tu número", es_son: "es", reservado_reservados: "reservado", ese_esos: "ese número", tuyo_tuyos: "tuyo", su_numero_sus_numeros: "su número", numero_numeros: "número" },
+        ejemploPlural: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["01", "27", "48"]), tu_numero_tus_numeros: "tus números", es_son: "son", reservado_reservados: "reservados", ese_esos: "esos números", tuyo_tuyos: "tuyos", su_numero_sus_numeros: "sus números", numero_numeros: "números" },
         soportado: true
     },
     {
@@ -179,9 +181,9 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         nombre: "Mis reservas",
         descripcion: "El cliente pregunta qué tiene reservado.",
         variables: [V.cliente, V.evento, V.reservados, V.tuNumeroTusNumeros, V.esSon, V.reservadoReservados],
-        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: "01, 27, 48" },
-        ejemploSingular: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: "27", tu_numero_tus_numeros: "tu número", es_son: "es", reservado_reservados: "reservado" },
-        ejemploPlural: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: "01, 27, 48", tu_numero_tus_numeros: "tus números", es_son: "son", reservado_reservados: "reservados" },
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["01", "27", "48"]) },
+        ejemploSingular: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["27"]), tu_numero_tus_numeros: "tu número", es_son: "es", reservado_reservados: "reservado" },
+        ejemploPlural: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["01", "27", "48"]), tu_numero_tus_numeros: "tus números", es_son: "son", reservado_reservados: "reservados" },
         soportado: true
     },
     {
@@ -205,7 +207,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         variables: [V.cliente, V.evento, V.solicitados, V.tuNumeroTusNumeros, V.esSon],
         // resolverConsulta.js solo toma numeros[0]: siempre 1 número exacto
         // — no aplica ejemplo dual.
-        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: "25", tu_numero_tus_numeros: "tu número", es_son: "es" },
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_solicitados: formatearListaNumeros(["25"]), tu_numero_tus_numeros: "tu número", es_son: "es" },
         soportado: true
     },
     {
@@ -215,19 +217,19 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         nombre: "Disponibilidad",
         descripcion: "El cliente pregunta qué números quedan libres.",
         variables: [V.evento, V.disponibles, V.ocupados, V.numeroNumeros, V.disponibleDisponibles, V.libreLibres, V.quedaQuedan, V.elNumeroLosNumeros, V.estaEstan, V.esSon, V.elNumeroLosNumerosOcupados, V.ocupadoOcupadosOcupados, V.esSonOcupados],
-        ejemplo: { evento: "Lotería De Manizales", numeros_disponibles: "00, 03, 04, 05...", numeros_ocupados: "01, 27, 48" },
+        ejemplo: { evento: "Lotería De Manizales", numeros_disponibles: formatearListaNumeros(["00", "03", "04", "05"]), numeros_ocupados: formatearListaNumeros(["01", "27", "48"]) },
         // Disponibles=1 (singular) mientras ocupados=2 (plural), a
         // propósito — misma idea que reserva_parcial: dos listas
         // independientes en el mismo mensaje.
         ejemploSingular: {
             evento: "Lotería De Manizales",
-            numeros_disponibles: "45", numero_numeros: "número", disponible_disponibles: "disponible", libre_libres: "libre", queda_quedan: "queda", el_numero_los_numeros: "el número", esta_estan: "está", es_son: "es",
-            numeros_ocupados: "12, 27", el_numero_los_numeros_ocupados: "los números", ocupado_ocupados_ocupados: "ocupados", es_son_ocupados: "son"
+            numeros_disponibles: formatearListaNumeros(["45"]), numero_numeros: "número", disponible_disponibles: "disponible", libre_libres: "libre", queda_quedan: "queda", el_numero_los_numeros: "el número", esta_estan: "está", es_son: "es",
+            numeros_ocupados: formatearListaNumeros(["12", "27"]), el_numero_los_numeros_ocupados: "los números", ocupado_ocupados_ocupados: "ocupados", es_son_ocupados: "son"
         },
         ejemploPlural: {
             evento: "Lotería De Manizales",
-            numeros_disponibles: "00, 03, 04", numero_numeros: "números", disponible_disponibles: "disponibles", libre_libres: "libres", queda_quedan: "quedan", el_numero_los_numeros: "los números", esta_estan: "están", es_son: "son",
-            numeros_ocupados: "9", el_numero_los_numeros_ocupados: "el número", ocupado_ocupados_ocupados: "ocupado", es_son_ocupados: "es"
+            numeros_disponibles: formatearListaNumeros(["00", "03", "04"]), numero_numeros: "números", disponible_disponibles: "disponibles", libre_libres: "libres", queda_quedan: "quedan", el_numero_los_numeros: "los números", esta_estan: "están", es_son: "son",
+            numeros_ocupados: formatearListaNumeros(["9"]), el_numero_los_numeros_ocupados: "el número", ocupado_ocupados_ocupados: "ocupado", es_son_ocupados: "es"
         },
         soportado: true
     },
@@ -265,7 +267,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         nombre: "Número inválido",
         descripcion: "Preparado para el futuro — el BOT todavía no genera este resultado.",
         variables: [V.cliente, V.solicitados],
-        ejemplo: { cliente: "Carlos", numeros_solicitados: "150" },
+        ejemplo: { cliente: "Carlos", numeros_solicitados: formatearListaNumeros(["150"]) },
         soportado: false
     },
     {

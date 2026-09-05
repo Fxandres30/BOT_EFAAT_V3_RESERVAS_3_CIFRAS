@@ -4,6 +4,11 @@ const { consultarReservas } = require("./consultarReservas");
 const { validarReservas } = require("./validarReservas");
 const { reservarNumeros } = require("./reservarNumeros");
 const { actualizarEvento } = require("./actualizarEvento");
+// SOLO presentación: mismo formateador central de listas de números que ya
+// usan plantillaMensaje.js y resolverConsulta.js ("( 27 )" / "( 27 - 45 )").
+// No decide ni cambia nada de negocio — únicamente da forma al texto de
+// "mensaje" que ya se construía aquí.
+const { formatearListaNumeros } = require("../../ai/gramatica");
 
 async function detectarReserva({
 
@@ -73,7 +78,7 @@ async function detectarReserva({
             mensaje:
 `❌ Los números solicitados ya están ocupados.
 
-🔒 Ocupados: ${resultado.ocupadosPorOtros.map(n => n.numero).join(", ")}`
+🔒 Ocupados: ${formatearListaNumeros(resultado.ocupadosPorOtros.map(n => n.numero))}`
 
         };
 
@@ -122,11 +127,11 @@ async function detectarReserva({
 
     let mensaje = "✅ Reserva realizada correctamente.\n\n";
 
-    mensaje += `🎟️ Reservados: ${reservados.join(", ")}`;
+    mensaje += `🎟️ Reservados: ${formatearListaNumeros(reservados)}`;
 
     if (ocupados.length) {
 
-        mensaje += `\n\n⚠️ Ya estaban ocupados: ${ocupados.join(", ")}`;
+        mensaje += `\n\n⚠️ Ya estaban ocupados: ${formatearListaNumeros(ocupados)}`;
 
     }
 

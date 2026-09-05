@@ -1,7 +1,7 @@
 // Variables reales disponibles para plantillas de mensajes (Fase 5.2).
 // Nunca inventa datos: si un dato no existe para ese tipo de resultado,
 // la variable queda vacía (nunca se rellena con un valor inventado).
-const { construirVariablesGramaticales, construirVariablesPorConjunto, calcularNumerosRelevantes } = require("./gramatica");
+const { construirVariablesGramaticales, construirVariablesPorConjunto, calcularNumerosRelevantes, formatearListaNumeros } = require("./gramatica");
 const { extraerNumeros } = require("../funciones/reservas/extraerNumeros");
 
 const MOSTRAR_POR_VARIABLE = {
@@ -63,10 +63,10 @@ function construirVariables(ctx, resultado) {
 
         cliente: ctx.usuario?.nombre || "",
         evento: ctx.evento?.nombre_evento || "",
-        numeros_solicitados: numerosSolicitados.join(", "),
-        numeros_reservados: numerosReservados.join(", "),
-        numeros_ocupados: numerosOcupados.join(", "),
-        numeros_disponibles: numerosDisponibles.join(", "),
+        numeros_solicitados: formatearListaNumeros(numerosSolicitados),
+        numeros_reservados: formatearListaNumeros(numerosReservados),
+        numeros_ocupados: formatearListaNumeros(numerosOcupados),
+        numeros_disponibles: formatearListaNumeros(numerosDisponibles),
         fecha: ctx.evento?.fecha_evento || "",
         hora: ctx.evento?.hora_fin || "",
         // "precio" es el valor por número del evento (dato real, eventos_bot.valor).

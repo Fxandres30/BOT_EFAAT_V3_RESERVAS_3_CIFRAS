@@ -8,15 +8,15 @@ const { consultarCantidad } = require("./consultarCantidad");
 const { consultarNumero } = require("./consultarNumero");
 const { consultarDisponibilidad } = require("./consultarDisponibilidad");
 const { consultarInfoEvento } = require("./consultarInfoEvento");
-const { construirVariablesGramaticales, capitalizar } = require("../../ai/gramatica");
+const { construirVariablesGramaticales, capitalizar, formatearListaNumeros } = require("../../ai/gramatica");
 
 const TEXTO_ESTADO = {
 
-    libre: n => `El número ${n} está libre.`,
-    reservado_por_usuario: n => `El número ${n} ya lo tienes reservado.`,
-    reservado_por_otro: n => `El número ${n} está reservado por otra persona.`,
-    pagado_por_usuario: n => `El número ${n} ya está pagado por ti.`,
-    pagado_por_otro: n => `El número ${n} ya fue pagado por otra persona.`
+    libre: n => `El número ${formatearListaNumeros([n])} está libre.`,
+    reservado_por_usuario: n => `El número ${formatearListaNumeros([n])} ya lo tienes reservado.`,
+    reservado_por_otro: n => `El número ${formatearListaNumeros([n])} está reservado por otra persona.`,
+    pagado_por_usuario: n => `El número ${formatearListaNumeros([n])} ya está pagado por ti.`,
+    pagado_por_otro: n => `El número ${formatearListaNumeros([n])} ya fue pagado por otra persona.`
 
 };
 
@@ -47,7 +47,7 @@ async function resolverConsulta({ tipo, numeros, evento, usuario }) {
                 // — nunca una rama ad-hoc distinta a la de plantillaMensaje.js.
                 const g = construirVariablesGramaticales(cantidad);
 
-                mensaje = `${capitalizar(g.tu_numero_tus_numeros)} ${g.reservado_reservados} ${g.es_son}: ${numerosDelUsuario.join(", ")}`;
+                mensaje = `${capitalizar(g.tu_numero_tus_numeros)} ${g.reservado_reservados} ${g.es_son}: ${formatearListaNumeros(numerosDelUsuario)}`;
 
             }
 
@@ -85,7 +85,7 @@ async function resolverConsulta({ tipo, numeros, evento, usuario }) {
 
             const mensaje = texto
                 ? texto(resultado.numero)
-                : `El número ${resultado.numero} tiene estado: ${resultado.estadoReal}.`;
+                : `El número ${formatearListaNumeros([resultado.numero])} tiene estado: ${resultado.estadoReal}.`;
 
             return { tipo, ...resultado, mensaje };
 
@@ -106,7 +106,7 @@ async function resolverConsulta({ tipo, numeros, evento, usuario }) {
 
                 const g = construirVariablesGramaticales(numerosDisponibles.length);
 
-                mensaje = `${capitalizar(g.numero_numeros)} ${g.disponible_disponibles} (${numerosDisponibles.length}): ${numerosDisponibles.join(", ")}`;
+                mensaje = `${capitalizar(g.numero_numeros)} ${g.disponible_disponibles} (${numerosDisponibles.length}): ${formatearListaNumeros(numerosDisponibles)}`;
 
             }
 
