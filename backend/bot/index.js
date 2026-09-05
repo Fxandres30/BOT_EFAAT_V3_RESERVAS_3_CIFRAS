@@ -17,6 +17,15 @@ const {
     detenerWorkerEventos
 } = require("./funciones/eventos/lifecycle/iniciarWorkerEventos");
 
+// Escáner de identidades: escaneo inicial completo al conectar/reconectar
+// (ver escanerIdentidadesLifecycle.js). Los escaneos incrementales por
+// apertura de grupo se disparan aparte, desde detectarEvento.js /
+// workerEventos.js, justo después de confirmar que abrirGrupo() tuvo éxito.
+const {
+    iniciarEscanerIdentidades,
+    detenerEscanerIdentidades
+} = require("./funciones/usuarios/escanerIdentidadesLifecycle");
+
 let socketActual = null;
 let sesionActual = null;
 let iniciado = false;
@@ -65,6 +74,7 @@ function conectar(socket, sessionId) {
 
         unregisterMessages(anterior);
         detenerWorkerEventos(anterior);
+        detenerEscanerIdentidades(anterior);
 
     }
 
@@ -78,6 +88,11 @@ function conectar(socket, sessionId) {
     iniciarWorkerEventos(socket);
 
     console.log("[WORKER] iniciado:", sessionId);
+
+    // No bloqueante: el escaneo inicial de todos los grupos corre en
+    // segundo plano y nunca retrasa el registro de mensajes/worker de
+    // arriba (ya hechos).
+    iniciarEscanerIdentidades(sessionId, socket);
 
     // ─────────────────────────────────────────────────────────────
     // TRAZABILIDAD — identidad de la sesión que el BOT está usando
@@ -110,6 +125,7 @@ function detenerBot() {
 
     unregisterMessages(sesionActual);
     detenerWorkerEventos(sesionActual);
+    detenerEscanerIdentidades(sesionActual);
 
     console.log("[WORKER] detenido:", sesionActual);
 

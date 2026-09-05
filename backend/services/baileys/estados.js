@@ -24,6 +24,23 @@ function registrarEstados(
 
             try {
 
+                // Guardia de identidad: este listener quedó atado a UNA
+                // instancia concreta de socket (closure sobre `sock`) en el
+                // momento del registro. Si para entonces `sessionId` ya
+                // apunta a OTRO socket en el Map (p. ej. este socket fue
+                // reemplazado y ya no es el vigente), cualquier evento
+                // tardío de este socket viejo/muerto se ignora aquí — así
+                // una señal tardía de un socket reemplazado nunca puede
+                // borrar, tocar el estado o disparar una reconexión sobre
+                // el socket nuevo de la misma sesión.
+                if (contexto.sockets.get(sessionId) !== sock) {
+
+                    console.log(`⏭️ [SESSION] Evento de connection.update ignorado (socket obsoleto para ${sessionId})`);
+
+                    return;
+
+                }
+
                 console.log("UPDATE:", update);
 
                 const {

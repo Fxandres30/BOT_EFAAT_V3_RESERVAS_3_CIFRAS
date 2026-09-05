@@ -1,6 +1,10 @@
 const supabase = require("../../../../lib/supabase");
 const { procesarEvento } = require("../lifecycle/procesarEvento");
 const { abrirGrupo } = require("../grupos/abrirGrupo");
+
+// Escaneo incremental de identidades: mismo disparador que detectarEvento.js
+// (solo tras confirmar apertura), aplicado aquí a la ruta de reconciliación.
+const { escanearGrupo } = require("../../usuarios/escanerIdentidadesLifecycle");
 const { verificarHoraCierre } = require("../lifecycle/verificarHoraCierre");
 
 async function workerEventos(sock) {
@@ -73,6 +77,20 @@ async function workerEventos(sock) {
                             evento.abierto = true;
 
                             console.log(`🔓 Reconciliado: grupo del evento ${evento.id} abierto en WhatsApp`);
+
+                            // Escaneo incremental de ESE grupo — solo tras
+                            // confirmar la apertura. No bloqueante.
+                            const sessionIdParaEscaner = sock?.context?.sessionId || null;
+
+                            if (sessionIdParaEscaner) {
+
+                                escanearGrupo(sessionIdParaEscaner, sock, evento.grupo_id).catch(err => {
+
+                                    console.error(`❌ [ESCÁNER IDENTIDADES] error tras reconciliar apertura del grupo ${evento.grupo_id}:`, err?.message);
+
+                                });
+
+                            }
 
                         }
 

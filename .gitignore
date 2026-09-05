@@ -9,6 +9,9 @@ node_modules/
 # Credenciales de sesiones WhatsApp (Baileys)
 backend/auth/
 
+# Reportes del escáner de identidades — contienen teléfonos/LID reales
+backend/reportes_identidad/
+
 # Next.js
 frontend/.next/
 frontend/out/

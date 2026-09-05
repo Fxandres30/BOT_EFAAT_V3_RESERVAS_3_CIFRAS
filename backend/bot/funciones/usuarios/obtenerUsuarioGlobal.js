@@ -25,6 +25,44 @@ const supabase = require("../../../lib/supabase");
 //    parámetro `fromMe` de esta función es una segunda barrera defensiva.
 // ==========================================================================
 
+// ==========================================================================
+// ÚNICA regla del sistema para derivar teléfono/LID a partir de un JID de
+// Baileys. Se extrae aquí (en vez de repetirla inline) para que CUALQUIER
+// otro módulo que necesite este criterio —como el escáner de identidades
+// (bot/funciones/usuarios/escanerIdentidades.js)— lo importe de acá en vez
+// de reimplementarlo. "NO crear lógica independiente de identificación en
+// cada módulo" (regla arquitectónica de identidad).
+//
+//   "...@s.whatsapp.net" -> teléfono (se quita sufijo de dispositivo ":N" y
+//                           el prefijo de país "57").
+//   "...@lid"             -> LID (se guarda el JID completo, tal cual).
+//   cualquier otra cosa   -> ninguno de los dos. Un "@lid" JAMÁS se
+//                           convierte en teléfono, y viceversa.
+// ==========================================================================
+function normalizarIdentificadoresDesdeJid(jid) {
+
+    let telefono = null;
+    let lid = null;
+
+    if (jid && jid.endsWith("@s.whatsapp.net")) {
+
+        telefono = jid
+            .split("@")[0]
+            .split(":")[0]
+            .replace(/^57/, "");
+
+    }
+
+    if (jid && jid.endsWith("@lid")) {
+
+        lid = jid;
+
+    }
+
+    return { telefono, lid };
+
+}
+
 const CODIGO_VIOLACION_UNICA_POSTGRES = "23505"; // unique_violation
 
 function esErrorDeColisionUnica(error) {
@@ -210,25 +248,17 @@ async function obtenerUsuarioGlobal({
     if (nombre === "null") nombre = null;
 
     // ==========================================
-    // Extraer teléfono desde JID — SOLO si es "@s.whatsapp.net".
+    // Extraer teléfono/LID desde el JID — única regla del sistema (ver
+    // normalizarIdentificadoresDesdeJid más abajo). Solo completa lo que
+    // no vino ya explícito por parámetro.
     // ==========================================
 
-    if (!telefono && jid && jid.endsWith("@s.whatsapp.net")) {
+    if (!telefono || !lid) {
 
-        telefono = jid
-            .split("@")[0]
-            .split(":")[0]
-            .replace(/^57/, "");
+        const derivado = normalizarIdentificadoresDesdeJid(jid);
 
-    }
-
-    // ==========================================
-    // Extraer LID — un JID "@lid" JAMÁS se convierte en teléfono.
-    // ==========================================
-
-    if (!lid && jid && jid.endsWith("@lid")) {
-
-        lid = jid;
+        if (!telefono) telefono = derivado.telefono;
+        if (!lid) lid = derivado.lid;
 
     }
 
@@ -390,6 +420,11 @@ module.exports = {
     registrarContingenciaIdentidad,
     resolverIdentidadExistente,
     buscarPorCampo,
-    esErrorDeColisionUnica
+    esErrorDeColisionUnica,
+
+    // Único criterio de derivación teléfono/LID desde un JID — para que
+    // otros módulos de identidad (p. ej. el escáner) lo reutilicen en vez
+    // de reimplementarlo.
+    normalizarIdentificadoresDesdeJid
 
 };

@@ -5,6 +5,11 @@ const { guardarEvento } = require("./guardarEvento");
 const { obtenerConfiguracion } = require("./configEvento");
 const { abrirGrupo } = require("./grupos/abrirGrupo");
 
+// Escaneo incremental de identidades: se dispara SOLO después de que
+// WhatsApp confirmó la apertura del grupo (ver más abajo). No bloqueante,
+// no forma parte de la decisión de abrir/cerrar el grupo.
+const { escanearGrupo } = require("../usuarios/escanerIdentidadesLifecycle");
+
 // Reintento breve y acotado (3 intentos, 300 ms aparte) SOLO para registrar
 // que la apertura falló (abierto=false). Riesgo que cierra: si WhatsApp
 // falla Y esta escritura también fallara al primer intento, el evento
@@ -182,6 +187,21 @@ if (!grupoAbierto) {
 } else {
 
     console.log("🔓 Grupo abierto correctamente");
+
+    // Escaneo incremental de ESE grupo — solo después de la confirmación
+    // de arriba. No bloqueante: nunca debe retrasar el flujo de detección
+    // de eventos ni afectar su resultado.
+    const sessionIdParaEscaner = sock?.context?.sessionId || null;
+
+    if (sessionIdParaEscaner) {
+
+        escanearGrupo(sessionIdParaEscaner, sock, grupoId).catch(err => {
+
+            console.error(`❌ [ESCÁNER IDENTIDADES] error tras abrir grupo ${grupoId}:`, err?.message);
+
+        });
+
+    }
 
 }
 

@@ -65,19 +65,37 @@ async function restaurarSesiones() {
 
         try {
 
-            await manager.start(
+            const resultado = await manager.start(
 
                 sesion.id
 
             );
 
-            console.log(
+            // La sesión sigue "conectado" en Supabase pero el lease
+            // distribuido (LOCAL/VPS) pertenece a la OTRA instancia — NO es
+            // una desconexión: puede estar funcionando correctamente ahí.
+            // No se toca su estado en Supabase ni se reintenta aquí.
+            if (resultado === manager.LEASE_NO_DISPONIBLE) {
 
-                "✅ Restaurada:",
+                console.log(
 
-                sesion.id
+                    "⏳ [LEASE] sigue conectada en otra instancia, no se restaura aquí:",
 
-            );
+                    sesion.id
+
+                );
+
+            } else {
+
+                console.log(
+
+                    "✅ Restaurada:",
+
+                    sesion.id
+
+                );
+
+            }
 
         }
 

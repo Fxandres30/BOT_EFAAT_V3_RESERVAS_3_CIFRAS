@@ -18,6 +18,22 @@ async function connect(sessionId) {
 
     }
 
+    // La sesión existe y está funcionando, pero en la OTRA instancia
+    // (LOCAL/VPS) — no es un error de la sesión en sí.
+    if (resultado === manager.LEASE_NO_DISPONIBLE) {
+
+        return {
+
+            success: false,
+
+            code: "LEASE_NO_DISPONIBLE",
+
+            sessionId
+
+        };
+
+    }
+
     return {
 
         success: true,

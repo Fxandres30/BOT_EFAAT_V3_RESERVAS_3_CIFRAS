@@ -12,22 +12,59 @@ const supabase = require("../../lib/supabase");
 
 const sockets = new Map();
 
+// Creaciones en vuelo por sessionId — garantiza "1 sessionId = máximo 1
+// socket vivo" dentro del proceso. Si llegan varias llamadas a
+// createSocket() para el MISMO sessionId mientras la primera todavía está
+// esperando (Supabase, lectura de archivos de auth, makeWASocket), las
+// demás reutilizan la MISMA promesa en vez de crear cada una su propio
+// socket real con las mismas credenciales (eso era lo que producía
+// conflict/replaced (440) contra WhatsApp: dos sockets reales autenticados
+// con la misma identidad). Se limpia siempre (éxito o error) para permitir
+// un intento posterior controlado.
+const creando = new Map();
+
 async function createSocket(sessionId) {
+
+    if (sockets.has(sessionId)) {
+
+        console.log("🟢 Socket ya existe");
+
+        return { sock: sockets.get(sessionId), isNew: false };
+
+    }
+
+    const enVuelo = creando.get(sessionId);
+
+    if (enVuelo) {
+
+        console.log("⏳ Ya hay una creación en curso para esta sesión, reutilizando:", sessionId);
+
+        const sock = await enVuelo;
+
+        return { sock, isNew: false };
+
+    }
+
+    const promesa = crearSocketInterno(sessionId).finally(() => {
+
+        creando.delete(sessionId);
+
+    });
+
+    creando.set(sessionId, promesa);
+
+    const sock = await promesa;
+
+    return { sock, isNew: true };
+
+}
+
+async function crearSocketInterno(sessionId) {
 
     console.log("================================");
     console.log("🚀 CREATE SOCKET");
     console.log("SESSION:", sessionId);
     console.log("================================");
-
-    const existente = sockets.get(sessionId);
-
-    if (existente) {
-
-        console.log("🟢 Socket ya existe");
-
-        return existente;
-
-    }
 
     const {
         data: session,

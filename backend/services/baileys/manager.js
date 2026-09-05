@@ -9,11 +9,18 @@ const {
 
 const registrarEstados = require("./estados");
 const supabase = require("../../lib/supabase");
+const lease = require("./lease");
 
 // Señal inequívoca para "la fila de Supabase no existe" — se distingue del
 // null que se devuelve para un error real de Supabase, así quien llama
 // (baileysService.connect) puede reaccionar distinto en cada caso.
 const SESSION_NOT_FOUND = "SESSION_NOT_FOUND";
+
+// Señal inequívoca para "no se creó socket porque otra instancia (LOCAL/VPS)
+// ya tiene el lease distribuido de esta sesión". Un llamador que reciba
+// esto NO debe tratar la sesión como desconectada: puede estar funcionando
+// correctamente en la otra instancia (ver server.js: restaurarSesiones).
+const LEASE_NO_DISPONIBLE = "LEASE_NO_DISPONIBLE";
 
 // Utilidades de SOLO LECTURA para logs de trazabilidad (no afectan al
 // algoritmo de failover ni a la selección de sesión).
@@ -76,33 +83,145 @@ if (!sesion) {
 
 }
 
-    const socket = await createSocket(sessionId);
+    // LEASE DISTRIBUIDO (LOCAL <-> VPS) — PRIMERA capa, antes de tocar el
+    // lock intra-proceso de socket.js. Si otra instancia ya es dueña de
+    // esta sesión, esta llamada NUNCA debe llegar a createSocket()/
+    // makeWASocket(). No es un error: la sesión puede estar funcionando
+    // correctamente en la otra instancia.
+    const resultadoLease = await lease.acquire(sessionId);
 
-    registrarEstados(
+    if (!resultadoLease.adquirido) {
 
-        socket,
+        console.log(`🚫 [SESSION] ${sessionId} no se crea socket: lease ocupado por otra instancia`);
 
-        sessionId,
+        return LEASE_NO_DISPONIBLE;
 
-        {
+    }
 
-            manager: this,
+    let socket, isNew;
 
-            sockets: this.sockets
+    try {
 
-        }
+        ({ sock: socket, isNew } = await createSocket(sessionId));
 
-    );
+    } catch (err) {
+
+        console.error(`❌ Error creando socket para ${sessionId}, liberando lease:`, err.message);
+
+        await lease.soltar(sessionId);
+
+        throw err;
+
+    }
+
+    if (!socket) {
+
+        console.log(`⚠️ createSocket() no devolvió un socket para ${sessionId}, liberando lease`);
+
+        await lease.soltar(sessionId);
+
+        return null;
+
+    }
+
+    // Si createSocket() devolvió un socket YA existente (o la misma
+    // creación en vuelo reutilizada por otra llamada concurrente a
+    // start()), NO se vuelve a registrar — un socket solo puede tener UN
+    // listener de connection.update. Registrar dos veces duplicaba
+    // desconectado()/conectado() por cada evento real, lo cual disparaba
+    // reintentos duplicados y facilitaba crear un segundo socket real con
+    // las mismas credenciales (causa del bucle conflict/replaced 440).
+    if (isNew) {
+
+        registrarEstados(
+
+            socket,
+
+            sessionId,
+
+            {
+
+                manager: this,
+
+                sockets: this.sockets
+
+            }
+
+        );
+
+        // Un solo heartbeat por sessionId por proceso — arranca junto con
+        // el ÚNICO socket real creado para esta sesión (isNew), nunca con
+        // una reutilización concurrente (evitaría duplicar el interval).
+        lease.iniciarHeartbeat(sessionId, {
+            onOwnershipPerdido: (id) => this._abandonarPorLeasePerdido(id)
+        });
+
+    } else {
+
+        console.log("🟢 Socket ya existía (o en creación concurrente), no se registran listeners duplicados:", sessionId);
+
+    }
 
     return socket;
 
 }
+
+    // Se invoca cuando el heartbeat del lease distribuido falla (otra
+    // instancia tomó el ownership, o el TTL venció antes de renovar). Esta
+    // sesión sigue viva — solo que ya no en ESTE proceso — así que:
+    //   - se cierra el socket local SIN logout (sock.end(), no
+    //     sock.logout()): las credenciales de WhatsApp no se invalidan,
+    //     la otra instancia sigue usando la MISMA sesión;
+    //   - se saca el socket del Map ANTES de sock.end() para que el
+    //     guard de identidad de estados.js ignore el evento "close" que
+    //     sock.end() emite (no debe disparar el reintento genérico ni
+    //     ningún otro camino de reconexión — esta instancia ya no es
+    //     dueña);
+    //   - se reutiliza manejarDesconexionActiva() (el mismo único punto
+    //     de decisión de failover que ya existía) para que, si esta
+    //     instancia tenía OTRAS sesiones conectadas, el BOT local
+    //     failover a una de ellas en vez de quedar sin ninguna.
+    async _abandonarPorLeasePerdido(sessionId) {
+
+        console.log(`⚠️ [LEASE] ownership perdido, cerrando socket local: ${sessionId}`);
+
+        const sock = this.get(sessionId);
+
+        if (sock && this.sockets.get(sessionId) === sock) {
+
+            this.sockets.delete(sessionId);
+
+        }
+
+        if (sock && typeof sock.end === "function") {
+
+            try {
+
+                await sock.end(new Error("[LEASE] ownership perdido: otra instancia tomó el lease de esta sesión"));
+
+            } catch (err) {
+
+                console.error(`❌ [LEASE] error cerrando socket tras perder ownership (${sessionId}):`, err.message);
+
+            }
+
+        }
+
+        await this.manejarDesconexionActiva(sessionId);
+
+    }
 
     async stop(sessionId) {
 
         console.log("🔴 Deteniendo sesión:", sessionId);
 
         await disconnectSocket(sessionId);
+
+        // Parada manual explícita: esta instancia deja de querer ser dueña
+        // de la sesión (además de cerrarla con logout, arriba). Liberar el
+        // lease permite que la otra instancia (si la sesión se reconecta
+        // más adelante) pueda adquirirlo sin esperar a que expire el TTL.
+        await lease.soltar(sessionId);
 
         if (this.activeSession === sessionId) {
 
@@ -525,5 +644,6 @@ const manager = new SessionManager();
 // Constante pública para que los llamadores (p.ej. baileysService) puedan
 // comparar el resultado de start() sin depender de un string mágico duplicado.
 manager.SESSION_NOT_FOUND = SESSION_NOT_FOUND;
+manager.LEASE_NO_DISPONIBLE = LEASE_NO_DISPONIBLE;
 
 module.exports = manager;

@@ -1,5 +1,6 @@
 const { DisconnectReason } = require("@whiskeysockets/baileys");
 const supabase = require("../../lib/supabase");
+const lease = require("./lease");
 
 async function desconectado(sessionId, statusCode, contexto) {
 
@@ -21,7 +22,11 @@ async function desconectado(sessionId, statusCode, contexto) {
             })
             .eq("id", sessionId);
 
-        // Desconexión definitiva: si era la sesión activa del BOT, failover.
+        // Desconexión definitiva: liberar el lease distribuido (LOCAL/VPS)
+        // para que otra instancia pueda adquirirlo sin esperar el TTL, y
+        // dejar que el manager decida el failover entre sesiones propias.
+        await lease.soltar(sessionId);
+
         await manager.manejarDesconexionActiva(sessionId);
 
         return;
@@ -65,7 +70,47 @@ async function desconectado(sessionId, statusCode, contexto) {
             })
             .eq("id", sessionId);
 
-        // Desconexión definitiva: si era la sesión activa del BOT, failover.
+        // Desconexión definitiva: liberar el lease distribuido (LOCAL/VPS)
+        // para que otra instancia pueda adquirirlo sin esperar el TTL, y
+        // dejar que el manager decida el failover entre sesiones propias.
+        await lease.soltar(sessionId);
+
+        await manager.manejarDesconexionActiva(sessionId);
+
+        return;
+    }
+
+    // Conflict/replaced: otra conexión (real o, si había una condición de
+    // carrera, un segundo socket nuestro) tomó el control de la MISMA
+    // identidad de WhatsApp. Esto NO es un corte de red transitorio: si se
+    // reintenta de inmediato con las mismas credenciales sin más, lo más
+    // probable es volver a chocar con lo que sea que sigue vivo del otro
+    // lado, produciendo el bucle infinito conflict/replaced observado en
+    // producción/local. Por eso esta rama NUNCA llama a manager.start()
+    // automáticamente — solo limpia el socket y, si esta sesión era la
+    // activa del BOT, deja que el manager decida el failover desde su
+    // único punto de decisión (manejarDesconexionActiva), igual que ya
+    // hace para 403/401/408. No se cambia la política de failover entre
+    // sesiones: se reutiliza tal cual la que ya existía para esos casos.
+    if (statusCode === DisconnectReason.connectionReplaced) {
+
+        console.log("⚠️ Conexión reemplazada (conflict/replaced, 440):", sessionId);
+
+        sockets.delete(sessionId);
+
+        await supabase
+            .from("sesiones")
+            .update({
+                estado: "desconectado"
+            })
+            .eq("id", sessionId);
+
+        // Liberar el lease distribuido: esta instancia ya no debe seguir
+        // siendo dueña de una sesión que WhatsApp acaba de reemplazar; si
+        // el "otro lado" es la otra instancia (LOCAL/VPS), que quede libre
+        // para tomar el lease en su próximo intento.
+        await lease.soltar(sessionId);
+
         await manager.manejarDesconexionActiva(sessionId);
 
         return;
@@ -78,7 +123,11 @@ async function desconectado(sessionId, statusCode, contexto) {
 
         sockets.delete(sessionId);
 
-        // Desconexión definitiva: si era la sesión activa del BOT, failover.
+        // Desconexión definitiva: liberar el lease distribuido (LOCAL/VPS)
+        // para que otra instancia pueda adquirirlo sin esperar el TTL, y
+        // dejar que el manager decida el failover entre sesiones propias.
+        await lease.soltar(sessionId);
+
         await manager.manejarDesconexionActiva(sessionId);
 
         return;
