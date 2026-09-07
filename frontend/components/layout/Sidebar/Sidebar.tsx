@@ -82,6 +82,11 @@ export default function Sidebar({
                     href:"/eventos",
                     icon:"🎯",
                     label:"Eventos"
+                },
+                {
+                    href:"/lector-pagos",
+                    icon:"📱",
+                    label:"Lector de pagos"
                 }
             ]
         }

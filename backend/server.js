@@ -7,6 +7,7 @@ const express = require("express");
 const cors = require("cors");
 
 const sessionsRoutes = require("./routes/sessions");
+const pagosRoutes = require("./routes/pagos");
 
 const supabase = require("./lib/supabase");
 
@@ -19,6 +20,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/sessions", sessionsRoutes);
+app.use("/pagos", pagosRoutes);
 
 app.listen(4000, async () => {
 

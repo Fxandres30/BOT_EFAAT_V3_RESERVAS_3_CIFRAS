@@ -1,0 +1,26 @@
+# Generado por Android Studio / Gradle — nunca versionar.
+*.iml
+.gradle/
+/local.properties
+.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuildFmt/
+.cxx/
+local.properties
+
+# Wrapper de Gradle: se genera con `gradle wrapper` (o Android Studio al
+# abrir el proyecto) — no se versiona el jar binario, sí las propiedades
+# (gradle/wrapper/gradle-wrapper.properties, que SÍ está commiteado).
+gradle/wrapper/gradle-wrapper.jar
+gradlew
+gradlew.bat
+
+# Nunca debe existir ningún archivo con la credencial real de un
+# dispositivo — se pega a mano en la app (EncryptedSharedPreferences),
+# jamás en un archivo de este proyecto. Esta regla es defensiva: hoy no
+# hay ningún archivo así, pero si alguna vez alguien crea uno para
+# pruebas locales, no debe poder commitearse por accidente.
+**/device-credential*.txt
+**/*.secret

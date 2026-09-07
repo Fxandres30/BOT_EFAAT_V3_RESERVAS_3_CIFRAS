@@ -4,7 +4,7 @@ import { useState } from "react";
 import { X, Users, DollarSign, Lock, Unlock, CircleDot } from "lucide-react";
 
 import type { NumeroReserva, PaqueteReserva } from "./types";
-import { ESTADOS_META, estadoEfectivo } from "./estadoVisual";
+import { ESTADOS_META_VISUAL, estadoEfectivo, estadoVisualSimplificado } from "./estadoVisual";
 import ConfirmDialog from "./ConfirmDialog";
 
 interface Props {
@@ -34,7 +34,7 @@ export default function NumeroDetalleModal({
     if (!numero) return null;
 
     const estado = estadoEfectivo(numero);
-    const meta = ESTADOS_META[estado];
+    const meta = ESTADOS_META_VISUAL[estadoVisualSimplificado(numero)];
     const Icon = meta.icon;
     const procesando = accionando === numero.numero;
 

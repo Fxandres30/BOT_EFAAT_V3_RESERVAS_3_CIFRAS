@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Loader2, AlertTriangle, Info } from "lucide-react";
 
 import { useTablaPrecio } from "@/hooks/useTablaPrecio";
@@ -11,7 +11,7 @@ import Grid from "./Grid";
 import ReservasRecientes from "./ReservasRecientes";
 import GruposPanel from "./GruposPanel";
 import ActividadReciente from "./ActividadReciente";
-import type { FiltroEstado } from "./estadoVisual";
+import { contarPorFiltro, type FiltroEstado } from "./estadoVisual";
 import type { EventoActivo } from "./types";
 
 interface Props {
@@ -41,6 +41,8 @@ export default function TablaPrecioView({ precio }: Props) {
 
     const [busqueda, setBusqueda] = useState("");
     const [filtro, setFiltro] = useState<FiltroEstado>("todos");
+
+    const conteosFiltro = useMemo(() => contarPorFiltro(numeros), [numeros]);
 
     if (!config) {
 
@@ -134,6 +136,7 @@ export default function TablaPrecioView({ precio }: Props) {
                 onBusquedaChange={setBusqueda}
                 filtro={filtro}
                 onFiltroChange={setFiltro}
+                conteos={conteosFiltro}
             />
 
             <Grid

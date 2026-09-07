@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Users } from "lucide-react";
 
 import type { PaqueteReserva } from "./types";
-import { ESTADOS_META } from "./estadoVisual";
+import { ESTADOS_META_VISUAL, bucketEstado } from "./estadoVisual";
 
 interface Props {
     paquetes: PaqueteReserva[];
@@ -36,7 +36,7 @@ export default function GruposPanel({ paquetes, precio }: Props) {
 
                     {paquetes.map((p) => {
 
-                        const meta = p.estado !== "mixto" ? ESTADOS_META[p.estado] : null;
+                        const meta = p.estado !== "mixto" ? ESTADOS_META_VISUAL[bucketEstado(p.estado)] : null;
 
                         return (
 

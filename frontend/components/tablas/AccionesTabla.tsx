@@ -89,29 +89,30 @@ export default function AccionesTabla({
                 <BotonIcono
                     icon={RotateCcw}
                     label="Reiniciar"
-                    color="bg-red-600 hover:bg-red-700"
+                    color="text-rose-600 hover:bg-rose-50 hover:border-rose-200"
                     onClick={() => setConfirmandoReinicio(true)}
                 />
 
                 <BotonIcono
                     icon={Pencil}
                     label="Editar"
-                    color="bg-blue-600 hover:bg-blue-700"
+                    color="text-gray-600 hover:bg-gray-50 hover:border-gray-300"
                     onClick={editar}
-                />
-
-                <BotonIcono
-                    icon={Share2}
-                    label="Compartir"
-                    color="bg-emerald-600 hover:bg-emerald-700"
-                    onClick={compartir}
                 />
 
                 <BotonIcono
                     icon={Shuffle}
                     label="Aleatorio"
-                    color="bg-purple-600 hover:bg-purple-700"
+                    color="text-violet-600 hover:bg-violet-50 hover:border-violet-200"
                     onClick={aleatorio}
+                />
+
+                <BotonIcono
+                    icon={Share2}
+                    label="Compartir"
+                    color="text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200"
+                    destacado
+                    onClick={compartir}
                 />
 
             </div>
@@ -137,11 +138,13 @@ function BotonIcono({
     icon: Icon,
     label,
     color,
+    destacado = false,
     onClick
 }: {
     icon: LucideIcon;
     label: string;
     color: string;
+    destacado?: boolean;
     onClick: () => void;
 }) {
 
@@ -151,7 +154,11 @@ function BotonIcono({
             onClick={onClick}
             aria-label={label}
             title={label}
-            className={`flex items-center justify-center gap-2 text-white px-3 sm:px-4 py-2.5 rounded-xl text-sm min-w-[44px] min-h-[44px] ${color}`}
+            className={`flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 rounded-xl text-sm font-medium min-w-[44px] min-h-[44px] border transition-colors ${
+                destacado
+                    ? "bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700"
+                    : `bg-white border-gray-200 ${color}`
+            }`}
         >
             <Icon size={16} className="shrink-0" />
             <span className="hidden sm:inline">{label}</span>

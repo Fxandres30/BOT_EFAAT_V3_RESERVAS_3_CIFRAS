@@ -4,8 +4,9 @@ import { useMemo, useState } from "react";
 
 import NumeroCard from "./NumeroCard";
 import NumeroDetalleModal from "./NumeroDetalleModal";
+import Leyenda from "./Leyenda";
 import type { NumeroReserva, PaqueteReserva, EventoActivo } from "./types";
-import { estadoEfectivo, type FiltroEstado } from "./estadoVisual";
+import { estadoVisualSimplificado, type FiltroEstado } from "./estadoVisual";
 
 interface Props {
     numeros: NumeroReserva[];
@@ -55,12 +56,9 @@ export default function Grid({
 
         return numeros.filter((n) => {
 
-            const estado = estadoEfectivo(n);
+            const estado = estadoVisualSimplificado(n);
 
-            if (filtro === "grupo" && !numerosEnGrupo.has(n.numero))
-                return false;
-
-            if (filtro !== "todos" && filtro !== "grupo" && estado !== filtro)
+            if (filtro !== "todos" && estado !== filtro)
                 return false;
 
             if (!termino)
@@ -83,17 +81,21 @@ export default function Grid({
 
     return (
 
-        <>
+        <div className="bg-white border rounded-2xl shadow-sm p-2.5 sm:p-4">
+
+            <div className="flex justify-center sm:justify-start pb-3 sm:pb-4 mb-1 border-b border-gray-100">
+                <Leyenda />
+            </div>
 
             {visibles.length === 0 ? (
 
-                <div className="border rounded-2xl p-6 sm:p-10 text-center text-gray-500 bg-white">
+                <div className="p-6 sm:p-10 text-center text-gray-500">
                     No hay números que coincidan con la búsqueda o el filtro actual.
                 </div>
 
             ) : (
 
-                <div className="grid gap-1.5 sm:gap-2.5 grid-cols-[repeat(auto-fill,minmax(52px,1fr))]">
+                <div className="mx-auto max-w-2xl grid grid-cols-10 gap-1 sm:gap-1.5 md:gap-2">
 
                     {visibles.map((numero) => {
 
@@ -134,7 +136,7 @@ export default function Grid({
                 onMarcarEnProceso={onMarcarEnProceso}
             />
 
-        </>
+        </div>
 
     );
 

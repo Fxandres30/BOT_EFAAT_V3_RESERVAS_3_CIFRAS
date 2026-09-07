@@ -3,7 +3,7 @@
 import { DollarSign, Unlock } from "lucide-react";
 
 import type { NumeroReserva } from "./types";
-import { ESTADOS_META, estadoEfectivo } from "./estadoVisual";
+import { ESTADOS_META_VISUAL, estadoEfectivo, estadoVisualSimplificado } from "./estadoVisual";
 
 interface Props {
     precio: number;
@@ -69,7 +69,7 @@ export default function ReservasRecientes({
                                 {numeros.map((n) => {
 
                                     const estado = estadoEfectivo(n);
-                                    const meta = ESTADOS_META[estado];
+                                    const meta = ESTADOS_META_VISUAL[estadoVisualSimplificado(n)];
                                     const procesando = accionando === n.numero;
 
                                     return (
@@ -128,7 +128,7 @@ export default function ReservasRecientes({
                         {numeros.map((n) => {
 
                             const estado = estadoEfectivo(n);
-                            const meta = ESTADOS_META[estado];
+                            const meta = ESTADOS_META_VISUAL[estadoVisualSimplificado(n)];
                             const procesando = accionando === n.numero;
 
                             return (

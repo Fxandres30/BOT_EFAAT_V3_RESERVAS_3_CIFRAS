@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EFAAT Payments Reader</string>
+
+    <string name="titulo_estado_listener">Acceso a notificaciones</string>
+    <string name="estado_listener_activo">✅ Habilitado — la app está escuchando notificaciones de pago autorizadas</string>
+    <string name="estado_listener_inactivo">⚠️ No habilitado — tocá el botón para habilitarlo en Ajustes de Android</string>
+    <string name="boton_abrir_ajustes_listener">Habilitar acceso a notificaciones</string>
+
+    <string name="titulo_configuracion">Configuración del dispositivo</string>
+    <string name="hint_url_backend">URL del backend (ej: http://192.168.1.10:4000)</string>
+    <string name="hint_credencial">Credencial (Authorization: Bearer &lt;id&gt;.&lt;secreto&gt;)</string>
+    <string name="boton_guardar_configuracion">Guardar</string>
+    <string name="configuracion_guardada">✅ Configuración guardada (cifrada en este dispositivo)</string>
+    <string name="configuracion_incompleta">⚠️ Configuración incompleta</string>
+
+    <string name="titulo_prueba">Prueba end-to-end</string>
+    <string name="boton_notificacion_prueba">Enviar notificación de prueba</string>
+    <string name="boton_forzar_sincronizacion">Forzar envío de pendientes</string>
+
+    <string name="titulo_historial">Historial (depuración)</string>
+    <string name="historial_vacio">Todavía no se capturó ningún movimiento.</string>
+</resources>

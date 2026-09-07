@@ -3,7 +3,7 @@
 import { Users } from "lucide-react";
 
 import type { NumeroReserva } from "./types";
-import { ESTADOS_META, estadoEfectivo } from "./estadoVisual";
+import { ESTADOS_META_VISUAL, estadoEfectivo, estadoVisualSimplificado } from "./estadoVisual";
 
 interface Props {
     numero: NumeroReserva;
@@ -21,32 +21,40 @@ export default function NumeroCard({
     onClick
 }: Props) {
 
-    const estado = estadoEfectivo(numero);
-    const meta = ESTADOS_META[estado];
-    const Icon = meta.icon;
+    // El estado real (incluye en_proceso/bloqueado) se conserva en
+    // data-estado porque "Aleatorio" y otras herramientas dependen de que
+    // sea exactamente "libre" cuando el número está realmente disponible.
+    // El color/label que ve el usuario, en cambio, siempre viene del
+    // estado visual simplificado (Disponible / Reservado / Pagado).
+    const estadoReal = estadoEfectivo(numero);
+    const estadoVisual = estadoVisualSimplificado(numero);
+    const meta = ESTADOS_META_VISUAL[estadoVisual];
 
     return (
 
         <button
             id={`numero-${numero.numero}`}
             data-numero={numero.numero}
-            data-estado={estado}
+            data-estado={estadoReal}
             aria-label={`Número ${numero.numero}: ${meta.label}${enGrupo ? ", pertenece a un grupo" : ""}${deOtroEvento ? ", de otro evento" : ""}`}
             title={`${numero.numero} · ${meta.label}${numero.comprador ? ` · ${numero.comprador}` : ""}`}
             onClick={onClick}
             className={`
-                relative w-full aspect-square min-w-0
-                rounded-lg sm:rounded-xl shadow-md hover:shadow-xl hover:scale-105
-                transition-all duration-200
-                flex flex-col items-center justify-center gap-0.5
+                group relative w-full aspect-square min-w-0
+                rounded-md sm:rounded-lg
+                flex items-center justify-center
+                transition-all duration-150
+                active:scale-90
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500
                 ${meta.card}
+                ${estadoVisual === "libre" ? "shadow-sm" : "shadow-md hover:shadow-lg hover:-translate-y-0.5"}
                 ${atenuado ? "opacity-30 saturate-50" : ""}
             `}
         >
 
             {enGrupo && (
                 <span
-                    className="absolute -top-1 -right-1 h-3.5 w-3.5 sm:h-4 sm:w-4 rounded-full bg-purple-600 border-2 border-white flex items-center justify-center"
+                    className="absolute -top-1 -right-1 h-3.5 w-3.5 sm:h-4 sm:w-4 rounded-full bg-purple-600 border-2 border-white flex items-center justify-center z-10"
                     title="Pertenece a un grupo de reserva"
                 >
                     <Users size={8} className="text-white" />
@@ -55,20 +63,13 @@ export default function NumeroCard({
 
             {deOtroEvento && (
                 <span
-                    className="absolute -top-1 -left-1 h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-orange-400 border-2 border-white"
+                    className="absolute -top-1 -left-1 h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-orange-400 border-2 border-white z-10"
                     title="Pertenece a otro evento/precio"
                 />
             )}
 
-            <span className="font-bold leading-none text-[clamp(0.75rem,3.2vw,1.35rem)]">
+            <span className="font-bold leading-none tabular-nums text-[clamp(0.7rem,3.6vw,1.25rem)]">
                 {numero.numero}
-            </span>
-
-            <span className="flex items-center gap-1 leading-none">
-                <Icon size={10} className="shrink-0" />
-                <span className="hidden sm:inline text-[10px] font-medium opacity-90 whitespace-nowrap">
-                    {meta.label}
-                </span>
             </span>
 
         </button>
