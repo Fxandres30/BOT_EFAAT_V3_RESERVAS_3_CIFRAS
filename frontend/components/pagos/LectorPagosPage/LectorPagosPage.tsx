@@ -22,15 +22,28 @@ import VincularTelefonoModal from "../VincularTelefonoModal/VincularTelefonoModa
 // pagos_dispositivos todavía — no hay ningún endpoint real que consultar
 // sin inventarlo.
 
-// URL real del APK, publicada por .github/workflows/android-build.yml
-// como asset del Release "apk-latest" (ver android/README.md — sección
-// "Descarga desde el panel"). Se lee de una variable de entorno en vez
-// de hardcodearse acá: NUNCA una URL inventada ni de localhost, y activar
-// la descarga real es cambiar UNA variable, sin tocar código.
-// NEXT_PUBLIC_APK_DOWNLOAD_URL vive en frontend/.env.local y hoy está
-// vacía a propósito: el workflow todavía no corrió en main, así que ese
-// Release (y por lo tanto el APK) todavía no existe.
-const APK_URL: string | null = process.env.NEXT_PUBLIC_APK_DOWNLOAD_URL || null;
+// URL real del APK — asset del Release "apk-latest", publicado por
+// .github/workflows/android-build.yml (run 34158039928, commit 039627b,
+// conclusion=success). Verificada con una descarga real, no solo con la
+// metadata de la API: HTTP 200, Content-Type
+// application/vnd.android.package-archive, 7.769.565 bytes, magic bytes
+// de ZIP ("PK"), contiene AndroidManifest.xml y classes.dex. No es una
+// URL inventada ni de localhost.
+//
+// Se lee primero de NEXT_PUBLIC_APK_DOWNLOAD_URL (para poder apuntar a
+// otra build en producción sin tocar código — ver frontend/.env.local y
+// el README de despliegue) y si esa variable no está definida en el
+// entorno, cae a esta URL fija ya verificada, para que el botón nunca
+// vuelva a mostrarse como "Próximamente" por un simple olvido de
+// configuración. En producción (Vercel u otro hosting), configurar de
+// todas formas:
+//   NEXT_PUBLIC_APK_DOWNLOAD_URL=https://github.com/Fxandres30/BOT_EFAAT_V3_RESERVAS_3_CIFRAS/releases/download/apk-latest/EFAAT-Payments-Reader-debug.apk
+// así el botón sigue automáticamente el Release más reciente que CI
+// publique, en vez de quedar atado a este valor fijo del código.
+const APK_URL_VERIFICADA =
+    "https://github.com/Fxandres30/BOT_EFAAT_V3_RESERVAS_3_CIFRAS/releases/download/apk-latest/EFAAT-Payments-Reader-debug.apk";
+
+const APK_URL: string | null = process.env.NEXT_PUBLIC_APK_DOWNLOAD_URL || APK_URL_VERIFICADA;
 
 const PASOS = [
     { numero: 1, texto: "Descarga la aplicación" },
