@@ -22,9 +22,15 @@ import VincularTelefonoModal from "../VincularTelefonoModal/VincularTelefonoModa
 // pagos_dispositivos todavía — no hay ningún endpoint real que consultar
 // sin inventarlo.
 
-// Todavía no existe un APK publicado. Cuando exista, basta con poner la
-// URL real acá — el resto del botón ya está preparado para ese caso.
-const APK_URL: string | null = null;
+// URL real del APK, publicada por .github/workflows/android-build.yml
+// como asset del Release "apk-latest" (ver android/README.md — sección
+// "Descarga desde el panel"). Se lee de una variable de entorno en vez
+// de hardcodearse acá: NUNCA una URL inventada ni de localhost, y activar
+// la descarga real es cambiar UNA variable, sin tocar código.
+// NEXT_PUBLIC_APK_DOWNLOAD_URL vive en frontend/.env.local y hoy está
+// vacía a propósito: el workflow todavía no corrió en main, así que ese
+// Release (y por lo tanto el APK) todavía no existe.
+const APK_URL: string | null = process.env.NEXT_PUBLIC_APK_DOWNLOAD_URL || null;
 
 const PASOS = [
     { numero: 1, texto: "Descarga la aplicación" },

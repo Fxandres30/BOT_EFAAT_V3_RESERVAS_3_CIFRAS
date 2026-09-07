@@ -1,0 +1,162 @@
+name: Android build (EFAAT Payments Reader)
+
+# Compila la app Android (android/) en un runner limpio de GitHub, sin
+# depender de Android Studio ni de nada instalado localmente. Ver
+# android/README.md para el detalle de arquitectura de la app.
+#
+# Flujo: código -> este workflow -> APK -> artifact de GitHub Actions
+# (siempre) -> Release "apk-latest" (solo en push a main), que es lo que
+# eventualmente consume el botón "Descargar aplicación" del panel
+# (frontend/components/pagos/LectorPagosPage). Ver ese componente para el
+# estado actual de esa integración — a la fecha de este workflow, el panel
+# TODAVÍA NO apunta a la URL del release hasta confirmar manualmente que
+# este workflow corrió con éxito al menos una vez.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - ".github/workflows/android-build.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/android-build.yml"
+  # Permite disparar el build a mano desde la pestaña Actions del repo,
+  # sin necesidad de tocar android/** (útil para la primera corrida).
+  workflow_dispatch: {}
+
+# Solo lo necesario para poder publicar el Release con el APK adjunto
+# (job "release"). El job "build" no necesita ningún permiso especial.
+permissions:
+  contents: write
+
+jobs:
+
+  build:
+    name: Compilar y testear
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: android
+
+    outputs:
+      apk-path: ${{ steps.verificar.outputs.apk-path }}
+
+    steps:
+
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      # Verifica que gradlew/gradlew.bat/gradle-wrapper.jar del repo
+      # coinciden con los checksums oficiales publicados por Gradle —
+      # protección contra un wrapper alterado/comprometido. Corre ANTES de
+      # ejecutar ./gradlew por cualquier motivo.
+      - name: Validar Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Configurar JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar plataformas/build-tools requeridos
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Cachear dependencias/wrapper de Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Dar permiso de ejecución a gradlew
+        run: chmod +x gradlew
+
+      # Unit tests JVM puros (parser/, sin dependencias de Android
+      # framework — ver android/app/src/test). A la fecha de este
+      # workflow es la ÚNICA cobertura automatizada del proyecto: no hay
+      # tests instrumentados (androidTest) porque requerirían un emulador
+      # o dispositivo real, fuera de alcance de este workflow por ahora
+      # (documentado también en android/README.md).
+      - name: Ejecutar unit tests (./gradlew test)
+        run: ./gradlew test --stacktrace
+
+      - name: Compilar APK debug (./gradlew assembleDebug)
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Verificar que el APK existe
+        id: verificar
+        run: |
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          if [ ! -f "$APK" ]; then
+            echo "::error::No se generó $APK — el build no produjo el APK esperado."
+            exit 1
+          fi
+          echo "APK generado correctamente:"
+          ls -la "$APK"
+          echo "apk-path=android/$APK" >> "$GITHUB_OUTPUT"
+
+      - name: Renombrar APK para distribución
+        run: |
+          mkdir -p app/build/outputs/apk/debug
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/EFAAT-Payments-Reader-debug.apk
+
+      - name: Publicar APK como artifact de este run
+        uses: actions/upload-artifact@v4
+        with:
+          name: EFAAT-Payments-Reader-debug-apk
+          path: android/app/build/outputs/apk/debug/EFAAT-Payments-Reader-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  # Publica el MISMO APK como asset de un GitHub Release fijo
+  # ("apk-latest"), para tener una URL pública y ESTABLE que no requiere
+  # sesión de GitHub ni permisos de Actions para descargar — a diferencia
+  # del artifact del job de arriba, que solo se puede bajar logueado en
+  # GitHub y expira a los 30 días. Solo corre en push a main (no en PRs).
+  release:
+    name: Publicar Release apk-latest
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+
+      - name: Checkout (solo para tener el repo como contexto del release)
+        uses: actions/checkout@v4
+
+      - name: Descargar el artifact compilado en el job anterior
+        uses: actions/download-artifact@v4
+        with:
+          name: EFAAT-Payments-Reader-debug-apk
+          path: dist
+
+      - name: Publicar/actualizar el Release apk-latest
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: "EFAAT Payments Reader — build automático (debug)"
+          body: |
+            APK debug generado automáticamente por CI desde el commit
+            ${{ github.sha }}.
+
+            Esta es una build de DEPURACIÓN (`assembleDebug`, firmada con la
+            keystore de debug de Android) — no es una release firmada para
+            producción. Ver `android/README.md` para el detalle de qué hace
+            la app y cómo probarla.
+          prerelease: true
+          fail_on_unmatched_files: true
+          files: dist/EFAAT-Payments-Reader-debug.apk

@@ -10,12 +10,11 @@
 .cxx/
 local.properties
 
-# Wrapper de Gradle: se genera con `gradle wrapper` (o Android Studio al
-# abrir el proyecto) — no se versiona el jar binario, sí las propiedades
-# (gradle/wrapper/gradle-wrapper.properties, que SÍ está commiteado).
-gradle/wrapper/gradle-wrapper.jar
-gradlew
-gradlew.bat
+# Wrapper de Gradle: SÍ se versiona completo (gradlew, gradlew.bat,
+# gradle/wrapper/gradle-wrapper.jar y gradle-wrapper.properties). Es lo que
+# permite compilar en CI (GitHub Actions) y en cualquier máquina limpia sin
+# tener Gradle/Android Studio instalado — ver .github/workflows/android-build.yml
+# y android/README.md.
 
 # Nunca debe existir ningún archivo con la credencial real de un
 # dispositivo — se pega a mano en la app (EncryptedSharedPreferences),

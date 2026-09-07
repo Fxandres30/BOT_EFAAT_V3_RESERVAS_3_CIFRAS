@@ -1,0 +1,7 @@
+# El Gradle Wrapper lo ejecuta el runner Linux de GitHub Actions
+# (.github/workflows/android-build.yml) vía `./gradlew`, un script POSIX
+# ("#!/bin/sh"). Sin esto, el autocrlf de una máquina Windows podría
+# terminar guardando gradlew con CRLF y rompiendo ese shebang en CI.
+/gradlew text eol=lf
+/gradlew.bat text eol=crlf
+/gradle/wrapper/gradle-wrapper.jar binary

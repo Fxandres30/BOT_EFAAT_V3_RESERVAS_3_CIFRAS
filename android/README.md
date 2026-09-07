@@ -44,17 +44,64 @@ sync/        SyncWorker (WorkManager) — drena la cola, constraint
 `ui/` (MainActivity + HistoryAdapter) es solo una pantalla de
 operación/depuración — toda la lógica real es independiente de la UI.
 
-## Cómo abrir y compilar
+## Cómo compilar — CI (recomendado, sin instalar nada)
 
-1. Abrir la carpeta `android/` en Android Studio (no la raíz del repo).
-2. El wrapper de Gradle (`gradlew`/`gradlew.bat`/`gradle-wrapper.jar`) no
-   está commiteado a propósito (son binarios/scripts generados). Android
-   Studio los genera solo al sincronizar; si no lo hace automáticamente,
-   correr una vez `gradle wrapper --gradle-version 8.7` dentro de `android/`
-   (requiere tener Gradle instalado) o dejar que Android Studio use su
-   propio Gradle embebido para el primer sync.
-3. `compileSdk`/`targetSdk` 34, `minSdk` 26 — instalar esos SDK Platforms
-   desde el SDK Manager si Android Studio los pide.
+El flujo de trabajo real de este proyecto es **código → CI (GitHub
+Actions) → APK**, sin depender de Android Studio, Java, Gradle ni el
+Android SDK instalados localmente. Ver
+`.github/workflows/android-build.yml`.
+
+1. Hacer push a `main` tocando algo dentro de `android/` (o disparar el
+   workflow a mano: pestaña **Actions** del repo en GitHub → *Android
+   build (EFAAT Payments Reader)* → **Run workflow**).
+2. El workflow: valida el Gradle Wrapper (checksum oficial), instala JDK
+   17 + Android SDK (`platforms;android-34`, `build-tools;34.0.0`), corre
+   `./gradlew test` (unit tests JVM de `parser/`, ver `app/src/test`) y
+   luego `./gradlew assembleDebug`.
+3. El APK queda en `android/app/build/outputs/apk/debug/app-debug.apk`
+   dentro del runner, y se publica como:
+   - **Artifact del run** (`EFAAT-Payments-Reader-debug-apk`, pestaña
+     Actions del commit/run correspondiente, requiere sesión de GitHub,
+     expira a los 30 días) — en todo push/PR/dispatch.
+   - **Release `apk-latest`** (`EFAAT-Payments-Reader-debug.apk`,
+     descargable con una URL pública fija, sin login) — solo en push a
+     `main`. Ver la sección "Descarga desde el panel" más abajo.
+
+El wrapper de Gradle (`gradlew`, `gradlew.bat`,
+`gradle/wrapper/gradle-wrapper.jar`) **sí está commiteado** a propósito
+— es justamente lo que permite compilar en un runner limpio sin tener
+Gradle preinstalado. `distributionUrl` en
+`gradle/wrapper/gradle-wrapper.properties` fija Gradle 8.7 (compatible
+con AGP 8.5.2 + Kotlin 1.9.24 + JDK 17, ver `build.gradle.kts` /
+`app/build.gradle.kts`).
+
+### Descarga desde el panel
+
+`frontend/components/pagos/LectorPagosPage` lee la URL del APK desde la
+variable de entorno `NEXT_PUBLIC_APK_DOWNLOAD_URL` (ver `.env.local`).
+Una vez que el workflow de arriba corrió con éxito al menos una vez en
+`main`, esa URL es:
+
+```
+https://github.com/Fxandres30/BOT_EFAAT_V3_RESERVAS_3_CIFRAS/releases/download/apk-latest/EFAAT-Payments-Reader-debug.apk
+```
+
+Mientras esa variable no esté configurada, el botón "Descargar
+aplicación" del panel se muestra deshabilitado con la etiqueta
+"Próximamente" — nunca apunta a una URL inventada ni a `localhost`.
+
+### Cómo compilar localmente (opcional, si igual querés instalar el SDK)
+
+`compileSdk`/`targetSdk` 34, `minSdk` 26. Con Android Studio instalado,
+simplemente abrir la carpeta `android/` (no la raíz del repo) y dejar que
+sincronice — usa el mismo wrapper commiteado. Sin Android Studio, con
+JDK 17 y el Android SDK ya instalados y `ANDROID_HOME` configurado:
+
+```bash
+cd android
+./gradlew assembleDebug      # Linux/Mac
+gradlew.bat assembleDebug    # Windows
+```
 
 ## Primer objetivo de P2 — probarlo sin apps bancarias reales
 
@@ -124,6 +171,22 @@ en la primera línea, sin loguearla ni guardarla.
 - Rotarla (si se filtró, o se perdió) se hace del lado del backend:
   `node backend/pagos/rotarCredencialDispositivo.js <dispositivo_id>` —
   ver `backend/pagos/README.md`.
+
+## Tests
+
+`app/src/test/java/.../parser/ExtraccionUtilsTest.kt` — unit tests JVM
+puros (sin Robolectric, sin emulador) sobre las expresiones regulares
+compartidas de extracción (valor/referencia/remitente). Corren en CI con
+`./gradlew test`.
+
+**No hay tests instrumentados (`androidTest`) todavía** — probar
+`PaymentNotificationListenerService`, `AppDatabase` (Room) o
+`CredentialStore` (EncryptedSharedPreferences/Keystore) de punta a punta
+requiere un emulador o dispositivo real corriendo Android, lo que un
+runner estándar de GitHub Actions no trae por defecto (existen acciones
+como `reactivecircus/android-emulator-runner` para esto, pero son
+notablemente más lentas y no se agregaron en esta fase — documentado acá
+a propósito en vez de ocultarlo).
 
 ## Siguientes fases (fuera del alcance de P2)
 
