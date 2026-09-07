@@ -1,0 +1,118 @@
+name: (TEMPORAL) Generar upload key de Android
+
+# ⚠️ WORKFLOW DE UN SOLO USO — borrar este archivo después de generar y
+# descargar la upload key una vez.
+#
+# Genera la UPLOAD KEY de "EFAAT Payments Reader" para Google Play App
+# Signing: nosotros solo necesitamos esta upload key (para firmar lo que
+# subimos a Play Console); Google gestiona la APP SIGNING KEY real por su
+# cuenta a partir de ahí. Ver android/README.md y
+# .github/workflows/android-build.yml para el resto del pipeline — este
+# workflow es independiente y no los modifica ni los reemplaza.
+#
+# No requiere nada instalado localmente (ni JDK, ni Android Studio): todo
+# corre en el runner de GitHub, que sí trae JDK vía actions/setup-java.
+#
+# SEGURIDAD — leer antes de correrlo:
+# - La contraseña SOLO existe como GitHub Actions secret
+#   (ANDROID_UPLOAD_KEY_PASSWORD) y nunca se escribe en ningún archivo del
+#   repo ni se imprime en los logs (ver el paso de generación).
+# - La keystore se genera y vive ÚNICAMENTE en $RUNNER_TEMP (directorio
+#   temporal del runner, se destruye solo al terminar el job) — nunca
+#   toca el checkout del repo.
+# - El artifact resultante NO es privado en el sentido estricto: este
+#   repositorio es PÚBLICO, así que cualquier cuenta de GitHub logueada
+#   puede descargar artifacts de sus Actions (a diferencia de un
+#   repositorio privado). La única protección real del contenido es la
+#   contraseña (que nunca queda en el artifact ni en los logs). Por eso:
+#     1. La retención del artifact queda en 1 día (el mínimo útil).
+#     2. Al terminar de descargarlo, borrar manualmente el artifact y
+#        el run desde la pestaña Actions.
+#     3. Borrar este archivo de workflow del repo.
+#   Guardar la keystore descargada en un lugar seguro FUERA del repo
+#   (gestor de contraseñas / almacenamiento cifrado de la organización).
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+
+  generar-upload-key:
+    name: Generar upload keystore (efaat-upload)
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Verificar que el secret de la contraseña está configurado
+        env:
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_UPLOAD_KEY_PASSWORD" ]; then
+            echo "::error::Falta configurar el secret ANDROID_UPLOAD_KEY_PASSWORD (Settings > Secrets and variables > Actions) antes de correr este workflow."
+            exit 1
+          fi
+          echo "Secret presente — longitud: ${#ANDROID_UPLOAD_KEY_PASSWORD} caracteres (no se imprime el valor)."
+
+      - name: Configurar JDK 17 (Temurin) — trae keytool
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Genera la keystore RSA 2048 bits, alias "efaat-upload", validez
+      # ~27 años (10000 días, el mismo valor que recomienda la
+      # documentación oficial de Android para upload keys). El -dname
+      # evita que keytool pida los campos del certificado de forma
+      # interactiva (no hay TTY en CI) — son datos puramente
+      # informativos del certificado, no credenciales ni datos verificados.
+      #
+      # ::add-mask:: es una segunda capa de defensa además del enmascarado
+      # automático que GitHub ya aplica a cualquier valor que venga de
+      # `secrets.*` — así, aunque algún comando llegara a repetir la
+      # contraseña en su salida, el log la muestra como "***".
+      - name: Generar upload keystore (keytool -genkeypair)
+        env:
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          echo "::add-mask::$ANDROID_UPLOAD_KEY_PASSWORD"
+
+          keytool -genkeypair -v \
+            -keystore "$RUNNER_TEMP/efaat-upload-keystore.jks" \
+            -alias efaat-upload \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass "$ANDROID_UPLOAD_KEY_PASSWORD" \
+            -keypass "$ANDROID_UPLOAD_KEY_PASSWORD" \
+            -dname "CN=EFAAT Payments Reader, OU=EFAAT, O=EFAAT, C=CO"
+
+      # Certificado público en PEM (-rfc) — esto NO es secreto (es
+      # justamente lo que eventualmente se comparte/verifica), pero igual
+      # se genera solo en $RUNNER_TEMP junto con la keystore.
+      - name: Exportar certificado público (PEM)
+        env:
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          echo "::add-mask::$ANDROID_UPLOAD_KEY_PASSWORD"
+
+          keytool -exportcert -rfc \
+            -keystore "$RUNNER_TEMP/efaat-upload-keystore.jks" \
+            -alias efaat-upload \
+            -storepass "$ANDROID_UPLOAD_KEY_PASSWORD" \
+            -file "$RUNNER_TEMP/efaat-upload-certificate.pem"
+
+          echo "Certificado generado (contenido público, no es secreto):"
+          cat "$RUNNER_TEMP/efaat-upload-certificate.pem"
+
+      - name: Publicar keystore + certificado como artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: efaat-upload-key
+          path: |
+            ${{ runner.temp }}/efaat-upload-keystore.jks
+            ${{ runner.temp }}/efaat-upload-certificate.pem
+          if-no-files-found: error
+          retention-days: 1
