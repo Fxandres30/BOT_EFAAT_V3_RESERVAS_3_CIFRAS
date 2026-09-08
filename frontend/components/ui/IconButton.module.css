@@ -1,0 +1,58 @@
+.iconButton {
+  --_bg: transparent;
+  --_bg-hover: var(--efaat-surface-muted);
+  --_fg: var(--efaat-text-secondary);
+  --_border: transparent;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid var(--_border);
+  border-radius: var(--efaat-radius-control);
+  background: var(--_bg);
+  color: var(--_fg);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.iconButton:hover:not(:disabled) {
+  background: var(--_bg-hover);
+  color: var(--efaat-text);
+}
+
+.iconButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sm {
+  width: 30px;
+  height: 30px;
+}
+
+.md {
+  width: 36px;
+  height: 36px;
+}
+
+.solid {
+  --_bg: var(--efaat-surface);
+  --_bg-hover: var(--efaat-surface-muted);
+  --_border: var(--efaat-border);
+  --_fg: var(--efaat-text);
+}
+
+.ghost {
+  --_bg: transparent;
+  --_bg-hover: var(--efaat-surface-muted);
+}
+
+.danger {
+  --_fg: var(--efaat-error);
+  --_bg-hover: var(--efaat-error-soft);
+}
+
+.danger:hover:not(:disabled) {
+  color: var(--efaat-error);
+}

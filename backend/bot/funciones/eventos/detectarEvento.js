@@ -144,51 +144,46 @@ async function detectarEvento(ctx) {
         console.log("✅ Evento guardado correctamente");
 
         // ===============================
-        // AUTOMATION ENGINE — autorización
+        // AUTOMATION ENGINE — capa ADICIONAL, nunca un bloqueo de apertura
         // ===============================
-        // Se consulta ANTES de abrir (era el problema exacto de la
-        // arquitectura anterior: se abría primero y no había forma de
-        // autorizar después). eventoGuardado es exactamente lo que
-        // detectarEvento() ya producía — el Automation Engine no
-        // recalcula ni reinterpreta ningún dato del sorteo, solo decide
-        // comportamiento (grupo autorizado, configuración activa, día/
-        // horario permitidos, ciclo no duplicado).
-        let autorizarApertura = false; // fail-closed: sin autorización explícita, NO se abre
+        // CORRECCIÓN DE REGRESIÓN: antes, `if (!autorizarApertura) return`
+        // impedía llamar a abrirGrupo() por completo cuando no había
+        // grupo_autorizado/configuración activa — el comportamiento
+        // existente (detecta evento -> guarda evento -> abre grupo) NUNCA
+        // debe depender de que exista automatización configurada.
+        // Automation Engine se sigue consultando aquí, pero ahora
+        // ÚNICAMENTE decide si ADEMÁS se crea un event_session (necesario
+        // para recordatorios/actualización/cierre/tabla inicial/
+        // OPEN_MESSAGE automáticos) — nunca si el grupo se abre. Sin
+        // event_session, esas extras simplemente no ocurren para este
+        // ciclo; el grupo se abre igual.
         let eventSessionAutorizado = null; // Fase 4A: necesario más abajo para OPEN_MESSAGE
 
         try {
 
             const decision = await automationEngine.onEventoDetectado(eventoGuardado);
 
-            autorizarApertura = decision.creoEventSession === true;
             eventSessionAutorizado = decision.eventSession || null;
 
-            if (autorizarApertura) {
+            if (eventSessionAutorizado) {
 
-                console.log("🤖 [AUTOMATION] apertura autorizada — event_session creado:", decision.eventSession?.id);
+                console.log("🤖 [AUTOMATION] event_session creado — recordatorios/actualización/cierre/tabla/OPEN_MESSAGE habilitados:", decision.eventSession?.id);
 
             } else {
 
-                console.log(`🤖 [AUTOMATION] apertura NO autorizada (${decision.motivo}) — no se llama a abrirGrupo(). El evento sigue guardado en eventos_bot.`);
+                console.log(`🤖 [AUTOMATION] sin event_session (${decision.motivo}) — el grupo se abre igual por el mecanismo existente; sin extras automáticos para este ciclo.`);
 
             }
 
         } catch (errorAutomation) {
 
-            // Fail-closed: un fallo del propio Automation Engine (p. ej. las
-            // 4 tablas de la migración 006 todavía no aplicadas en Supabase)
-            // NUNCA autoriza la apertura — autorizarApertura ya vale false
-            // por defecto. El procesamiento del evento NO se rompe (sigue
-            // guardado, se sigue devolviendo), solo NO se llama a
-            // abrirGrupo(). Se deja constancia clara del error para operar
-            // sobre ello.
-            console.error("❌ [AUTOMATION] error evaluando autorización — NO se abre el grupo (fail-closed):", errorAutomation?.message);
-
-        }
-
-        if (!autorizarApertura) {
-
-            return eventoGuardado;
+            // Un fallo del propio Automation Engine (p. ej. las 4 tablas de
+            // la migración 006 todavía no aplicadas en Supabase) NUNCA debe
+            // impedir la apertura normal del grupo — solo significa que
+            // este ciclo queda sin extras automáticos (eventSessionAutorizado
+            // ya vale null por defecto). El procesamiento del evento no se
+            // rompe (sigue guardado, se sigue devolviendo).
+            console.error("❌ [AUTOMATION] error evaluando automatización (sin extras automáticos para este ciclo, la apertura del grupo continúa):", errorAutomation?.message);
 
         }
 
@@ -262,8 +257,11 @@ if (!grupoAbierto) {
     // Fase 4A — OPEN_MESSAGE: SOLO después de la confirmación real de
     // arriba (abrirGrupo() ya tuvo éxito), mismo criterio que el escáner
     // de identidades: no bloqueante, nunca retrasa ni afecta el resultado
-    // de detectarEvento(). eventSessionAutorizado siempre existe aquí
-    // (autorizarApertura=true es la única forma de llegar a este bloque).
+    // de detectarEvento(). El grupo ya se abrió exista o no automatización
+    // configurada; eventSessionAutorizado solo existe si Automation Engine
+    // SÍ creó un event_session para este ciclo — sin él, no hay
+    // OPEN_MESSAGE (ni recordatorios/actualización/cierre/tabla) para
+    // este ciclo, pero la apertura ya ocurrió igual.
     if (eventSessionAutorizado) {
 
         automationEngine.enviarMensajeApertura(eventoGuardado, eventSessionAutorizado, sock).catch(err => {

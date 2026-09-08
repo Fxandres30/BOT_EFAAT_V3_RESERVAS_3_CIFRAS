@@ -1,0 +1,57 @@
+.badge {
+  --_bg: #f1f5f9;
+  --_fg: var(--efaat-text-secondary);
+
+  display: inline-flex;
+  align-items: center;
+  gap: var(--efaat-space-2);
+  border-radius: var(--efaat-radius-pill);
+  background: var(--_bg);
+  color: var(--_fg);
+  font-weight: var(--efaat-weight-semibold);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.sm {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.md {
+  padding: 5px 10px;
+  font-size: var(--efaat-text-xs);
+}
+
+.neutral {
+  --_bg: #f1f5f9;
+  --_fg: var(--efaat-text-secondary);
+}
+
+.primary {
+  --_bg: var(--efaat-primary-soft);
+  --_fg: var(--efaat-primary-active);
+}
+
+.success {
+  --_bg: var(--efaat-success-soft);
+  --_fg: #166534;
+}
+
+.warning {
+  --_bg: var(--efaat-warning-soft);
+  --_fg: #92400e;
+}
+
+.error {
+  --_bg: var(--efaat-error-soft);
+  --_fg: #991b1b;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}

@@ -1,0 +1,138 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--efaat-z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--efaat-space-4);
+  background: rgba(15, 23, 42, 0.45);
+  animation: efaatOverlayIn 0.14s ease;
+}
+
+.modal {
+  width: 100%;
+  max-height: calc(100dvh - 2 * var(--efaat-space-4));
+  display: flex;
+  flex-direction: column;
+  background: var(--efaat-surface);
+  border-radius: var(--efaat-radius-modal);
+  box-shadow: var(--efaat-shadow-lg);
+  animation: efaatModalIn 0.16s ease;
+}
+
+.sm {
+  max-width: 400px;
+}
+.md {
+  max-width: 520px;
+}
+.lg {
+  max-width: 720px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--efaat-space-3);
+  padding: var(--efaat-space-4) var(--efaat-space-6);
+  border-bottom: 1px solid var(--efaat-border);
+}
+
+.titleBox {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--efaat-text-md);
+  font-weight: var(--efaat-weight-bold);
+  color: var(--efaat-text);
+}
+
+.description {
+  margin: 4px 0 0;
+  font-size: var(--efaat-text-sm);
+  color: var(--efaat-text-secondary);
+}
+
+.close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin: -4px -8px -4px 0;
+  border: none;
+  border-radius: var(--efaat-radius-control);
+  background: transparent;
+  color: var(--efaat-text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.close:hover {
+  background: var(--efaat-surface-muted);
+  color: var(--efaat-text);
+}
+
+.body {
+  padding: var(--efaat-space-6);
+  overflow-y: auto;
+  color: var(--efaat-text);
+  font-size: var(--efaat-text-base);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--efaat-space-3);
+  padding: var(--efaat-space-4) var(--efaat-space-6);
+  border-top: 1px solid var(--efaat-border);
+}
+
+@keyframes efaatOverlayIn {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes efaatModalIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@media (max-width: 640px) {
+  .overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .modal {
+    max-width: 100%;
+    max-height: 92dvh;
+    border-radius: var(--efaat-radius-modal) var(--efaat-radius-modal) 0 0;
+    animation: efaatSheetIn 0.18s ease;
+  }
+
+  .header,
+  .footer {
+    padding-left: var(--efaat-space-4);
+    padding-right: var(--efaat-space-4);
+  }
+
+  .body {
+    padding: var(--efaat-space-4);
+  }
+
+  @keyframes efaatSheetIn {
+    from {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+  }
+}

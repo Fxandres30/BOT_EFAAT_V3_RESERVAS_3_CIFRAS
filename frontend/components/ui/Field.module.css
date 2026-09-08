@@ -1,0 +1,28 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--efaat-space-2);
+  min-width: 0;
+}
+
+.label {
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-text);
+}
+
+.optional {
+  margin-left: 6px;
+  font-weight: var(--efaat-weight-medium);
+  color: var(--efaat-text-muted);
+}
+
+.hint {
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+}
+
+.error {
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-error);
+}

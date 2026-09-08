@@ -1,0 +1,69 @@
+/* PageHeader + SectionHeader comparten patrón: título + descripción + acciones */
+
+.pageHeader,
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--efaat-space-4);
+  flex-wrap: wrap;
+}
+
+.pageHeader {
+  margin-bottom: var(--efaat-space-6);
+}
+
+.sectionHeader {
+  margin-bottom: var(--efaat-space-4);
+}
+
+.texts {
+  min-width: 0;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--efaat-space-2);
+}
+
+.icon {
+  display: inline-flex;
+  color: var(--efaat-text-secondary);
+}
+
+.pageTitle {
+  margin: 0;
+  font-size: var(--efaat-text-xl);
+  font-weight: var(--efaat-weight-bold);
+  color: var(--efaat-text);
+  line-height: 1.2;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: var(--efaat-text-md);
+  font-weight: var(--efaat-weight-bold);
+  color: var(--efaat-text);
+}
+
+.description {
+  margin: 6px 0 0;
+  max-width: 68ch;
+  font-size: var(--efaat-text-sm);
+  color: var(--efaat-text-secondary);
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--efaat-space-2);
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .actions {
+    width: 100%;
+  }
+}

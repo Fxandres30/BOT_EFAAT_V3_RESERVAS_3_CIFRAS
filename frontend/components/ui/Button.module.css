@@ -1,0 +1,103 @@
+.button {
+  --_bg: var(--efaat-primary);
+  --_bg-hover: var(--efaat-primary-hover);
+  --_bg-active: var(--efaat-primary-active);
+  --_fg: var(--efaat-text-on-primary);
+  --_border: transparent;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--efaat-space-2);
+  border: 1px solid var(--_border);
+  border-radius: var(--efaat-radius-control);
+  background: var(--_bg);
+  color: var(--_fg);
+  font-family: inherit;
+  font-weight: var(--efaat-weight-semibold);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+    color 0.15s ease, opacity 0.15s ease;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--_bg-hover);
+}
+
+.button:active:not(:disabled) {
+  background: var(--_bg-active);
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* --- Tamaños --- */
+.sm {
+  height: 32px;
+  padding: 0 var(--efaat-space-3);
+  font-size: var(--efaat-text-sm);
+}
+
+.md {
+  height: 38px;
+  padding: 0 var(--efaat-space-4);
+  font-size: var(--efaat-text-base);
+}
+
+.fullWidth {
+  width: 100%;
+}
+
+/* --- Variantes --- */
+.primary {
+  --_bg: var(--efaat-primary);
+  --_bg-hover: var(--efaat-primary-hover);
+  --_bg-active: var(--efaat-primary-active);
+  --_fg: var(--efaat-text-on-primary);
+}
+
+.secondary {
+  --_bg: var(--efaat-surface);
+  --_bg-hover: var(--efaat-surface-muted);
+  --_bg-active: #eef2f7;
+  --_fg: var(--efaat-text);
+  --_border: var(--efaat-border);
+}
+
+.ghost {
+  --_bg: transparent;
+  --_bg-hover: var(--efaat-surface-muted);
+  --_bg-active: #eef2f7;
+  --_fg: var(--efaat-text);
+}
+
+.danger {
+  --_bg: var(--efaat-error);
+  --_bg-hover: #b91c1c;
+  --_bg-active: #991b1b;
+  --_fg: #ffffff;
+}
+
+.icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: efaatButtonSpin 0.6s linear infinite;
+}
+
+@keyframes efaatButtonSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}

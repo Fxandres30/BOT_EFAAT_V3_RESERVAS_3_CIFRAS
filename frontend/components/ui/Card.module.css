@@ -1,0 +1,32 @@
+.card {
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-card);
+  box-shadow: var(--efaat-shadow-sm);
+  color: var(--efaat-text);
+}
+
+.padNone {
+  padding: 0;
+}
+
+.padSm {
+  padding: var(--efaat-space-3);
+}
+
+.padMd {
+  padding: var(--efaat-space-4);
+}
+
+.padLg {
+  padding: var(--efaat-space-6);
+}
+
+.interactive {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.interactive:hover {
+  border-color: var(--efaat-border-strong);
+  box-shadow: var(--efaat-shadow-md);
+}

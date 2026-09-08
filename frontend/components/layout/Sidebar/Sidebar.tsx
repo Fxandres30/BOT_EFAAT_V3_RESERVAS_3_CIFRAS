@@ -3,235 +3,127 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  Smartphone,
+  Ticket,
+  MessageSquareText,
+  MessageCircle,
+  Target,
+  Bot,
+  ScanLine,
+  LogOut,
+  type LucideIcon,
+} from "lucide-react";
 
 import "./Sidebar.css";
 
 import { getUser } from "@/services/auth/getUser";
 import { logout } from "@/services/auth/logout";
 
-interface SidebarProps{
-
-    open:boolean;
-
-    onClose:()=>void;
-
+interface SidebarProps {
+  open: boolean;
+  onClose: () => void;
 }
 
-export default function Sidebar({
+interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+}
 
-    open,
+// Mismas rutas y etiquetas que antes — solo cambia la presentación del
+// icono (emoji -> Lucide). No se añaden ni se quitan destinos.
+const NAV: NavItem[] = [
+  { href: "/sesiones", label: "Sesiones", icon: Smartphone },
+  { href: "/tablas", label: "Reservas", icon: Ticket },
+  { href: "/mensajes", label: "Mensajes", icon: MessageSquareText },
+  { href: "/chats", label: "Chats", icon: MessageCircle },
+  { href: "/eventos", label: "Eventos", icon: Target },
+  { href: "/automatizacion", label: "Automatización", icon: Bot },
+  { href: "/lector-pagos", label: "Lector de pagos", icon: ScanLine },
+];
 
-    onClose
+export default function Sidebar({ open, onClose }: SidebarProps) {
+  const pathname = usePathname();
 
-}:SidebarProps){
+  const [email, setEmail] = useState<string | null>(null);
+  const [cerrando, setCerrando] = useState(false);
 
-    const pathname=usePathname();
-
-    const [email, setEmail] = useState<string | null>(null);
-    const [cerrando, setCerrando] = useState(false);
-
-    useEffect(() => {
-
-        async function cargar() {
-            const { data } = await getUser();
-            setEmail(data.user?.email || null);
-        }
-
-        cargar();
-
-    }, []);
-
-    async function cerrarSesion() {
-
-        setCerrando(true);
-
-        await logout();
-
-        // Recarga completa (no solo navegación de Next.js): garantiza que
-        // no quede ningún estado ni acceso visual al panel en memoria.
-        window.location.href = "/login";
-
+  useEffect(() => {
+    async function cargar() {
+      const { data } = await getUser();
+      setEmail(data.user?.email || null);
     }
 
-    const menu=[
+    cargar();
+  }, []);
 
-        {
-            titulo:"EFAAT",
-            items:[
-                {
-                    href:"/sesiones",
-                    icon:"📱",
-                    label:"Sesiones"
-                },
-                {
-                    href:"/tablas",
-                    icon:"🎟️",
-                    label:"Reservas"
-                },
-                {
-                    href:"/mensajes",
-                    icon:"✏️",
-                    label:"Mensajes"
-                },
-                {
-                    href:"/chats",
-                    icon:"💬",
-                    label:"Chats"
-                },
-                {
-                    href:"/eventos",
-                    icon:"🎯",
-                    label:"Eventos"
-                },
-                {
-                    href:"/automatizacion",
-                    icon:"🤖",
-                    label:"Automatización"
-                },
-                {
-                    href:"/lector-pagos",
-                    icon:"📱",
-                    label:"Lector de pagos"
-                }
-            ]
-        }
+  async function cerrarSesion() {
+    setCerrando(true);
 
-    ];
+    await logout();
 
-    return(
+    // Recarga completa (no solo navegación de Next.js): garantiza que
+    // no quede ningún estado ni acceso visual al panel en memoria.
+    window.location.href = "/login";
+  }
 
-        <aside
+  return (
+    <aside className={open ? "sidebar sidebar--open" : "sidebar"}>
+      <div className="sidebar__brand">
+        <span className="sidebar__logo">E</span>
+        <span className="sidebar__brandText">EFAAT</span>
+      </div>
 
-            className={
+      <nav className="sidebar__nav">
+        {NAV.map((item) => {
+          const active =
+            pathname === item.href || pathname.startsWith(`${item.href}/`);
 
-                open
+          const Icon = item.icon;
 
-                    ? "sidebar open"
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              prefetch={false}
+              onClick={onClose}
+              aria-current={active ? "page" : undefined}
+              className={
+                active
+                  ? "sidebar__item sidebar__item--active"
+                  : "sidebar__item"
+              }
+            >
+              <Icon
+                size={17}
+                className="sidebar__itemIcon"
+                aria-hidden="true"
+              />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
 
-                    : "sidebar"
+      <div className="sidebar__footer">
+        <div className="sidebar__user">
+          <span className="sidebar__avatar">
+            {(email?.[0] || "?").toUpperCase()}
+          </span>
+          <span className="sidebar__email">{email || "Sin sesión"}</span>
+        </div>
 
-            }
-
+        <button
+          type="button"
+          className="sidebar__logout"
+          disabled={cerrando}
+          onClick={cerrarSesion}
         >
-
-            <div className="sidebarHeader">
-
-                <div className="logoCircle">
-
-                    E
-
-                </div>
-
-                <div>
-
-                    <h2>
-
-                        EFAAT
-
-                    </h2>
-
-                    <span>
-
-                        Bot Manager
-
-                    </span>
-
-                </div>
-
-            </div>
-
-            {
-
-                menu.map(grupo=>(
-
-                    <div
-
-                        key={grupo.titulo}
-
-                        className="menuGroup"
-
-                    >
-
-                        <p className="menuTitle">
-
-                            {grupo.titulo}
-
-                        </p>
-
-                        {
-
-                            grupo.items.map(item=>(
-
-                                <Link
-
-                                    key={item.href}
-
-                                    href={item.href}
-
-                                    prefetch={false}
-
-                                    onClick={onClose}
-
-                                    className={
-
-                                        pathname===item.href
-
-                                        ? "menuItem active"
-
-                                        : "menuItem"
-
-                                    }
-
-                                >
-
-                                    <span>
-
-                                        {item.icon}
-
-                                    </span>
-
-                                    <span>
-
-                                        {item.label}
-
-                                    </span>
-
-                                </Link>
-
-                            ))
-
-                        }
-
-                    </div>
-
-                ))
-
-            }
-
-            <div className="sidebarFooter">
-
-                <div className="sidebarUser">
-
-                    <span className="sidebarUserIcon">👤</span>
-
-                    <span className="sidebarUserEmail">
-                        {email || "Sin sesión"}
-                    </span>
-
-                </div>
-
-                <button
-                    className="sidebarLogout"
-                    disabled={cerrando}
-                    onClick={cerrarSesion}
-                >
-                    🚪 {cerrando ? "Cerrando sesión..." : "Cerrar sesión"}
-                </button>
-
-            </div>
-
-        </aside>
-
-    );
-
+          <LogOut size={15} aria-hidden="true" />
+          {cerrando ? "Cerrando sesión..." : "Cerrar sesión"}
+        </button>
+      </div>
+    </aside>
+  );
 }

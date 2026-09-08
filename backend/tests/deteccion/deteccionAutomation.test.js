@@ -158,9 +158,9 @@ async function main() {
     });
 
     // ---------------------------------------------------------------
-    // 2) grupo no autorizado -> NO abre
+    // 2) grupo no autorizado -> abre igual (regla corregida), sin extras
     // ---------------------------------------------------------------
-    await test("2) grupo no autorizado -> NO llama a abrirGrupo(), evento igual queda guardado", async () => {
+    await test("2) grupo no autorizado -> SÍ llama a abrirGrupo() (la automatización es una capa adicional, no un bloqueo), pero NO crea event_session", async () => {
 
         const { detectarEvento, fakeSupabase, crearFakeSock } = crearEntorno();
 
@@ -169,17 +169,17 @@ async function main() {
 
         const resultado = await detectarEvento(ctx({ sock }));
 
-        assert.ok(resultado, "el evento se sigue devolviendo/guardando aunque Automation rechace");
-        assert.strictEqual(llamadas.groupSettingUpdate.length, 0, "no debe llamarse a abrirGrupo()");
-        assert.strictEqual(fakeSupabase._filas("event_sessions").length, 0);
+        assert.ok(resultado, "el evento se sigue devolviendo/guardando");
+        assert.strictEqual(llamadas.groupSettingUpdate.length, 1, "abrirGrupo() debe llamarse igual: la ausencia de autorización de automatización no bloquea la apertura normal");
+        assert.strictEqual(fakeSupabase._filas("event_sessions").length, 0, "sin autorización, Automation no crea event_session (sin recordatorios/actualización/cierre/OPEN_MESSAGE para este ciclo)");
         assert.strictEqual(fakeSupabase._filas("eventos_bot").length, 1, "el evento (10) sigue guardado en eventos_bot");
 
     });
 
     // ---------------------------------------------------------------
-    // 3) configuración inactiva -> NO abre
+    // 3) configuración inactiva -> abre igual (regla corregida), sin extras
     // ---------------------------------------------------------------
-    await test("3) configuración inactiva (interruptor apagado) -> NO llama a abrirGrupo()", async () => {
+    await test("3) configuración inactiva (interruptor apagado) -> SÍ llama a abrirGrupo() igual, pero NO crea event_session", async () => {
 
         const { detectarEvento, fakeSupabase, crearFakeSock } = crearEntorno();
 
@@ -190,15 +190,15 @@ async function main() {
 
         await detectarEvento(ctx({ sock }));
 
-        assert.strictEqual(llamadas.groupSettingUpdate.length, 0);
+        assert.strictEqual(llamadas.groupSettingUpdate.length, 1, "una configuración inactiva ya no bloquea la apertura normal");
         assert.strictEqual(fakeSupabase._filas("event_sessions").length, 0);
 
     });
 
     // ---------------------------------------------------------------
-    // 4) día no permitido -> NO abre
+    // 4) día no permitido -> abre igual (regla corregida), sin extras
     // ---------------------------------------------------------------
-    await test("4) día no permitido (hoy no está en la configuración) -> NO llama a abrirGrupo()", async () => {
+    await test("4) día no permitido (hoy no está en la configuración) -> SÍ llama a abrirGrupo() igual, pero NO crea event_session", async () => {
 
         const { detectarEvento, fakeSupabase, crearFakeSock } = crearEntorno();
 
@@ -209,14 +209,15 @@ async function main() {
 
         await detectarEvento(ctx({ sock }));
 
-        assert.strictEqual(llamadas.groupSettingUpdate.length, 0);
+        assert.strictEqual(llamadas.groupSettingUpdate.length, 1, "un día no permitido para automatización ya no bloquea la apertura normal");
+        assert.strictEqual(fakeSupabase._filas("event_sessions").length, 0);
 
     });
 
     // ---------------------------------------------------------------
-    // 5) fuera de horario -> NO abre
+    // 5) fuera de horario -> abre igual (regla corregida), sin extras
     // ---------------------------------------------------------------
-    await test("5) fuera del horario permitido hoy -> NO llama a abrirGrupo()", async () => {
+    await test("5) fuera del horario permitido hoy -> SÍ llama a abrirGrupo() igual, pero NO crea event_session", async () => {
 
         const { detectarEvento, fakeSupabase, crearFakeSock } = crearEntorno();
 
@@ -227,7 +228,8 @@ async function main() {
 
         await detectarEvento(ctx({ sock }));
 
-        assert.strictEqual(llamadas.groupSettingUpdate.length, 0);
+        assert.strictEqual(llamadas.groupSettingUpdate.length, 1, "fuera del horario de automatización ya no bloquea la apertura normal");
+        assert.strictEqual(fakeSupabase._filas("event_sessions").length, 0);
 
     });
 
@@ -265,9 +267,10 @@ async function main() {
     });
 
     // ---------------------------------------------------------------
-    // 7) ciclo duplicado -> NO abre nuevamente
+    // 7) ciclo duplicado -> abre las dos veces (apertura ya no depende de
+    //    automatización), el event_session del ciclo se crea una sola vez
     // ---------------------------------------------------------------
-    await test("7) el mismo mensaje detectado dos veces -> abrirGrupo() se llama solo la primera vez", async () => {
+    await test("7) el mismo mensaje detectado dos veces -> abrirGrupo() se llama las dos veces (idempotente en WhatsApp); el event_session del ciclo se crea una sola vez", async () => {
 
         const { detectarEvento, crearFakeSock, fakeSupabase } = crearEntorno();
 
@@ -279,15 +282,16 @@ async function main() {
         await detectarEvento(ctx({ sock }));
         await detectarEvento(ctx({ sock })); // mismo texto, mismo grupo, mismo sock
 
-        assert.strictEqual(llamadas.groupSettingUpdate.length, 1, "la segunda detección del mismo ciclo NO debe volver a abrir");
-        assert.strictEqual(fakeSupabase._filas("event_sessions").length, 1);
+        assert.strictEqual(llamadas.groupSettingUpdate.length, 2, "abrirGrupo() ya no depende de Automation: se llama en cada detección exitosa (mismo criterio que antes de que existiera Automation)");
+        assert.strictEqual(fakeSupabase._filas("event_sessions").length, 1, "el ciclo de Automation (identidad_ciclo) sigue deduplicado — sin extras duplicados");
 
     });
 
     // ---------------------------------------------------------------
-    // 8) dos detecciones concurrentes -> solo una apertura
+    // 8) dos detecciones concurrentes -> cada una abre (independiente),
+    //    el event_session del ciclo se crea una sola vez
     // ---------------------------------------------------------------
-    await test("8) dos detectarEvento() CONCURRENTES del mismo mensaje -> solo una apertura real", async () => {
+    await test("8) dos detectarEvento() CONCURRENTES del mismo mensaje -> cada una llama a abrirGrupo() (independiente de Automation); un solo event_session para el ciclo", async () => {
 
         const { detectarEvento, crearFakeSock, fakeSupabase } = crearEntorno();
 
@@ -301,15 +305,16 @@ async function main() {
             detectarEvento(ctx({ sock }))
         ]);
 
-        assert.strictEqual(llamadas.groupSettingUpdate.length, 1, "de dos detecciones concurrentes del mismo ciclo, exactamente una debe abrir");
-        assert.strictEqual(fakeSupabase._filas("event_sessions").length, 1, "debe existir un solo event_session para ese ciclo");
+        assert.strictEqual(llamadas.groupSettingUpdate.length, 2, "cada detección llama a abrirGrupo() de forma independiente — el groupQueue las serializa igual, sin depender de si Automation autorizó algo");
+        assert.strictEqual(fakeSupabase._filas("event_sessions").length, 1, "debe existir un solo event_session para ese ciclo (dedup de Automation, no de la apertura)");
 
     });
 
     // ---------------------------------------------------------------
-    // 9) restart/repetición del mismo evento -> no segunda apertura
+    // 9) restart/repetición del mismo evento -> vuelve a abrir (regla
+    //    corregida), pero NO crea un segundo event_session para el ciclo
     // ---------------------------------------------------------------
-    await test("9) reinicio del proceso (módulos recargados, misma base persistida) -> no vuelve a abrir el mismo ciclo", async () => {
+    await test("9) reinicio del proceso (módulos recargados, misma base persistida) -> la siguiente detección vuelve a llamar a abrirGrupo(), pero no duplica el event_session del ciclo", async () => {
 
         const usuarioId = "usuario-9";
 
@@ -331,8 +336,8 @@ async function main() {
 
         await despues.detectarEvento(ctx({ sock: sockDespues }));
 
-        assert.strictEqual(llamadasDespues.groupSettingUpdate.length, 0, "tras el 'reinicio', el mismo ciclo ya persistido NO debe volver a abrirse");
-        assert.strictEqual(despues.fakeSupabase._filas("event_sessions").length, 1, "sigue existiendo un único event_session para ese ciclo");
+        assert.strictEqual(llamadasDespues.groupSettingUpdate.length, 1, "abrirGrupo() ya no depende del estado de Automation: se llama de nuevo en la siguiente detección exitosa");
+        assert.strictEqual(despues.fakeSupabase._filas("event_sessions").length, 1, "sigue existiendo un único event_session para ese ciclo (Automation deduplica sus propias extras, no la apertura)");
 
     });
 
@@ -410,22 +415,26 @@ async function main() {
     });
 
     // =================================================================
-    // CORRECCIÓN FAIL-CLOSED — una excepción del Automation Engine NUNCA
-    // autoriza la apertura (antes: fallback que sí abría; ahora: no).
+    // FAIL-CLOSED PARA LAS EXTRAS DE AUTOMATIZACIÓN — una excepción del
+    // Automation Engine NUNCA crea event_session (sin recordatorios/
+    // actualización/cierre/tabla/OPEN_MESSAGE para ese ciclo), pero YA NO
+    // bloquea la apertura normal del grupo (corrección de regresión: la
+    // automatización es una capa adicional, nunca un bloqueo global).
     // =================================================================
 
     // ---------------------------------------------------------------
-    // 13) excepción del Automation Engine -> NO abre
+    // 13) excepción del Automation Engine -> abre igual, sin extras
     // ---------------------------------------------------------------
-    await test("13) el Automation Engine lanza una excepción (p. ej. tabla de 006 inexistente) -> NO se llama a abrirGrupo()", async () => {
+    await test("13) el Automation Engine lanza una excepción (p. ej. tabla de 006 inexistente) -> SÍ se llama a abrirGrupo() igual, pero NO crea event_session", async () => {
 
         const { detectarEvento, fakeSupabase, crearFakeSock } = crearEntorno();
 
         const usuarioId = "usuario-13";
         const { sock, llamadas } = crearFakeSock({ usuarioId });
 
-        // Ni siquiera autorizado de más: aunque grupo/config estuvieran en
-        // regla, la excepción debe bloquear la apertura de todas formas.
+        // Aunque grupo/config estuvieran en regla, la excepción del propio
+        // Automation Engine no debe impedir la apertura — solo pierde las
+        // extras de automatización para este ciclo.
         autorizar(fakeSupabase, { usuarioId });
 
         romperTablaAutomation(fakeSupabase, "grupos_autorizados");
@@ -433,7 +442,8 @@ async function main() {
         const resultado = await detectarEvento(ctx({ sock }));
 
         assert.ok(resultado, "detectarEvento no debe lanzar ni devolver null solo porque Automation falló");
-        assert.strictEqual(llamadas.groupSettingUpdate.length, 0, "fail-closed: una excepción de Automation NUNCA debe terminar en abrirGrupo()");
+        assert.strictEqual(llamadas.groupSettingUpdate.length, 1, "una excepción de Automation Engine ya no bloquea abrirGrupo() — solo el propio Automation Engine se queda sin efecto para este ciclo");
+        assert.strictEqual(fakeSupabase._filas("event_sessions").length, 0, "sin event_session: no hay recordatorios/actualización/cierre/OPEN_MESSAGE para este ciclo");
 
     });
 
@@ -461,12 +471,12 @@ async function main() {
     });
 
     // ---------------------------------------------------------------
-    // 15) ningún camino de error termina llamando abrirGrupo() — se repite
-    // la excepción con OTRA tabla rota (automation_configs en vez de
-    // grupos_autorizados) para confirmar que no es una casualidad de un
-    // solo punto de fallo específico.
+    // 15) ningún camino de error del Automation Engine bloquea la
+    // apertura — se repite la excepción con OTRA tabla rota
+    // (automation_configs en vez de grupos_autorizados) para confirmar
+    // que no es una casualidad de un solo punto de fallo específico.
     // ---------------------------------------------------------------
-    await test("15) excepción en un punto distinto del Automation Engine (automation_configs) -> tampoco abre", async () => {
+    await test("15) excepción en un punto distinto del Automation Engine (automation_configs) -> abrirGrupo() se llama igual, sin event_session", async () => {
 
         const { detectarEvento, fakeSupabase, crearFakeSock } = crearEntorno();
 
@@ -479,7 +489,8 @@ async function main() {
 
         await detectarEvento(ctx({ sock }));
 
-        assert.strictEqual(llamadas.groupSettingUpdate.length, 0, "ningún camino de error del Automation Engine debe terminar en abrirGrupo()");
+        assert.strictEqual(llamadas.groupSettingUpdate.length, 1, "ningún camino de error del Automation Engine debe bloquear abrirGrupo()");
+        assert.strictEqual(fakeSupabase._filas("event_sessions").length, 0, "sí se pierden las extras de automatización para este ciclo");
 
     });
 

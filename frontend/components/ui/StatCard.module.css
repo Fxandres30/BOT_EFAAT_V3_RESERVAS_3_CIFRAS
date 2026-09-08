@@ -1,0 +1,56 @@
+.statCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--efaat-space-2);
+  padding: var(--efaat-space-4);
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-card);
+  box-shadow: var(--efaat-shadow-sm);
+  min-width: 0;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--efaat-space-2);
+}
+
+.label {
+  font-size: 11px;
+  font-weight: var(--efaat-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--efaat-text-secondary);
+}
+
+.icon {
+  display: inline-flex;
+  color: var(--efaat-text-muted);
+}
+
+.value {
+  font-size: var(--efaat-text-xl);
+  font-weight: var(--efaat-weight-bold);
+  line-height: 1.1;
+  color: var(--efaat-text);
+}
+
+.hint {
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-muted);
+}
+
+.tone-primary .value {
+  color: var(--efaat-primary-active);
+}
+.tone-success .value {
+  color: var(--efaat-success);
+}
+.tone-warning .value {
+  color: var(--efaat-warning);
+}
+.tone-error .value {
+  color: var(--efaat-error);
+}

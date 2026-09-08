@@ -1,0 +1,46 @@
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--efaat-space-3);
+  padding: var(--efaat-space-8) var(--efaat-space-6);
+  background: var(--efaat-surface);
+  border: 1px dashed var(--efaat-border-strong);
+  border-radius: var(--efaat-radius-card);
+}
+
+.bare {
+  background: transparent;
+  border: none;
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--efaat-radius-pill);
+  background: var(--efaat-primary-soft);
+  color: var(--efaat-primary);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--efaat-text-md);
+  font-weight: var(--efaat-weight-bold);
+  color: var(--efaat-text);
+}
+
+.description {
+  margin: 0;
+  max-width: 42ch;
+  font-size: var(--efaat-text-sm);
+  color: var(--efaat-text-secondary);
+  line-height: 1.5;
+}
+
+.action {
+  margin-top: var(--efaat-space-1);
+}

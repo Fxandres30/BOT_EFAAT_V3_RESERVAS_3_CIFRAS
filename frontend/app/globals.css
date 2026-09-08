@@ -1,8 +1,90 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   EFAAT — Sistema visual global
+   Solo tokens + base verdaderamente global. Los estilos específicos de
+   pantallas/componentes viven junto a cada componente (CSS propio o CSS
+   Module). No agregar aquí reglas de tarjetas, sidebar, tablas, modales, etc.
+   ========================================================================== */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* --- Superficie / fondo --- */
+  --efaat-bg: #f6f8fc;
+  --efaat-surface: #ffffff;
+  --efaat-surface-muted: #f8fafc;
+  --efaat-sidebar: #0b1220;
+
+  /* --- Marca / acción --- */
+  --efaat-primary: #2563eb;
+  --efaat-primary-hover: #1d4ed8;
+  --efaat-primary-active: #1e40af;
+  --efaat-primary-soft: #eff6ff;
+  --efaat-primary-contrast: #ffffff;
+
+  /* --- Estados --- */
+  --efaat-success: #16a34a;
+  --efaat-success-soft: #dcfce7;
+  --efaat-warning: #d97706;
+  --efaat-warning-soft: #fef3c7;
+  --efaat-error: #dc2626;
+  --efaat-error-soft: #fee2e2;
+
+  /* --- Texto --- */
+  --efaat-text: #0f172a;
+  --efaat-text-secondary: #64748b;
+  --efaat-text-muted: #94a3b8;
+  --efaat-text-on-primary: #ffffff;
+
+  /* --- Bordes --- */
+  --efaat-border: #e2e8f0;
+  --efaat-border-strong: #cbd5e1;
+
+  /* --- Tipografía --- */
+  --efaat-font-sans: var(--font-geist-sans), ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --efaat-font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular,
+    Menlo, Consolas, monospace;
+
+  --efaat-text-xs: 12px;
+  --efaat-text-sm: 13px;
+  --efaat-text-base: 14px;
+  --efaat-text-md: 16px;
+  --efaat-text-lg: 20px;
+  --efaat-text-xl: 24px;
+  --efaat-text-2xl: 30px;
+
+  --efaat-weight-medium: 500;
+  --efaat-weight-semibold: 600;
+  --efaat-weight-bold: 700;
+
+  /* --- Spacing --- */
+  --efaat-space-1: 4px;
+  --efaat-space-2: 8px;
+  --efaat-space-3: 12px;
+  --efaat-space-4: 16px;
+  --efaat-space-6: 24px;
+  --efaat-space-8: 32px;
+
+  /* --- Radios --- */
+  --efaat-radius-control: 6px;
+  --efaat-radius-card: 10px;
+  --efaat-radius-modal: 14px;
+  --efaat-radius-pill: 999px;
+
+  /* --- Sombras (sutiles) --- */
+  --efaat-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --efaat-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --efaat-shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.16);
+
+  /* --- Foco accesible --- */
+  --efaat-focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.35);
+
+  /* --- Capas --- */
+  --efaat-z-modal: 1000;
+
+  /* Compat: variables previas del template (usadas por @theme inline). */
+  --background: var(--efaat-bg);
+  --foreground: var(--efaat-text);
 }
 
 @theme inline {
@@ -12,24 +94,24 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 html {
   overflow-x: hidden;
   width: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--efaat-bg);
+  color: var(--efaat-text);
+  font-family: var(--efaat-font-sans);
   overflow-x: hidden;
   width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
+}
+
+/* Foco accesible por teclado, sin afectar el layout ni el clic con ratón. */
+:focus-visible {
+  outline: 2px solid var(--efaat-primary);
+  outline-offset: 2px;
 }

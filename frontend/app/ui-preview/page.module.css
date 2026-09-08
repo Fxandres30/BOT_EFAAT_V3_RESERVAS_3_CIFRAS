@@ -1,0 +1,90 @@
+.page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: var(--efaat-space-8) var(--efaat-space-6) 96px;
+}
+
+.pageTitle {
+  margin: 0 0 4px;
+  font-size: var(--efaat-text-2xl);
+  font-weight: var(--efaat-weight-bold);
+  color: var(--efaat-text);
+}
+
+.pageLead {
+  margin: 0 0 var(--efaat-space-8);
+  font-size: var(--efaat-text-sm);
+  color: var(--efaat-text-secondary);
+}
+
+.section {
+  padding: var(--efaat-space-6) 0;
+  border-top: 1px solid var(--efaat-border);
+}
+
+.sectionTitle {
+  margin: 0 0 var(--efaat-space-4);
+  font-size: 11px;
+  font-weight: var(--efaat-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--efaat-text-muted);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--efaat-space-3);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--efaat-space-4);
+  max-width: 420px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--efaat-space-4);
+}
+
+.swatchGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--efaat-space-3);
+}
+
+.swatch {
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-card);
+  overflow: hidden;
+  font-size: var(--efaat-text-xs);
+}
+
+.swatchColor {
+  height: 56px;
+}
+
+.swatchLabel {
+  padding: 8px 10px;
+  background: var(--efaat-surface);
+  color: var(--efaat-text-secondary);
+}
+
+.swatchLabel b {
+  display: block;
+  color: var(--efaat-text);
+  font-weight: var(--efaat-weight-semibold);
+}
+
+.note {
+  margin: 0 0 var(--efaat-space-4);
+  padding: 10px 12px;
+  background: var(--efaat-warning-soft);
+  color: #92400e;
+  border-radius: var(--efaat-radius-control);
+  font-size: var(--efaat-text-xs);
+}
