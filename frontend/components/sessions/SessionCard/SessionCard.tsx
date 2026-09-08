@@ -1,16 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { Power, QrCode, Plug, Star, Check } from "lucide-react";
 
-import "./SessionCard.css";
-
-import SessionStatus from "./components/SessionStatus/SessionStatus";
-import SessionBotStatus from "./components/SessionBotStatus/SessionBotStatus";
-import SessionBody from "./components/SessionBody/SessionBody";
-import SessionActions from "./components/SessionActions/SessionActions";
-import SessionModals from "./components/SessionModals/SessionModals";
+import { Button } from "@/components/ui/Button";
+import { Badge, StatusBadge, type StatusKind } from "@/components/ui/Badge";
 
 import SessionMenu from "../SessionMenu/SessionMenu";
+import SessionModals from "./components/SessionModals/SessionModals";
 
 import { useSession } from "./hooks/useSession";
 
@@ -18,212 +15,183 @@ import { setActiveSession } from "@/services/sessions/setActiveSession";
 import { setPreferredSession } from "@/services/sessions/setPreferredSession";
 import { connectSession, isSessionNotFound } from "@/services/sessions/connectSession";
 
+import styles from "./SessionCard.module.css";
+
 interface Props {
-
-    id: string;
-
-    nombre: string;
-
-    telefono: string;
-
-    estado: string;
-
-    principal: boolean;
-
-    activa: boolean;
-
-    onRefresh?: () => void;
-
+  id: string;
+  nombre: string;
+  telefono: string;
+  estado: string;
+  principal: boolean;
+  activa: boolean;
+  onRefresh?: () => void;
 }
 
 export default function SessionCard({
-
-    id,
-
-    nombre,
-
-    telefono,
-
-    estado,
-
-    principal,
-
-    activa,
-
-    onRefresh
-
+  id,
+  nombre,
+  telefono,
+  estado,
+  principal,
+  activa,
+  onRefresh,
 }: Props) {
-
-    const {
-
+  const {
     loading,
-
     open,
-
     qr,
-
     segundos,
-
     estadoActual,
-
     accionPrincipal,
-
     textoBoton,
+    cerrarQR,
+  } = useSession(id, estado, onRefresh);
 
-    cerrarQR
+  const conectado = estadoActual === "conectado";
+  const esperandoQR = estadoActual === "esperando_qr";
 
-} = useSession(id, estado, onRefresh);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
-    const conectado =
-        estadoActual === "conectado";
+  const status: { kind: StatusKind; label: string } = conectado
+    ? { kind: "online", label: "Conectada" }
+    : esperandoQR
+    ? { kind: "pending", label: "QR pendiente" }
+    : { kind: "offline", label: "Desconectada" };
 
-    const esperandoQR =
-        estadoActual === "esperando_qr";
+  const tieneTelefono = telefono && telefono !== "Sin conectar";
 
-    const statusClass =
-        conectado
-            ? "connected"
-            : esperandoQR
-            ? "waiting"
-            : "disconnected";
+  return (
+    <>
+      <div className={styles.card}>
+        <div className={styles.head}>
+          <StatusBadge status={status.kind} label={status.label} />
 
-    const [renameOpen, setRenameOpen] = useState(false);
+          <SessionMenu
+            sessionId={id}
+            nombre={nombre}
+            principal={principal}
+            conectado={conectado}
+            esperandoQR={esperandoQR}
+            activa={activa}
+            onRename={() => setRenameOpen(true)}
+            onDelete={() => setDeleteOpen(true)}
+            onPrincipal={async () => {
+              try {
+                await setPreferredSession(id);
+              } catch (error) {
+                console.error(error);
+              }
+            }}
+            onReconnect={async () => {
+              try {
+                const res = await connectSession(id);
 
-    const [deleteOpen, setDeleteOpen] = useState(false);
+                if (isSessionNotFound(res)) {
+                  alert(
+                    "Esta sesión ya no existe (fue eliminada). " +
+                      "Actualiza la lista y crea o selecciona una sesión válida."
+                  );
 
-    return (
+                  onRefresh?.();
+                }
+              } catch (error) {
+                console.error(error);
+              }
+            }}
+            onUseSession={async () => {
+              const res = await setActiveSession(id);
+              console.log(res);
+            }}
+          />
+        </div>
 
-        <>
+        <div className={styles.body}>
+          <h3 className={styles.name} title={nombre}>
+            {nombre}
+          </h3>
+          <p className={styles.phone}>
+            {tieneTelefono ? telefono : "Sin número vinculado"}
+          </p>
+        </div>
 
-            <div className={`session-card ${statusClass}`}>
+        <div className={styles.flags}>
+          {activa && (
+            <Badge tone="primary" dot>
+              Bot activo
+            </Badge>
+          )}
+          {principal && <Badge tone="warning">Preferida</Badge>}
+          {!activa && !principal && <Badge tone="neutral">En espera</Badge>}
+        </div>
 
-                <div className="session-header">
+        <div className={styles.idRow} title={id}>
+          <span className={styles.idLabel}>ID</span>
+          <span className={styles.idValue}>{id}</span>
+        </div>
 
-                    <SessionStatus
-                        conectado={conectado}
-                        esperandoQR={esperandoQR}
-                    />
+        <div className={styles.actions}>
+          <Button
+            variant={conectado ? "danger" : "primary"}
+            size="sm"
+            fullWidth
+            loading={loading}
+            leftIcon={
+              conectado ? (
+                <Power size={14} />
+              ) : esperandoQR ? (
+                <QrCode size={14} />
+              ) : (
+                <Plug size={14} />
+              )
+            }
+            onClick={accionPrincipal}
+          >
+            {textoBoton()}
+          </Button>
 
-                    <SessionMenu
-                        sessionId={id}
-                        nombre={nombre}
-                        principal={principal}
-                        conectado={conectado}
-                        esperandoQR={esperandoQR}
-                        activa={activa}
-                        onRename={() => setRenameOpen(true)}
-                        onDelete={() => setDeleteOpen(true)}
-                        onPrincipal={async () => {
+          {conectado && (
+            <Button
+              variant="secondary"
+              size="sm"
+              fullWidth
+              disabled={loading || activa}
+              leftIcon={
+                activa ? <Check size={14} /> : <Star size={14} />
+              }
+              onClick={async () => {
+                if (activa) return;
 
-                            try {
+                try {
+                  // No hace falta recargar la página: useSessions/useSession
+                  // ya están suscritos en tiempo real a cambios de la tabla
+                  // "sesiones" (Supabase Realtime) y reflejan "activa"/
+                  // "principal" solos en cuanto el backend los actualiza.
+                  await setActiveSession(id);
+                } catch (error) {
+                  console.error(error);
+                }
+              }}
+            >
+              {activa ? "Sesión en uso" : "Usar esta sesión"}
+            </Button>
+          )}
+        </div>
+      </div>
 
-                                await setPreferredSession(id);
-
-                            }
-
-                            catch (error) {
-
-                                console.error(error);
-
-                            }
-
-                        }}
-                        onReconnect={async () => {
-
-                            try {
-
-                                const res = await connectSession(id);
-
-                                if (isSessionNotFound(res)) {
-
-                                    alert(
-                                        "Esta sesión ya no existe (fue eliminada). " +
-                                        "Actualiza la lista y crea o selecciona una sesión válida."
-                                    );
-
-                                    onRefresh?.();
-
-                                }
-
-                            }
-
-                            catch (error) {
-
-                                console.error(error);
-
-                            }
-
-                        }}
-                        onUseSession={async () => {
-
-                            const res =
-                                await setActiveSession(id);
-
-                            console.log(res);
-
-                        }}
-                    />
-
-                </div>
-
-                <SessionBotStatus
-                    activa={activa}
-                    principal={principal}
-                />
-
-                <SessionBody
-                    id={id}
-                    nombre={nombre}
-                    telefono={telefono}
-                    principal={principal}
-                />
-
-                <SessionActions
-    conectado={conectado}
-    esperandoQR={esperandoQR}
-    loading={loading}
-    activa={activa}
-    accionPrincipal={accionPrincipal}
-    textoBoton={textoBoton}
-    seleccionarSesion={async () => {
-
-        try {
-
-            // No hace falta recargar la página: useSessions/useSession ya
-            // están suscritos en tiempo real a cambios de la tabla
-            // "sesiones" (Supabase Realtime) y reflejan "activa"/
-            // "principal" solos en cuanto el backend los actualiza.
-            await setActiveSession(id);
-
-        }
-
-        catch (error) {
-
-            console.error(error);
-
-        }
-
-    }}
-/>
-
-            </div>
-
-            <SessionModals
-    qrOpen={open}
-    qr={qr}
-    sessionId={id}
-    segundos={segundos}
-    cerrarQR={cerrarQR}
-    renameOpen={renameOpen}
-    deleteOpen={deleteOpen}
-    nombre={nombre}
-    onCloseRename={() => setRenameOpen(false)}
-    onCloseDelete={() => setDeleteOpen(false)}
-    onDeleted={onRefresh}
-/>
-
-        </>
-
-    );
-
+      <SessionModals
+        qrOpen={open}
+        qr={qr}
+        sessionId={id}
+        segundos={segundos}
+        cerrarQR={cerrarQR}
+        renameOpen={renameOpen}
+        deleteOpen={deleteOpen}
+        nombre={nombre}
+        onCloseRename={() => setRenameOpen(false)}
+        onCloseDelete={() => setDeleteOpen(false)}
+        onDeleted={onRefresh}
+      />
+    </>
+  );
 }

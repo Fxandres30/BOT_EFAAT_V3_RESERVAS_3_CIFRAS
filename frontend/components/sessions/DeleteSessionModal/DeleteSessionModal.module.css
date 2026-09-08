@@ -1,0 +1,23 @@
+.text {
+  margin: 0 0 12px;
+  font-size: var(--efaat-text-base);
+  color: var(--efaat-text);
+  line-height: 1.5;
+}
+
+.warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--efaat-warning-soft);
+  border-radius: 8px;
+  font-size: var(--efaat-text-xs);
+  color: #92400e;
+  line-height: 1.5;
+}
+
+.warn svg {
+  flex-shrink: 0;
+  color: var(--efaat-warning);
+}

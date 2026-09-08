@@ -1,0 +1,81 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-card);
+  box-shadow: var(--efaat-shadow-sm);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.name {
+  margin: 0;
+  font-size: var(--efaat-text-md);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.phone {
+  margin: 0;
+  font-size: var(--efaat-text-sm);
+  color: var(--efaat-text-secondary);
+}
+
+.flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.idRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--efaat-surface-muted);
+  border: 1px solid var(--efaat-border);
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.idLabel {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--efaat-text-muted);
+}
+
+.idValue {
+  font-family: var(--efaat-font-mono);
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
+}

@@ -1,171 +1,82 @@
 "use client";
 
-import "./DeleteSessionModal.css";
+import { useState } from "react";
+import { AlertTriangle } from "lucide-react";
 
-import { FaTrash } from "react-icons/fa";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
 
 import { deleteSession } from "../actions/deleteSession";
 
-import { useState } from "react";
+import styles from "./DeleteSessionModal.module.css";
 
 type Props = {
-
-    open: boolean;
-
-    sessionId: string;
-
-    nombre: string;
-
-    onClose: () => void;
-
-    onDeleted?: () => void;
-
+  open: boolean;
+  sessionId: string;
+  nombre: string;
+  onClose: () => void;
+  onDeleted?: () => void;
 };
 
 export default function DeleteSessionModal({
-
-    open,
-
-    sessionId,
-
-    nombre,
-
-    onClose,
-
-    onDeleted
-
+  open,
+  sessionId,
+  nombre,
+  onClose,
+  onDeleted,
 }: Props) {
+  const [loading, setLoading] = useState(false);
 
-    const [loading,setLoading]=
-        useState(false);
+  async function eliminar() {
+    setLoading(true);
 
-    if(!open)
-        return null;
+    try {
+      await deleteSession(sessionId);
 
-    async function eliminar(){
+      // No dependemos solo de Supabase Realtime (el evento DELETE puede no
+      // llegar, p.ej. si la tabla no tiene REPLICA IDENTITY FULL):
+      // refrescamos la lista explícitamente para que la card desaparezca
+      // de inmediato, aquí mismo.
+      onDeleted?.();
 
-        setLoading(true);
+      onClose();
+    } catch (err) {
+      console.error(err);
 
-        try{
-
-            await deleteSession(sessionId);
-
-            // No dependemos solo de Supabase Realtime (el evento DELETE
-            // puede no llegar, p.ej. si la tabla no tiene REPLICA IDENTITY
-            // FULL): refrescamos la lista explícitamente para que la card
-            // desaparezca de inmediato, aquí mismo.
-            onDeleted?.();
-
-            onClose();
-
-        }
-
-        catch(err){
-
-            console.error(err);
-
-            alert("No fue posible eliminar la sesión.");
-
-        }
-
-        setLoading(false);
-
+      alert("No fue posible eliminar la sesión.");
     }
 
-    return(
+    setLoading(false);
+  }
 
-        <div
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="sm"
+      title="Eliminar sesión"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button variant="danger" onClick={eliminar} loading={loading}>
+            Eliminar
+          </Button>
+        </>
+      }
+    >
+      <p className={styles.text}>
+        Vas a eliminar la sesión <strong>{nombre}</strong>.
+      </p>
 
-            className="delete-overlay"
-
-            onClick={onClose}
-
-        >
-
-            <div
-
-                className="delete-modal"
-
-                onClick={(e)=>e.stopPropagation()}
-
-            >
-
-                <div className="delete-icon">
-
-                    <FaTrash/>
-
-                </div>
-
-                <h2>
-
-                    Eliminar sesión
-
-                </h2>
-
-                <p>
-
-                    Vas a eliminar la sesión
-
-                    <strong>
-
-                        {" "}{nombre}
-
-                    </strong>
-
-                </p>
-
-                <p className="warning">
-
-                    Esta acción eliminará la sesión y sus archivos de autenticación.
-
-                    <br/>
-
-                    No podrá deshacerse.
-
-                </p>
-
-                <div className="delete-buttons">
-
-                    <button
-
-                        className="cancel"
-
-                        onClick={onClose}
-
-                    >
-
-                        Cancelar
-
-                    </button>
-
-                    <button
-
-                        className="delete"
-
-                        disabled={loading}
-
-                        onClick={eliminar}
-
-                    >
-
-                        {
-
-                            loading
-
-                            ? "Eliminando..."
-
-                            : "Eliminar"
-
-                        }
-
-                    </button>
-
-                </div>
-
-            </div>
-
-        </div>
-
-    );
-
+      <div className={styles.warn}>
+        <AlertTriangle size={16} />
+        <span>
+          Se eliminarán la sesión y sus archivos de autenticación. No se puede
+          deshacer.
+        </span>
+      </div>
+    </Modal>
+  );
 }

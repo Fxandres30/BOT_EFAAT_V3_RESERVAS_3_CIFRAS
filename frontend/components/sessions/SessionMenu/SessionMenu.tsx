@@ -1,220 +1,144 @@
 "use client";
 
 import { useState } from "react";
+import {
+  MoreVertical,
+  Pencil,
+  Star,
+  Link2,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 
-import "./SessionMenu.css";
-
-import { FaEllipsisVertical } from "react-icons/fa6";
+import { IconButton } from "@/components/ui/IconButton";
 
 import { shareSession } from "../actions/shareSession";
 
-import {
-    FaPen,
-    FaStar,
-    FaSync,
-    FaTrash,
-    FaLink
-} from "react-icons/fa";
+import styles from "./SessionMenu.module.css";
 
 type Props = {
-
-    sessionId: string;
-
-    nombre: string;
-
-    principal: boolean;
-
-    conectado: boolean;
-
-    esperandoQR: boolean;
-
-    activa: boolean;
-
-    onRename: () => void;
-
-    onDelete: () => void;
-
-    onPrincipal: () => void;
-
-    onReconnect: () => void;
-
-    onUseSession: () => void;
-
+  sessionId: string;
+  nombre: string;
+  principal: boolean;
+  conectado: boolean;
+  esperandoQR: boolean;
+  activa: boolean;
+  onRename: () => void;
+  onDelete: () => void;
+  onPrincipal: () => void;
+  onReconnect: () => void;
+  onUseSession: () => void;
 };
 
 export default function SessionMenu({
-
-    sessionId,
-    principal,
-    activa,
-
-    onRename,
-    onDelete,
-    onPrincipal,
-    onReconnect,
-    onUseSession
-
+  sessionId,
+  principal,
+  activa,
+  onRename,
+  onDelete,
+  onPrincipal,
+  onReconnect,
+  onUseSession,
 }: Props) {
+  const [open, setOpen] = useState(false);
 
-    const [open, setOpen] = useState(false);
+  return (
+    <div className={styles.wrap}>
+      <IconButton
+        label="Opciones de la sesión"
+        variant="ghost"
+        size="sm"
+        onClick={() => setOpen(!open)}
+      >
+        <MoreVertical size={16} />
+      </IconButton>
 
-    return (
+      {open && (
+        <>
+          <div
+            className={styles.backdrop}
+            onClick={() => setOpen(false)}
+          />
 
-        <div className="session-menu">
-
+          <div className={styles.menu} role="menu">
             <button
-
-                className="menu-btn"
-
-                onClick={() => setOpen(!open)}
-
+              type="button"
+              className={styles.item}
+              onClick={() => {
+                setOpen(false);
+                onRename();
+              }}
             >
-
-                <FaEllipsisVertical />
-
+              <Pencil size={14} />
+              Cambiar nombre
             </button>
 
-            {
+            {!principal && (
+              <button
+                type="button"
+                className={styles.item}
+                onClick={() => {
+                  setOpen(false);
+                  onPrincipal();
+                }}
+              >
+                <Star size={14} />
+                Hacer preferida
+              </button>
+            )}
 
-                open && (
+            {!activa && (
+              <button
+                type="button"
+                className={styles.item}
+                onClick={() => {
+                  setOpen(false);
+                  onUseSession();
+                }}
+              >
+                <Star size={14} />
+                Usar esta sesión
+              </button>
+            )}
 
-                    <div className="menu-dropdown">
-
-                        <button
-
-                            onClick={() => {
-
-                                setOpen(false);
-
-                                onRename();
-
-                            }}
-
-                        >
-
-                            <FaPen />
-
-                            Cambiar nombre
-
-                        </button>
-
-                        {
-
-    !principal && (
-
-        <button
-
-            onClick={() => {
-
+            <button
+              type="button"
+              className={styles.item}
+              onClick={async () => {
                 setOpen(false);
+                await shareSession(sessionId);
+              }}
+            >
+              <Link2 size={14} />
+              Compartir enlace
+            </button>
 
-                onPrincipal();
-
-            }}
-
-        >
-
-            <FaStar />
-
-            Hacer preferida
-
-        </button>
-
-    )
-
-}
-
-{
-
-    !activa && (
-
-        <button
-
-            onClick={() => {
-
+            <button
+              type="button"
+              className={styles.item}
+              onClick={() => {
                 setOpen(false);
+                onReconnect();
+              }}
+            >
+              <RefreshCw size={14} />
+              Reconectar
+            </button>
 
-                onUseSession();
-
-            }}
-
-        >
-
-            <FaStar />
-
-            Usar esta sesión
-
-        </button>
-
-    )
-
-}
-
-
-                        <button
-
-                            onClick={async () => {
-
-                                setOpen(false);
-
-                                await shareSession(sessionId);
-
-                            }}
-
-                        >
-
-                            <FaLink />
-
-                            Compartir enlace
-
-                        </button>
-
-                        <button
-
-                            onClick={() => {
-
-                                setOpen(false);
-
-                                onReconnect();
-
-                            }}
-
-                        >
-
-                            <FaSync />
-
-                            Reconectar
-
-                        </button>
-
-                        <button
-
-                            className="danger"
-
-                            onClick={() => {
-
-                                setOpen(false);
-
-                                onDelete();
-
-                            }}
-
-                        >
-
-                            <FaTrash />
-
-                            Eliminar
-
-                        </button>
-
-                    </div>
-
-                )
-
-            }
-
-        </div>
-
-    );
-
+            <button
+              type="button"
+              className={`${styles.item} ${styles.danger}`}
+              onClick={() => {
+                setOpen(false);
+                onDelete();
+              }}
+            >
+              <Trash2 size={14} />
+              Eliminar
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }

@@ -1,0 +1,62 @@
+.wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 91;
+  min-width: 208px;
+  padding: 4px;
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-card);
+  box-shadow: var(--efaat-shadow-md);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--efaat-text);
+  font-family: inherit;
+  font-size: var(--efaat-text-sm);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.item:hover {
+  background: var(--efaat-surface-muted);
+}
+
+.item svg {
+  flex-shrink: 0;
+  color: var(--efaat-text-secondary);
+}
+
+.danger {
+  color: var(--efaat-error);
+}
+
+.danger:hover {
+  background: var(--efaat-error-soft);
+}
+
+.danger svg {
+  color: var(--efaat-error);
+}
