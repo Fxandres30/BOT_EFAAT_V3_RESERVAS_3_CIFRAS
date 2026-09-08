@@ -4,6 +4,10 @@ const {
     cancelarTimeout
 } = require("./timeout");
 
+const {
+    resetBackoff
+} = require("./desconectado");
+
 async function conectado(
     sessionId,
     sock,
@@ -12,6 +16,12 @@ async function conectado(
 
     // Cancelar el contador del QR
     cancelarTimeout(sessionId);
+
+    // Confirmación real de conexión (connection === "open"): a partir de
+    // aquí, si esta sesión vuelve a caer, el backoff de reconexión temporal
+    // (desconectado.js) debe volver a empezar en 5s en vez de seguir donde
+    // se quedó antes de esta reconexión exitosa.
+    resetBackoff(sessionId);
 
     console.log("🟢 CONECTADO:", sessionId);
 

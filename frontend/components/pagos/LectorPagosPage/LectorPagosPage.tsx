@@ -22,28 +22,28 @@ import VincularTelefonoModal from "../VincularTelefonoModal/VincularTelefonoModa
 // pagos_dispositivos todavía — no hay ningún endpoint real que consultar
 // sin inventarlo.
 
-// URL real del APK — asset del Release "apk-latest", publicado por
-// .github/workflows/android-build.yml (run 34158039928, commit 039627b,
-// conclusion=success). Verificada con una descarga real, no solo con la
-// metadata de la API: HTTP 200, Content-Type
-// application/vnd.android.package-archive, 7.769.565 bytes, magic bytes
-// de ZIP ("PK"), contiene AndroidManifest.xml y classes.dex. No es una
-// URL inventada ni de localhost.
+// El APK se sirve DIRECTO desde este mismo dominio (Next/Vercel), no
+// desde GitHub Releases: en algunos Android/Chrome la descarga vía
+// GitHub Releases (que hace un redirect 302 a un blob firmado de Azure
+// con expiración) se queda colgada en 100% sin terminar de guardarse
+// como archivo instalable. Un archivo estático same-origin evita esa
+// redirección por completo.
 //
-// Se lee primero de NEXT_PUBLIC_APK_DOWNLOAD_URL (para poder apuntar a
-// otra build en producción sin tocar código — ver frontend/.env.local y
-// el README de despliegue) y si esa variable no está definida en el
-// entorno, cae a esta URL fija ya verificada, para que el botón nunca
-// vuelva a mostrarse como "Próximamente" por un simple olvido de
-// configuración. En producción (Vercel u otro hosting), configurar de
-// todas formas:
-//   NEXT_PUBLIC_APK_DOWNLOAD_URL=https://github.com/Fxandres30/BOT_EFAAT_V3_RESERVAS_3_CIFRAS/releases/download/apk-latest/EFAAT-Payments-Reader-debug.apk
-// así el botón sigue automáticamente el Release más reciente que CI
-// publique, en vez de quedar atado a este valor fijo del código.
-const APK_URL_VERIFICADA =
-    "https://github.com/Fxandres30/BOT_EFAAT_V3_RESERVAS_3_CIFRAS/releases/download/apk-latest/EFAAT-Payments-Reader-debug.apk";
+// El binario real (mismo APK generado por
+// .github/workflows/android-build.yml, run 34158039928, commit 039627b)
+// vive en frontend/public/downloads/EFAAT-Payments-Reader.apk — Next lo
+// sirve en /downloads/EFAAT-Payments-Reader.apk con Content-Type y
+// Content-Disposition forzados por next.config.ts (ver ese archivo).
+// Verificado con descarga real: HTTP 200, 7.769.565 bytes, magic bytes
+// de ZIP ("PK"), contiene AndroidManifest.xml y classes.dex.
+//
+// NEXT_PUBLIC_APK_DOWNLOAD_URL sigue disponible como override explícito
+// (por si en el futuro se sirve desde otro dominio/CDN), pero YA NO hace
+// falta configurarla — sin ella, el botón funciona igual apuntando a
+// este archivo local.
+const APK_URL_LOCAL = "/downloads/EFAAT-Payments-Reader.apk";
 
-const APK_URL: string | null = process.env.NEXT_PUBLIC_APK_DOWNLOAD_URL || APK_URL_VERIFICADA;
+const APK_URL: string | null = process.env.NEXT_PUBLIC_APK_DOWNLOAD_URL || APK_URL_LOCAL;
 
 const PASOS = [
     { numero: 1, texto: "Descarga la aplicación" },

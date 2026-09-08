@@ -11,6 +11,10 @@ const registrarEstados = require("./estados");
 const supabase = require("../../lib/supabase");
 const lease = require("./lease");
 
+const {
+    cancelarReintentoPendiente
+} = require("./desconectado");
+
 // Señal inequívoca para "la fila de Supabase no existe" — se distingue del
 // null que se devuelve para un error real de Supabase, así quien llama
 // (baileysService.connect) puede reaccionar distinto en cada caso.
@@ -214,6 +218,13 @@ if (!sesion) {
     async stop(sessionId) {
 
         console.log("🔴 Deteniendo sesión:", sessionId);
+
+        // Parada manual explícita: si había un reintento de reconexión
+        // temporal pendiente (desconectado.js) para esta sesión, se
+        // cancela aquí — de lo contrario ese setTimeout podía disparar
+        // manager.start() después de que el usuario ya pidió desconectar,
+        // volviendo a levantar una sesión que se acaba de detener a propósito.
+        cancelarReintentoPendiente(sessionId);
 
         await disconnectSocket(sessionId);
 
