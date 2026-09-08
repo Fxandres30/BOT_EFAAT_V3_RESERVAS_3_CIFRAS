@@ -7,40 +7,29 @@ import {
     Bell,
     Lock,
     EyeOff,
-    KeyRound
+    KeyRound,
+    Download,
+    Link2,
+    BookOpen,
 } from "lucide-react";
+
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 import { getUser } from "@/services/auth/getUser";
 import VincularTelefonoModal from "../VincularTelefonoModal/VincularTelefonoModal";
 
-// P1 (backend/pagos, backend/supabase_migrations/005_pagos_p1.sql) ya
-// existe: ingesta cruda de movimientos + tabla pagos_dispositivos, pero
-// SIN policies para usuarios autenticados y SIN endpoint HTTP de alta de
-// dispositivos desde el panel (ver backend/pagos/README.md, "Siguientes
-// fases" -> P2). Esta página es únicamente la fase de panel descrita: UI
-// explicada + vinculación preparada. A propósito NO hace ningún fetch a
-// pagos_dispositivos todavía — no hay ningún endpoint real que consultar
-// sin inventarlo.
+import styles from "./LectorPagosPage.module.css";
 
-// El APK se sirve DIRECTO desde este mismo dominio (Next/Vercel), no
-// desde GitHub Releases: en algunos Android/Chrome la descarga vía
-// GitHub Releases (que hace un redirect 302 a un blob firmado de Azure
-// con expiración) se queda colgada en 100% sin terminar de guardarse
-// como archivo instalable. Un archivo estático same-origin evita esa
-// redirección por completo.
-//
-// El binario real (mismo APK generado por
-// .github/workflows/android-build.yml, run 34158039928, commit 039627b)
-// vive en frontend/public/downloads/EFAAT-Payments-Reader.apk — Next lo
-// sirve en /downloads/EFAAT-Payments-Reader.apk con Content-Type y
-// Content-Disposition forzados por next.config.ts (ver ese archivo).
-// Verificado con descarga real: HTTP 200, 7.769.565 bytes, magic bytes
-// de ZIP ("PK"), contiene AndroidManifest.xml y classes.dex.
-//
-// NEXT_PUBLIC_APK_DOWNLOAD_URL sigue disponible como override explícito
-// (por si en el futuro se sirve desde otro dominio/CDN), pero YA NO hace
-// falta configurarla — sin ella, el botón funciona igual apuntando a
-// este archivo local.
+// Ver comentarios del backend (backend/pagos/README.md, P2): esta pantalla
+// es solo la fase de panel — explica el flujo y prepara la vinculación. NO
+// hace ningún fetch a pagos_dispositivos (no hay endpoint real todavía),
+// así que no muestra estado del lector ni lista de pagos: esos datos aún
+// no existen.
+
 const APK_URL_LOCAL = "/downloads/EFAAT-Payments-Reader.apk";
 
 const APK_URL: string | null = process.env.NEXT_PUBLIC_APK_DOWNLOAD_URL || APK_URL_LOCAL;
@@ -82,20 +71,117 @@ export default function LectorPagosPage() {
 
     return (
 
-        <div className="space-y-4 sm:space-y-6 max-w-[1800px] mx-auto min-w-0">
+        <div className={styles.page}>
 
-            <Cabecera />
+            <PageHeader
+                title="Lector de pagos"
+                description="Configura un teléfono Android para que EFAAT reciba automáticamente los movimientos de pago desde sus notificaciones."
+            />
 
-            <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">
-                <InstalarAplicacion />
-                <VincularTelefono email={email} onVincular={() => setModalAbierto(true)} />
+            <div className={styles.grid2}>
+
+                <Card padding="md">
+                    <div className={styles.panel}>
+                        <h2 className={styles.panelTitle}>
+                            <Smartphone size={15} /> Instalar aplicación
+                        </h2>
+                        <p className={styles.panelText}>
+                            Instala <b>EFAAT Payments Reader</b> en tu teléfono Android para que
+                            EFAAT reciba los movimientos de pago que lleguen a tus notificaciones.
+                        </p>
+                        <div className={styles.actions}>
+                            {APK_URL ? (
+                                <a href={APK_URL} className={styles.downloadBtn}>
+                                    <Download size={15} /> Descargar aplicación
+                                </a>
+                            ) : (
+                                <>
+                                    <span
+                                        className={`${styles.downloadBtn} ${styles.downloadBtnDisabled}`}
+                                        title="La aplicación todavía no está publicada"
+                                    >
+                                        <Download size={15} /> Descargar aplicación
+                                    </span>
+                                    <Badge tone="warning">Próximamente</Badge>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </Card>
+
+                <Card padding="md">
+                    <div className={styles.panel}>
+                        <h2 className={styles.panelTitle}>
+                            <Link2 size={15} /> Vincular teléfono
+                        </h2>
+                        <p className={styles.panelText}>
+                            Conecta tu teléfono con esta cuenta EFAAT
+                            {email ? <> (<b>{email}</b>)</> : ""}. Una vez instalada la app, usa
+                            este botón para vincularla.
+                        </p>
+                        <div className={styles.actions}>
+                            <Button
+                                size="sm"
+                                leftIcon={<Link2 size={14} />}
+                                onClick={() => setModalAbierto(true)}
+                            >
+                                Vincular teléfono
+                            </Button>
+                        </div>
+                    </div>
+                </Card>
+
             </div>
 
-            <ComoFunciona />
+            <Card padding="md">
+                <div className={styles.panel}>
+                    <h2 className={styles.panelTitle}>
+                        <BookOpen size={15} /> ¿Cómo funciona?
+                    </h2>
+                    <div className={styles.steps}>
+                        {PASOS.map((paso) => (
+                            <div key={paso.numero} className={styles.step}>
+                                <span className={styles.stepNum}>{paso.numero}</span>
+                                <span className={styles.stepText}>{paso.texto}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </Card>
 
-            <Seguridad />
+            <Card padding="md">
+                <div className={styles.panel}>
+                    <h2 className={styles.panelTitle}>
+                        <ShieldCheck size={15} /> Seguridad
+                    </h2>
+                    <div className={styles.secGrid}>
+                        {PUNTOS_SEGURIDAD.map(({ icon: Icon, texto }) => (
+                            <div key={texto} className={styles.secItem}>
+                                <Icon size={14} />
+                                <span>{texto}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <p className={styles.disclaimer}>
+                        <ShieldCheck size={13} />
+                        EFAAT nunca solicita ni almacena las contraseñas de tus aplicaciones bancarias.
+                    </p>
+                </div>
+            </Card>
 
-            <MisDispositivos />
+            <Card padding="md">
+                <div className={styles.panel}>
+                    <h2 className={styles.panelTitle}>
+                        <Smartphone size={15} /> Mis dispositivos
+                    </h2>
+                    <EmptyState
+                        bare
+                        icon={<Smartphone size={20} />}
+                        title="Sin dispositivos vinculados"
+                        description="Cuando vincules un teléfono aparecerá aquí con su nombre y la fecha del último movimiento recibido."
+                    />
+                </div>
+            </Card>
 
             <VincularTelefonoModal
                 abierto={modalAbierto}
@@ -104,222 +190,6 @@ export default function LectorPagosPage() {
             />
 
         </div>
-
-    );
-
-}
-
-function Cabecera() {
-
-    return (
-
-        <div className="bg-white border rounded-2xl shadow-sm p-4 sm:p-6 min-w-0">
-
-            <div className="flex items-start gap-3">
-
-                <span className="shrink-0 h-11 w-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl">
-                    📱
-                </span>
-
-                <div className="min-w-0">
-                    <h1 className="font-bold text-gray-900 text-[clamp(1.5rem,5vw,2.25rem)] leading-tight">
-                        Lector de pagos
-                    </h1>
-                    <p className="text-gray-500 mt-1 break-words">
-                        Configura tu teléfono para recibir automáticamente los movimientos de pago.
-                    </p>
-                </div>
-
-            </div>
-
-        </div>
-
-    );
-
-}
-
-function InstalarAplicacion() {
-
-    return (
-
-        <section className="bg-white border rounded-2xl shadow-sm p-4 sm:p-5 flex flex-col min-w-0">
-
-            <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">📲</span>
-                <h2 className="text-lg font-bold text-gray-900">Instalar aplicación</h2>
-            </div>
-
-            <p className="text-sm text-gray-600 flex-1">
-                Instala <b>EFAAT Payments Reader</b> en tu teléfono Android para que EFAAT
-                pueda recibir automáticamente los movimientos de pago que lleguen a tus
-                notificaciones.
-            </p>
-
-            <div className="mt-4">
-
-                {APK_URL ? (
-                    <a
-                        href={APK_URL}
-                        className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
-                    >
-                        📲 Descargar aplicación
-                    </a>
-                ) : (
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                        <button
-                            disabled
-                            title="La aplicación todavía no está publicada"
-                            className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 bg-gray-100 border border-gray-200 cursor-not-allowed"
-                        >
-                            📲 Descargar aplicación
-                        </button>
-                        <span className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1 w-fit">
-                            Próximamente
-                        </span>
-                    </div>
-                )}
-
-            </div>
-
-        </section>
-
-    );
-
-}
-
-function VincularTelefono({
-    email,
-    onVincular
-}: {
-    email: string | null;
-    onVincular: () => void;
-}) {
-
-    return (
-
-        <section className="bg-white border rounded-2xl shadow-sm p-4 sm:p-5 flex flex-col min-w-0">
-
-            <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">🔗</span>
-                <h2 className="text-lg font-bold text-gray-900">Vincular teléfono</h2>
-            </div>
-
-            <p className="text-sm text-gray-600 flex-1">
-                Conecta tu teléfono con esta cuenta EFAAT{email ? <> (<b>{email}</b>)</> : ""}.
-                Una vez instalada la aplicación, usa este botón para vincularla.
-            </p>
-
-            <div className="mt-4">
-                <button
-                    onClick={onVincular}
-                    className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
-                >
-                    🔗 Vincular teléfono
-                </button>
-            </div>
-
-        </section>
-
-    );
-
-}
-
-function ComoFunciona() {
-
-    return (
-
-        <section className="bg-white border rounded-2xl shadow-sm p-4 sm:p-5 min-w-0">
-
-            <div className="flex items-center gap-2 mb-4">
-                <span className="text-lg">📖</span>
-                <h2 className="text-lg font-bold text-gray-900">¿Cómo funciona?</h2>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-
-                {PASOS.map((paso) => (
-
-                    <div
-                        key={paso.numero}
-                        className="min-w-0 rounded-xl border border-gray-200 bg-gray-50 p-3 sm:p-4 flex sm:flex-col items-center sm:text-center gap-3 sm:gap-2"
-                    >
-                        <span className="shrink-0 h-8 w-8 rounded-full bg-indigo-600 text-white font-bold text-sm flex items-center justify-center">
-                            {paso.numero}
-                        </span>
-                        <p className="text-sm text-gray-700 font-medium">{paso.texto}</p>
-                    </div>
-
-                ))}
-
-            </div>
-
-        </section>
-
-    );
-
-}
-
-function Seguridad() {
-
-    return (
-
-        <section className="bg-white border rounded-2xl shadow-sm p-4 sm:p-5 min-w-0">
-
-            <div className="flex items-center gap-2 mb-4">
-                <span className="text-lg">🔐</span>
-                <h2 className="text-lg font-bold text-gray-900">Seguridad</h2>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-
-                {PUNTOS_SEGURIDAD.map(({ icon: Icon, texto }) => (
-
-                    <div
-                        key={texto}
-                        className="min-w-0 flex items-start gap-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3"
-                    >
-                        <span className="shrink-0 h-8 w-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                            <Icon size={15} />
-                        </span>
-                        <p className="text-sm text-gray-700 pt-1">{texto}</p>
-                    </div>
-
-                ))}
-
-            </div>
-
-            <div className="flex items-start gap-2 mt-3 text-xs text-gray-400">
-                <ShieldCheck size={14} className="shrink-0 mt-0.5" />
-                <span>EFAAT nunca solicita ni almacena las contraseñas de tus aplicaciones bancarias.</span>
-            </div>
-
-        </section>
-
-    );
-
-}
-
-function MisDispositivos() {
-
-    return (
-
-        <section className="bg-white border rounded-2xl shadow-sm p-4 sm:p-5 min-w-0">
-
-            <div className="flex items-center gap-2 mb-4">
-                <span className="text-lg">📱</span>
-                <h2 className="text-lg font-bold text-gray-900">Mis dispositivos</h2>
-            </div>
-
-            <div className="flex flex-col items-center justify-center text-center py-10 gap-2 text-gray-500">
-                <Smartphone size={28} className="text-gray-300" />
-                <p className="text-sm">No tienes dispositivos vinculados todavía.</p>
-                <p className="text-xs text-gray-400 max-w-xs">
-                    Cuando vincules un teléfono, aparecerá aquí con su nombre y la fecha del
-                    último movimiento recibido.
-                </p>
-            </div>
-
-        </section>
 
     );
 

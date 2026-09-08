@@ -152,7 +152,7 @@ function calcularNumerosRelevantes(ctx, resultado) {
 
     if (ctx?.reserva) {
 
-        numerosSolicitados = extraerNumeros(ctx.textoOriginal || "");
+        numerosSolicitados = extraerNumeros(ctx.textoOriginal || "", ctx?.evento?.cifras);
         numerosReservados = resultado?.reservados || [];
 
         // Cuando la reserva falló (ok:false), detectarReserva.js NO

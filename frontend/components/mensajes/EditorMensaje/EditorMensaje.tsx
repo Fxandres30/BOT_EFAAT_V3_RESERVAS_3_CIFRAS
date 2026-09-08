@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Save, FilePlus2 } from "lucide-react";
 
-import "./EditorMensaje.css";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
 
 import { TipoMensaje } from "@/services/mensajes/tiposMensaje";
 import {
@@ -12,6 +15,8 @@ import {
     valoresPorDefectoVariables
 } from "@/services/mensajes/plantillas";
 import { aplicarPlantillaPreview } from "@/services/mensajes/aplicarPlantillaPreview";
+
+import styles from "./EditorMensaje.module.css";
 
 interface Props {
     tipo: TipoMensaje;
@@ -130,80 +135,62 @@ export default function EditorMensaje({ tipo, usuarioId, plantilla, onGuardada, 
 
     return (
 
-        <div className="editor-mensaje">
+        <div className={styles.editor}>
 
-            <div className="editor-header">
-
-                <div className="editor-campo editor-nombre">
-                    <label>Nombre</label>
-                    <input
-                        type="text"
-                        value={nombre}
-                        onChange={(e) => setNombre(e.target.value)}
-                    />
-                </div>
-
-                <div className="editor-campo editor-estilo">
-                    <label>Estilo (etiqueta)</label>
-                    <input
-                        type="text"
-                        value={estilo}
-                        onChange={(e) => setEstilo(e.target.value)}
-                    />
-                </div>
-
-            </div>
-
-            <div className="editor-campo">
-
-                <label>Contenido</label>
-
-                <textarea
-                    rows={4}
-                    value={contenido}
-                    onChange={(e) => setContenido(e.target.value)}
-                    placeholder="Ej: ¡Hola {{cliente}}! Tus números para {{evento}}: {{numeros_reservados}} 🎉"
+            <div className={styles.grid2}>
+                <Input
+                    label="Nombre"
+                    value={nombre}
+                    onChange={(e) => setNombre(e.target.value)}
                 />
-
-                <p className="editor-nota">
-                    Variables disponibles para este tipo:{" "}
-                    {variablesDisponibles.map((v) => `{{${v.variable}}}`).join(", ")}.
-                    Se sustituyen por datos reales sin usar IA. Esta lista es la
-                    recomendada para este tipo — el backend admite más variables
-                    de concordancia gramatical (singular/plural) de uso general;
-                    consulta gramatica.js si necesitas una que no aparezca aquí.
-                </p>
-
+                <Input
+                    label="Estilo (etiqueta)"
+                    value={estilo}
+                    onChange={(e) => setEstilo(e.target.value)}
+                />
             </div>
 
-            <div className="editor-campo">
+            <Textarea
+                label="Contenido"
+                rows={4}
+                value={contenido}
+                onChange={(e) => setContenido(e.target.value)}
+                placeholder="Ej: ¡Hola {{cliente}}! Tus números para {{evento}}: {{numeros_reservados}} 🎉"
+            />
 
-                <label>Datos a mostrar</label>
-
-                <div className="editor-checks">
-
+            <div className={styles.field}>
+                <span className={styles.label}>Variables de este tipo</span>
+                <div className={styles.vars}>
                     {variablesDisponibles.map((v) => (
+                        <span key={v.variable} className={styles.varChip}>{`{{${v.variable}}}`}</span>
+                    ))}
+                </div>
+                <p className={styles.note}>
+                    Se sustituyen por datos reales sin usar IA. El backend admite además variables
+                    de concordancia gramatical (singular/plural) de uso general; consulta gramatica.js
+                    si necesitas una que no aparezca aquí.
+                </p>
+            </div>
 
+            <div className={styles.field}>
+                <span className={styles.label}>Datos a mostrar</span>
+                <div className={styles.checks}>
+                    {variablesDisponibles.map((v) => (
                         v.mostrarCampo ? (
-
-                            <label key={v.variable} className="editor-check">
+                            <label key={v.variable} className={styles.check}>
                                 <input
                                     type="checkbox"
-                                    checked={!!(variables as any)[v.mostrarCampo]}
+                                    checked={!!(variables as Record<string, boolean>)[v.mostrarCampo]}
                                     onChange={(e) => actualizarMostrar(v.mostrarCampo, e.target.checked)}
                                 />
                                 {v.etiqueta}
                             </label>
-
                         ) : null
-
                     ))}
-
                 </div>
-
             </div>
 
-            <label className="editor-check">
+            <label className={styles.check}>
                 <input
                     type="checkbox"
                     checked={variables.emojis !== false}
@@ -214,62 +201,44 @@ export default function EditorMensaje({ tipo, usuarioId, plantilla, onGuardada, 
 
             {tieneEjemploDual ? (
 
-                <div className="editor-preview">
+                <div className={styles.preview}>
+                    <span className={styles.previewLabel}>Vista previa · 1 número (ejemplo)</span>
+                    <div className={styles.bubble}>{previaSingular}</div>
 
-                    <p className="editor-preview-titulo">
-                        Vista previa con 1 número (datos de ejemplo, no reales)
-                    </p>
-
-                    <div className="editor-preview-burbuja">
-                        {previaSingular}
-                    </div>
-
-                    <p className="editor-preview-titulo editor-preview-titulo-plural">
-                        Vista previa con varios números (datos de ejemplo, no reales)
-                    </p>
-
-                    <div className="editor-preview-burbuja">
-                        {previaPlural}
-                    </div>
-
+                    <span className={`${styles.previewLabel} ${styles.previewLabelPlural}`}>
+                        Vista previa · varios números (ejemplo)
+                    </span>
+                    <div className={styles.bubble}>{previaPlural}</div>
                 </div>
 
             ) : (
 
-                <div className="editor-preview">
-
-                    <p className="editor-preview-titulo">
-                        Vista previa (datos de ejemplo, no reales)
-                    </p>
-
-                    <div className="editor-preview-burbuja">
-                        {previa}
-                    </div>
-
+                <div className={styles.preview}>
+                    <span className={styles.previewLabel}>Vista previa (datos de ejemplo)</span>
+                    <div className={styles.bubble}>{previa}</div>
                 </div>
 
             )}
 
-            <div className="editor-acciones">
-
-                <button
-                    className="editor-guardar"
-                    disabled={guardando}
+            <div className={styles.actions}>
+                <Button
                     onClick={guardar}
+                    loading={guardando}
+                    leftIcon={<Save size={14} />}
                 >
-                    {guardando ? "Guardando..." : "Guardar"}
-                </button>
+                    Guardar
+                </Button>
 
-                <button
-                    className="editor-guardar-nueva"
-                    disabled={guardando}
+                <Button
+                    variant="secondary"
                     onClick={guardarComoNueva}
+                    disabled={guardando}
+                    leftIcon={<FilePlus2 size={14} />}
                 >
                     Guardar como nueva
-                </button>
+                </Button>
 
-                {mensaje && <span className="editor-mensaje-estado">{mensaje}</span>}
-
+                {mensaje && <span className={styles.status}>{mensaje}</span>}
             </div>
 
         </div>

@@ -3,6 +3,7 @@
 // la variable queda vacía (nunca se rellena con un valor inventado).
 const { construirVariablesGramaticales, construirVariablesPorConjunto, calcularNumerosRelevantes, formatearListaNumeros } = require("./gramatica");
 const { extraerNumeros } = require("../funciones/reservas/extraerNumeros");
+const { formatHora12 } = require("../utils/formatHora");
 
 const MOSTRAR_POR_VARIABLE = {
 
@@ -68,7 +69,9 @@ function construirVariables(ctx, resultado) {
         numeros_ocupados: formatearListaNumeros(numerosOcupados),
         numeros_disponibles: formatearListaNumeros(numerosDisponibles),
         fecha: ctx.evento?.fecha_evento || "",
-        hora: ctx.evento?.hora_fin || "",
+        // Presentación 12h para el usuario final — el valor almacenado
+        // (eventos_bot.hora_fin, 24h) no se toca.
+        hora: formatHora12(ctx.evento?.hora_fin),
         // "precio" es el valor por número del evento (dato real, eventos_bot.valor).
         precio: ctx.evento?.valor != null ? String(ctx.evento.valor) : "",
         cantidad: resultado?.cantidad != null ? String(resultado.cantidad) : "",
@@ -135,7 +138,7 @@ function calcularTipoPresentacion(ctx, resultado) {
 
         }
 
-        const solicitados = extraerNumeros(ctx.textoOriginal || "");
+        const solicitados = extraerNumeros(ctx.textoOriginal || "", ctx?.evento?.cifras);
 
         return solicitados.length === 1
             ? "numero_ocupado"

@@ -2,8 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { ChevronLeft, Rocket, Bell, RefreshCw, Lock, TableProperties, AlertTriangle } from "lucide-react";
 
-import "./ConfiguracionGrupo.css";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { StatusBadge } from "@/components/ui/Badge";
+
+import { formatHora12 } from "@/lib/formatHora";
 
 import { getUser } from "@/services/auth/getUser";
 import {
@@ -20,13 +26,34 @@ import { obtenerGruposConversacion } from "@/services/chats/obtenerGruposConvers
 import { obtenerGruposDisponibles } from "@/services/automatizacion/gruposDisponibles";
 import { CATEGORIAS_AUTOMATIZACION, DIAS_SEMANA } from "@/services/automatizacion/tiposCategorias";
 
-import AutomatizacionNav from "../AutomatizacionNav/AutomatizacionNav";
+import AutomatizacionHeader from "../AutomatizacionNav/AutomatizacionHeader";
+
+import styles from "./ConfiguracionGrupo.module.css";
 
 interface Props {
     grupoId: string;
 }
 
 type Estado = "cargando" | "sin-sesion" | "listo" | "error";
+
+function Switch({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
+    return (
+        <button
+            type="button"
+            className={`${styles.switch} ${on ? styles.switchOn : ""}`}
+            role="switch"
+            aria-checked={on}
+            aria-label={label}
+            onClick={onClick}
+        />
+    );
+}
+
+function Dot({ on }: { on: boolean }) {
+    return (
+        <StatusBadge status={on ? "active" : "inactive"} label={on ? "Sí" : "No"} size="sm" />
+    );
+}
 
 export default function ConfiguracionGrupo({ grupoId }: Props) {
 
@@ -256,84 +283,90 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
     }
 
     if (estado === "cargando") {
-        return <div className="config-grupo-estado">Cargando configuración...</div>;
+        return <div className={styles.state}>Cargando configuración…</div>;
     }
 
     if (estado === "sin-sesion") {
-        return <div className="config-grupo-estado">Debes iniciar sesión.</div>;
+        return <div className={styles.state}>Debes iniciar sesión.</div>;
     }
 
     if (estado === "error" || !config) {
-        return <div className="config-grupo-estado config-grupo-error">⚠️ {error}</div>;
+        return <div className={styles.state}>{error}</div>;
     }
 
     return (
 
-        <div className="config-grupo">
+        <div className={styles.page}>
 
-            <AutomatizacionNav />
+            <AutomatizacionHeader />
 
-            <div className="config-grupo-header">
+            <div className={styles.header}>
 
                 <div>
-                    <Link href="/automatizacion/grupos" className="config-grupo-volver">← Grupos</Link>
-                    <h1 className="config-grupo-titulo">{nombreGrupo || grupoId}</h1>
-                    <p className="config-grupo-jid">{grupoId}</p>
+                    <Link href="/automatizacion/grupos" className={styles.back}>
+                        <ChevronLeft size={13} /> Grupos
+                    </Link>
+                    <h1 className={styles.title}>{nombreGrupo || grupoId}</h1>
+                    <p className={styles.jid}>{grupoId}</p>
                 </div>
 
-                <div className="config-grupo-estado-chip">
-                    {config.activo ? "🟢 Activa" : "🔴 Inactiva"}
-                </div>
+                <StatusBadge
+                    status={config.activo ? "active" : "inactive"}
+                    label={config.activo ? "Activa" : "Inactiva"}
+                />
 
             </div>
 
             {!autorizacion && (
-
-                <div className="config-grupo-aviso">
-                    Este grupo todavía no está en <strong>grupos_autorizados</strong> — la
-                    automatización nunca operará aquí hasta autorizarlo.
-                    <button onClick={autorizarSiHaceFalta}>Autorizar ahora</button>
+                <div className={styles.aviso}>
+                    <span>
+                        Este grupo todavía no está en <strong>grupos_autorizados</strong> — la
+                        automatización nunca operará aquí hasta autorizarlo.
+                    </span>
+                    <Button size="sm" variant="secondary" onClick={autorizarSiHaceFalta}>
+                        Autorizar ahora
+                    </Button>
                 </div>
-
             )}
 
-            {error && <p className="config-grupo-error-linea">⚠️ {error}</p>}
-            {guardadoOk && <p className="config-grupo-ok">✅ Configuración guardada.</p>}
+            {error && (
+                <p className={styles.noteError}>
+                    <AlertTriangle size={13} /> {error}
+                </p>
+            )}
+            {guardadoOk && <p className={styles.noteOk}>Configuración guardada.</p>}
 
-            <div className="config-resumen">
-
-                <div className="config-resumen-fila">
-                    <span>Apertura</span>
-                    <strong>{aperturaActiva ? "🟢" : "⚪"}</strong>
+            <div className={styles.resumen}>
+                <div className={styles.resumenItem}>
+                    <span className={styles.resumenLabel}>Apertura</span>
+                    <span className={styles.resumenValue}><Dot on={aperturaActiva} /></span>
                 </div>
-
-                <div className="config-resumen-fila">
-                    <span>Tabla inicial</span>
-                    <strong>{config.publicacion_inicial_tabla.activo ? `🟢 ${config.publicacion_inicial_tabla.hora}` : "⚪"}</strong>
+                <div className={styles.resumenItem}>
+                    <span className={styles.resumenLabel}>Tabla inicial</span>
+                    <span className={styles.resumenValue}>
+                        {config.publicacion_inicial_tabla.activo
+                            ? formatHora12(config.publicacion_inicial_tabla.hora)
+                            : <Dot on={false} />}
+                    </span>
                 </div>
-
-                <div className="config-resumen-fila">
-                    <span>Recordatorios</span>
-                    <strong>{algunRecordatorioActivo ? "🟢" : "⚪"}</strong>
+                <div className={styles.resumenItem}>
+                    <span className={styles.resumenLabel}>Recordatorios</span>
+                    <span className={styles.resumenValue}><Dot on={algunRecordatorioActivo} /></span>
                 </div>
-
-                <div className="config-resumen-fila">
-                    <span>Actualización</span>
-                    <strong>{config.mensaje_actualizacion.activo ? "🟢" : "⚪"}</strong>
+                <div className={styles.resumenItem}>
+                    <span className={styles.resumenLabel}>Actualización</span>
+                    <span className={styles.resumenValue}><Dot on={config.mensaje_actualizacion.activo} /></span>
                 </div>
-
-                <div className="config-resumen-fila">
-                    <span>Cierre</span>
-                    <strong>{config.mensaje_cierre.activo ? "🟢" : "⚪"}</strong>
+                <div className={styles.resumenItem}>
+                    <span className={styles.resumenLabel}>Cierre</span>
+                    <span className={styles.resumenValue}><Dot on={config.mensaje_cierre.activo} /></span>
                 </div>
-
             </div>
 
-            <section className="config-seccion">
+            <section className={styles.section}>
+                <h2 className={styles.sectionTitle}>Automatización</h2>
 
-                <h2>Automatización</h2>
-
-                <label className="config-switch">
+                <label className={styles.checkRow}>
                     <input
                         type="checkbox"
                         checked={config.activo}
@@ -342,171 +375,128 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
                     Automatización activa para este grupo
                 </label>
 
-                <p className="config-nota">
+                <p className={styles.nota}>
                     El nombre, valor, premios, hora de cierre y demás datos del sorteo SIEMPRE
                     vienen del evento real detectado (Automation Engine, sin cambios). Aquí solo
                     se define qué debe hacer la automatización cuando eso pase — sin horario ni
                     días propios.
                 </p>
-
             </section>
 
-            <section className="config-seccion">
+            <section className={styles.section}>
+                <h2 className={styles.sectionTitle}>Acciones</h2>
 
-                <h2>Acciones</h2>
-
-                <div className="config-accion-fila">
-
-                    <span className="config-accion-fila-label">🚀 Apertura</span>
-
-                    <button
-                        className={`config-recordatorio-toggle ${aperturaActiva ? "on" : "off"}`}
+                <div className={styles.actionRow}>
+                    <span className={styles.actionLabel}><Rocket size={14} /> Apertura</span>
+                    <Switch
+                        on={aperturaActiva}
+                        label="Apertura"
                         onClick={() => setConfig({
                             ...config,
                             mensaje_apertura: { ...config.mensaje_apertura, activo: !aperturaActiva }
                         })}
-                    >
-                        {aperturaActiva ? "🟢" : "⚪"}
-                    </button>
-
+                    />
                 </div>
 
-                <div className="config-accion-fila">
-
-                    <span className="config-accion-fila-label">⏰ Recordatorios</span>
-
-                    <button
-                        className={`config-recordatorio-toggle ${algunRecordatorioActivo ? "on" : "off"}`}
-                        onClick={alternarTodosRecordatorios}
-                    >
-                        {algunRecordatorioActivo ? "🟢" : "⚪"}
-                    </button>
-
+                <div className={styles.actionRow}>
+                    <span className={styles.actionLabel}><Bell size={14} /> Recordatorios</span>
+                    <Switch on={algunRecordatorioActivo} label="Recordatorios" onClick={alternarTodosRecordatorios} />
                 </div>
 
-                <div className="config-accion-fila">
-
-                    <span className="config-accion-fila-label">🔄 Actualización</span>
-
-                    <button
-                        className={`config-recordatorio-toggle ${config.mensaje_actualizacion.activo ? "on" : "off"}`}
+                <div className={styles.actionRow}>
+                    <span className={styles.actionLabel}><RefreshCw size={14} /> Actualización</span>
+                    <Switch
+                        on={config.mensaje_actualizacion.activo}
+                        label="Actualización"
                         onClick={() => setConfig({
                             ...config,
                             mensaje_actualizacion: { ...config.mensaje_actualizacion, activo: !config.mensaje_actualizacion.activo }
                         })}
-                    >
-                        {config.mensaje_actualizacion.activo ? "🟢" : "⚪"}
-                    </button>
-
+                    />
                 </div>
 
-                <div className="config-accion-fila">
-
-                    <span className="config-accion-fila-label">🔒 Cierre</span>
-
-                    <button
-                        className={`config-recordatorio-toggle ${config.mensaje_cierre.activo ? "on" : "off"}`}
+                <div className={styles.actionRow}>
+                    <span className={styles.actionLabel}><Lock size={14} /> Cierre</span>
+                    <Switch
+                        on={config.mensaje_cierre.activo}
+                        label="Cierre"
                         onClick={() => setConfig({
                             ...config,
                             mensaje_cierre: { ...config.mensaje_cierre, activo: !config.mensaje_cierre.activo }
                         })}
-                    >
-                        {config.mensaje_cierre.activo ? "🟢" : "⚪"}
-                    </button>
-
+                    />
                 </div>
-
             </section>
 
-            <section className="config-seccion">
+            <section className={styles.section}>
+                <h2 className={styles.sectionTitle}>Recordatorios</h2>
 
-                <h2>Recordatorios</h2>
-
-                <p className="config-nota">
+                <p className={styles.nota}>
                     Cada recordatorio se calcula sobre la hora de cierre REAL del evento
                     detectado (evento.hora_cierre − offset) — nunca una hora fija guardada aquí.
                 </p>
 
-                <div className="config-recordatorios">
+                <div className={styles.recordatorios}>
 
                     {recordatorios.length === 0 && (
-                        <p className="config-nota">Sin recordatorios configurados todavía.</p>
+                        <p className={styles.nota}>Sin recordatorios configurados todavía.</p>
                     )}
 
                     {recordatorios.map(([offset, cfg]) => (
-
-                        <div key={offset} className="config-recordatorio-fila">
-
-                            <span className="config-recordatorio-offset">{offset} min antes</span>
-
-                            <button
-                                className={`config-recordatorio-toggle ${cfg.activo ? "on" : "off"}`}
+                        <div key={offset} className={styles.recRow}>
+                            <span className={styles.recOffset}>{offset} min antes</span>
+                            <Switch
+                                on={cfg.activo}
+                                label={`Recordatorio ${offset} min`}
                                 onClick={() => actualizarRecordatorio(offset, { activo: !cfg.activo })}
-                            >
-                                {cfg.activo ? "🟢" : "⚪"}
-                            </button>
-
-                            <button className="config-recordatorio-quitar" onClick={() => quitarRecordatorio(offset)}>
+                            />
+                            <button className={styles.recRemove} onClick={() => quitarRecordatorio(offset)}>
                                 Quitar
                             </button>
-
                         </div>
-
                     ))}
 
                 </div>
 
-                <div className="config-recordatorio-nuevo">
-
-                    <input
+                <div className={styles.recNuevo}>
+                    <Input
                         type="number"
                         min={1}
                         placeholder="Minutos antes"
                         value={nuevoOffset}
                         onChange={(e) => setNuevoOffset(e.target.value)}
                     />
-
-                    <button onClick={agregarRecordatorio}>+ Agregar recordatorio</button>
-
+                    <Button size="sm" variant="secondary" onClick={agregarRecordatorio}>
+                        Agregar
+                    </Button>
                 </div>
-
             </section>
 
-            <section className="config-seccion">
+            <section className={styles.section}>
+                <h2 className={styles.sectionTitle}>Actualizaciones</h2>
 
-                <h2>Actualizaciones</h2>
-
-                <div className="config-umbral-cooldown">
-
-                    <label>
-                        Umbral (reservas nuevas)
-                        <input
-                            type="number"
-                            min={1}
-                            value={config.umbral_reservas}
-                            onChange={(e) => setConfig({ ...config, umbral_reservas: Number(e.target.value) || 1 })}
-                        />
-                    </label>
-
-                    <label>
-                        Cooldown (minutos)
-                        <input
-                            type="number"
-                            min={1}
-                            value={config.cooldown_minutos}
-                            onChange={(e) => setConfig({ ...config, cooldown_minutos: Number(e.target.value) || 1 })}
-                        />
-                    </label>
-
+                <div className={styles.grid2}>
+                    <Input
+                        label="Umbral (reservas nuevas)"
+                        type="number"
+                        min={1}
+                        value={config.umbral_reservas}
+                        onChange={(e) => setConfig({ ...config, umbral_reservas: Number(e.target.value) || 1 })}
+                    />
+                    <Input
+                        label="Cooldown (minutos)"
+                        type="number"
+                        min={1}
+                        value={config.cooldown_minutos}
+                        onChange={(e) => setConfig({ ...config, cooldown_minutos: Number(e.target.value) || 1 })}
+                    />
                 </div>
-
             </section>
 
-            <section className="config-seccion">
+            <section className={styles.section}>
+                <h2 className={styles.sectionTitle}><TableProperties size={15} /> Publicación inicial de tabla</h2>
 
-                <h2>📋 Publicación inicial de tabla</h2>
-
-                <label className="config-switch">
+                <label className={styles.checkRow}>
                     <input
                         type="checkbox"
                         checked={config.publicacion_inicial_tabla.activo}
@@ -518,27 +508,21 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
                     {config.publicacion_inicial_tabla.activo ? "Activada" : "Desactivada"}
                 </label>
 
-                <div className="config-tabla-hora">
-
-                    <label>
-                        Hora de publicación
-                        <input
-                            type="time"
-                            value={config.publicacion_inicial_tabla.hora}
-                            onChange={(e) => setConfig({
-                                ...config,
-                                publicacion_inicial_tabla: { ...config.publicacion_inicial_tabla, hora: e.target.value }
-                            })}
-                        />
-                    </label>
-
+                <div className={styles.grid2} style={{ marginTop: 12 }}>
+                    <Input
+                        label="Hora de publicación"
+                        type="time"
+                        value={config.publicacion_inicial_tabla.hora}
+                        onChange={(e) => setConfig({
+                            ...config,
+                            publicacion_inicial_tabla: { ...config.publicacion_inicial_tabla, hora: e.target.value }
+                        })}
+                    />
                 </div>
 
-                <div className="config-dias">
-
+                <div className={styles.dias}>
                     {DIAS_SEMANA.map((dia) => (
-
-                        <label key={dia.id} className="config-dia-item">
+                        <label key={dia.id} className={styles.dia}>
                             <input
                                 type="checkbox"
                                 checked={!!config.publicacion_inicial_tabla.dias_permitidos[dia.id]}
@@ -546,35 +530,29 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
                             />
                             {dia.label}
                         </label>
-
                     ))}
-
                 </div>
 
-                <p className="config-nota">
-                    La hora indica cuándo se intenta publicar la primera tabla. Los datos de
-                    la tabla siempre salen del evento real detectado.
+                <p className={styles.nota}>
+                    La hora indica cuándo se intenta publicar la primera tabla. Los datos de la
+                    tabla siempre salen del evento real detectado.
                 </p>
-
-                <p className="config-nota">
-                    Si el evento todavía no ha sido detectado, no se envía nada. Cuando el
-                    evento aparezca después de la hora programada, se publicará si todavía
-                    no se ha realizado.
+                <p className={styles.nota}>
+                    Si el evento todavía no ha sido detectado, no se envía nada. Cuando el evento
+                    aparezca después de la hora programada, se publicará si todavía no se ha realizado.
                 </p>
-
             </section>
 
-            <section className="config-seccion">
+            <section className={styles.section}>
+                <h2 className={styles.sectionTitle}>Mensajes</h2>
 
-                <h2>Mensajes</h2>
-
-                <p className="config-nota">
-                    Categoría preferida por acción — el texto real siempre sale del Message
-                    Pool (pestaña Mensajes). &quot;Sin categoría&quot; usa cualquiera activa de ese tipo.
+                <p className={styles.nota}>
+                    Categoría preferida por acción — el texto real siempre sale del Message Pool
+                    (pestaña Mensajes). «Sin categoría» usa cualquiera activa de ese tipo.
                 </p>
 
-                <div className="config-mensajes-fila">
-                    <span className="config-accion-fila-label">🚀 Apertura</span>
+                <div className={styles.msgRow}>
+                    <span className={styles.actionLabel}><Rocket size={14} /> Apertura</span>
                     <SelectorCategoria
                         valor={config.mensaje_apertura.categoria}
                         onChange={(categoria) => setConfig({
@@ -584,13 +562,13 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
                     />
                 </div>
 
-                <div className="config-mensajes-fila">
-                    <span className="config-accion-fila-label">⏰ Recordatorios</span>
-                    <span className="config-nota config-mensajes-nota">Categoría por cada offset, arriba en Recordatorios.</span>
+                <div className={styles.msgRow}>
+                    <span className={styles.actionLabel}><Bell size={14} /> Recordatorios</span>
+                    <span className={styles.nota}>Categoría por cada offset, arriba en Recordatorios.</span>
                 </div>
 
-                <div className="config-mensajes-fila">
-                    <span className="config-accion-fila-label">🔄 Actualización</span>
+                <div className={styles.msgRow}>
+                    <span className={styles.actionLabel}><RefreshCw size={14} /> Actualización</span>
                     <SelectorCategoria
                         valor={config.mensaje_actualizacion.categoria}
                         onChange={(categoria) => setConfig({
@@ -600,8 +578,8 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
                     />
                 </div>
 
-                <div className="config-mensajes-fila">
-                    <span className="config-accion-fila-label">🔒 Cierre</span>
+                <div className={styles.msgRow}>
+                    <span className={styles.actionLabel}><Lock size={14} /> Cierre</span>
                     <SelectorCategoria
                         valor={config.mensaje_cierre.categoria}
                         onChange={(categoria) => setConfig({
@@ -610,13 +588,12 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
                         })}
                     />
                 </div>
-
             </section>
 
-            <div className="config-guardar-barra">
-                <button className="config-guardar" disabled={guardando} onClick={guardar}>
-                    {guardando ? "Guardando..." : "Guardar configuración"}
-                </button>
+            <div className={styles.saveBar}>
+                <Button disabled={guardando} loading={guardando} onClick={guardar}>
+                    Guardar configuración
+                </Button>
             </div>
 
         </div>
@@ -629,8 +606,7 @@ function SelectorCategoria({ valor, onChange }: { valor: string | null; onChange
 
     return (
 
-        <select
-            className="config-selector-categoria"
+        <Select
             value={valor || ""}
             onChange={(e) => onChange(e.target.value || null)}
         >
@@ -638,7 +614,7 @@ function SelectorCategoria({ valor, onChange }: { valor: string | null; onChange
             {CATEGORIAS_AUTOMATIZACION.map((c) => (
                 <option key={c.id} value={c.id}>{c.label}</option>
             ))}
-        </select>
+        </Select>
 
     );
 

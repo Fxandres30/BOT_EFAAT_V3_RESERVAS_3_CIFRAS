@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { Plus, Copy, Trash2 } from "lucide-react";
 
-import "./ListaPlantillas.css";
+import { Button } from "@/components/ui/Button";
+import { IconButton } from "@/components/ui/IconButton";
 
 import { TipoMensaje } from "@/services/mensajes/tiposMensaje";
 import {
@@ -12,6 +14,8 @@ import {
     eliminarPlantilla,
     crearPlantillaVacia
 } from "@/services/mensajes/plantillas";
+
+import styles from "./ListaPlantillas.module.css";
 
 interface Props {
     tipo: TipoMensaje;
@@ -106,25 +110,32 @@ export default function ListaPlantillas({
 
     return (
 
-        <div className="lista-plantillas">
+        <div className={styles.list}>
 
-            <div className="lista-plantillas-header">
+            <div className={styles.header}>
                 <span>{plantillas.length} plantilla{plantillas.length === 1 ? "" : "s"}</span>
-                <span className="lista-plantillas-habilitadas">{habilitadasCount} habilitada{habilitadasCount === 1 ? "" : "s"}</span>
+                <span className={styles.enabled}>
+                    {habilitadasCount} habilitada{habilitadasCount === 1 ? "" : "s"}
+                </span>
             </div>
 
-            <div className="lista-plantillas-items">
+            <div className={styles.items}>
 
                 {plantillas.map((p) => (
 
                     <div
                         key={p.id}
-                        className={`plantilla-item ${seleccionada?.id === p.id ? "seleccionada" : ""} ${!p.habilitada ? "deshabilitada" : ""}`}
+                        className={[
+                            styles.item,
+                            seleccionada?.id === p.id ? styles.itemSelected : "",
+                            !p.habilitada ? styles.itemDisabled : ""
+                        ].join(" ")}
                         onClick={() => onSeleccionar(p)}
                     >
 
                         <input
                             type="checkbox"
+                            className={styles.check}
                             checked={p.habilitada}
                             disabled={procesando === p.id}
                             onClick={(e) => e.stopPropagation()}
@@ -132,36 +143,34 @@ export default function ListaPlantillas({
                             title={p.habilitada ? "Habilitada" : "Deshabilitada"}
                         />
 
-                        <div className="plantilla-item-info">
-
-                            <span className="plantilla-item-nombre">
-                                {p.nombre}
-                            </span>
-
-                            <span className="plantilla-item-texto">
+                        <div className={styles.info}>
+                            <span className={styles.name}>{p.nombre}</span>
+                            <span className={styles.preview}>
                                 {p.contenido || "(sin contenido)"}
                             </span>
-
                         </div>
 
-                        <div className="plantilla-item-acciones" onClick={(e) => e.stopPropagation()}>
+                        <div className={styles.actions} onClick={(e) => e.stopPropagation()}>
 
-                            <button
+                            <IconButton
+                                label="Duplicar plantilla"
+                                variant="ghost"
+                                size="sm"
                                 disabled={procesando === p.id}
                                 onClick={() => duplicar(p)}
-                                title="Duplicar"
                             >
-                                📄
-                            </button>
+                                <Copy size={14} />
+                            </IconButton>
 
-                            <button
+                            <IconButton
+                                label="Eliminar plantilla"
+                                variant="danger"
+                                size="sm"
                                 disabled={procesando === p.id}
                                 onClick={() => eliminar(p)}
-                                title="Eliminar"
-                                className="danger"
                             >
-                                🗑️
-                            </button>
+                                <Trash2 size={14} />
+                            </IconButton>
 
                         </div>
 
@@ -171,13 +180,16 @@ export default function ListaPlantillas({
 
             </div>
 
-            <button
-                className="lista-plantillas-nueva"
-                disabled={creando}
+            <Button
+                variant="secondary"
+                size="sm"
+                fullWidth
+                loading={creando}
+                leftIcon={<Plus size={14} />}
                 onClick={crearNueva}
             >
-                {creando ? "Creando..." : "+ Nueva plantilla"}
-            </button>
+                Nueva plantilla
+            </Button>
 
         </div>
 

@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AlertTriangle, Sparkles } from "lucide-react";
 
-import "./MensajesPage.css";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 import { getUser } from "@/services/auth/getUser";
 import { TIPOS_MENSAJE, TipoMensaje } from "@/services/mensajes/tiposMensaje";
@@ -26,11 +28,9 @@ import ListaPlantillas from "../ListaPlantillas/ListaPlantillas";
 import EditorMensaje from "../EditorMensaje/EditorMensaje";
 import ModoSeleccion from "../ModoSeleccion/ModoSeleccion";
 
-const CATEGORIAS: Array<{ nombre: TipoMensaje["categoria"]; icono: string }> = [
-    { nombre: "Reservas", icono: "🎟️" },
-    { nombre: "Consultas", icono: "🔎" },
-    { nombre: "Futuro", icono: "🧪" }
-];
+import styles from "./MensajesPage.module.css";
+
+const CATEGORIAS: TipoMensaje["categoria"][] = ["Reservas", "Consultas", "Futuro"];
 
 export default function MensajesPage() {
 
@@ -54,9 +54,9 @@ export default function MensajesPage() {
 
     const [resumen, setResumen] = useState<{ total: number; habilitadas: number } | null>(null);
 
-    // Fase 5.5: estado (🟢/🔴) de cada TIPO DE RESPUESTA, independiente de
-    // las plantillas y del modo de selección. Un tipo sin entrada aquí
-    // todavía se trata como habilitado (mismo DEFAULT SEGURO del backend).
+    // Fase 5.5: estado de cada TIPO DE RESPUESTA, independiente de las
+    // plantillas y del modo de selección. Un tipo sin entrada aquí todavía
+    // se trata como habilitado (mismo DEFAULT SEGURO del backend).
     const [estadosHabilitados, setEstadosHabilitados] = useState<Record<string, boolean>>({});
 
     function estaHabilitado(tipoId: string) {
@@ -293,67 +293,53 @@ export default function MensajesPage() {
     }
 
     if (cargandoUsuario) {
-        return <div className="mensajes-loading">Cargando...</div>;
+        return <div className={styles.state}>Cargando…</div>;
     }
 
     if (!usuarioId) {
-        return <div className="mensajes-loading">Debes iniciar sesión para configurar mensajes.</div>;
+        return <div className={styles.state}>Debes iniciar sesión para configurar mensajes.</div>;
     }
 
     if (!inicializacionLista) {
-        return <div className="mensajes-loading">Inicializando plantillas...</div>;
+        return <div className={styles.state}>Inicializando plantillas…</div>;
     }
+
+    const tiposSoportados = TIPOS_MENSAJE.filter((t) => t.soportado).length;
 
     return (
 
-        <div className="mensajes-page">
+        <div className={styles.page}>
 
-            <div>
+            <PageHeader
+                title="Mensajes"
+                description="Respuestas que EFAAT puede enviar. Cada tipo de resultado puede tener varias plantillas: fija, aleatoria o por rotación. El BOT calcula reservas y disponibilidad igual; esto solo cambia la redacción."
+            />
 
-                <h1 className="mensajes-titulo">Mensajes</h1>
-
-                <p className="mensajes-subtitulo">
-                    Administra las respuestas que EFAAT puede enviar. Cada tipo
-                    de resultado puede tener muchas plantillas habilitadas — tú
-                    decides si el BOT usa siempre la misma, rota entre ellas, o
-                    elige al azar. El BOT sigue calculando reservas y
-                    disponibilidad exactamente igual; esto solo cambia cómo se
-                    redacta el mensaje final.
+            {resumen && (
+                <p className={styles.summary}>
+                    {tiposSoportados} tipos · {resumen.total} plantilla{resumen.total === 1 ? "" : "s"} ·{" "}
+                    {resumen.habilitadas} habilitada{resumen.habilitadas === 1 ? "" : "s"}
                 </p>
+            )}
 
-                {resumen && (
+            {errorInicializacion && (
+                <div className={styles.alert}>
+                    <AlertTriangle size={15} />
+                    <span>{errorInicializacion}</span>
+                </div>
+            )}
 
-                    <p className="mensajes-resumen-global">
-                        {TIPOS_MENSAJE.filter((t) => t.soportado).length} tipos ·{" "}
-                        {resumen.total} plantilla{resumen.total === 1 ? "" : "s"} ·{" "}
-                        {resumen.habilitadas} habilitada{resumen.habilitadas === 1 ? "" : "s"}
-                    </p>
+            <div className={styles.layout}>
 
-                )}
+                <aside className={styles.rail}>
 
-                {errorInicializacion && (
+                    {CATEGORIAS.map((categoria) => (
 
-                    <p className="mensajes-resumen-error">
-                        ⚠️ {errorInicializacion}
-                    </p>
+                        <div key={categoria} className={styles.railGroup}>
 
-                )}
+                            <p className={styles.railGroupTitle}>{categoria}</p>
 
-            </div>
-
-            <div className="mensajes-layout">
-
-                <aside className="mensajes-lista-tipos">
-
-                    {CATEGORIAS.map((cat) => (
-
-                        <div key={cat.nombre} className="mensajes-categoria">
-
-                            <p className="mensajes-categoria-titulo">
-                                {cat.icono} {cat.nombre}
-                            </p>
-
-                            {TIPOS_MENSAJE.filter((t) => t.categoria === cat.nombre).map((tipo) => {
+                            {TIPOS_MENSAJE.filter((t) => t.categoria === categoria).map((tipo) => {
 
                                 const habilitado = estaHabilitado(tipo.id);
 
@@ -361,15 +347,20 @@ export default function MensajesPage() {
 
                                     <button
                                         key={tipo.id}
-                                        className={`mensajes-item ${tipoSeleccionado.id === tipo.id ? "activo" : ""} ${!tipo.soportado ? "futuro" : ""}`}
+                                        className={[
+                                            styles.railItem,
+                                            tipoSeleccionado.id === tipo.id ? styles.railItemActive : "",
+                                            !tipo.soportado ? styles.railItemFuturo : ""
+                                        ].join(" ")}
                                         onClick={() => setTipoSeleccionado(tipo)}
                                     >
-                                        <span>{tipo.icono} {tipo.nombre}</span>
+                                        <span className={styles.railItemName}>
+                                            {tipo.icono} {tipo.nombre}
+                                        </span>
 
                                         {tipo.soportado && (
-
                                             <span
-                                                className={`tipo-interruptor ${habilitado ? "on" : "off"}`}
+                                                className={`${styles.switch} ${habilitado ? styles.switchOn : ""}`}
                                                 role="switch"
                                                 aria-checked={habilitado}
                                                 title={habilitado ? "Respuesta activada — clic para desactivar" : "Respuesta desactivada — clic para activar"}
@@ -377,10 +368,7 @@ export default function MensajesPage() {
                                                     e.stopPropagation();
                                                     alternarTipoHabilitado(tipo.id);
                                                 }}
-                                            >
-                                                {habilitado ? "🟢" : "🔴"}
-                                            </span>
-
+                                            />
                                         )}
                                     </button>
 
@@ -394,113 +382,110 @@ export default function MensajesPage() {
 
                 </aside>
 
-                {!tipoSeleccionado.soportado ? (
+                <div className={styles.main}>
 
-                    <div className="mensajes-futuro">
+                    {!tipoSeleccionado.soportado ? (
 
-                        <h2>{tipoSeleccionado.icono} {tipoSeleccionado.nombre}</h2>
+                        <EmptyState
+                            icon={<Sparkles size={20} />}
+                            title={`${tipoSeleccionado.icono} ${tipoSeleccionado.nombre}`}
+                            description="Este tipo de respuesta está preparado en la arquitectura, pero el BOT todavía no lo genera — por eso aún no hay plantillas reales que configurar."
+                        />
 
-                        <p>
-                            Este tipo de respuesta está preparado en la
-                            arquitectura, pero el BOT todavía no genera este
-                            resultado — por eso no hay plantillas reales que
-                            configurar aquí todavía.
-                        </p>
+                    ) : errorCarga ? (
 
-                    </div>
+                        <div className={styles.errorCard}>
+                            <strong>
+                                <AlertTriangle size={16} /> No se pudo cargar
+                            </strong>
+                            {errorCarga}
+                        </div>
 
-                ) : errorCarga ? (
+                    ) : cargandoPlantillas ? (
 
-                    <div className="mensajes-error">
+                        <div className={styles.state}>Cargando plantillas…</div>
 
-                        <h2>⚠️ No se pudo cargar</h2>
-                        <p>{errorCarga}</p>
+                    ) : (
 
-                    </div>
+                        <div className={styles.contenido}>
 
-                ) : cargandoPlantillas ? (
+                            <div className={styles.contenidoCol}>
 
-                    <div className="mensajes-cargando-tipo">Cargando plantillas...</div>
-
-                ) : (
-
-                    <div className="mensajes-contenido-tipo">
-
-                        <div>
-
-                            <div className="mensajes-tipo-header">
-                                <h2>{tipoSeleccionado.icono} {tipoSeleccionado.nombre}</h2>
-                                <div className="mensajes-tipo-header-derecha">
-                                    <button
-                                        className={`tipo-interruptor-grande ${estaHabilitado(tipoSeleccionado.id) ? "on" : "off"}`}
-                                        onClick={() => alternarTipoHabilitado(tipoSeleccionado.id)}
-                                    >
-                                        {estaHabilitado(tipoSeleccionado.id) ? "🟢 Respuesta activada" : "🔴 Respuesta desactivada"}
-                                    </button>
-                                    <span className="mensajes-tipo-contador">
-                                        {plantillas.length} plantilla{plantillas.length === 1 ? "" : "s"}
-                                    </span>
+                                <div className={styles.typeHeader}>
+                                    <h2 className={styles.typeTitle}>
+                                        {tipoSeleccionado.icono} {tipoSeleccionado.nombre}
+                                    </h2>
+                                    <div className={styles.typeHeaderRight}>
+                                        <button
+                                            className={`${styles.typeToggle} ${estaHabilitado(tipoSeleccionado.id) ? styles.typeToggleOn : styles.typeToggleOff}`}
+                                            onClick={() => alternarTipoHabilitado(tipoSeleccionado.id)}
+                                        >
+                                            {estaHabilitado(tipoSeleccionado.id) ? "Respuesta activada" : "Respuesta desactivada"}
+                                        </button>
+                                        <span className={styles.count}>
+                                            {plantillas.length} plantilla{plantillas.length === 1 ? "" : "s"}
+                                        </span>
+                                    </div>
                                 </div>
+
+                                {!estaHabilitado(tipoSeleccionado.id) && (
+                                    <p className={styles.note}>
+                                        El BOT sigue detectando esta intención y (si aplica) ejecutando la
+                                        operación real, pero no enviará ningún mensaje de este tipo mientras
+                                        esté desactivado. Las {plantillas.length} plantillas siguen existiendo
+                                        y son editables.
+                                    </p>
+                                )}
+
+                                <ModoSeleccion
+                                    usuarioId={usuarioId}
+                                    tipoId={tipoSeleccionado.id}
+                                    modoActual={configSeleccion?.modo_seleccion || "aleatorio"}
+                                    plantillaFijaId={configSeleccion?.plantilla_fija_id || null}
+                                    plantillas={plantillas}
+                                    onGuardado={(modo: TipoModo, plantillaFijaId: string | null) => {
+
+                                        setConfigSeleccion((prev) => ({
+                                            ...(prev as ConfiguracionSeleccion),
+                                            modo_seleccion: modo,
+                                            plantilla_fija_id: plantillaFijaId
+                                        }));
+
+                                    }}
+                                />
+
+                                <ListaPlantillas
+                                    tipo={tipoSeleccionado}
+                                    plantillas={plantillas}
+                                    seleccionada={plantillaSeleccionada}
+                                    usuarioId={usuarioId}
+                                    onSeleccionar={setPlantillaSeleccionada}
+                                    onCambiada={actualizarListaLocal}
+                                    onDuplicada={agregarNuevaLocal}
+                                    onEliminada={quitarLocal}
+                                    onCreada={agregarNuevaLocal}
+                                />
+
                             </div>
 
-                            {!estaHabilitado(tipoSeleccionado.id) && (
+                            {plantillaSeleccionada && (
 
-                                <p className="mensajes-tipo-nota-desactivado">
-                                    El BOT sigue detectando esta intención y (si aplica) ejecutando la
-                                    operación real, pero no enviará ningún mensaje de este tipo mientras
-                                    esté desactivado. Las {plantillas.length} plantillas siguen existiendo
-                                    y son editables.
-                                </p>
+                                <EditorMensaje
+                                    key={plantillaSeleccionada.id}
+                                    tipo={tipoSeleccionado}
+                                    usuarioId={usuarioId}
+                                    plantilla={plantillaSeleccionada}
+                                    onGuardada={actualizarListaLocal}
+                                    onGuardadaComoNueva={agregarNuevaLocal}
+                                />
 
                             )}
 
-                            <ModoSeleccion
-                                usuarioId={usuarioId}
-                                tipoId={tipoSeleccionado.id}
-                                modoActual={configSeleccion?.modo_seleccion || "aleatorio"}
-                                plantillaFijaId={configSeleccion?.plantilla_fija_id || null}
-                                plantillas={plantillas}
-                                onGuardado={(modo: TipoModo, plantillaFijaId: string | null) => {
-
-                                    setConfigSeleccion((prev) => ({
-                                        ...(prev as ConfiguracionSeleccion),
-                                        modo_seleccion: modo,
-                                        plantilla_fija_id: plantillaFijaId
-                                    }));
-
-                                }}
-                            />
-
-                            <ListaPlantillas
-                                tipo={tipoSeleccionado}
-                                plantillas={plantillas}
-                                seleccionada={plantillaSeleccionada}
-                                usuarioId={usuarioId}
-                                onSeleccionar={setPlantillaSeleccionada}
-                                onCambiada={actualizarListaLocal}
-                                onDuplicada={agregarNuevaLocal}
-                                onEliminada={quitarLocal}
-                                onCreada={agregarNuevaLocal}
-                            />
-
                         </div>
 
-                        {plantillaSeleccionada && (
+                    )}
 
-                            <EditorMensaje
-                                key={plantillaSeleccionada.id}
-                                tipo={tipoSeleccionado}
-                                usuarioId={usuarioId}
-                                plantilla={plantillaSeleccionada}
-                                onGuardada={actualizarListaLocal}
-                                onGuardadaComoNueva={agregarNuevaLocal}
-                            />
-
-                        )}
-
-                    </div>
-
-                )}
+                </div>
 
             </div>
 

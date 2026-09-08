@@ -135,7 +135,7 @@ const INFO_EVENTO_FRASES = ["que dia"];
 // ("cuáles tengo", "mis números").
 const MINIMO_TOKENS_PARA_CONSULTA = 2;
 
-function detectarIntencion(texto = "") {
+function detectarIntencion(texto = "", cifras = 2) {
 
     if (!texto || !texto.trim()) {
         return { tipo: "ninguna", numeros: [] };
@@ -143,7 +143,7 @@ function detectarIntencion(texto = "") {
 
     const normalizado = normalizarTexto(texto);
     const tokens = normalizado.split(" ").filter(Boolean);
-    const numeros = extraerNumeros(texto);
+    const numeros = extraerNumeros(texto, cifras);
 
     // Pregunta de CONTEO en plural ("cuántos", "cuántas"): señal fuerte de
     // que se pregunta por una CANTIDAD, no por dinero. Coincidencia exacta

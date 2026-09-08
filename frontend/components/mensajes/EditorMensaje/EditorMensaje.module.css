@@ -1,0 +1,130 @@
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-card);
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.label {
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-text);
+}
+
+.vars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.varChip {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--efaat-surface-muted);
+  border: 1px solid var(--efaat-border);
+  font-family: var(--efaat-font-mono);
+  font-size: 11px;
+  color: var(--efaat-text-secondary);
+}
+
+.note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--efaat-text-muted);
+  line-height: 1.5;
+}
+
+.checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 6px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--efaat-text-sm);
+  color: var(--efaat-text);
+}
+
+.check input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--efaat-primary);
+}
+
+.preview {
+  padding: 12px;
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-surface-muted);
+  border: 1px solid var(--efaat-border);
+}
+
+.previewLabel {
+  display: block;
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: var(--efaat-weight-semibold);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--efaat-text-muted);
+}
+
+.previewLabelPlural {
+  margin-top: 12px;
+}
+
+.bubble {
+  padding: 10px 12px;
+  border-radius: 10px 10px 10px 2px;
+  background: #dcf8c6;
+  color: #1f2937;
+  font-size: var(--efaat-text-base);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 460px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.status {
+  font-size: var(--efaat-text-sm);
+  color: var(--efaat-text-secondary);
+}
+
+@media (max-width: 600px) {
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
+
+  .checks {
+    grid-template-columns: 1fr;
+  }
+
+  .bubble {
+    max-width: 100%;
+  }
+}

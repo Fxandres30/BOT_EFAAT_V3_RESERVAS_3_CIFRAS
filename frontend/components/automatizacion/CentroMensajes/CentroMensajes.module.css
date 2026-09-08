@@ -1,0 +1,71 @@
+.state {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--efaat-text-secondary);
+  font-size: var(--efaat-text-base);
+}
+
+.aviso {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-primary-soft);
+  color: var(--efaat-primary-active);
+  font-size: var(--efaat-text-xs);
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-error-soft);
+  color: #991b1b;
+  font-size: var(--efaat-text-xs);
+}
+
+.error svg {
+  flex-shrink: 0;
+}
+
+.headerActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.summary {
+  margin: 0 0 12px;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+}
+
+.filtros {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  margin-bottom: 16px;
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-card);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+}

@@ -1,0 +1,222 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-card);
+  box-shadow: var(--efaat-shadow-sm);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.name {
+  margin: 0;
+  font-size: var(--efaat-text-md);
+  font-weight: var(--efaat-weight-bold);
+  color: var(--efaat-text);
+  line-height: 1.25;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+}
+
+.metaItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.metaItem svg {
+  flex-shrink: 0;
+  color: var(--efaat-text-muted);
+}
+
+/* --- Barra de progreso --- */
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.progressTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+}
+
+.progressPct {
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-bold);
+  color: var(--efaat-primary);
+}
+
+.bar {
+  width: 100%;
+  height: 8px;
+  border-radius: var(--efaat-radius-pill);
+  background: var(--efaat-border);
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: var(--efaat-radius-pill);
+  background: var(--efaat-success);
+  transition: width 0.4s ease;
+}
+
+/* --- Stats --- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 7px 4px;
+  border-radius: 8px;
+  background: var(--efaat-surface-muted);
+  border: 1px solid var(--efaat-border);
+  text-align: center;
+}
+
+.statValue {
+  font-size: var(--efaat-text-md);
+  font-weight: var(--efaat-weight-bold);
+  line-height: 1.1;
+  color: var(--efaat-text);
+}
+
+.statLabel {
+  font-size: 10px;
+  font-weight: var(--efaat-weight-semibold);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--efaat-text-muted);
+}
+
+.statReservados .statValue { color: var(--efaat-primary); }
+.statPagados .statValue { color: var(--efaat-success); }
+.statPendientes .statValue { color: var(--efaat-warning); }
+
+/* --- Horarios --- */
+.times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+}
+
+.timeItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.timeItem svg {
+  flex-shrink: 0;
+  color: var(--efaat-text-muted);
+}
+
+.timeItem strong {
+  color: var(--efaat-text);
+  font-weight: var(--efaat-weight-semibold);
+}
+
+/* --- Premios --- */
+.premios {
+  border-top: 1px solid var(--efaat-border);
+  padding-top: 10px;
+}
+
+.premiosSummary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--efaat-text-xs);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-text-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.premiosSummary::-webkit-details-marker {
+  display: none;
+}
+
+.premiosSummary svg {
+  color: var(--efaat-text-muted);
+}
+
+.premiosChevron {
+  margin-left: auto;
+  transition: transform 0.15s ease;
+}
+
+details[open] .premiosChevron {
+  transform: rotate(180deg);
+}
+
+.premiosList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.premioItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--efaat-surface-muted);
+  font-size: var(--efaat-text-xs);
+}
+
+.premioName {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--efaat-text);
+  font-weight: var(--efaat-weight-medium);
+}
+
+.premioName svg {
+  flex-shrink: 0;
+  color: var(--efaat-warning);
+}
+
+.premioValue {
+  flex-shrink: 0;
+  font-weight: var(--efaat-weight-bold);
+  color: var(--efaat-success);
+}
+
+@media (max-width: 400px) {
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

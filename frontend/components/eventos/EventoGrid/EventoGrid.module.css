@@ -1,0 +1,30 @@
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.state {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--efaat-text-secondary);
+  font-size: var(--efaat-text-base);
+}
+
+@media (max-width: 640px) {
+  .stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

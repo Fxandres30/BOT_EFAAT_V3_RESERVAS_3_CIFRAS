@@ -1,0 +1,43 @@
+.nav {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: #f1f5f9;
+  border-radius: var(--efaat-radius-control);
+  margin-bottom: 16px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nav::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border-radius: 4px;
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.tab:hover {
+  color: var(--efaat-text);
+}
+
+.tabActive {
+  background: var(--efaat-surface);
+  color: var(--efaat-text);
+  box-shadow: var(--efaat-shadow-sm);
+}
+
+.tab svg {
+  flex-shrink: 0;
+}

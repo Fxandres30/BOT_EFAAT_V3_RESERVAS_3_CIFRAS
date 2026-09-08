@@ -1,9 +1,12 @@
 "use client";
 
-import "./MensajeCard.css";
+import { Button } from "@/components/ui/Button";
+import { StatusBadge } from "@/components/ui/Badge";
 
 import { AutomationMessage } from "@/services/automatizacion/mensajesAutomation";
 import { nombreTipo, nombreCategoria } from "@/services/automatizacion/tiposCategorias";
+
+import styles from "./MensajeCard.module.css";
 
 interface Props {
     mensaje: AutomationMessage;
@@ -27,35 +30,49 @@ export default function MensajeCard({
 
     return (
 
-        <div className={`mensaje-card ${!mensaje.activo ? "inactivo" : ""}`}>
+        <div className={`${styles.card} ${!mensaje.activo ? styles.inactivo : ""}`}>
 
-            <p className="mensaje-card-texto">{mensaje.texto}</p>
-
-            <div className="mensaje-card-meta">
-                {nombreTipo(mensaje.tipo)} · {nombreCategoria(mensaje.categoria)}
-                {!esPropio && <span className="mensaje-card-global"> · Global</span>}
+            <div className={styles.top}>
+                <StatusBadge
+                    status={mensaje.activo ? "active" : "inactive"}
+                    label={mensaje.activo ? "Activo" : "Inactivo"}
+                    size="sm"
+                />
             </div>
 
-            <div className={`mensaje-card-estado ${mensaje.activo ? "on" : "off"}`}>
-                {mensaje.activo ? "🟢 ACTIVO" : "🔴 INACTIVO"}
+            <p className={styles.texto}>{mensaje.texto}</p>
+
+            <div className={styles.meta}>
+                <span>{nombreTipo(mensaje.tipo)}</span>
+                <span>·</span>
+                <span>{nombreCategoria(mensaje.categoria)}</span>
+                {!esPropio && <span className={styles.global}>· Global</span>}
             </div>
 
-            <div className="mensaje-card-acciones">
+            <div className={styles.acciones}>
 
                 {esPropio ? (
 
                     <>
-                        <button disabled={procesando} onClick={onEditar}>Editar</button>
-                        <button disabled={procesando} onClick={onDuplicar}>Duplicar</button>
-                        <button disabled={procesando} onClick={onAlternar}>
+                        <Button variant="secondary" size="sm" disabled={procesando} onClick={onEditar}>
+                            Editar
+                        </Button>
+                        <Button variant="secondary" size="sm" disabled={procesando} onClick={onDuplicar}>
+                            Duplicar
+                        </Button>
+                        <Button variant="secondary" size="sm" disabled={procesando} onClick={onAlternar}>
                             {mensaje.activo ? "Desactivar" : "Activar"}
-                        </button>
-                        <button disabled={procesando} onClick={onEliminar} className="peligro">Eliminar</button>
+                        </Button>
+                        <Button variant="danger" size="sm" disabled={procesando} onClick={onEliminar}>
+                            Eliminar
+                        </Button>
                     </>
 
                 ) : (
 
-                    <button disabled={procesando} onClick={onDuplicar}>Duplicar como propio</button>
+                    <Button variant="secondary" size="sm" disabled={procesando} onClick={onDuplicar}>
+                        Duplicar como propio
+                    </Button>
 
                 )}
 

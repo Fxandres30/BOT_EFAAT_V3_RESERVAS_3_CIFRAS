@@ -23,7 +23,10 @@ async function detectarReserva({
         return null;
     }
 
-    const numeros = extraerNumeros(texto);
+    // La cantidad de cifras la decide la configuración real del evento
+    // (eventos_bot.cifras). Si no viene, extraerNumeros usa 2 por defecto
+    // (comportamiento previo).
+    const numeros = extraerNumeros(texto, evento?.cifras);
 
     if (!numeros.length) {
         return null;

@@ -1,11 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { AlertTriangle } from "lucide-react";
 
-import "./MensajeModal.css";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
+import { Select } from "@/components/ui/Select";
 
 import { AutomationMessage, crearMensaje, actualizarMensaje } from "@/services/automatizacion/mensajesAutomation";
 import { TIPOS_AUTOMATIZACION, CATEGORIAS_AUTOMATIZACION, VARIABLES_PERMITIDAS } from "@/services/automatizacion/tiposCategorias";
+
+import styles from "./MensajeModal.module.css";
 
 interface Props {
     usuarioId: string;
@@ -60,74 +67,87 @@ export default function MensajeModal({ usuarioId, mensaje, onClose, onGuardado }
 
     }
 
+    const titulo = mensaje ? (esGlobalAjeno ? "Ver mensaje global" : "Editar mensaje") : "Nuevo mensaje";
+
     return (
 
-        <div className="mensaje-modal-overlay" onClick={onClose}>
-
-            <div className="mensaje-modal" onClick={(e) => e.stopPropagation()}>
-
-                <h2>{mensaje ? (esGlobalAjeno ? "Ver mensaje global" : "Editar mensaje") : "Nuevo mensaje"}</h2>
+        <Modal
+            open
+            onClose={onClose}
+            title={titulo}
+            size="md"
+            footer={
+                <>
+                    <Button variant="ghost" onClick={onClose} disabled={guardando}>
+                        {esGlobalAjeno ? "Cerrar" : "Cancelar"}
+                    </Button>
+                    {!esGlobalAjeno && (
+                        <Button onClick={guardar} loading={guardando}>Guardar</Button>
+                    )}
+                </>
+            }
+        >
+            <div className={styles.form}>
 
                 {esGlobalAjeno && (
-                    <p className="mensaje-modal-aviso">
+                    <p className={styles.aviso}>
                         Este mensaje es global y no te pertenece — solo puedes verlo. Usa
                         &quot;Duplicar como propio&quot; en la tarjeta para crear tu propia copia editable.
                     </p>
                 )}
 
-                <label className="mensaje-modal-campo">
-                    Nombre interno
-                    <input
-                        type="text"
-                        value={nombreInterno}
-                        disabled={esGlobalAjeno}
-                        onChange={(e) => setNombreInterno(e.target.value)}
-                        placeholder="Ej: apertura-competencia-1"
-                    />
-                </label>
+                <Input
+                    label="Nombre interno"
+                    value={nombreInterno}
+                    disabled={esGlobalAjeno}
+                    onChange={(e) => setNombreInterno(e.target.value)}
+                    placeholder="Ej: apertura-competencia-1"
+                />
 
-                <label className="mensaje-modal-campo">
-                    Mensaje
-                    <textarea
-                        rows={4}
-                        value={texto}
-                        disabled={esGlobalAjeno}
-                        onChange={(e) => setTexto(e.target.value)}
-                        placeholder="¡Ya arrancamos {nombre_evento}!"
-                    />
-                </label>
+                <Textarea
+                    label="Mensaje"
+                    rows={4}
+                    value={texto}
+                    disabled={esGlobalAjeno}
+                    onChange={(e) => setTexto(e.target.value)}
+                    placeholder="¡Ya arrancamos {nombre_evento}!"
+                />
 
-                <div className="mensaje-modal-variables">
-                    Variables permitidas:{" "}
+                <div className={styles.variables}>
+                    Variables permitidas:
                     {VARIABLES_PERMITIDAS.map((v) => (
                         <code key={v.variable} title={v.descripcion}>{v.variable}</code>
                     ))}
                 </div>
 
-                <div className="mensaje-modal-fila">
+                <div className={styles.row}>
 
-                    <label className="mensaje-modal-campo">
-                        Tipo
-                        <select value={tipo} disabled={esGlobalAjeno} onChange={(e) => setTipo(e.target.value)}>
-                            {TIPOS_AUTOMATIZACION.map((t) => (
-                                <option key={t.id} value={t.id}>{t.label}</option>
-                            ))}
-                        </select>
-                    </label>
+                    <Select
+                        label="Tipo"
+                        value={tipo}
+                        disabled={esGlobalAjeno}
+                        onChange={(e) => setTipo(e.target.value)}
+                    >
+                        {TIPOS_AUTOMATIZACION.map((t) => (
+                            <option key={t.id} value={t.id}>{t.label}</option>
+                        ))}
+                    </Select>
 
-                    <label className="mensaje-modal-campo">
-                        Categoría
-                        <select value={categoria} disabled={esGlobalAjeno} onChange={(e) => setCategoria(e.target.value)}>
-                            <option value="">Sin categoría</option>
-                            {CATEGORIAS_AUTOMATIZACION.map((c) => (
-                                <option key={c.id} value={c.id}>{c.label}</option>
-                            ))}
-                        </select>
-                    </label>
+                    <Select
+                        label="Categoría"
+                        value={categoria}
+                        disabled={esGlobalAjeno}
+                        onChange={(e) => setCategoria(e.target.value)}
+                    >
+                        <option value="">Sin categoría</option>
+                        {CATEGORIAS_AUTOMATIZACION.map((c) => (
+                            <option key={c.id} value={c.id}>{c.label}</option>
+                        ))}
+                    </Select>
 
                 </div>
 
-                <label className="mensaje-modal-switch">
+                <label className={styles.switch}>
                     <input
                         type="checkbox"
                         checked={activo}
@@ -137,22 +157,14 @@ export default function MensajeModal({ usuarioId, mensaje, onClose, onGuardado }
                     Activo
                 </label>
 
-                {error && <p className="mensaje-modal-error">⚠️ {error}</p>}
-
-                <div className="mensaje-modal-botones">
-                    <button className="cancelar" onClick={onClose} disabled={guardando}>
-                        {esGlobalAjeno ? "Cerrar" : "Cancelar"}
-                    </button>
-                    {!esGlobalAjeno && (
-                        <button className="confirmar" onClick={guardar} disabled={guardando}>
-                            {guardando ? "Guardando..." : "Guardar"}
-                        </button>
-                    )}
-                </div>
+                {error && (
+                    <p className={styles.error}>
+                        <AlertTriangle size={13} /> {error}
+                    </p>
+                )}
 
             </div>
-
-        </div>
+        </Modal>
 
     );
 

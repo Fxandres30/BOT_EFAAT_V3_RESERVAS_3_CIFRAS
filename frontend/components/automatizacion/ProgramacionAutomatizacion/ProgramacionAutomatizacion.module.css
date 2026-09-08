@@ -1,0 +1,132 @@
+.state {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--efaat-text-secondary);
+  font-size: var(--efaat-text-base);
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-error-soft);
+  color: #991b1b;
+  font-size: var(--efaat-text-xs);
+}
+
+.lead {
+  margin: 0 0 16px;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+  line-height: 1.5;
+  max-width: 68ch;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-card);
+  box-shadow: var(--efaat-shadow-sm);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cardName {
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-bold);
+  color: var(--efaat-text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editLink {
+  flex-shrink: 0;
+  font-size: var(--efaat-text-xs);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-primary);
+  text-decoration: none;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--efaat-surface-muted);
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text);
+}
+
+.rowValue {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--efaat-text-secondary);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--efaat-border-strong);
+  flex-shrink: 0;
+}
+
+.dotOn {
+  background: var(--efaat-success);
+}
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--efaat-border);
+  font-size: 11px;
+  color: var(--efaat-text-muted);
+}
+
+.nota {
+  margin: 0;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-muted);
+}
+
+@media (max-width: 640px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+}

@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AlertTriangle, Power, Users, Mail, CalendarClock, Clock } from "lucide-react";
 
-import "./ResumenAutomatizacion.css";
+import { StatCard } from "@/components/ui/StatCard";
 
 import { getUser } from "@/services/auth/getUser";
 import { obtenerResumenAutomatizacion, ResumenAutomatizacion as ResumenData } from "@/services/automatizacion/estadisticas";
 
-import AutomatizacionNav from "../AutomatizacionNav/AutomatizacionNav";
+import AutomatizacionHeader from "../AutomatizacionNav/AutomatizacionHeader";
+
+import styles from "./ResumenAutomatizacion.module.css";
 
 export default function ResumenAutomatizacion() {
 
@@ -46,75 +49,68 @@ export default function ResumenAutomatizacion() {
 
     return (
 
-        <div className="resumen-automatizacion">
+        <div className={styles.page}>
 
-            <div>
-                <h1 className="automatizacion-titulo">🤖 Automatización</h1>
-                <p className="automatizacion-subtitulo">
-                    Activa la automatización de EFAAT grupo por grupo: horarios permitidos,
-                    mensajes automáticos de apertura, recordatorios, actualizaciones y cierre.
-                    El sorteo (nombre, valor, premios, hora de cierre) siempre lo decide la
-                    detección real del bot — aquí solo se configura el comportamiento.
-                </p>
-            </div>
-
-            <AutomatizacionNav />
+            <AutomatizacionHeader />
 
             {!usuarioId && !cargando && (
-                <div className="resumen-estado-vacio">Debes iniciar sesión para ver Automatización.</div>
+                <div className={styles.state}>Debes iniciar sesión para ver Automatización.</div>
             )}
 
             {cargando ? (
 
-                <div className="resumen-estado-vacio">Cargando resumen...</div>
+                <div className={styles.state}>Cargando resumen…</div>
 
             ) : usuarioId && (
 
                 <>
 
                     {error && (
-                        <p className="resumen-error">⚠️ No se pudo cargar todo el resumen ({error}).</p>
+                        <p className={styles.error}>
+                            <AlertTriangle size={15} />
+                            No se pudo cargar todo el resumen ({error}).
+                        </p>
                     )}
 
-                    <div className="resumen-cards">
+                    <div className={styles.grid}>
 
-                        <div className="resumen-card">
-                            <span className="resumen-card-label">Estado</span>
-                            <span className="resumen-card-valor">
-                                {estadoGeneral ? "🟢 Activa" : "🔴 Inactiva"}
-                            </span>
-                            <span className="resumen-card-nota">
-                                {estadoGeneral
-                                    ? "Al menos un grupo autorizado y activo."
-                                    : "Todavía no hay ningún grupo autorizado y activo."}
-                            </span>
-                        </div>
+                        <StatCard
+                            label="Estado"
+                            value={estadoGeneral ? "Activa" : "Inactiva"}
+                            tone={estadoGeneral ? "success" : "default"}
+                            hint={estadoGeneral
+                                ? "Al menos un grupo autorizado y activo."
+                                : "Ningún grupo autorizado y activo todavía."}
+                            icon={<Power size={16} />}
+                        />
 
-                        <div className="resumen-card">
-                            <span className="resumen-card-label">Grupos autorizados</span>
-                            <span className="resumen-card-valor">{resumen?.grupoAutorizadosActivos ?? 0}</span>
-                            <span className="resumen-card-nota">de {resumen?.grupoAutorizadosTotal ?? 0} registrados</span>
-                        </div>
+                        <StatCard
+                            label="Grupos autorizados"
+                            value={resumen?.grupoAutorizadosActivos ?? 0}
+                            hint={`de ${resumen?.grupoAutorizadosTotal ?? 0} registrados`}
+                            icon={<Users size={16} />}
+                        />
 
-                        <div className="resumen-card">
-                            <span className="resumen-card-label">Mensajes activos</span>
-                            <span className="resumen-card-valor">{resumen?.mensajesActivos ?? 0}</span>
-                            <span className="resumen-card-nota">de {resumen?.mensajesTotal ?? 0} totales (globales + propios)</span>
-                        </div>
+                        <StatCard
+                            label="Mensajes activos"
+                            value={resumen?.mensajesActivos ?? 0}
+                            hint={`de ${resumen?.mensajesTotal ?? 0} totales (globales + propios)`}
+                            icon={<Mail size={16} />}
+                        />
 
-                        <div className="resumen-card">
-                            <span className="resumen-card-label">Eventos activos</span>
-                            <span className="resumen-card-valor">{resumen?.eventosActivos ?? 0}/{resumen?.grupoAutorizadosActivos ?? 0}</span>
-                            <span className="resumen-card-nota">Event Sessions abiertos ahora mismo, de tus grupos autorizados</span>
-                        </div>
+                        <StatCard
+                            label="Eventos activos"
+                            value={`${resumen?.eventosActivos ?? 0}/${resumen?.grupoAutorizadosActivos ?? 0}`}
+                            hint="Event Sessions abiertos ahora, de tus grupos autorizados"
+                            icon={<CalendarClock size={16} />}
+                        />
 
-                        <div className="resumen-card">
-                            <span className="resumen-card-label">Scheduler</span>
-                            <span className="resumen-card-valor">⚪ Preparado</span>
-                            <span className="resumen-card-nota">
-                                Construido y probado (179/179), todavía no arrancado en producción.
-                            </span>
-                        </div>
+                        <StatCard
+                            label="Scheduler"
+                            value="Preparado"
+                            hint="Construido y probado (179/179), aún no arrancado en producción."
+                            icon={<Clock size={16} />}
+                        />
 
                     </div>
 

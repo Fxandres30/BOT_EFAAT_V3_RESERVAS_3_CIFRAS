@@ -1,0 +1,38 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 200px;
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border: 1px dashed var(--efaat-border-strong);
+  border-radius: var(--efaat-radius-card);
+  background: var(--efaat-surface-muted);
+  color: var(--efaat-text-muted);
+  font-size: var(--efaat-text-xs);
+  font-weight: var(--efaat-weight-semibold);
+}
+
+.text {
+  margin: 0;
+  text-align: center;
+  font-size: var(--efaat-text-sm);
+  color: var(--efaat-text-secondary);
+  line-height: 1.5;
+}
+
+.hint {
+  margin: 0;
+  text-align: center;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-muted);
+}

@@ -2,14 +2,24 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LayoutDashboard, Users, Mail, Clock, type LucideIcon } from "lucide-react";
 
-import "./AutomatizacionNav.css";
+import styles from "./AutomatizacionNav.module.css";
 
-const TABS = [
-    { href: "/automatizacion", label: "Resumen", icono: "📊", exacto: true },
-    { href: "/automatizacion/grupos", label: "Grupos", icono: "👥", exacto: false },
-    { href: "/automatizacion/mensajes", label: "Mensajes", icono: "✉️", exacto: false },
-    { href: "/automatizacion/programacion", label: "Programación", icono: "🕒", exacto: false }
+interface Tab {
+    href: string;
+    label: string;
+    icon: LucideIcon;
+    exacto: boolean;
+}
+
+// Mismas rutas y significado que antes — solo cambia la presentación
+// (emoji -> Lucide).
+const TABS: Tab[] = [
+    { href: "/automatizacion", label: "Resumen", icon: LayoutDashboard, exacto: true },
+    { href: "/automatizacion/grupos", label: "Grupos", icon: Users, exacto: false },
+    { href: "/automatizacion/mensajes", label: "Mensajes", icon: Mail, exacto: false },
+    { href: "/automatizacion/programacion", label: "Programación", icon: Clock, exacto: false }
 ];
 
 export default function AutomatizacionNav() {
@@ -18,7 +28,7 @@ export default function AutomatizacionNav() {
 
     return (
 
-        <nav className="automatizacion-nav">
+        <nav className={styles.nav}>
 
             {TABS.map((tab) => {
 
@@ -26,16 +36,19 @@ export default function AutomatizacionNav() {
                     ? pathname === tab.href
                     : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
 
+                const Icon = tab.icon;
+
                 return (
 
                     <Link
                         key={tab.href}
                         href={tab.href}
                         prefetch={false}
-                        className={`automatizacion-tab ${activo ? "activo" : ""}`}
+                        className={activo ? `${styles.tab} ${styles.tabActive}` : styles.tab}
+                        aria-current={activo ? "page" : undefined}
                     >
-                        <span>{tab.icono}</span>
-                        <span>{tab.label}</span>
+                        <Icon size={14} aria-hidden="true" />
+                        {tab.label}
                     </Link>
 
                 );

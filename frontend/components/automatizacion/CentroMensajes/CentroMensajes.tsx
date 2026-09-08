@@ -1,8 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AlertTriangle, Plus } from "lucide-react";
 
-import "./CentroMensajes.css";
+import { SectionHeader } from "@/components/ui/SectionHeader";
+import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/Select";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 import { getUser } from "@/services/auth/getUser";
 import {
@@ -16,9 +20,11 @@ import {
 import { TIPOS_AUTOMATIZACION, CATEGORIAS_AUTOMATIZACION } from "@/services/automatizacion/tiposCategorias";
 import { cargarMensajesEjemplo } from "@/services/automatizacion/mensajesEjemplo";
 
-import AutomatizacionNav from "../AutomatizacionNav/AutomatizacionNav";
+import AutomatizacionHeader from "../AutomatizacionNav/AutomatizacionHeader";
 import MensajeCard from "../MensajeCard/MensajeCard";
 import MensajeModal from "../MensajeModal/MensajeModal";
+
+import styles from "./CentroMensajes.module.css";
 
 export default function CentroMensajes() {
 
@@ -153,16 +159,16 @@ export default function CentroMensajes() {
         setCargandoEjemplos(false);
 
         if (resultado.error) {
-            setAvisoEjemplos(`⚠️ No se pudieron cargar (${resultado.error}).`);
+            setAvisoEjemplos(`No se pudieron cargar (${resultado.error}).`);
             return;
         }
 
         if (resultado.yaExistian) {
-            setAvisoEjemplos("ℹ️ Los mensajes de ejemplo ya fueron cargados");
+            setAvisoEjemplos("Los mensajes de ejemplo ya fueron cargados.");
             return;
         }
 
-        setAvisoEjemplos(`✅ ${resultado.cantidadTotal} mensajes de ejemplo disponibles`);
+        setAvisoEjemplos(`${resultado.cantidadTotal} mensajes de ejemplo disponibles.`);
         await cargar(usuarioId);
 
     }
@@ -185,107 +191,100 @@ export default function CentroMensajes() {
 
     }
 
+    const activos = mensajes.filter((m) => m.activo).length;
+
     return (
 
-        <div className="centro-mensajes">
+        <div className={styles.page}>
 
-            <div>
-                <h1 className="automatizacion-titulo">🤖 Automatización</h1>
-            </div>
-
-            <AutomatizacionNav />
+            <AutomatizacionHeader />
 
             {!usuarioId && !cargando ? (
 
-                <div className="centro-mensajes-vacio">Debes iniciar sesión para administrar mensajes.</div>
+                <div className={styles.state}>Debes iniciar sesión para administrar mensajes.</div>
 
             ) : (
 
                 <>
 
-                    <div className="centro-mensajes-header">
+                    <SectionHeader
+                        title="Centro de mensajes"
+                        description="El pool de mensajes que usan REMINDER/UPDATE/CLOSE/OPEN — globales y los tuyos propios."
+                        actions={
+                            <div className={styles.headerActions}>
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    loading={cargandoEjemplos}
+                                    onClick={cargarEjemplos}
+                                >
+                                    Cargar 100 ejemplos
+                                </Button>
+                                <Button size="sm" leftIcon={<Plus size={14} />} onClick={() => setModal("nuevo")}>
+                                    Nuevo mensaje
+                                </Button>
+                            </div>
+                        }
+                    />
 
-                        <div>
-                            <h2 className="grupos-seccion-titulo">Centro de mensajes</h2>
-                            <p className="grupos-seccion-subtitulo">
-                                El pool de mensajes que usan REMINDER/UPDATE/CLOSE/OPEN —
-                                globales (visibles para todos) y los tuyos propios.
-                            </p>
-                        </div>
-
-                        <div className="centro-mensajes-header-botones">
-                            <button
-                                className="centro-mensajes-boton-ejemplos"
-                                disabled={cargandoEjemplos}
-                                onClick={cargarEjemplos}
-                            >
-                                {cargandoEjemplos ? "Cargando..." : "Cargar 100 ejemplos"}
-                            </button>
-                            <button className="grupos-boton-autorizar" onClick={() => setModal("nuevo")}>
-                                + Nuevo mensaje
-                            </button>
-                        </div>
-
-                    </div>
-
-                    {avisoEjemplos && <p className="centro-mensajes-aviso">{avisoEjemplos}</p>}
+                    {avisoEjemplos && <p className={styles.aviso}>{avisoEjemplos}</p>}
 
                     {!cargando && (
-                        <p className="centro-mensajes-contador">
-                            {mensajes.length} mensaje{mensajes.length === 1 ? "" : "s"} ·{" "}
-                            {mensajes.filter((m) => m.activo).length} activo{mensajes.filter((m) => m.activo).length === 1 ? "" : "s"} ·{" "}
-                            {mensajes.filter((m) => !m.activo).length} inactivo{mensajes.filter((m) => !m.activo).length === 1 ? "" : "s"}
+                        <p className={styles.summary}>
+                            {mensajes.length} mensaje{mensajes.length === 1 ? "" : "s"} · {activos} activo{activos === 1 ? "" : "s"} ·{" "}
+                            {mensajes.length - activos} inactivo{mensajes.length - activos === 1 ? "" : "s"}
                         </p>
                     )}
 
-                    <div className="centro-mensajes-filtros">
+                    <div className={styles.filtros}>
 
-                        <label>
-                            Tipo
-                            <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)}>
-                                <option value="">Todos</option>
-                                {TIPOS_AUTOMATIZACION.map((t) => (
-                                    <option key={t.id} value={t.id}>{t.label}</option>
-                                ))}
-                            </select>
-                        </label>
+                        <Select label="Tipo" value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)}>
+                            <option value="">Todos</option>
+                            {TIPOS_AUTOMATIZACION.map((t) => (
+                                <option key={t.id} value={t.id}>{t.label}</option>
+                            ))}
+                        </Select>
 
-                        <label>
-                            Categoría
-                            <select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
-                                <option value="">Todas</option>
-                                {CATEGORIAS_AUTOMATIZACION.map((c) => (
-                                    <option key={c.id} value={c.id}>{c.label}</option>
-                                ))}
-                            </select>
-                        </label>
+                        <Select label="Categoría" value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
+                            <option value="">Todas</option>
+                            {CATEGORIAS_AUTOMATIZACION.map((c) => (
+                                <option key={c.id} value={c.id}>{c.label}</option>
+                            ))}
+                        </Select>
 
-                        <label>
-                            Estado
-                            <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value as FiltrosMensajes["estado"])}>
-                                <option value="todos">Todos</option>
-                                <option value="activos">Activos</option>
-                                <option value="inactivos">Inactivos</option>
-                            </select>
-                        </label>
+                        <Select
+                            label="Estado"
+                            value={filtroEstado}
+                            onChange={(e) => setFiltroEstado(e.target.value as FiltrosMensajes["estado"])}
+                        >
+                            <option value="todos">Todos</option>
+                            <option value="activos">Activos</option>
+                            <option value="inactivos">Inactivos</option>
+                        </Select>
 
                     </div>
 
-                    {error && <p className="grupos-error">⚠️ {error}</p>}
+                    {error && (
+                        <p className={styles.error}>
+                            <AlertTriangle size={15} /> {error}
+                        </p>
+                    )}
 
                     {cargando ? (
 
-                        <div className="centro-mensajes-vacio">Cargando mensajes...</div>
+                        <div className={styles.state}>Cargando mensajes…</div>
 
                     ) : mensajes.length === 0 ? (
 
-                        <div className="centro-mensajes-vacio">
-                            No hay mensajes con estos filtros. Crea el primero con <strong>+ Nuevo mensaje</strong>.
-                        </div>
+                        <EmptyState
+                            icon={<Plus size={20} />}
+                            title="No hay mensajes con estos filtros"
+                            description="Crea el primero con «Nuevo mensaje» o carga los 100 de ejemplo."
+                        />
 
                     ) : (
 
-                        <div className="centro-mensajes-grid">
+                        <div className={styles.grid}>
 
                             {mensajes.map((m) => (
 

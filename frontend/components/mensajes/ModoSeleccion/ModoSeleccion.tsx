@@ -1,14 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { Pin, Dices, RotateCw } from "lucide-react";
 
-import "./ModoSeleccion.css";
+import { Tabs } from "@/components/ui/Tabs";
+import { Select } from "@/components/ui/Select";
 
 import { PlantillaMensaje } from "@/services/mensajes/plantillas";
 import {
     ModoSeleccion as TipoModo,
     guardarModoSeleccion
 } from "@/services/mensajes/configuracionSeleccion";
+
+import styles from "./ModoSeleccion.module.css";
 
 interface Props {
     usuarioId: string;
@@ -50,56 +54,41 @@ export default function ModoSeleccion({
 
     }
 
+    function cambiarModo(valor: string) {
+
+        if (valor === "fijo") {
+            aplicar("fijo", fijaId || habilitadas[0]?.id || null);
+        } else if (valor === "aleatorio") {
+            aplicar("aleatorio", null);
+        } else {
+            aplicar("rotacion", null);
+        }
+
+    }
+
     return (
 
-        <div className="modo-seleccion">
+        <div className={styles.wrap}>
 
-            <p className="modo-seleccion-titulo">Modo de respuesta</p>
+            <span className={styles.label}>Modo de respuesta</span>
 
-            <div className="modo-opciones">
-
-                <label className={`modo-opcion ${modo === "fijo" ? "seleccionada" : ""}`}>
-                    <input
-                        type="radio"
-                        name={`modo-${tipoId}`}
-                        checked={modo === "fijo"}
-                        disabled={guardando}
-                        onChange={() => aplicar("fijo", fijaId || habilitadas[0]?.id || null)}
-                    />
-                    ⭐ Fija
-                </label>
-
-                <label className={`modo-opcion ${modo === "aleatorio" ? "seleccionada" : ""}`}>
-                    <input
-                        type="radio"
-                        name={`modo-${tipoId}`}
-                        checked={modo === "aleatorio"}
-                        disabled={guardando}
-                        onChange={() => aplicar("aleatorio", null)}
-                    />
-                    🎲 Aleatoria
-                </label>
-
-                <label className={`modo-opcion ${modo === "rotacion" ? "seleccionada" : ""}`}>
-                    <input
-                        type="radio"
-                        name={`modo-${tipoId}`}
-                        checked={modo === "rotacion"}
-                        disabled={guardando}
-                        onChange={() => aplicar("rotacion", null)}
-                    />
-                    🔄 Rotación
-                </label>
-
-            </div>
+            <Tabs
+                aria-label="Modo de respuesta"
+                value={modo}
+                onValueChange={cambiarModo}
+                items={[
+                    { value: "fijo", label: "Fija", icon: <Pin size={13} />, disabled: guardando },
+                    { value: "aleatorio", label: "Aleatoria", icon: <Dices size={13} />, disabled: guardando },
+                    { value: "rotacion", label: "Rotación", icon: <RotateCw size={13} />, disabled: guardando }
+                ]}
+            />
 
             {modo === "fijo" && (
 
-                <div className="modo-detalle">
+                <div className={styles.detalle}>
 
-                    <label>Plantilla seleccionada:</label>
-
-                    <select
+                    <Select
+                        label="Plantilla seleccionada"
                         value={fijaId || ""}
                         disabled={guardando || habilitadas.length === 0}
                         onChange={(e) => aplicar("fijo", e.target.value)}
@@ -108,11 +97,11 @@ export default function ModoSeleccion({
                         {habilitadas.map((p) => (
                             <option key={p.id} value={p.id}>{p.nombre}</option>
                         ))}
-                    </select>
+                    </Select>
 
-                    <p className="modo-nota">
-                        Solo esta plantilla se usará mientras el modo sea fijo.
-                        Las demás pueden seguir habilitadas, pero no se usarán.
+                    <p className={styles.nota}>
+                        Solo esta plantilla se usará mientras el modo sea fijo. Las demás pueden
+                        seguir habilitadas, pero no se usarán.
                     </p>
 
                 </div>
@@ -121,26 +110,22 @@ export default function ModoSeleccion({
 
             {modo === "aleatorio" && (
 
-                <div className="modo-detalle">
-                    <p className="modo-nota">
+                <div className={styles.detalle}>
+                    <p className={styles.nota}>
                         Se elegirá aleatoriamente entre las plantillas habilitadas.
                     </p>
-                    <p className="modo-contador">
-                        Plantillas disponibles: {habilitadas.length}
-                    </p>
+                    <p className={styles.contador}>Plantillas disponibles: {habilitadas.length}</p>
                 </div>
 
             )}
 
             {modo === "rotacion" && (
 
-                <div className="modo-detalle">
-                    <p className="modo-nota">
+                <div className={styles.detalle}>
+                    <p className={styles.nota}>
                         Las plantillas habilitadas se utilizarán una por una, en orden.
                     </p>
-                    <p className="modo-contador">
-                        Plantillas disponibles: {habilitadas.length}
-                    </p>
+                    <p className={styles.contador}>Plantillas disponibles: {habilitadas.length}</p>
                 </div>
 
             )}

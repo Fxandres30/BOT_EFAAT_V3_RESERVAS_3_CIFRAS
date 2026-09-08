@@ -4,6 +4,7 @@
 // ni datos de sesión.
 const { extraerNumeros } = require("../funciones/reservas/extraerNumeros");
 const { construirVariablesGramaticales, calcularNumerosRelevantes } = require("./gramatica");
+const { formatHora12 } = require("../utils/formatHora");
 
 // Gramática explícita para Gemini: la MISMA fuente de verdad que usa
 // plantillaMensaje.js (calcularNumerosRelevantes), nunca una cuenta
@@ -54,7 +55,8 @@ function construirContextoReserva(ctx) {
 
         evento: {
             nombre: ctx.evento?.nombre_evento || null,
-            hora: ctx.evento?.hora_fin || null,
+            // 12h para el usuario final — el valor guardado (24h) no cambia.
+            hora: ctx.evento?.hora_fin ? formatHora12(ctx.evento.hora_fin) : null,
             fecha: ctx.evento?.fecha_evento || null
         },
 
@@ -74,7 +76,7 @@ function construirContextoReserva(ctx) {
 
                 // Reconstruido con el mismo extractor que ya usa detectarReserva.js,
                 // sin modificar ese archivo ni su resultado.
-                numerosSolicitados: extraerNumeros(ctx.textoOriginal || ""),
+                numerosSolicitados: extraerNumeros(ctx.textoOriginal || "", ctx.evento?.cifras),
 
                 numerosReservados: reserva.reservados || [],
 

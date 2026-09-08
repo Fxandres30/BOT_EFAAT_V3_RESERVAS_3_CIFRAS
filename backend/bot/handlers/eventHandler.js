@@ -85,7 +85,7 @@ module.exports = async (ctx) => {
     // FASE 4.1: motor de intenciones (determinístico, sin IA)
     // ==========================================
 
-    const intencion = detectarIntencion(ctx.textoOriginal);
+    const intencion = detectarIntencion(ctx.textoOriginal, ctx.evento?.cifras);
 
     console.log("🧭 Intención detectada:", intencion.tipo);
 

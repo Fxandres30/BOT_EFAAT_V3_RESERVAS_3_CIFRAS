@@ -2,6 +2,8 @@
 // usado SOLO para la previsualización visual del editor con datos de EJEMPLO.
 // La sustitución real en producción la hace siempre el backend con datos reales.
 
+import { formatHora12 } from "@/lib/formatHora";
+
 const MOSTRAR_POR_VARIABLE: Record<string, string> = {
     cliente: "mostrar_nombre",
     evento: "mostrar_evento",
@@ -30,7 +32,15 @@ export function aplicarPlantillaPreview(
             return "";
         }
 
-        return variables[nombre] !== undefined ? variables[nombre] : "";
+        const valor = variables[nombre] !== undefined ? variables[nombre] : "";
+
+        // La hora se muestra al usuario en 12h (igual que el backend en
+        // plantillaMensaje.js). El dato de ejemplo/almacenado no cambia.
+        if (nombre === "hora" && valor) {
+            return formatHora12(valor);
+        }
+
+        return valor;
 
     });
 

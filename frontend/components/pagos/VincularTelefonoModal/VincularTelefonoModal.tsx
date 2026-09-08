@@ -1,6 +1,11 @@
 "use client";
 
-import { QrCode, X } from "lucide-react";
+import { QrCode } from "lucide-react";
+
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+
+import styles from "./VincularTelefonoModal.module.css";
 
 interface Props {
     abierto: boolean;
@@ -19,73 +24,32 @@ export default function VincularTelefonoModal({
     onCerrar
 }: Props) {
 
-    if (!abierto) return null;
-
     return (
 
-        <div
-            className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 sm:p-4"
-            onClick={onCerrar}
+        <Modal
+            open={abierto}
+            onClose={onCerrar}
+            size="sm"
+            title="Vincular teléfono"
+            description={emailCuenta ? `Cuenta: ${emailCuenta}` : undefined}
+            footer={<Button onClick={onCerrar}>Entendido</Button>}
         >
+            <div className={styles.body}>
 
-            <div
-                className="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[92dvh] sm:max-h-[85dvh]"
-                onClick={(e) => e.stopPropagation()}
-            >
-
-                <div className="sm:hidden flex justify-center pt-2 shrink-0">
-                    <span className="h-1.5 w-12 rounded-full bg-black/10" />
+                <div className={styles.qr}>
+                    <QrCode size={40} strokeWidth={1.25} />
+                    <span>Código QR próximamente</span>
                 </div>
 
-                <div className="shrink-0 p-4 sm:p-5 flex items-center justify-between border-b">
+                <p className={styles.text}>
+                    Aquí aparecerá un código QR o un código temporal para vincular tu teléfono
+                    con esta cuenta EFAAT, una vez que instales la aplicación.
+                </p>
 
-                    <div className="min-w-0">
-                        <h2 className="font-bold text-gray-900">Vincular teléfono</h2>
-                        {emailCuenta && (
-                            <p className="text-xs text-gray-500 truncate">Cuenta: {emailCuenta}</p>
-                        )}
-                    </div>
-
-                    <button
-                        onClick={onCerrar}
-                        aria-label="Cerrar"
-                        className="text-gray-400 hover:text-gray-700 p-2 -m-2 rounded-full shrink-0"
-                    >
-                        <X size={20} />
-                    </button>
-
-                </div>
-
-                <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4">
-
-                    <div className="aspect-square w-full max-w-[220px] mx-auto rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 flex flex-col items-center justify-center gap-2 text-gray-400">
-                        <QrCode size={40} strokeWidth={1.25} />
-                        <span className="text-xs font-medium">Código QR próximamente</span>
-                    </div>
-
-                    <p className="text-sm text-gray-600 text-center">
-                        Aquí aparecerá un código QR o un código temporal para vincular tu
-                        teléfono con esta cuenta EFAAT, una vez que instales la aplicación.
-                    </p>
-
-                    <p className="text-xs text-gray-400 text-center">
-                        Esta función todavía no está disponible.
-                    </p>
-
-                </div>
-
-                <div className="shrink-0 p-4 sm:p-5 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-5 border-t bg-gray-50">
-                    <button
-                        onClick={onCerrar}
-                        className="w-full flex items-center justify-center gap-2 text-sm font-medium text-white bg-gray-800 hover:bg-black px-4 py-2.5 rounded-xl"
-                    >
-                        Entendido
-                    </button>
-                </div>
+                <p className={styles.hint}>Esta función todavía no está disponible.</p>
 
             </div>
-
-        </div>
+        </Modal>
 
     );
 
