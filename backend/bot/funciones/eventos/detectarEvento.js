@@ -5,6 +5,13 @@ const { guardarEvento } = require("./guardarEvento");
 const { obtenerConfiguracion } = require("./configEvento");
 const { abrirGrupo } = require("./grupos/abrirGrupo");
 
+// Fase 3 — único punto de conexión real con el Automation Engine (Fase 2B/
+// 2C, hasta ahora sin conectar). NO decide datos del sorteo — eso lo sigue
+// haciendo exclusivamente extraerEvento()/guardarEvento(), sin cambios.
+// Solo decide si, además de existir el evento, corresponde automatizar la
+// apertura ahora mismo. Ver docs/EFAAT_AUTOMATION_PHASE_3_IMPLEMENTATION.md.
+const automationEngine = require("../../../automation/engine");
+
 // Escaneo incremental de identidades: se dispara SOLO después de que
 // WhatsApp confirmó la apertura del grupo (ver más abajo). No bloqueante,
 // no forma parte de la decisión de abrir/cerrar el grupo.
@@ -137,6 +144,55 @@ async function detectarEvento(ctx) {
         console.log("✅ Evento guardado correctamente");
 
         // ===============================
+        // AUTOMATION ENGINE — autorización
+        // ===============================
+        // Se consulta ANTES de abrir (era el problema exacto de la
+        // arquitectura anterior: se abría primero y no había forma de
+        // autorizar después). eventoGuardado es exactamente lo que
+        // detectarEvento() ya producía — el Automation Engine no
+        // recalcula ni reinterpreta ningún dato del sorteo, solo decide
+        // comportamiento (grupo autorizado, configuración activa, día/
+        // horario permitidos, ciclo no duplicado).
+        let autorizarApertura = false; // fail-closed: sin autorización explícita, NO se abre
+        let eventSessionAutorizado = null; // Fase 4A: necesario más abajo para OPEN_MESSAGE
+
+        try {
+
+            const decision = await automationEngine.onEventoDetectado(eventoGuardado);
+
+            autorizarApertura = decision.creoEventSession === true;
+            eventSessionAutorizado = decision.eventSession || null;
+
+            if (autorizarApertura) {
+
+                console.log("🤖 [AUTOMATION] apertura autorizada — event_session creado:", decision.eventSession?.id);
+
+            } else {
+
+                console.log(`🤖 [AUTOMATION] apertura NO autorizada (${decision.motivo}) — no se llama a abrirGrupo(). El evento sigue guardado en eventos_bot.`);
+
+            }
+
+        } catch (errorAutomation) {
+
+            // Fail-closed: un fallo del propio Automation Engine (p. ej. las
+            // 4 tablas de la migración 006 todavía no aplicadas en Supabase)
+            // NUNCA autoriza la apertura — autorizarApertura ya vale false
+            // por defecto. El procesamiento del evento NO se rompe (sigue
+            // guardado, se sigue devolviendo), solo NO se llama a
+            // abrirGrupo(). Se deja constancia clara del error para operar
+            // sobre ello.
+            console.error("❌ [AUTOMATION] error evaluando autorización — NO se abre el grupo (fail-closed):", errorAutomation?.message);
+
+        }
+
+        if (!autorizarApertura) {
+
+            return eventoGuardado;
+
+        }
+
+        // ===============================
 // ABRIR GRUPO
 // ===============================
 
@@ -198,6 +254,21 @@ if (!grupoAbierto) {
         escanearGrupo(sessionIdParaEscaner, sock, grupoId).catch(err => {
 
             console.error(`❌ [ESCÁNER IDENTIDADES] error tras abrir grupo ${grupoId}:`, err?.message);
+
+        });
+
+    }
+
+    // Fase 4A — OPEN_MESSAGE: SOLO después de la confirmación real de
+    // arriba (abrirGrupo() ya tuvo éxito), mismo criterio que el escáner
+    // de identidades: no bloqueante, nunca retrasa ni afecta el resultado
+    // de detectarEvento(). eventSessionAutorizado siempre existe aquí
+    // (autorizarApertura=true es la única forma de llegar a este bloque).
+    if (eventSessionAutorizado) {
+
+        automationEngine.enviarMensajeApertura(eventoGuardado, eventSessionAutorizado, sock).catch(err => {
+
+            console.error(`❌ [AUTOMATION] error inesperado enviando OPEN_MESSAGE para ${grupoId}:`, err?.message);
 
         });
 
