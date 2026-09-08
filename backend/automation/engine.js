@@ -7,11 +7,19 @@
 // existente, y AHORA (Fase 4A) enviarMensajeApertura() más abajo, SOLO
 // después de que abrirGrupo() ya confirmó la apertura real.
 //
-// enviarMensajeApertura() (Fase 4A, NUEVA): selecciona un OPEN_MESSAGE del
-// pool, resuelve sus variables con datos reales del evento, y lo envía
-// mediante services/baileys/send.js EXISTENTE (sin duplicar), protegido
-// por ExecutionGuard EXISTENTE (sin duplicar, sin locking nuevo). NUNCA
-// decide datos del sorteo, NUNCA inventa un valor de variable faltante.
+// enviarMensajeApertura() (Fase 4A): selecciona un OPEN_MESSAGE del pool,
+// resuelve sus variables con datos reales del evento, y lo envía mediante
+// services/baileys/send.js EXISTENTE (sin duplicar), protegido por
+// ExecutionGuard EXISTENTE (sin duplicar, sin locking nuevo). NUNCA decide
+// datos del sorteo, NUNCA inventa un valor de variable faltante.
+//
+// enviarMensajeProgramado() (Fase 4B, NUEVA — generaliza lo anterior):
+// mismo pipeline exacto (seleccionar → resolver → ExecutionGuard → enviar
+// → registrar uso), parametrizado por tipo/categoría/clave, para que
+// scheduler.js lo reutilice para REMINDER_MESSAGE/UPDATE_MESSAGE/
+// CLOSE_MESSAGE sin duplicar ni el Message Selector, ni el Variable
+// Resolver, ni el sistema de envío. enviarMensajeApertura() ahora es un
+// envoltorio delgado sobre esta función — mismo comportamiento externo.
 // ==========================================================================
 
 const eventRules = require("./eventRules");
@@ -133,21 +141,35 @@ async function onEventoDetectado(evento, opciones = {}) {
 }
 
 // ==========================================================================
-// enviarMensajeApertura(evento, eventSession, sock)
+// enviarMensajeProgramado({ evento, eventSession, sock, tipo, categoria,
+//                            claveIdempotencia, tipoAccion, variablesExtra })
 // ==========================================================================
 //
-// Se llama SOLO después de que detectarEvento.js confirmó que abrirGrupo()
-// (existente, sin cambios) tuvo éxito — nunca antes. `evento` es el mismo
-// eventoGuardado de siempre (datos del sorteo, sin recalcular nada aquí).
-// `eventSession` es el que onEventoDetectado() ya creó para este mismo
-// ciclo. `sock` es el socket real de Baileys que detectó el mensaje —
-// reutilizado tal cual para el envío, no se crea ni se busca otro.
+// Pipeline ÚNICO de envío (Fase 4B — generaliza lo que Fase 4A escribió
+// solo para OPEN_MESSAGE, para que REMINDER_MESSAGE/UPDATE_MESSAGE/
+// CLOSE_MESSAGE del Scheduler reutilicen exactamente el mismo camino en
+// vez de reimplementarlo tres veces más): seleccionar → resolver variables
+// → ExecutionGuard.ejecutarUnaVez → sendMessage (services/baileys/send.js
+// EXISTENTE) → registrarUso. Nada de esto es nuevo respecto a Fase 4A,
+// solo dejó de estar atado a OPEN_MESSAGE.
 //
-// Nunca lanza (Fase 3: mismo criterio fail-closed en espíritu — un fallo
-// de mensajería NUNCA debe ensuciar el flujo de detección/apertura, que ya
-// tuvo éxito por su cuenta). Devuelve siempre:
+// `variablesExtra` permite que el llamador aporte datos que
+// construirVariablesDesdeEvento() no puede derivar solo de `evento`
+// (p. ej. datos EN VIVO ya leídos aparte) — se combinan, sin pisar los
+// campos reales del evento.
+//
+// Nunca lanza. Devuelve siempre:
 //   { enviado: boolean, motivo?: string, mensajeId? }
-async function enviarMensajeApertura(evento, eventSession, sock) {
+async function enviarMensajeProgramado({
+    evento,
+    eventSession,
+    sock,
+    tipo,
+    categoria = null,
+    claveIdempotencia,
+    tipoAccion,
+    variablesExtra = {}
+}) {
 
     try {
 
@@ -159,18 +181,19 @@ async function enviarMensajeApertura(evento, eventSession, sock) {
 
             usuarioId: evento.usuario_id,
             grupoId: evento.grupo_id,
-            tipo: "OPEN_MESSAGE"
+            tipo,
+            categoria
 
         });
 
         if (!mensaje) {
 
-            console.log("🤖 [AUTOMATION] sin mensajes OPEN_MESSAGE activos disponibles — no se envía nada.");
+            console.log(`🤖 [AUTOMATION] sin mensajes ${tipo} activos disponibles — no se envía nada.`);
             return { enviado: false, motivo: "sin_mensajes_disponibles" };
 
         }
 
-        const variables = construirVariablesDesdeEvento(evento);
+        const variables = { ...construirVariablesDesdeEvento(evento), ...variablesExtra };
 
         const resuelto = variableResolver.resolverVariables(mensaje.texto, variables);
 
@@ -179,12 +202,10 @@ async function enviarMensajeApertura(evento, eventSession, sock) {
             // "no enviar un mensaje corrupto": si el texto plantilla usa
             // una variable que el evento real no tiene, NO se envía —
             // nunca se inventa el valor faltante.
-            console.error(`⚠️ [AUTOMATION] OPEN_MESSAGE ${mensaje.id} tiene variables sin resolver (${resuelto.faltantes.join(", ")}) — no se envía.`);
+            console.error(`⚠️ [AUTOMATION] ${tipo} ${mensaje.id} tiene variables sin resolver (${resuelto.faltantes.join(", ")}) — no se envía.`);
             return { enviado: false, motivo: "variable_faltante", faltantes: resuelto.faltantes };
 
         }
-
-        const claveIdempotencia = `${eventSession.id}:OPEN_MESSAGE`;
 
         const resultado = await executionGuard.ejecutarUnaVez({
 
@@ -192,7 +213,7 @@ async function enviarMensajeApertura(evento, eventSession, sock) {
             eventSessionId: eventSession.id,
             grupoId: evento.grupo_id,
             usuarioId: evento.usuario_id,
-            tipoAccion: "OPEN_MESSAGE",
+            tipoAccion,
 
             ejecutar: async () => {
 
@@ -211,10 +232,17 @@ async function enviarMensajeApertura(evento, eventSession, sock) {
                     eventSessionId: eventSession.id,
                     usuarioId: evento.usuario_id,
                     grupoId: evento.grupo_id,
-                    tipo: "OPEN_MESSAGE",
+                    tipo,
                     categoria: mensaje.categoria ?? null
 
                 });
+
+                // Punto de extensión preparado para stickers (NO
+                // implementado en esta fase, pedido explícitamente así):
+                // si en el futuro automation_configs.stickers trae un
+                // sticker activo para este `tipo`, este es el lugar donde
+                // se enviaría, dentro del mismo callback protegido por
+                // ExecutionGuard, después del mensaje de texto.
 
                 return { mensajeId: mensaje.id };
 
@@ -224,23 +252,52 @@ async function enviarMensajeApertura(evento, eventSession, sock) {
 
         if (resultado.ejecutada) {
 
-            console.log("🤖 [AUTOMATION] OPEN_MESSAGE enviado:", mensaje.id);
+            console.log(`🤖 [AUTOMATION] ${tipo} enviado:`, mensaje.id);
             return { enviado: true, mensajeId: mensaje.id };
 
         }
 
-        console.log(`🤖 [AUTOMATION] OPEN_MESSAGE no enviado (${resultado.motivo}) — ya estaba resuelto para este event_session.`);
+        console.log(`🤖 [AUTOMATION] ${tipo} no enviado (${resultado.motivo}) — ya estaba resuelto para este event_session.`);
         return { enviado: false, motivo: resultado.motivo };
 
     } catch (err) {
 
-        // Nunca se deja escapar una excepción hacia detectarEvento.js por
-        // un fallo de mensajería — la apertura ya ocurrió y no debe
-        // revertirse ni reportarse como error de detección.
-        console.error("❌ [AUTOMATION] error enviando OPEN_MESSAGE:", err?.message);
+        // Nunca se deja escapar una excepción — un fallo de mensajería
+        // nunca debe ensuciar el flujo que lo llamó (detección/apertura ya
+        // exitosa, o el tick del Scheduler).
+        console.error(`❌ [AUTOMATION] error enviando ${tipo}:`, err?.message);
         return { enviado: false, motivo: "error_envio", error: err?.message };
 
     }
+
+}
+
+// ==========================================================================
+// enviarMensajeApertura(evento, eventSession, sock)
+// ==========================================================================
+//
+// Se llama SOLO después de que detectarEvento.js confirmó que abrirGrupo()
+// (existente, sin cambios) tuvo éxito — nunca antes. `evento` es el mismo
+// eventoGuardado de siempre (datos del sorteo, sin recalcular nada aquí).
+// `eventSession` es el que onEventoDetectado() ya creó para este mismo
+// ciclo. `sock` es el socket real de Baileys que detectó el mensaje —
+// reutilizado tal cual para el envío, no se crea ni se busca otro.
+//
+// Envoltorio delgado sobre enviarMensajeProgramado() (Fase 4B) — mismo
+// contrato/comportamiento externo que tenía en Fase 4A, sin cambios.
+async function enviarMensajeApertura(evento, eventSession, sock) {
+
+    return enviarMensajeProgramado({
+
+        evento,
+        eventSession,
+        sock,
+        tipo: "OPEN_MESSAGE",
+        categoria: null,
+        claveIdempotencia: `${eventSession?.id}:OPEN_MESSAGE`,
+        tipoAccion: "OPEN_MESSAGE"
+
+    });
 
 }
 
@@ -271,5 +328,7 @@ function construirVariablesDesdeEvento(evento) {
 
 module.exports = {
     onEventoDetectado,
-    enviarMensajeApertura
+    enviarMensajeApertura,
+    enviarMensajeProgramado,
+    construirVariablesDesdeEvento
 };

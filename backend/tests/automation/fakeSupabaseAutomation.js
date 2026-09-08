@@ -73,7 +73,12 @@ function crearFakeSupabaseAutomation() {
         eventos_bot: [],
         // Fase 4A (migración 007) — Message Pool y su registro de uso.
         automation_messages: [],
-        automation_message_uses: []
+        automation_message_uses: [],
+        // Fase 4B: tabla EXISTENTE (002_reservas_actividad.sql, ninguna
+        // relación con 006/007) — se agrega aquí, igual que eventos_bot en
+        // Fase 3, para que repo/reservasActividad.js (solo lectura) pueda
+        // probarse contra el mismo fake sin crear uno nuevo.
+        reservas_actividad: []
     };
 
     // Corrección quirúrgica Fase 2B: para probar "otro error de Supabase
@@ -144,6 +149,7 @@ function crearFakeSupabaseAutomation() {
         const filtrosEq = [];
         const filtrosIn = [];
         const filtrosLt = [];
+        const filtrosGte = [];
         const filtrosIs = [];
         let ordenCampo = null;
         let ordenAsc = true;
@@ -154,6 +160,7 @@ function crearFakeSupabaseAutomation() {
             return filtrosEq.every(([c, v]) => fila[c] === v) &&
                 filtrosIn.every(([c, vs]) => vs.includes(fila[c])) &&
                 filtrosLt.every(([c, v]) => fila[c] !== undefined && fila[c] !== null && fila[c] < v) &&
+                filtrosGte.every(([c, v]) => fila[c] !== undefined && fila[c] !== null && fila[c] >= v) &&
                 // .is(col, null) -> IS NULL real de Postgres (nunca "= null",
                 // que en SQL jamás es true) — fiel al supabase-js real, ver
                 // repo/messages.js (obtenerMensajesActivos: usuario_id null =
@@ -198,6 +205,11 @@ function crearFakeSupabaseAutomation() {
 
             lt(campo, valor) {
                 filtrosLt.push([campo, valor]);
+                return builder;
+            },
+
+            gte(campo, valor) {
+                filtrosGte.push([campo, valor]);
                 return builder;
             },
 

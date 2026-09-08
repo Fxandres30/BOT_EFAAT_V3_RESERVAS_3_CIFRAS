@@ -50,12 +50,12 @@ Criterio de salida (cumplido): 12 pruebas de integración en verde (`backend/tes
 ---
 
 ## Fase 4 — Mensajes/stickers de apertura, recordatorios y cierre
-**Estado: 🟨 en curso.** Fase 4A (Message Pool + selector aleatorio + variables + OPEN_MESSAGE) entregada — ver `EFAAT_AUTOMATION_PHASE_4A_IMPLEMENTATION.md`. Pendiente: OPEN_STICKER, CLOSE_MESSAGE/CLOSE_STICKER, Scheduler, recordatorios.
+**Estado: 🟨 en curso.** Fase 4A (Message Pool + selector aleatorio + variables + OPEN_MESSAGE) entregada — ver `EFAAT_AUTOMATION_PHASE_4A_IMPLEMENTATION.md`. Fase 4B (Scheduler real: REMINDER_MESSAGE/UPDATE_MESSAGE/CLOSE_MESSAGE) entregada — ver `EFAAT_AUTOMATION_PHASE_4B_IMPLEMENTATION.md`. Pendiente: OPEN_STICKER/CLOSE_STICKER, aplicar `008_automation_schedule.sql` en Supabase, arrancar el Scheduler en producción.
 
-1. `Scheduler` completo (§9), `ReminderRules` (§10).
-1b. `OPEN_MESSAGE`/`OPEN_STICKER` (movidos aquí desde el plan original de Fase 3, ver corrección en esa sección): ExecutionGuard.ejecutarUnaVez() envolviendo el envío real (`services/baileys/send.js`, sin duplicar) justo después de que `engine.onEventoDetectado()` cree el `event_session`, usando `automation_configs.mensaje_apertura`/`stickers.apertura`.
-2. Enganche de `CLOSE_MESSAGE`/`CLOSE_STICKER` reaccionando a `eventos_bot.activo=false` (§14).
-3. Verificar recuperación tras reinicio con un caso real: reiniciar el backend con un Event Session `abierto` y un recordatorio vencido durante la caída → debe enviarse una sola vez al volver.
+1. ~~`Scheduler` completo (§9), `ReminderRules` (§10).~~ **Hecho en Fase 4B** (`backend/automation/scheduler.js`, 21 pruebas) — construido como módulo independiente dentro de `backend/automation/` (mismo patrón de `setInterval` por sesión que `iniciarWorkerEventos.js`, sin modificar ese archivo — dominios distintos, ver razonamiento en el documento de Fase 4B). No arrancado en producción todavía (`start()`/`stop()` existen y están probados, pero ningún archivo de `bot/` los llama).
+1b. `OPEN_MESSAGE`/`OPEN_STICKER` (movidos aquí desde el plan original de Fase 3, ver corrección en esa sección): ExecutionGuard.ejecutarUnaVez() envolviendo el envío real (`services/baileys/send.js`, sin duplicar) justo después de que `engine.onEventoDetectado()` cree el `event_session`, usando `automation_configs.mensaje_apertura`/`stickers.apertura`. **`OPEN_MESSAGE` hecho en Fase 4A. `OPEN_STICKER` sigue pendiente** (punto de extensión preparado en `engine.enviarMensajeProgramado()`, sin implementar).
+2. ~~Enganche de `CLOSE_MESSAGE`/`CLOSE_STICKER` reaccionando a `eventos_bot.activo=false` (§14).~~ **`CLOSE_MESSAGE` hecho en Fase 4B**, reaccionando exactamente a `eventos_bot.activo=false` como preveía el plan — el Scheduler nunca decide el cierre por su cuenta (prueba dedicada). `CLOSE_STICKER` sigue pendiente.
+3. Verificar recuperación tras reinicio con un caso real: reiniciar el backend con un Event Session `abierto` y un recordatorio vencido durante la caída → debe enviarse una sola vez al volver. **Cubierto con fakes en Fase 4B (prueba 16); falta el ensayo equivalente contra Supabase real**, análogo al pendiente ya documentado para Fase 3/4A.
 
 ## Fase 5 — Mensaje de inicio del día y permisos
 
@@ -65,7 +65,9 @@ Criterio de salida (cumplido): 12 pruebas de integración en verde (`backend/tes
 
 ## Fase 6 — Actualización por movimiento (reglas e idempotencia, sin la acción de reenvío)
 
-1. `UpdateRules` completo (§11), contador `actualizaciones_enviadas`, cooldown.
+**Nota (Fase 4B):** el punto 1 (reglas de umbral/cooldown + contador `actualizaciones_enviadas` + disparo de un mensaje `UPDATE_MESSAGE` del Message Pool) ya quedó implementado en Fase 4B como parte del Scheduler — ver `EFAAT_AUTOMATION_PHASE_4B_IMPLEMENTATION.md`. Lo que sigue pendiente aquí es distinto: el punto 2, reconocer el comando manual `"actualizar"/"actualiza la tabla"` escrito por una persona en el grupo y **reenviar la tabla/imagen completa** (no un mensaje de texto del pool) — depende de que exista Compartir, fuera de esta rama de trabajo.
+
+1. ~~`UpdateRules` completo (§11), contador `actualizaciones_enviadas`, cooldown.~~ **Hecho en Fase 4B.**
 2. Reconocimiento de `"actualizar"/"actualiza la tabla"/"tabla"` con autorización — conectado, pero su acción final (reenviar la tabla) queda **bloqueada explícitamente** con un TODO documentado hasta que exista Compartir (Fase 6 del roadmap original de Fase 0, fuera de esta rama de trabajo).
 
 ## Fase 7 — Cierre y recuperación (endurecimiento)

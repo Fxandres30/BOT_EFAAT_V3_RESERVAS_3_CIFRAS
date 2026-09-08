@@ -234,6 +234,26 @@ async function obtenerAbiertas() {
 
 }
 
+// Igual que obtenerAbiertas(), pero acotado a una sesion de WhatsApp
+// concreta (session_id) -- es lo que necesita el Scheduler (Fase 4B): cada
+// instancia de backend solo debe procesar los event_sessions de las
+// sesiones que tiene realmente conectadas (sock), nunca las de otra
+// instancia/VPS.
+async function obtenerAbiertasPorSesion(sessionId) {
+
+    const { data, error } = await supabase
+        .from(TABLA)
+        .select("*")
+        .eq("session_id", sessionId)
+        .in("estado", ["abierto", "cerrando"])
+        .order("creado_en", { ascending: true });
+
+    if (error) throw error;
+
+    return data || [];
+
+}
+
 module.exports = {
     buscarPorIdentidadCiclo,
     crear,
@@ -245,5 +265,6 @@ module.exports = {
     actualizar,
     obtenerPendientes,
     obtenerAbiertas,
+    obtenerAbiertasPorSesion,
     CicloDuplicadoError
 };

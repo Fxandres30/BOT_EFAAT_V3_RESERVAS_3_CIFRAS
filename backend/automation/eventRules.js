@@ -184,9 +184,36 @@ function dentroDeHorarioPermitido(ahora, configDia) {
 
 }
 
+// Minutos desde "HH:mm" (horaInicio) hasta "HH:mm" (horaFin), asumiendo
+// mismo día (misma simplificación que ya usa verificarHoraCierre.js del
+// bot: un sorteo no cruza medianoche). Devuelve null si algún valor no
+// tiene forma "HH:mm" — el llamador decide qué hacer ante eso (nunca se
+// inventa una hora).
+function minutosEntre(horaInicio, horaFin) {
+
+    const parsear = (hhmm) => {
+        if (typeof hhmm !== "string") return null;
+        const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+        if (!m) return null;
+        const horas = Number(m[1]);
+        const minutos = Number(m[2]);
+        if (!Number.isFinite(horas) || !Number.isFinite(minutos)) return null;
+        return horas * 60 + minutos;
+    };
+
+    const inicio = parsear(horaInicio);
+    const fin = parsear(horaFin);
+
+    if (inicio === null || fin === null) return null;
+
+    return fin - inicio;
+
+}
+
 module.exports = {
     crearIdentidadCiclo,
     evaluarApertura,
     obtenerClaveDia,
-    obtenerHoraMinuto
+    obtenerHoraMinuto,
+    minutosEntre
 };
