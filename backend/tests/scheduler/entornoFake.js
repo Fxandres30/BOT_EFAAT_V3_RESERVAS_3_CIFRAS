@@ -27,6 +27,11 @@ const RUTAS = {
     automationConfigRepo: path.join(RAIZ, "automation/repo/automationConfig.js"),
     eventosBotRepo: path.join(RAIZ, "automation/repo/eventosBot.js"),
     reservasActividadRepo: path.join(RAIZ, "automation/repo/reservasActividad.js"),
+    // Fase 5 (INITIAL_TABLE) — tienen que recargarse igual que el resto:
+    // engine.js las requiere internamente, y sin esto quedarían con una
+    // referencia obsoleta al fakeSupabase de una crearEntorno() anterior.
+    tablaEventoRepo: path.join(RAIZ, "automation/repo/tablaEvento.js"),
+    tablaInicial: path.join(RAIZ, "automation/tablaInicial.js"),
     engine: path.join(RAIZ, "automation/engine.js"),
     scheduler: path.join(RAIZ, "automation/scheduler.js")
 };

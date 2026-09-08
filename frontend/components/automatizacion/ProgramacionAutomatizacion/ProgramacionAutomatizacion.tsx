@@ -130,6 +130,15 @@ export default function ProgramacionAutomatizacion() {
 
                                 </div>
 
+                                <div className="programacion-tabla-inicial">
+                                    <span>📋 Tabla inicial</span>
+                                    <span>
+                                        {c.publicacion_inicial_tabla?.activo
+                                            ? `🟢 ${c.publicacion_inicial_tabla.hora}`
+                                            : "⚪ desactivada"}
+                                    </span>
+                                </div>
+
                                 <div className="programacion-actualizacion">
                                     <span>Actualización: {c.mensaje_actualizacion?.activo ? "🟢" : "⚪"}</span>
                                     <span>Umbral: {c.umbral_reservas}</span>

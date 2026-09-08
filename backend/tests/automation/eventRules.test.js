@@ -9,7 +9,7 @@
 // ==========================================================================
 
 const assert = require("assert");
-const { evaluarApertura } = require("../../automation/eventRules");
+const { evaluarApertura, evaluarPublicacionInicialTabla } = require("../../automation/eventRules");
 
 // Miércoles 2026-09-09, 10:00 America/Bogota (usado como "ahora" fijo en
 // la mayoría de los casos, salvo los que prueban específicamente día/hora).
@@ -234,6 +234,174 @@ test("17) grupo autorizado + config activa + día y horario permitidos + evento 
         grupoAutorizado: true,
         eventSessionExistente: null,
         ahora: AHORA_MIERCOLES_10AM
+    });
+
+    assert.strictEqual(r.permitido, true);
+    assert.strictEqual(r.motivo, null);
+
+});
+
+// ==================================================================
+// evaluarPublicacionInicialTabla() — Fase 5 (INITIAL_TABLE)
+// ==================================================================
+
+function configuracionPublicacion(pubOverrides = {}, extra = {}) {
+    return {
+        activo: true,
+        publicacion_inicial_tabla: {
+            activo: true,
+            hora: "07:00",
+            dias_permitidos: { miercoles: true },
+            ...pubOverrides
+        },
+        ...extra
+    };
+}
+
+test("18) evaluarPublicacionInicialTabla: grupo no autorizado -> rechazado", () => {
+
+    const r = evaluarPublicacionInicialTabla({
+        configuracion: configuracionPublicacion(),
+        grupoAutorizado: false,
+        ahora: AHORA_MIERCOLES_10AM
+    });
+
+    assert.strictEqual(r.permitido, false);
+    assert.strictEqual(r.motivo, "grupo_no_autorizado");
+
+});
+
+test("19) evaluarPublicacionInicialTabla: automatización inactiva (interruptor maestro) -> rechazado", () => {
+
+    const r = evaluarPublicacionInicialTabla({
+        configuracion: configuracionPublicacion({}, { activo: false }),
+        grupoAutorizado: true,
+        ahora: AHORA_MIERCOLES_10AM
+    });
+
+    assert.strictEqual(r.permitido, false);
+    assert.strictEqual(r.motivo, "configuracion_inactiva");
+
+});
+
+test("19b) evaluarPublicacionInicialTabla: sin configuración (null) -> mismo motivo que inactiva", () => {
+
+    const r = evaluarPublicacionInicialTabla({
+        configuracion: null,
+        grupoAutorizado: true,
+        ahora: AHORA_MIERCOLES_10AM
+    });
+
+    assert.strictEqual(r.permitido, false);
+    assert.strictEqual(r.motivo, "configuracion_inactiva");
+
+});
+
+test("20) evaluarPublicacionInicialTabla: la acción está desactivada aunque el interruptor maestro esté activo -> rechazado", () => {
+
+    const r = evaluarPublicacionInicialTabla({
+        configuracion: configuracionPublicacion({ activo: false }),
+        grupoAutorizado: true,
+        ahora: AHORA_MIERCOLES_10AM
+    });
+
+    assert.strictEqual(r.permitido, false);
+    assert.strictEqual(r.motivo, "publicacion_inactiva");
+
+});
+
+test("20b) evaluarPublicacionInicialTabla: sin publicacion_inicial_tabla en la config -> rechazado", () => {
+
+    const r = evaluarPublicacionInicialTabla({
+        configuracion: { activo: true },
+        grupoAutorizado: true,
+        ahora: AHORA_MIERCOLES_10AM
+    });
+
+    assert.strictEqual(r.permitido, false);
+    assert.strictEqual(r.motivo, "publicacion_inactiva");
+
+});
+
+test("21) evaluarPublicacionInicialTabla: día no permitido para esta acción -> rechazado", () => {
+
+    const r = evaluarPublicacionInicialTabla({
+        configuracion: configuracionPublicacion({ dias_permitidos: { miercoles: false } }),
+        grupoAutorizado: true,
+        ahora: AHORA_MIERCOLES_10AM
+    });
+
+    assert.strictEqual(r.permitido, false);
+    assert.strictEqual(r.motivo, "dia_no_permitido");
+
+});
+
+test("21b) evaluarPublicacionInicialTabla: dias_permitidos de Apertura (columna histórica) nunca se reutiliza aquí", () => {
+
+    // La config trae dias_permitidos de Apertura con miércoles activo,
+    // pero publicacion_inicial_tabla.dias_permitidos no trae ninguna
+    // entrada -> debe rechazar igual, sin mirar la otra columna.
+    const r = evaluarPublicacionInicialTabla({
+        configuracion: {
+            activo: true,
+            dias_permitidos: { miercoles: { activo: true, desde: "00:00", hasta: "23:59" } },
+            publicacion_inicial_tabla: { activo: true, hora: "07:00", dias_permitidos: {} }
+        },
+        grupoAutorizado: true,
+        ahora: AHORA_MIERCOLES_10AM
+    });
+
+    assert.strictEqual(r.permitido, false);
+    assert.strictEqual(r.motivo, "dia_no_permitido");
+
+});
+
+test("22) evaluarPublicacionInicialTabla: todavía no es la hora configurada -> rechazado", () => {
+
+    const r = evaluarPublicacionInicialTabla({
+        configuracion: configuracionPublicacion({ hora: "12:00" }),
+        grupoAutorizado: true,
+        ahora: AHORA_MIERCOLES_10AM // 10:00 < 12:00
+
+    });
+
+    assert.strictEqual(r.permitido, false);
+    assert.strictEqual(r.motivo, "todavia_no_es_la_hora");
+
+});
+
+test("22b) evaluarPublicacionInicialTabla: hora sin configurar -> rechazado", () => {
+
+    const r = evaluarPublicacionInicialTabla({
+        configuracion: configuracionPublicacion({ hora: null }),
+        grupoAutorizado: true,
+        ahora: AHORA_MIERCOLES_10AM
+    });
+
+    assert.strictEqual(r.permitido, false);
+    assert.strictEqual(r.motivo, "hora_no_configurada");
+
+});
+
+test("23) evaluarPublicacionInicialTabla: la hora ya se cumplió exactamente -> permitido", () => {
+
+    const r = evaluarPublicacionInicialTabla({
+        configuracion: configuracionPublicacion({ hora: "10:00" }),
+        grupoAutorizado: true,
+        ahora: AHORA_MIERCOLES_10AM // 10:00
+    });
+
+    assert.strictEqual(r.permitido, true);
+    assert.strictEqual(r.motivo, null);
+
+});
+
+test("24) evaluarPublicacionInicialTabla: la hora ya pasó hace rato (detección tardía del evento) -> sigue permitido", () => {
+
+    const r = evaluarPublicacionInicialTabla({
+        configuracion: configuracionPublicacion({ hora: "07:00" }),
+        grupoAutorizado: true,
+        ahora: AHORA_MIERCOLES_10AM // 10:00, muy después de las 07:00
     });
 
     assert.strictEqual(r.permitido, true);

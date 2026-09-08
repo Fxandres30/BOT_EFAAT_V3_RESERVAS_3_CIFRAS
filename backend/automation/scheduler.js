@@ -165,11 +165,55 @@ async function procesarEventSession(eventSession, sock, opciones = {}) {
 
     }
 
-    // 2. Recordatorios (antes del cierre real).
+    // 2. Publicación inicial de la tabla real (Fase 5) — independiente de
+    //    OPEN_MESSAGE, ver automation/tablaInicial.js.
+    await evaluarPublicacionInicialTabla(evento, eventSession, sock, opciones);
+
+    // 3. Recordatorios (antes del cierre real).
     await evaluarRecordatorios(evento, eventSession, sock, opciones);
 
-    // 3. Actualizaciones por movimiento de reservas.
+    // 4. Actualizaciones por movimiento de reservas.
     await evaluarActualizacion(evento, eventSession, sock, opciones);
+
+}
+
+// ==========================================================================
+// PUBLICACION_INICIAL_TABLA (Fase 5)
+// ==========================================================================
+//
+// automation_configs.publicacion_inicial_tabla: {activo, hora: "HH:mm",
+// dias_permitidos: {lunes: boolean, ...}} (migración 009) — día/hora
+// PROPIOS de esta acción, nunca la hora del sorteo. Mientras no exista un
+// event_session ABIERTO para el grupo (evento real todavía no detectado),
+// este tick nunca se ejecuta para ese grupo — es la forma en que "no hay
+// evento real todavía -> no se envía nada" queda garantizado sin lógica
+// extra (tick() solo itera event_sessions ya abiertos, ver arriba). En
+// cuanto el evento real se detecta y el event_session se abre, el
+// siguiente tick evalúa la hora normalmente — si ya pasó, publica de
+// inmediato (evita perder la publicación por una detección tardía).
+async function evaluarPublicacionInicialTabla(evento, eventSession, sock, opciones = {}) {
+
+    const ahora = opciones.ahora || new Date();
+
+    const [config, grupoAutorizado] = await Promise.all([
+        automationConfigRepo.obtenerConfiguracion(evento.usuario_id, evento.grupo_id),
+        automationConfigRepo.estaGrupoAutorizado(evento.usuario_id, evento.grupo_id)
+    ]);
+
+    const decision = eventRules.evaluarPublicacionInicialTabla({ configuracion: config, grupoAutorizado, ahora });
+
+    if (!decision.permitido) {
+        return; // sin log por tick — mismo criterio silencioso que evaluarRecordatorios/evaluarActualizacion
+    }
+
+    if (!evento.tabla) {
+
+        console.log(`🤖 [AUTOMATION] INITIAL_TABLE omitida para event_session ${eventSession.id}: el evento real todavía no tiene tabla válida.`);
+        return;
+
+    }
+
+    await engine.enviarPublicacionInicialTabla({ evento, eventSession, sock });
 
 }
 

@@ -218,6 +218,20 @@ function groupMetadata(sock, grupoId) {
 
 }
 
+// Fase 4D (panel de Automatización, "+ Autorizar grupo"): lista TODOS los
+// grupos reales en los que participa la cuenta de WhatsApp de esta sesión
+// — es una IQ distinta de groupMetadata (una sola por sesión, no por
+// grupo), pero sigue siendo tráfico IQ sobre el mismo socket, así que pasa
+// por la misma cola/backoff en vez de llamarse suelta.
+function groupFetchAllParticipating(sock) {
+
+    return encolar(
+        () => sock.groupFetchAllParticipating(),
+        { desc: "groupFetchAllParticipating" }
+    );
+
+}
+
 // Solo para pruebas: estado interno de la cola.
 function _estado() {
     return { enCola: cola.length, procesando };
@@ -226,6 +240,7 @@ function _estado() {
 module.exports = {
     groupSettingUpdate,
     groupMetadata,
+    groupFetchAllParticipating,
     esRateOverlimit,
     _estado
 };

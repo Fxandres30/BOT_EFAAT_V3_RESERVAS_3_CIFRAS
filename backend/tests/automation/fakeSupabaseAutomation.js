@@ -78,7 +78,13 @@ function crearFakeSupabaseAutomation() {
         // relación con 006/007) — se agrega aquí, igual que eventos_bot en
         // Fase 3, para que repo/reservasActividad.js (solo lectura) pueda
         // probarse contra el mismo fake sin crear uno nuevo.
-        reservas_actividad: []
+        reservas_actividad: [],
+        // Fase 5 (INITIAL_TABLE): una de las tablas de reservas reales que
+        // evento.tabla puede nombrar (ver bot/funciones/eventos/
+        // configEvento.js) — se agrega aquí, mismo criterio que
+        // reservas_actividad, para que repo/tablaEvento.js (solo lectura)
+        // pueda probarse contra el mismo fake.
+        reservas_dos_cifras: []
     };
 
     // Corrección quirúrgica Fase 2B: para probar "otro error de Supabase

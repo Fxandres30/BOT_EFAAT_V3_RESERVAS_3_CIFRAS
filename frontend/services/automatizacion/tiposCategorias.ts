@@ -36,7 +36,8 @@ export const CATEGORIAS_AUTOMATIZACION: CategoriaAutomatizacion[] = [
     { id: "curiosidad", label: "Curiosidad" },
     { id: "accion", label: "Acción" },
     { id: "urgencia", label: "Urgencia" },
-    { id: "familiar", label: "Familiar" }
+    { id: "familiar", label: "Familiar" },
+    { id: "movimiento", label: "Movimiento" }
 ];
 
 export function nombreCategoria(categoria: string | null): string {

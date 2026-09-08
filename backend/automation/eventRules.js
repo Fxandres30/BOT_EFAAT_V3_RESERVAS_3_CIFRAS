@@ -143,6 +143,90 @@ function evaluarApertura({
 
 }
 
+// ==========================================================================
+// EVALUAR PUBLICACIÓN INICIAL DE TABLA (INITIAL_TABLE, Fase 5)
+// ==========================================================================
+//
+// Función pura, mismo contrato que evaluarApertura(): decide SI corresponde
+// intentar publicar AHORA, nunca QUÉ tabla usar ni CUÁNDO fue el sorteo —
+// eso sale siempre del evento real, resuelto por engine.js/scheduler.js.
+//
+// configuracion.publicacion_inicial_tabla = {activo, hora: "HH:mm",
+// dias_permitidos: {lunes: boolean, ...}} (migración 009) — independiente
+// de configuracion.dias_permitidos (columna histórica de Apertura, que ya
+// no representa una restricción real desde que el panel dejó de
+// exponerla, ver frontend/services/automatizacion/automationConfigs.ts:
+// diasPermitidosSiempreAbierto()): esta acción tiene su PROPIO día/hora.
+//
+// No evalúa "¿el evento tiene tabla válida?" ni idempotencia — eso es
+// responsabilidad de engine.js (dato del evento) y executionGuard.js
+// (idempotencia real vía automation_actions), no de esta función pura.
+//
+// Devuelve siempre { permitido: boolean, motivo: string|null }.
+function evaluarPublicacionInicialTabla({
+    configuracion,
+    grupoAutorizado,
+    ahora = new Date()
+} = {}) {
+
+    // 1. Grupo autorizado.
+    if (!grupoAutorizado) {
+
+        return { permitido: false, motivo: "grupo_no_autorizado" };
+
+    }
+
+    // 2. Automatización activa (interruptor maestro).
+    if (!configuracion || configuracion.activo !== true) {
+
+        return { permitido: false, motivo: "configuracion_inactiva" };
+
+    }
+
+    const pub = configuracion.publicacion_inicial_tabla;
+
+    // 2b. Esta acción concreta debe estar activa (independiente del
+    //     interruptor maestro, igual que mensaje_cierre.activo/
+    //     mensaje_actualizacion.activo).
+    if (!pub || pub.activo !== true) {
+
+        return { permitido: false, motivo: "publicacion_inactiva" };
+
+    }
+
+    // 3. Día permitido, propio de esta acción (nunca dias_permitidos de
+    //    Apertura).
+    const claveDia = obtenerClaveDia(ahora);
+    const diaPermitido = pub.dias_permitidos ? pub.dias_permitidos[claveDia] === true : false;
+
+    if (!diaPermitido) {
+
+        return { permitido: false, motivo: "dia_no_permitido" };
+
+    }
+
+    // 4. Ya se alcanzó la hora configurada — sin límite superior a
+    //    propósito: si la hora ya pasó (incluso detectada mucho después),
+    //    sigue siendo válido publicar ahora mismo (evita perder la
+    //    publicación por una detección tardía del evento real).
+    if (typeof pub.hora !== "string" || !/^\d{1,2}:\d{2}$/.test(pub.hora)) {
+
+        return { permitido: false, motivo: "hora_no_configurada" };
+
+    }
+
+    const horaActual = obtenerHoraMinuto(ahora);
+
+    if (horaActual < pub.hora) {
+
+        return { permitido: false, motivo: "todavia_no_es_la_hora" };
+
+    }
+
+    return { permitido: true, motivo: null };
+
+}
+
 // Nombre de día en español (lunes..domingo), calculado sobre la zona
 // horaria del negocio (America/Bogota), sin depender de la configuración
 // regional del proceso Node donde corra el backend.
@@ -213,6 +297,7 @@ function minutosEntre(horaInicio, horaFin) {
 module.exports = {
     crearIdentidadCiclo,
     evaluarApertura,
+    evaluarPublicacionInicialTabla,
     obtenerClaveDia,
     obtenerHoraMinuto,
     minutosEntre

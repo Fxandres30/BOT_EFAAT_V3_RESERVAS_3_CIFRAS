@@ -155,6 +155,30 @@ function crearMensaje(fakeSupabase, overrides = {}) {
 
 }
 
+// Fase 5 (INITIAL_TABLE) — grupos_autorizados nunca se sembraba antes en
+// este archivo porque REMINDER/UPDATE/CLOSE no lo revisan por tick (solo
+// evaluarApertura lo hace, una vez, al detectar el evento). INITIAL_TABLE
+// SÍ lo revisa en cada tick (pedido explícito), así que las pruebas que
+// esperan que SÍ publique deben autorizar el grupo explícitamente.
+function autorizarGrupo(fakeSupabase, overrides = {}) {
+
+    return fakeSupabase._agregar("grupos_autorizados", {
+        usuario_id: USUARIO,
+        grupo_id: GRUPO,
+        activo: true,
+        ...overrides
+    });
+
+}
+
+// Fila cruda de la tabla de reservas REAL del evento (evento.tabla) — el
+// mismo fake soporta "reservas_dos_cifras" (ver fakeSupabaseAutomation.js).
+function crearNumero(fakeSupabase, { tabla = "reservas_dos_cifras", numero, estado = "libre" }) {
+
+    return fakeSupabase._agregar(tabla, { numero, estado });
+
+}
+
 async function main() {
 
     // ---------------------------------------------------------------
@@ -779,6 +803,396 @@ async function main() {
         const despues = fakeSupabase._filas("event_sessions").length;
 
         assert.strictEqual(antes, despues);
+
+    });
+
+    // =================================================================
+    // INITIAL_TABLE (Fase 5) — publicación inicial de la tabla real.
+    // =================================================================
+
+    // ---------------------------------------------------------------
+    // 21) publicación programada a la hora correcta
+    // ---------------------------------------------------------------
+    await test("21) INITIAL_TABLE: a la hora configurada, publica con los números REALES de evento.tabla", async () => {
+
+        const { fakeSupabase, scheduler, crearFakeSock } = crearEntorno();
+
+        autorizarGrupo(fakeSupabase);
+
+        const evento = crearEventoBot(fakeSupabase); // tabla: "reservas_dos_cifras"
+        crearEventSession(fakeSupabase, evento);
+        crearConfig(fakeSupabase, {
+            publicacion_inicial_tabla: { activo: true, hora: "07:00", dias_permitidos: { jueves: true } }
+        });
+
+        crearNumero(fakeSupabase, { numero: 1, estado: "libre" });
+        crearNumero(fakeSupabase, { numero: 2, estado: "libre" });
+        crearNumero(fakeSupabase, { numero: 3, estado: "reservado" });
+
+        const { sock, llamadas } = crearFakeSock({ sessionId: SESSION_ID });
+
+        acelerarTimers();
+        await scheduler.tick(sock, { ahora: AHORA }); // AHORA = jueves 10:00 COT, ya pasó las 07:00
+        restaurarTimers();
+
+        assert.strictEqual(llamadas.sendMessage.length, 1);
+
+        const texto = llamadas.sendMessage[0].contenido.text;
+        assert.ok(texto.includes("( 1 - 2 )"), texto);
+        assert.ok(!texto.includes("3"), texto);
+
+        const acciones = fakeSupabase._filas("automation_actions");
+        assert.strictEqual(acciones.length, 1);
+        assert.strictEqual(acciones[0].tipo_accion, "INITIAL_TABLE");
+        assert.strictEqual(acciones[0].estado, "ok");
+
+    });
+
+    // ---------------------------------------------------------------
+    // 22) día no permitido -> no publica
+    // ---------------------------------------------------------------
+    await test("22) INITIAL_TABLE: día no permitido para esta acción -> no publica", async () => {
+
+        const { fakeSupabase, scheduler, crearFakeSock } = crearEntorno();
+
+        autorizarGrupo(fakeSupabase);
+
+        const evento = crearEventoBot(fakeSupabase);
+        crearEventSession(fakeSupabase, evento);
+        crearConfig(fakeSupabase, {
+            publicacion_inicial_tabla: { activo: true, hora: "07:00", dias_permitidos: { jueves: false } }
+        });
+        crearNumero(fakeSupabase, { numero: 1, estado: "libre" });
+
+        const { sock, llamadas } = crearFakeSock({ sessionId: SESSION_ID });
+
+        await scheduler.tick(sock, { ahora: AHORA });
+
+        assert.strictEqual(llamadas.sendMessage.length, 0);
+        assert.strictEqual(fakeSupabase._filas("automation_actions").length, 0);
+
+    });
+
+    // ---------------------------------------------------------------
+    // 23) automatización apagada -> no publica
+    // ---------------------------------------------------------------
+    await test("23) INITIAL_TABLE: automatización apagada (interruptor maestro) -> no publica", async () => {
+
+        const { fakeSupabase, scheduler, crearFakeSock } = crearEntorno();
+
+        autorizarGrupo(fakeSupabase);
+
+        const evento = crearEventoBot(fakeSupabase);
+        crearEventSession(fakeSupabase, evento);
+        crearConfig(fakeSupabase, {
+            activo: false,
+            publicacion_inicial_tabla: { activo: true, hora: "07:00", dias_permitidos: { jueves: true } }
+        });
+        crearNumero(fakeSupabase, { numero: 1, estado: "libre" });
+
+        const { sock, llamadas } = crearFakeSock({ sessionId: SESSION_ID });
+
+        await scheduler.tick(sock, { ahora: AHORA });
+
+        assert.strictEqual(llamadas.sendMessage.length, 0);
+
+    });
+
+    // ---------------------------------------------------------------
+    // 24) grupo no autorizado -> no publica
+    // ---------------------------------------------------------------
+    await test("24) INITIAL_TABLE: grupo no autorizado -> no publica", async () => {
+
+        const { fakeSupabase, scheduler, crearFakeSock } = crearEntorno();
+
+        // Deliberadamente SIN autorizarGrupo(fakeSupabase).
+        const evento = crearEventoBot(fakeSupabase);
+        crearEventSession(fakeSupabase, evento);
+        crearConfig(fakeSupabase, {
+            publicacion_inicial_tabla: { activo: true, hora: "07:00", dias_permitidos: { jueves: true } }
+        });
+        crearNumero(fakeSupabase, { numero: 1, estado: "libre" });
+
+        const { sock, llamadas } = crearFakeSock({ sessionId: SESSION_ID });
+
+        await scheduler.tick(sock, { ahora: AHORA });
+
+        assert.strictEqual(llamadas.sendMessage.length, 0);
+
+    });
+
+    // ---------------------------------------------------------------
+    // 25) sin evento real (sin event_session abierto) -> no publica nada
+    // ---------------------------------------------------------------
+    await test("25) INITIAL_TABLE: sin ningún event_session abierto (evento real no detectado) -> no publica nada", async () => {
+
+        const { fakeSupabase, scheduler, crearFakeSock } = crearEntorno();
+
+        autorizarGrupo(fakeSupabase);
+        crearConfig(fakeSupabase, {
+            publicacion_inicial_tabla: { activo: true, hora: "07:00", dias_permitidos: { jueves: true } }
+        });
+        crearNumero(fakeSupabase, { numero: 1, estado: "libre" });
+
+        const { sock, llamadas } = crearFakeSock({ sessionId: SESSION_ID });
+
+        await scheduler.tick(sock, { ahora: AHORA });
+
+        assert.strictEqual(llamadas.sendMessage.length, 0);
+        assert.strictEqual(fakeSupabase._filas("automation_actions").length, 0);
+
+    });
+
+    // ---------------------------------------------------------------
+    // 26) evento sin tabla válida -> no publica (nunca inventa una)
+    // ---------------------------------------------------------------
+    await test("26) INITIAL_TABLE: evento real sin tabla válida -> no publica nada (no inventa una tabla)", async () => {
+
+        const { fakeSupabase, scheduler, crearFakeSock } = crearEntorno();
+
+        autorizarGrupo(fakeSupabase);
+
+        const evento = crearEventoBot(fakeSupabase, { tabla: null });
+        crearEventSession(fakeSupabase, evento);
+        crearConfig(fakeSupabase, {
+            publicacion_inicial_tabla: { activo: true, hora: "07:00", dias_permitidos: { jueves: true } }
+        });
+
+        const { sock, llamadas } = crearFakeSock({ sessionId: SESSION_ID });
+
+        await scheduler.tick(sock, { ahora: AHORA });
+
+        assert.strictEqual(llamadas.sendMessage.length, 0);
+        assert.strictEqual(fakeSupabase._filas("automation_actions").length, 0);
+
+    });
+
+    // ---------------------------------------------------------------
+    // 27) evento detectado después de la hora programada -> publica igual
+    // ---------------------------------------------------------------
+    await test("27) INITIAL_TABLE: la hora programada ya pasó hace rato (detección tardía del evento) -> publica de inmediato", async () => {
+
+        const { fakeSupabase, scheduler, crearFakeSock } = crearEntorno();
+
+        autorizarGrupo(fakeSupabase);
+
+        // hora configurada 07:00, AHORA son las 10:00 -> el evento recién
+        // se detectó y su event_session recién se abrió a las 10:00,
+        // mucho después de la hora programada.
+        const evento = crearEventoBot(fakeSupabase);
+        crearEventSession(fakeSupabase, evento);
+        crearConfig(fakeSupabase, {
+            publicacion_inicial_tabla: { activo: true, hora: "07:00", dias_permitidos: { jueves: true } }
+        });
+        crearNumero(fakeSupabase, { numero: 5, estado: "libre" });
+
+        const { sock, llamadas } = crearFakeSock({ sessionId: SESSION_ID });
+
+        acelerarTimers();
+        await scheduler.tick(sock, { ahora: AHORA });
+        restaurarTimers();
+
+        assert.strictEqual(llamadas.sendMessage.length, 1);
+
+    });
+
+    // ---------------------------------------------------------------
+    // 28) mismo ciclo ejecutado dos veces -> una sola publicación
+    // ---------------------------------------------------------------
+    await test("28) INITIAL_TABLE: llamar tick() dos veces para el mismo event_session solo publica una vez", async () => {
+
+        const { fakeSupabase, scheduler, crearFakeSock } = crearEntorno();
+
+        autorizarGrupo(fakeSupabase);
+
+        const evento = crearEventoBot(fakeSupabase);
+        crearEventSession(fakeSupabase, evento);
+        crearConfig(fakeSupabase, {
+            publicacion_inicial_tabla: { activo: true, hora: "07:00", dias_permitidos: { jueves: true } }
+        });
+        crearNumero(fakeSupabase, { numero: 1, estado: "libre" });
+
+        const { sock, llamadas } = crearFakeSock({ sessionId: SESSION_ID });
+
+        acelerarTimers();
+        await scheduler.tick(sock, { ahora: AHORA });
+        await scheduler.tick(sock, { ahora: AHORA });
+        restaurarTimers();
+
+        assert.strictEqual(llamadas.sendMessage.length, 1);
+        assert.strictEqual(fakeSupabase._filas("automation_actions").filter(a => a.tipo_accion === "INITIAL_TABLE").length, 1);
+
+    });
+
+    // ---------------------------------------------------------------
+    // 29) reinicio del proceso -> no vuelve a publicar
+    // ---------------------------------------------------------------
+    await test("29) INITIAL_TABLE: tras un 'reinicio' (recarga de módulos, misma base fake) no se vuelve a publicar", async () => {
+
+        const primero = crearEntorno();
+
+        autorizarGrupo(primero.fakeSupabase);
+
+        const evento = crearEventoBot(primero.fakeSupabase);
+        crearEventSession(primero.fakeSupabase, evento);
+        crearConfig(primero.fakeSupabase, {
+            publicacion_inicial_tabla: { activo: true, hora: "07:00", dias_permitidos: { jueves: true } }
+        });
+        crearNumero(primero.fakeSupabase, { numero: 1, estado: "libre" });
+
+        const sock1 = primero.crearFakeSock({ sessionId: SESSION_ID });
+
+        acelerarTimers();
+        await primero.scheduler.tick(sock1.sock, { ahora: AHORA });
+        restaurarTimers();
+
+        assert.strictEqual(sock1.llamadas.sendMessage.length, 1);
+
+        const segundo = crearEntorno({ fakeSupabaseExistente: primero.fakeSupabase });
+        const sock2 = segundo.crearFakeSock({ sessionId: SESSION_ID });
+
+        acelerarTimers();
+        await segundo.scheduler.tick(sock2.sock, { ahora: AHORA });
+        restaurarTimers();
+
+        assert.strictEqual(sock2.llamadas.sendMessage.length, 0);
+        assert.strictEqual(
+            primero.fakeSupabase._filas("automation_actions").filter(a => a.tipo_accion === "INITIAL_TABLE").length,
+            1
+        );
+
+    });
+
+    // ---------------------------------------------------------------
+    // 30) dos ejecuciones concurrentes -> una sola publicación
+    // ---------------------------------------------------------------
+    await test("30) INITIAL_TABLE: dos tick() concurrentes sobre el mismo event_session solo publican una vez", async () => {
+
+        const { fakeSupabase, scheduler, crearFakeSock } = crearEntorno();
+
+        autorizarGrupo(fakeSupabase);
+
+        const evento = crearEventoBot(fakeSupabase);
+        crearEventSession(fakeSupabase, evento);
+        crearConfig(fakeSupabase, {
+            publicacion_inicial_tabla: { activo: true, hora: "07:00", dias_permitidos: { jueves: true } }
+        });
+        crearNumero(fakeSupabase, { numero: 1, estado: "libre" });
+
+        const { sock, llamadas } = crearFakeSock({ sessionId: SESSION_ID });
+
+        acelerarTimers();
+
+        await Promise.all([
+            scheduler.tick(sock, { ahora: AHORA }),
+            scheduler.tick(sock, { ahora: AHORA })
+        ]);
+
+        restaurarTimers();
+
+        assert.strictEqual(llamadas.sendMessage.length, 1);
+        assert.strictEqual(fakeSupabase._filas("automation_actions").filter(a => a.tipo_accion === "INITIAL_TABLE").length, 1);
+
+    });
+
+    // ---------------------------------------------------------------
+    // 31) un nuevo ciclo (event_session distinto) puede publicar su
+    //     propia tabla, independiente del ciclo anterior
+    // ---------------------------------------------------------------
+    await test("31) INITIAL_TABLE: un event_session nuevo (nuevo ciclo) publica su propia tabla, sin bloquearse por el ciclo anterior", async () => {
+
+        const { fakeSupabase, scheduler, crearFakeSock } = crearEntorno();
+
+        autorizarGrupo(fakeSupabase);
+        crearConfig(fakeSupabase, {
+            publicacion_inicial_tabla: { activo: true, hora: "07:00", dias_permitidos: { jueves: true } }
+        });
+
+        const { sock, llamadas } = crearFakeSock({ sessionId: SESSION_ID });
+
+        acelerarTimers();
+
+        const eventoA = crearEventoBot(fakeSupabase, { nombre_evento: "SORTEO A" });
+        crearEventSession(fakeSupabase, eventoA, { identidad_ciclo: "ciclo-tabla-a" });
+        crearNumero(fakeSupabase, { numero: 10, estado: "libre" });
+        await scheduler.tick(sock, { ahora: AHORA });
+
+        const eventoB = crearEventoBot(fakeSupabase, { nombre_evento: "SORTEO B" });
+        crearEventSession(fakeSupabase, eventoB, { identidad_ciclo: "ciclo-tabla-b" });
+        crearNumero(fakeSupabase, { numero: 20, estado: "libre" });
+        await scheduler.tick(sock, { ahora: AHORA });
+
+        restaurarTimers();
+
+        assert.strictEqual(llamadas.sendMessage.length, 2);
+        assert.ok(llamadas.sendMessage[0].contenido.text.includes("( 10 )"), llamadas.sendMessage[0].contenido.text);
+        assert.ok(llamadas.sendMessage[1].contenido.text.includes("( 10 - 20 )"), llamadas.sendMessage[1].contenido.text);
+
+    });
+
+    // ---------------------------------------------------------------
+    // 32) nunca inventa datos del sorteo
+    // ---------------------------------------------------------------
+    await test("32) INITIAL_TABLE: sin ningún número sembrado en la tabla real, nunca inventa disponibilidad", async () => {
+
+        const { fakeSupabase, scheduler, crearFakeSock } = crearEntorno();
+
+        autorizarGrupo(fakeSupabase);
+
+        const evento = crearEventoBot(fakeSupabase);
+        crearEventSession(fakeSupabase, evento);
+        crearConfig(fakeSupabase, {
+            publicacion_inicial_tabla: { activo: true, hora: "07:00", dias_permitidos: { jueves: true } }
+        });
+
+        // Deliberadamente SIN crearNumero() — la tabla real está vacía.
+
+        const { sock, llamadas } = crearFakeSock({ sessionId: SESSION_ID });
+
+        acelerarTimers();
+        await scheduler.tick(sock, { ahora: AHORA });
+        restaurarTimers();
+
+        assert.strictEqual(llamadas.sendMessage.length, 1);
+        assert.strictEqual(llamadas.sendMessage[0].contenido.text, "No quedan números disponibles.");
+
+    });
+
+    // ---------------------------------------------------------------
+    // 33) INITIAL_TABLE es independiente del Message Pool (OPEN_MESSAGE)
+    // ---------------------------------------------------------------
+    await test("33) INITIAL_TABLE nunca depende del Message Pool: publica aunque no exista ningún automation_messages", async () => {
+
+        const { fakeSupabase, scheduler, crearFakeSock } = crearEntorno();
+
+        autorizarGrupo(fakeSupabase);
+
+        const evento = crearEventoBot(fakeSupabase);
+        const eventSession = crearEventSession(fakeSupabase, evento);
+        crearConfig(fakeSupabase, {
+            publicacion_inicial_tabla: { activo: true, hora: "07:00", dias_permitidos: { jueves: true } }
+            // mensaje_apertura/recordatorios/mensaje_actualizacion/mensaje_cierre
+            // quedan en su default {} — ningún OPEN_MESSAGE/REMINDER/etc. se
+            // envía en este tick, y no hace falta ningún automation_messages
+            // sembrado para que INITIAL_TABLE funcione.
+        });
+        crearNumero(fakeSupabase, { numero: 7, estado: "libre" });
+
+        assert.strictEqual(fakeSupabase._filas("automation_messages").length, 0);
+
+        const { sock, llamadas } = crearFakeSock({ sessionId: SESSION_ID });
+
+        acelerarTimers();
+        await scheduler.tick(sock, { ahora: AHORA });
+        restaurarTimers();
+
+        assert.strictEqual(llamadas.sendMessage.length, 1);
+        assert.ok(llamadas.sendMessage[0].contenido.text.includes("( 7 )"));
+
+        const acciones = fakeSupabase._filas("automation_actions");
+        assert.strictEqual(acciones.length, 1);
+        assert.strictEqual(acciones[0].tipo_accion, "INITIAL_TABLE");
+        assert.strictEqual(acciones[0].clave_idempotencia, `${eventSession.id}:INITIAL_TABLE`);
 
     });
 

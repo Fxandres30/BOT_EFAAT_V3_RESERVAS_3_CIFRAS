@@ -10,6 +10,10 @@ const {
     formatearReporteTexto
 } = require("../funciones/usuarios/escanerIdentidades");
 
+const {
+    groupFetchAllParticipating
+} = require("../../services/baileys/groupQueue");
+
 
 async function connect(req, res) {
 
@@ -254,6 +258,65 @@ async function escanerIdentidadesDryRun(req, res) {
 
 }
 
+// ==========================================================================
+// gruposDisponibles(req, res) — Fase 4D (panel de Automatización, "+
+// Autorizar grupo").
+//
+// Reutiliza infraestructura EXISTENTE, sin crear otro sistema de
+// sesiones: manager.get(id) (mismo que ya usa status()) para obtener el
+// socket real de ESA sesión, y groupQueue.groupFetchAllParticipating()
+// (extensión mínima de la cola IQ existente, ver services/baileys/
+// groupQueue.js) para listar TODOS los grupos reales en los que participa
+// esa cuenta de WhatsApp — nunca un grupo inventado ni derivado de otra
+// tabla.
+//
+// NUNCA escribe nada en Supabase — es de solo lectura, la lista es
+// dinámica (se pide "no guardar automáticamente todos los grupos").
+// ==========================================================================
+async function gruposDisponibles(req, res) {
+
+    try {
+
+        const { id } = req.params;
+
+        const sock = manager.get(id);
+
+        if (!sock) {
+
+            return res.status(409).json({
+                success: false,
+                error: `La sesión ${id} no tiene un socket conectado ahora mismo.`
+            });
+
+        }
+
+        const metadata = await groupFetchAllParticipating(sock);
+
+        const grupos = Object.values(metadata || {}).map((g) => ({
+            id: g.id,
+            nombre: g.subject || g.id
+        }));
+
+        res.json({
+            success: true,
+            sessionId: id,
+            grupos
+        });
+
+    } catch (error) {
+
+        console.error("❌ Error en gruposDisponibles");
+        console.error(error);
+
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+
+    }
+
+}
+
 module.exports = {
 
     connect,
@@ -264,6 +327,7 @@ module.exports = {
     getActive,
     setPreferred,
 
-    escanerIdentidadesDryRun
+    escanerIdentidadesDryRun,
+    gruposDisponibles
 
 };

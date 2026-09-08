@@ -104,8 +104,8 @@ export default function ResumenAutomatizacion() {
 
                         <div className="resumen-card">
                             <span className="resumen-card-label">Eventos activos</span>
-                            <span className="resumen-card-valor">{resumen?.eventosActivos ?? 0}</span>
-                            <span className="resumen-card-nota">Event Sessions abiertos ahora mismo</span>
+                            <span className="resumen-card-valor">{resumen?.eventosActivos ?? 0}/{resumen?.grupoAutorizadosActivos ?? 0}</span>
+                            <span className="resumen-card-nota">Event Sessions abiertos ahora mismo, de tus grupos autorizados</span>
                         </div>
 
                         <div className="resumen-card">

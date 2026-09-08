@@ -31,6 +31,13 @@ const variableResolver = require("./variableResolver");
 const messagesRepo = require("./repo/messages");
 const executionGuard = require("./executionGuard");
 
+// Fase 5 (INITIAL_TABLE) — repo/tablaEvento.js (solo lectura de la tabla
+// real de reservas del evento) y tablaInicial.js (formateo puro del
+// texto). Ninguno de los dos requiere bot/ — mismo límite arquitectónico
+// que el resto de este archivo.
+const tablaEventoRepo = require("./repo/tablaEvento");
+const { construirTextoTablaInicial } = require("./tablaInicial");
+
 // Reutilizado tal cual — services/baileys/send.js NO se duplica ni se
 // modifica.
 const { sendMessage } = require("../services/baileys/send");
@@ -301,6 +308,79 @@ async function enviarMensajeApertura(evento, eventSession, sock) {
 
 }
 
+// ==========================================================================
+// enviarPublicacionInicialTabla({ evento, eventSession, sock })
+// ==========================================================================
+//
+// Fase 5 — INITIAL_TABLE: NO es un OPEN_MESSAGE (no pasa por el Message
+// Pool ni por variableResolver — no hay plantilla que resolver, el
+// contenido ES el dato real). Publica la disponibilidad REAL de
+// evento.tabla (la tabla de reservas de ESTE evento, nunca inventada) con
+// el mismo texto que ya usa la respuesta conversacional de disponibilidad
+// (ver tablaInicial.js). Protegida por el mismo ExecutionGuard EXISTENTE
+// (clave `${eventSession.id}:INITIAL_TABLE`) y el mismo sendMessage
+// EXISTENTE — nada de esto crea un segundo sistema de envío/locking.
+//
+// scheduler.js decide CUÁNDO llamar esto (día/hora configurados, ver
+// eventRules.evaluarPublicacionInicialTabla) — esta función solo decide
+// QUÉ enviar y GARANTIZA que sea como máximo una vez por event_session.
+//
+// Nunca lanza. Devuelve siempre { enviado: boolean, motivo?: string }.
+async function enviarPublicacionInicialTabla({ evento, eventSession, sock }) {
+
+    try {
+
+        if (!evento || !eventSession) {
+            return { enviado: false, motivo: "sin_event_session" };
+        }
+
+        // Dato real obligatorio: nunca se inventa una tabla si el evento
+        // real todavía no la trae.
+        if (!evento.tabla) {
+            return { enviado: false, motivo: "evento_sin_tabla" };
+        }
+
+        const resultado = await executionGuard.ejecutarUnaVez({
+
+            claveIdempotencia: `${eventSession.id}:INITIAL_TABLE`,
+            eventSessionId: eventSession.id,
+            grupoId: evento.grupo_id,
+            usuarioId: evento.usuario_id,
+            tipoAccion: "INITIAL_TABLE",
+
+            ejecutar: async () => {
+
+                const { numerosDisponibles } = await tablaEventoRepo.obtenerNumeros(evento.tabla);
+
+                const texto = construirTextoTablaInicial(numerosDisponibles);
+
+                await sendMessage({ sock, jid: evento.grupo_id, text: texto });
+
+                return { numerosDisponibles: numerosDisponibles.length };
+
+            }
+
+        });
+
+        if (resultado.ejecutada) {
+
+            console.log(`🤖 [AUTOMATION] INITIAL_TABLE publicada para event_session ${eventSession.id}`);
+            return { enviado: true };
+
+        }
+
+        console.log(`🤖 [AUTOMATION] INITIAL_TABLE no enviada (${resultado.motivo}) — ya estaba resuelta para este event_session.`);
+        return { enviado: false, motivo: resultado.motivo };
+
+    } catch (err) {
+
+        console.error("❌ [AUTOMATION] error enviando INITIAL_TABLE:", err?.message);
+        return { enviado: false, motivo: "error_envio", error: err?.message };
+
+    }
+
+}
+
 // Variables reales disponibles a partir del evento ya detectado/guardado
 // (eventos_bot) — nunca inventadas. "premio" toma el primer premio de la
 // lista (decisión simple y documentada: el evento puede tener varios
@@ -330,5 +410,6 @@ module.exports = {
     onEventoDetectado,
     enviarMensajeApertura,
     enviarMensajeProgramado,
+    enviarPublicacionInicialTabla,
     construirVariablesDesdeEvento
 };

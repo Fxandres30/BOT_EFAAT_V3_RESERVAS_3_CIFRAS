@@ -14,6 +14,7 @@ import {
     eliminarMensaje
 } from "@/services/automatizacion/mensajesAutomation";
 import { TIPOS_AUTOMATIZACION, CATEGORIAS_AUTOMATIZACION } from "@/services/automatizacion/tiposCategorias";
+import { cargarMensajesEjemplo } from "@/services/automatizacion/mensajesEjemplo";
 
 import AutomatizacionNav from "../AutomatizacionNav/AutomatizacionNav";
 import MensajeCard from "../MensajeCard/MensajeCard";
@@ -33,6 +34,9 @@ export default function CentroMensajes() {
 
     const [modal, setModal] = useState<"nuevo" | AutomationMessage | null>(null);
     const [procesando, setProcesando] = useState<string | null>(null);
+
+    const [cargandoEjemplos, setCargandoEjemplos] = useState(false);
+    const [avisoEjemplos, setAvisoEjemplos] = useState<string | null>(null);
 
     async function cargar(uid: string) {
 
@@ -137,6 +141,32 @@ export default function CentroMensajes() {
 
     }
 
+    async function cargarEjemplos() {
+
+        if (!usuarioId) return;
+
+        setCargandoEjemplos(true);
+        setAvisoEjemplos(null);
+
+        const resultado = await cargarMensajesEjemplo(usuarioId);
+
+        setCargandoEjemplos(false);
+
+        if (resultado.error) {
+            setAvisoEjemplos(`⚠️ No se pudieron cargar (${resultado.error}).`);
+            return;
+        }
+
+        if (resultado.yaExistian) {
+            setAvisoEjemplos("ℹ️ Los mensajes de ejemplo ya fueron cargados");
+            return;
+        }
+
+        setAvisoEjemplos(`✅ ${resultado.cantidadTotal} mensajes de ejemplo disponibles`);
+        await cargar(usuarioId);
+
+    }
+
     function alGuardado(m: AutomationMessage) {
 
         setMensajes((prev) => {
@@ -183,11 +213,30 @@ export default function CentroMensajes() {
                             </p>
                         </div>
 
-                        <button className="grupos-boton-autorizar" onClick={() => setModal("nuevo")}>
-                            + Nuevo mensaje
-                        </button>
+                        <div className="centro-mensajes-header-botones">
+                            <button
+                                className="centro-mensajes-boton-ejemplos"
+                                disabled={cargandoEjemplos}
+                                onClick={cargarEjemplos}
+                            >
+                                {cargandoEjemplos ? "Cargando..." : "Cargar 100 ejemplos"}
+                            </button>
+                            <button className="grupos-boton-autorizar" onClick={() => setModal("nuevo")}>
+                                + Nuevo mensaje
+                            </button>
+                        </div>
 
                     </div>
+
+                    {avisoEjemplos && <p className="centro-mensajes-aviso">{avisoEjemplos}</p>}
+
+                    {!cargando && (
+                        <p className="centro-mensajes-contador">
+                            {mensajes.length} mensaje{mensajes.length === 1 ? "" : "s"} ·{" "}
+                            {mensajes.filter((m) => m.activo).length} activo{mensajes.filter((m) => m.activo).length === 1 ? "" : "s"} ·{" "}
+                            {mensajes.filter((m) => !m.activo).length} inactivo{mensajes.filter((m) => !m.activo).length === 1 ? "" : "s"}
+                        </p>
+                    )}
 
                     <div className="centro-mensajes-filtros">
 

@@ -78,6 +78,65 @@
 
 }
 
+.sesiones-lista {
+
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    margin-bottom: 24px;
+
+}
+
+.sesion-bloque {
+
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+
+}
+
+.sesion-titulo {
+
+    font-size: 13px;
+    font-weight: 700;
+    color: #374151;
+    background: #f1f5f9;
+    padding: 8px 14px;
+    border-radius: 10px;
+    width: fit-content;
+
+}
+
+.sesion-sin-grupos {
+
+    font-size: 13px;
+    color: #94a3b8;
+    padding: 4px 4px 0;
+
+}
+
+.grupos-otros {
+
+    margin-top: 8px;
+
+}
+
+.grupos-otros-titulo {
+
+    font-size: 13px;
+    font-weight: 700;
+    color: #64748b;
+    margin: 0 0 12px;
+
+}
+
+.grupo-card-sesion {
+
+    font-size: 12px;
+    color: #64748b;
+
+}
+
 .grupos-grid {
 
     display: grid;
@@ -140,6 +199,13 @@
 
 }
 
+.grupo-card-estado.pausado {
+
+    background: #fef9c3;
+    color: #854d0e;
+
+}
+
 .grupo-card-acciones {
 
     display: flex;
@@ -173,6 +239,20 @@
 .grupo-card-boton.peligro {
 
     color: #b91c1c;
+
+}
+
+.grupo-card-boton.principal {
+
+    background: #111827;
+    color: #fff;
+    border-color: #111827;
+
+}
+
+.grupo-card-boton.principal:hover {
+
+    background: #1f2937;
 
 }
 
