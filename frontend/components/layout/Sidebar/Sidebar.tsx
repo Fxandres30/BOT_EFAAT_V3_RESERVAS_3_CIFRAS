@@ -84,6 +84,11 @@ export default function Sidebar({
                     label:"Eventos"
                 },
                 {
+                    href:"/automatizacion",
+                    icon:"🤖",
+                    label:"Automatización"
+                },
+                {
                     href:"/lector-pagos",
                     icon:"📱",
                     label:"Lector de pagos"

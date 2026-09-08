@@ -1,0 +1,108 @@
+.mensaje-card {
+
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+
+}
+
+.mensaje-card.inactivo {
+
+    opacity: .7;
+
+}
+
+.mensaje-card-texto {
+
+    font-size: 14px;
+    color: #111827;
+    line-height: 1.5;
+    margin: 0;
+    min-height: 42px;
+
+}
+
+.mensaje-card-meta {
+
+    font-size: 12px;
+    color: #64748b;
+    font-weight: 600;
+
+}
+
+.mensaje-card-global {
+
+    color: #2563eb;
+
+}
+
+.mensaje-card-estado {
+
+    font-size: 12px;
+    font-weight: 700;
+    width: fit-content;
+    padding: 4px 10px;
+    border-radius: 999px;
+
+}
+
+.mensaje-card-estado.on {
+
+    background: #dcfce7;
+    color: #166534;
+
+}
+
+.mensaje-card-estado.off {
+
+    background: #fee2e2;
+    color: #991b1b;
+
+}
+
+.mensaje-card-acciones {
+
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+
+}
+
+.mensaje-card-acciones button {
+
+    flex: 1;
+    min-width: 80px;
+    border: 1px solid #e5e7eb;
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 7px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #111827;
+    cursor: pointer;
+
+}
+
+.mensaje-card-acciones button:hover {
+
+    background: #f1f5f9;
+
+}
+
+.mensaje-card-acciones button.peligro {
+
+    color: #b91c1c;
+
+}
+
+.mensaje-card-acciones button:disabled {
+
+    opacity: .6;
+    cursor: not-allowed;
+
+}

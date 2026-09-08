@@ -1,0 +1,72 @@
+.centro-mensajes {
+
+    padding: 28px;
+    max-width: 1400px;
+    margin: 0 auto;
+
+}
+
+.centro-mensajes-vacio {
+
+    padding: 60px 28px;
+    text-align: center;
+    color: #64748b;
+    background: #fff;
+    border: 1px dashed #e5e7eb;
+    border-radius: 16px;
+
+}
+
+.centro-mensajes-header {
+
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+
+}
+
+.centro-mensajes-filtros {
+
+    display: flex;
+    gap: 16px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+
+}
+
+.centro-mensajes-filtros label {
+
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+
+}
+
+.centro-mensajes-filtros select {
+
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 13px;
+    color: #111827;
+    min-width: 160px;
+
+}
+
+.centro-mensajes-grid {
+
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+
+}
