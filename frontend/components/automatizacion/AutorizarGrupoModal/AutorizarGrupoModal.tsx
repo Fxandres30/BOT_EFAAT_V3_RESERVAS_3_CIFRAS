@@ -140,15 +140,22 @@ export default function AutorizarGrupoModal({
                     ) : sesiones.length === 0 ? (
 
                         <p className="autorizar-cargando">
-                            No tienes ninguna sesión de WhatsApp conectada ahora mismo. Conéctala en
+                            No tienes ninguna sesión de WhatsApp registrada. Créala en
                             &quot;Sesiones&quot; o usa &quot;Escribir el JID&quot;.
+                        </p>
+
+                    ) : !sesiones.some((s) => s.conectada) ? (
+
+                        <p className="autorizar-cargando">
+                            Ninguna de tus sesiones tiene un socket de WhatsApp conectado ahora mismo.
+                            Conéctala en &quot;Sesiones&quot; o usa &quot;Escribir el JID&quot;.
                         </p>
 
                     ) : !hayGruposReales ? (
 
                         <p className="autorizar-cargando">
-                            Tus sesiones conectadas no reportaron ningún grupo (o falló la consulta). Prueba
-                            &quot;Escribir el JID&quot; mientras tanto.
+                            Tu sesión está conectada, pero WhatsApp no reportó ningún grupo ahora mismo.
+                            Prueba &quot;Escribir el JID&quot; mientras tanto.
                         </p>
 
                     ) : (

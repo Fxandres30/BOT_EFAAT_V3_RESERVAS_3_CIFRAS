@@ -41,12 +41,31 @@ export interface GrupoMergeado {
     autorizacion: GrupoAutorizado | null; // null = nunca autorizado
 }
 
-// Única normalización aplicada: recortar espacios en blanco accidentales
-// (copiar/pegar un JID a mano). NUNCA se cambia mayúsculas/minúsculas ni
-// se reescribe el JID de ninguna otra forma — el JID real de WhatsApp es
-// la identidad, tal cual lo devuelve Baileys.
+// Normalización aplicada SOLO para decidir identidad/comparación (nunca
+// se escribe de vuelta en Supabase): recortar espacios en blanco
+// accidentales, y decodificar percent-encoding si lo hay — un JID real de
+// WhatsApp NUNCA contiene "%" (ver bot/funciones/eventos/detectarEvento.js:
+// siempre "<dígitos>[-<dígitos>]@g.us"), así que si aparece es porque se
+// pegó una versión percent-encoded (p. ej. "120363421290339105%40g.us",
+// copiada por error desde una URL del panel en vez del JID real) y debe
+// compararse contra su forma real ("120363421290339105@g.us"), nunca
+// tratarse como una identidad distinta. NUNCA se cambian mayúsculas/
+// minúsculas ni se reescribe el JID de ninguna otra forma.
 export function normalizarGrupoId(valor: string | null | undefined): string {
-    return (valor || "").trim();
+
+    const recortado = (valor || "").trim();
+
+    if (!recortado) return recortado;
+
+    try {
+        return decodeURIComponent(recortado);
+    } catch {
+        // decodeURIComponent lanza ante un "%" suelto que no forma una
+        // secuencia válida — se conserva el valor recortado tal cual en
+        // vez de fallar la comparación completa.
+        return recortado;
+    }
+
 }
 
 export interface ResultadoMerge {

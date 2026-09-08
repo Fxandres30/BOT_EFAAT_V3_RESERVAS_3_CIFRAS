@@ -7,7 +7,6 @@ import "./GruposAutomatizacion.css";
 
 import { getUser } from "@/services/auth/getUser";
 import { GrupoAutorizado, listarGruposAutorizados, alternarGrupoAutorizado, autorizarGrupo } from "@/services/automatizacion/gruposAutorizados";
-import { obtenerGruposConversacion, GrupoConversacion } from "@/services/chats/obtenerGruposConversacion";
 import { obtenerGruposDisponibles, SesionConGrupos } from "@/services/automatizacion/gruposDisponibles";
 import { mergearGrupos, GrupoMergeado } from "@/services/automatizacion/mergeGrupos";
 
@@ -22,7 +21,6 @@ export default function GruposAutomatizacion() {
 
     const [autorizados, setAutorizados] = useState<GrupoAutorizado[]>([]);
     const [sesiones, setSesiones] = useState<SesionConGrupos[]>([]);
-    const [gruposConocidos, setGruposConocidos] = useState<GrupoConversacion[]>([]);
 
     const [modalAbierto, setModalAbierto] = useState(false);
     const [procesando, setProcesando] = useState<string | null>(null);
@@ -32,9 +30,8 @@ export default function GruposAutomatizacion() {
         setCargando(true);
         setError(null);
 
-        const [autorizadosRes, conocidosRes, sesionesRes] = await Promise.all([
+        const [autorizadosRes, sesionesRes] = await Promise.all([
             listarGruposAutorizados(uid),
-            obtenerGruposConversacion(),
             obtenerGruposDisponibles(uid)
         ]);
 
@@ -44,7 +41,6 @@ export default function GruposAutomatizacion() {
             setAutorizados(autorizadosRes.data as GrupoAutorizado[]);
         }
 
-        setGruposConocidos(conocidosRes.data);
         setSesiones(sesionesRes);
 
         setCargando(false);
@@ -72,20 +68,14 @@ export default function GruposAutomatizacion() {
 
     }, []);
 
-    // grupo_id/JID es la ÚNICA identidad de un grupo — esta es la ÚNICA
-    // fuente de la regla de fusión (ver mergeGrupos.ts): sesiones
-    // conectadas primero (fuente primaria, en vivo), grupos_autorizados
-    // solo adjunta el estado de autorización a una tarjeta ya existente,
-    // nunca crea una tarjeta nueva ni duplica por venir de otra fuente.
+    // grupo_id/JID es la ÚNICA identidad de un grupo. "disponibles" viene
+    // EXCLUSIVAMENTE de sesiones con socket real vivo AHORA MISMO (ver
+    // gruposDisponibles.ts — ya no se decide por sesiones.estado).
+    // grupos_autorizados nunca fabrica un grupo "actual": solo puede
+    // adjuntar su estado a un grupo que ya vino de una sesión conectada
+    // (ver mergeGrupos.ts); si no hay con qué asociarlo, queda en
+    // "historicos" — separado, nunca mezclado con lo actual.
     const { disponibles, historicos } = mergearGrupos(sesiones, autorizados);
-
-    // Último nombre conocido (mensajes_grupos_sorteos) SOLO para mostrar
-    // algo mejor que el JID crudo en la sección histórica — nunca decide
-    // identidad ni hace que un grupo histórico se confunda con uno
-    // conectado (mergearGrupos ya garantiza esa separación).
-    function ultimoNombreConocido(grupoId: string) {
-        return gruposConocidos.find((g) => g.grupo_id === grupoId)?.grupo_nombre || grupoId;
-    }
 
     async function autorizarDirecto(grupoId: string) {
 
@@ -135,11 +125,14 @@ export default function GruposAutomatizacion() {
 
     }
 
-    const hayAlgunaSesion = sesiones.length > 0;
-
     function tituloSesiones(g: GrupoMergeado) {
         return g.sesiones.map((s) => s.nombreSesion).join(", ");
     }
+
+    const hayAlgunaSesion = sesiones.length > 0;
+    const sesionesConectadas = sesiones.filter((s) => s.conectada);
+    const sesionesDesconectadas = sesiones.filter((s) => !s.conectada);
+    const hayAlgunaSesionConectada = sesionesConectadas.length > 0;
 
     return (
 
@@ -168,9 +161,9 @@ export default function GruposAutomatizacion() {
                         <div>
                             <h2 className="grupos-seccion-titulo">Grupos disponibles</h2>
                             <p className="grupos-seccion-subtitulo">
-                                Grupos reales de tus sesiones de WhatsApp conectadas — un grupo con el
-                                mismo JID nunca aparece más de una vez, sin importar cuántas sesiones o
-                                fuentes lo reporten. Autoriza uno para poder configurarlo.
+                                Grupos reales que tu sesión de WhatsApp reporta AHORA MISMO — nunca a
+                                partir de autorizaciones o mensajes históricos. Un grupo con el mismo JID
+                                nunca aparece más de una vez, sin importar cuántas sesiones lo reporten.
                             </p>
                         </div>
 
@@ -182,18 +175,46 @@ export default function GruposAutomatizacion() {
 
                     {error && <p className="grupos-error">⚠️ {error}</p>}
 
+                    {hayAlgunaSesion && (
+
+                        <div className="grupos-sesiones-estado">
+
+                            {sesionesConectadas.map((s) => (
+                                <span key={s.sessionId} className="grupos-sesion-badge on">
+                                    🟢 {s.nombreSesion} — conectada
+                                </span>
+                            ))}
+
+                            {sesionesDesconectadas.map((s) => (
+                                <span key={s.sessionId} className="grupos-sesion-badge off" title={s.error || undefined}>
+                                    🔌 {s.nombreSesion} — desconectada ahora mismo
+                                </span>
+                            ))}
+
+                        </div>
+
+                    )}
+
                     {!hayAlgunaSesion ? (
 
                         <div className="grupos-estado-vacio">
-                            No tienes ninguna sesión de WhatsApp conectada ahora mismo. Conéctala en
-                            &quot;Sesiones&quot; para ver aquí sus grupos, o usa <strong>+ Agregar por JID</strong>.
+                            No tienes ninguna sesión de WhatsApp registrada. Créala en
+                            &quot;Sesiones&quot;, o usa <strong>+ Agregar por JID</strong>.
+                        </div>
+
+                    ) : !hayAlgunaSesionConectada ? (
+
+                        <div className="grupos-estado-vacio">
+                            Ninguna de tus sesiones tiene un socket de WhatsApp conectado ahora mismo —
+                            no se puede confirmar qué grupos existen actualmente. Conéctala en
+                            &quot;Sesiones&quot; para volver a verlos, o usa <strong>+ Agregar por JID</strong>.
                         </div>
 
                     ) : disponibles.length === 0 ? (
 
                         <div className="grupos-estado-vacio">
-                            Tus sesiones conectadas no reportaron ningún grupo (o falló la consulta).
-                            Prueba <strong>+ Agregar por JID</strong> mientras tanto.
+                            Tu sesión está conectada, pero WhatsApp no reportó ningún grupo para esa
+                            cuenta ahora mismo. Prueba <strong>+ Agregar por JID</strong> mientras tanto.
                         </div>
 
                     ) : (
@@ -252,20 +273,26 @@ export default function GruposAutomatizacion() {
                         <div className="grupos-otros">
 
                             <h3 className="grupos-otros-titulo">
-                                Autorizados anteriormente (sesión no conectada ahora)
+                                No disponibles actualmente
                             </h3>
+
+                            <p className="grupos-otros-nota">
+                                Tienen una autorización guardada, pero WhatsApp no los reportó en la
+                                consulta más reciente — pueden haber sido eliminados o el bot fue
+                                removido. No se muestra un nombre actual porque no hay confirmación de
+                                que el grupo siga existiendo.
+                            </p>
 
                             <div className="grupos-grid">
 
                                 {historicos.map((g) => (
 
-                                    <div key={g.grupoId} className="grupo-card">
+                                    <div key={g.grupoId} className="grupo-card historico">
 
-                                        <div className="grupo-card-nombre">{ultimoNombreConocido(g.grupoId)}</div>
-                                        <div className="grupo-card-jid">{g.grupoId}</div>
+                                        <div className="grupo-card-nombre">JID: {g.grupoId}</div>
 
-                                        <div className={`grupo-card-estado ${g.autorizacion?.activo ? "on" : "off"}`}>
-                                            Automatización {g.autorizacion?.activo ? "🟢 ACTIVADA" : "🔴 DESACTIVADA"}
+                                        <div className="grupo-card-estado off">
+                                            🚫 No disponible actualmente
                                         </div>
 
                                         <div className="grupo-card-acciones">
@@ -274,7 +301,7 @@ export default function GruposAutomatizacion() {
                                                 href={`/automatizacion/grupos/${encodeURIComponent(g.grupoId)}`}
                                                 className="grupo-card-boton"
                                             >
-                                                Configurar
+                                                Ver configuración
                                             </Link>
 
                                             {g.autorizacion && (
