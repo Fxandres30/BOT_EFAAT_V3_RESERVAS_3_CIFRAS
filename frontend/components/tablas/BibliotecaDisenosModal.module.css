@@ -1,0 +1,72 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 11px;
+  font-weight: var(--efaat-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--efaat-text-muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-card);
+  background: var(--efaat-surface);
+}
+
+.cardActive {
+  border-color: var(--efaat-primary);
+  box-shadow: 0 0 0 1px var(--efaat-primary);
+}
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cardName {
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardActions {
+  display: flex;
+  gap: 4px;
+}
+
+.empty {
+  padding: 16px;
+  text-align: center;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+  border: 1px dashed var(--efaat-border-strong);
+  border-radius: var(--efaat-radius-card);
+}

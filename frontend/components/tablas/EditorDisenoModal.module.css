@@ -1,0 +1,133 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.previewRow {
+  display: flex;
+  justify-content: center;
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.presetChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--efaat-radius-pill);
+  border: 1px solid var(--efaat-border);
+  background: var(--efaat-surface);
+  font-size: var(--efaat-text-xs);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-text-secondary);
+  cursor: pointer;
+}
+
+.presetChip:hover {
+  background: var(--efaat-surface-muted);
+  color: var(--efaat-text);
+}
+
+.presetDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 11px;
+  font-weight: var(--efaat-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--efaat-text-muted);
+}
+
+.colorGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.colorField {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-surface);
+}
+
+.colorField input[type="color"] {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.colorFieldLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.colorFieldLabel span {
+  font-size: 11px;
+  color: var(--efaat-text-secondary);
+}
+
+.colorFieldLabel input[type="text"] {
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-family: var(--efaat-font-mono);
+  color: var(--efaat-text);
+  width: 76px;
+  background: transparent;
+}
+
+.colorFieldLabel input[type="text"]:focus {
+  outline: none;
+}
+
+.numberGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.saveAsRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.saveAsRow > :first-child {
+  flex: 1;
+}
+
+@media (max-width: 480px) {
+  .colorGrid,
+  .numberGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

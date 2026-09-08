@@ -4,6 +4,7 @@ import { Users } from "lucide-react";
 
 import type { NumeroReserva } from "./types";
 import { ESTADOS_META_VISUAL, estadoEfectivo, estadoVisualSimplificado } from "./estadoVisual";
+import styles from "./NumeroCard.module.css";
 
 interface Props {
     numero: NumeroReserva;
@@ -30,6 +31,14 @@ export default function NumeroCard({
     const estadoVisual = estadoVisualSimplificado(numero);
     const meta = ESTADOS_META_VISUAL[estadoVisual];
 
+    // El color de la celda (fondo/borde/texto) lo decide el diseño de la
+    // tabla (variables --efaat-tabla-* aplicadas por Grid.tsx, ver
+    // disenoCssVars.ts) — nunca un color fijo por estado.
+    const claseEstado =
+        estadoVisual === "libre" ? styles.available :
+        estadoVisual === "pagado" ? styles.pagado :
+        styles.reserved;
+
     return (
 
         <button
@@ -41,12 +50,11 @@ export default function NumeroCard({
             onClick={onClick}
             className={`
                 group relative w-full aspect-square min-w-0
-                rounded-md sm:rounded-lg
                 flex items-center justify-center
                 transition-all duration-150
                 active:scale-90
                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-indigo-500
-                ${meta.card}
+                ${styles.cell} ${claseEstado}
                 ${estadoVisual === "libre" ? "shadow-sm" : "shadow-md hover:shadow-lg hover:-translate-y-0.5"}
                 ${atenuado ? "opacity-30 saturate-50" : ""}
             `}
@@ -68,7 +76,7 @@ export default function NumeroCard({
                 />
             )}
 
-            <span className="font-bold leading-none tabular-nums text-[clamp(0.7rem,3.6vw,1.25rem)]">
+            <span className={`leading-none tabular-nums ${styles.number}`}>
                 {numero.numero}
             </span>
 

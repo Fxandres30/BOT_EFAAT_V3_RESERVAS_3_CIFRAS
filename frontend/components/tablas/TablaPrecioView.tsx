@@ -1,9 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Loader2, AlertTriangle, Info } from "lucide-react";
+import { Loader2, AlertTriangle, Info, Palette, LibraryBig } from "lucide-react";
 
 import { useTablaPrecio } from "@/hooks/useTablaPrecio";
+import { useTablaDiseno } from "@/hooks/useTablaDiseno";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 import AccionesTabla from "./AccionesTabla";
 import StatsBar from "./StatsBar";
 import FiltrosBar from "./FiltrosBar";
@@ -11,8 +14,11 @@ import Grid from "./Grid";
 import ReservasRecientes from "./ReservasRecientes";
 import GruposPanel from "./GruposPanel";
 import ActividadReciente from "./ActividadReciente";
+import EditorDisenoModal from "./EditorDisenoModal";
+import BibliotecaDisenosModal from "./BibliotecaDisenosModal";
 import { contarPorFiltro, type FiltroEstado } from "./estadoVisual";
 import type { EventoActivo } from "./types";
+import type { TablaDiseno } from "./disenoTypes";
 
 interface Props {
     precio: number;
@@ -43,6 +49,26 @@ export default function TablaPrecioView({ precio }: Props) {
     const [filtro, setFiltro] = useState<FiltroEstado>("todos");
 
     const conteosFiltro = useMemo(() => contarPorFiltro(numeros), [numeros]);
+
+    // Diseño visual de ESTA tabla ($precio) — independiente de cualquier
+    // otro precio. No toca números/reservas reales (useTablaPrecio, arriba).
+    const {
+        config: diseno,
+        disenoOrigenId,
+        personalizada,
+        disenos,
+        guardando: guardandoDiseno,
+        guardarComoConfigDeTabla,
+        guardarComoDisenoNuevo,
+        aplicarDiseno,
+        editarDisenoBiblioteca,
+        duplicarDisenoBiblioteca,
+        eliminarDisenoBiblioteca
+    } = useTablaDiseno(precio);
+
+    const [personalizarAbierto, setPersonalizarAbierto] = useState(false);
+    const [bibliotecaAbierta, setBibliotecaAbierta] = useState(false);
+    const [disenoEnEdicion, setDisenoEnEdicion] = useState<TablaDiseno | null>(null);
 
     if (!config) {
 
@@ -139,6 +165,26 @@ export default function TablaPrecioView({ precio }: Props) {
                 conteos={conteosFiltro}
             />
 
+            <div className="flex flex-wrap items-center gap-2">
+                {personalizada && <Badge tone="primary" size="sm">Diseño personalizado</Badge>}
+                <Button
+                    size="sm"
+                    variant="secondary"
+                    leftIcon={<Palette size={14} />}
+                    onClick={() => setPersonalizarAbierto(true)}
+                >
+                    Personalizar
+                </Button>
+                <Button
+                    size="sm"
+                    variant="secondary"
+                    leftIcon={<LibraryBig size={14} />}
+                    onClick={() => setBibliotecaAbierta(true)}
+                >
+                    Diseños
+                </Button>
+            </div>
+
             <Grid
                 numeros={numeros}
                 paquetes={paquetes}
@@ -147,6 +193,7 @@ export default function TablaPrecioView({ precio }: Props) {
                 busqueda={busqueda}
                 filtro={filtro}
                 accionando={accionando}
+                diseno={diseno}
                 onMarcarPagado={marcarPagado}
                 onLiberar={liberar}
                 onBloquear={bloquear}
@@ -165,6 +212,50 @@ export default function TablaPrecioView({ precio }: Props) {
                 <GruposPanel paquetes={paquetes} precio={precio} />
                 <ActividadReciente actividad={actividad} />
             </div>
+
+            <EditorDisenoModal
+                open={personalizarAbierto}
+                onClose={() => setPersonalizarAbierto(false)}
+                titulo={`Personalizar tabla $${precio.toLocaleString("es-CO")}`}
+                descripcion="Los cambios solo afectan a esta tabla."
+                initialConfig={diseno}
+                guardando={guardandoDiseno}
+                onGuardar={(nuevaConfig) => guardarComoConfigDeTabla(nuevaConfig, disenoOrigenId)}
+                onGuardarComoNuevo={async (nombre, nuevaConfig) => { await guardarComoDisenoNuevo(nombre, nuevaConfig); }}
+            />
+
+            <BibliotecaDisenosModal
+                open={bibliotecaAbierta}
+                onClose={() => setBibliotecaAbierta(false)}
+                disenos={disenos}
+                disenoActualId={disenoOrigenId}
+                aplicando={guardandoDiseno}
+                onAplicar={async (origenId, configOrigen) => {
+                    await aplicarDiseno(origenId, configOrigen);
+                    setBibliotecaAbierta(false);
+                }}
+                onEditar={(d) => {
+                    setDisenoEnEdicion(d);
+                    setBibliotecaAbierta(false);
+                }}
+                onDuplicar={async (d) => { await duplicarDisenoBiblioteca(d); }}
+                onEliminar={(d) => eliminarDisenoBiblioteca(d.id)}
+            />
+
+            {disenoEnEdicion && (
+                <EditorDisenoModal
+                    open
+                    onClose={() => setDisenoEnEdicion(null)}
+                    titulo={`Editar diseño «${disenoEnEdicion.nombre}»`}
+                    descripcion="Actualiza este diseño de tu biblioteca. Las tablas que ya lo aplicaron conservan su propia copia."
+                    initialConfig={disenoEnEdicion.config}
+                    textoGuardar="Guardar diseño"
+                    onGuardar={async (nuevaConfig) => {
+                        await editarDisenoBiblioteca(disenoEnEdicion.id, { config: nuevaConfig });
+                        setDisenoEnEdicion(null);
+                    }}
+                />
+            )}
 
         </div>
 

@@ -1,0 +1,39 @@
+/* Colores de celda controlados por el diseño de la tabla (ver
+   disenoCssVars.ts) — cada estado lee su propio fondo/borde/texto,
+   nunca derivados unos de otros. Los valores por defecto reproducen el
+   look anterior (blanco / rosa-600 / esmeralda-600) para tablas que
+   todavía no se han personalizado. */
+
+.cell {
+  border-style: solid;
+  border-width: var(--efaat-tabla-cell-border-width, 1px);
+  border-radius: var(--efaat-tabla-cell-radius, 8px);
+  font-weight: var(--efaat-tabla-cell-font-weight, 700);
+  transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cell:hover {
+  filter: brightness(0.97);
+}
+
+.number {
+  font-size: clamp(0.7rem, 3.6vw, var(--efaat-tabla-cell-font-size, 20px));
+}
+
+.available {
+  background: var(--efaat-tabla-available-bg, #ffffff);
+  border-color: var(--efaat-tabla-available-border, #e5e7eb);
+  color: var(--efaat-tabla-available-text, #374151);
+}
+
+.reserved {
+  background: var(--efaat-tabla-reserved-bg, #f43f5e);
+  border-color: var(--efaat-tabla-reserved-border, #f43f5e);
+  color: var(--efaat-tabla-reserved-text, #ffffff);
+}
+
+.pagado {
+  background: var(--efaat-tabla-pagado-bg, #10b981);
+  border-color: var(--efaat-tabla-pagado-border, #10b981);
+  color: var(--efaat-tabla-pagado-text, #ffffff);
+}

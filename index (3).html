@@ -1,0 +1,2519 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Gran Sorteo — Panel de gestión</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- ============================================================ -->
+<!-- ============================  CSS  =========================== -->
+<!-- ============================================================ -->
+<style>
+
+  /* ---------- Reset & base ---------- */
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+    transition: background .2s ease, color .2s ease;
+  }
+  h1, h2, h3, p { margin: 0; }
+  button { font-family: inherit; }
+  ::selection { background: color-mix(in srgb, var(--accent) 40%, transparent); }
+
+  /* ---------- Design tokens (customizable) ---------- */
+  :root {
+    --bg: #0a0c10;
+    --table-bg: #12151b;
+    --surface: #12151b;
+    --surface-2: #171b23;
+    --surface-3: #1e232d;
+    --border: #242a35;
+    --border-strong: #313847;
+    --text: #eef1f6;
+    --text-dim: #8d96a8;
+    --text-faint: #5b6272;
+
+    --accent: #d4af6a;
+    --accent-ink: #201804;
+
+    /* Each status has three fully independent layers: background,
+       border and number/text color. None of them are derived from
+       one another — changing one never affects the others. */
+    --c-available-bg: #171b23;
+    --c-available-border: #242a35;
+    --c-available-text: #eef1f6;
+
+    --c-reserved-bg: #3a331f;
+    --c-reserved-border: #a8822f;
+    --c-reserved-text: #f4c247;
+
+    --c-paid-bg: #1c2e3f;
+    --c-paid-border: #3d7dc7;
+    --c-paid-text: #4da3ff;
+
+    --c-winner-bg: #4a3f2c;
+    --c-winner-border: #d4af6a;
+    --c-winner-text: #d4af6a;
+    --c-winner-star: #d4af6a;
+    --winner-ink: #201804;
+
+    --c-danger: #ff5c72;
+
+    --cell-radius: 8px;
+    --cell-gap: 6px;
+    --cell-border-width: 1px;
+    --cell-font-max: 15px;
+    --cell-font-weight: 600;
+
+    --radius-lg: 20px;
+    --radius-md: 14px;
+    --radius-sm: 9px;
+    --shadow-soft: 0 10px 30px rgba(0,0,0,0.35);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  /* ---------- Layout shell ---------- */
+  .app-shell { max-width: 1180px; margin: 0 auto; padding: 14px 14px 48px; }
+  .content-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 16px; }
+  .panel-main, .panel-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+  @media (min-width: 980px) {
+    .app-shell { padding: 28px 32px 56px; }
+    .content-grid { grid-template-columns: 1fr 360px; gap: 24px; align-items: start; }
+  }
+
+  /* ---------- Header card ---------- */
+  .header-card {
+    background: linear-gradient(160deg, var(--surface-2) 0%, var(--surface) 60%);
+    border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px;
+    position: relative; overflow: hidden;
+  }
+  .header-card::before {
+    content: ""; position: absolute; top: -60%; right: -20%; width: 320px; height: 320px;
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent) 22%, transparent) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .header-top-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .raffle-name { font-size: 13px; letter-spacing: 0.08em; color: var(--text-dim); font-weight: 600; text-transform: uppercase; }
+  .prize-line { font-size: clamp(26px, 6vw, 34px); font-weight: 700; margin-top: 6px; line-height: 1.15; }
+  .prize-line span { color: var(--accent); }
+  .price-line { margin-top: 6px; font-size: 14px; color: var(--text-dim); }
+  .tagline { margin-top: 10px; font-size: 13.5px; color: var(--text-dim); max-width: 46ch; line-height: 1.5; }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: color-mix(in srgb, var(--c-available-border) 16%, transparent); color: var(--c-available-border);
+    border: 1px solid color-mix(in srgb, var(--c-available-border) 40%, transparent);
+    padding: 5px 10px 5px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    letter-spacing: 0.04em; white-space: nowrap; flex-shrink: 0;
+  }
+  .status-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .progress-block { margin-top: 18px; position: relative; z-index: 1; }
+  .progress-meta { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text-dim); margin-bottom: 7px; }
+  .progress-meta strong { color: var(--text); font-weight: 600; }
+  .progress-track { height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; border: 1px solid var(--border); }
+  .progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, white)); transition: width 0.5s cubic-bezier(.4,0,.2,1); }
+
+  /* ---------- Action bar ---------- */
+  .action-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  @media (max-width: 480px) {
+    .action-bar { grid-template-columns: repeat(2, 1fr); }
+  }
+  .action-btn {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    padding: 12px 10px; border-radius: var(--radius-md); font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  }
+  .action-btn .ico { font-size: 15px; line-height: 1; }
+  .action-btn:hover { background: var(--surface-3); border-color: var(--border-strong); }
+  .action-btn:active { transform: scale(0.96); }
+  .action-btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .action-btn.primary:hover { filter: brightness(1.07); }
+
+  /* ---------- Section card generic ---------- */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
+  #gridCard { background: var(--table-bg); }
+  .card-title {
+    font-size: 13px; font-weight: 600; color: var(--text-dim); letter-spacing: 0.03em; margin-bottom: 12px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .card-title .count-badge { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--text-faint); }
+
+  /* ---------- Number grid ---------- */
+  /* Every status below sets background / border-color / color from
+     three completely independent variables. None is computed from
+     another — changing --c-reserved-text, for example, never touches
+     --c-reserved-bg or --c-reserved-border. */
+  .grid-wrap { display: flex; justify-content: center; }
+  .number-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: var(--cell-gap); width: 100%; max-width: 560px; }
+  @media (min-width: 980px) { .number-grid { max-width: 640px; } }
+  .cell {
+    position: relative; aspect-ratio: 1 / 1; border-radius: var(--cell-radius);
+    border-style: solid; border-width: var(--cell-border-width); border-color: var(--c-available-border);
+    background: var(--c-available-bg); display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace; font-weight: var(--cell-font-weight); font-size: clamp(11px, 3vw, var(--cell-font-max));
+    color: var(--c-available-text); cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none;
+    transition: transform 0.12s ease, box-shadow 0.15s ease, opacity 0.2s ease, border-color .15s ease, background .15s ease, color .15s ease;
+    overflow: hidden;
+  }
+  .cell:hover { border-color: var(--border-strong); }
+  .cell:active { transform: scale(0.9); }
+
+  .cell[data-status="available"] {
+    background: var(--c-available-bg); border-color: var(--c-available-border); color: var(--c-available-text);
+  }
+  .cell[data-status="reserved"] {
+    background: var(--c-reserved-bg); border-color: var(--c-reserved-border); color: var(--c-reserved-text);
+  }
+  .cell[data-status="paid"] {
+    background: var(--c-paid-bg); border-color: var(--c-paid-border); color: var(--c-paid-text);
+  }
+  .cell.is-winner {
+    background: var(--c-winner-bg); border-color: var(--c-winner-border); color: var(--c-winner-text);
+    animation: winnerPulse 2.2s ease-in-out infinite;
+  }
+  .cell.is-selected {
+    background: color-mix(in srgb, var(--accent) 22%, var(--surface-2));
+    border-color: var(--accent); color: var(--accent);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  @keyframes winnerPulse {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c-winner-border) 45%, transparent); }
+    50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--c-winner-border) 0%, transparent); }
+  }
+  .cell-content { display: flex; align-items: center; justify-content: center; gap: 2px; line-height: 1; width: 100%; height: 100%; }
+  .cell-content.compact { font-size: 0.74em; }
+  /* The star uses its OWN color variable — never tied to the number's color. */
+  .cell-star { font-size: 1em; color: var(--c-winner-star); filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4)); }
+  .cell-num { font-variant-numeric: tabular-nums; }
+  .cell.dimmed { opacity: 0.22; }
+  .cell.just-updated { animation: cellFlash 0.5s ease; }
+  @keyframes cellFlash { 0% { transform: scale(1.18); } 100% { transform: scale(1); } }
+
+  /* ---------- Selection bar ---------- */
+  #selectionBar { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+  .selection-numbers {
+    font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--accent);
+    font-weight: 600; margin-bottom: 14px; word-break: break-word; line-height: 1.6;
+  }
+
+  /* ---------- Stats ---------- */
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat-chip { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 6px; text-align: center; }
+  .stat-chip .num { font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 700; transition: transform 0.2s ease; }
+  .stat-chip .num.bump { transform: scale(1.18); }
+  .stat-chip .lbl { margin-top: 3px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+  .stat-chip[data-k="available"] .num { color: var(--c-available-border); }
+  .stat-chip[data-k="reserved"] .num { color: var(--c-reserved-border); }
+  .stat-chip[data-k="paid"] .num { color: var(--c-paid-border); }
+
+  /* ---------- Legend ---------- */
+  .legend { display: flex; flex-wrap: wrap; gap: 12px 16px; }
+  .legend-item { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-dim); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; border: 1px solid transparent; }
+  .legend-dot.available { background: var(--c-available-bg); border-color: var(--c-available-border); }
+  .legend-dot.reserved { background: var(--c-reserved-bg); border-color: var(--c-reserved-border); }
+  .legend-dot.paid { background: var(--c-paid-bg); border-color: var(--c-paid-border); }
+  .legend-dot.winner { background: var(--c-winner-bg); border-color: var(--c-winner-border); }
+
+  /* ---------- Filters & search ---------- */
+  .search-input-wrap { position: relative; margin-bottom: 10px; }
+  .search-input {
+    width: 100%; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 10px 12px 10px 34px; color: var(--text); font-size: 13.5px; outline: none; transition: border-color 0.15s ease;
+  }
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--text-faint); }
+  .search-ico { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-faint); font-size: 13px; }
+
+  .filter-row { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  .filter-row::-webkit-scrollbar { display: none; }
+  .filter-chip {
+    flex-shrink: 0; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim);
+    padding: 7px 13px; border-radius: 999px; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: all 0.15s ease;
+  }
+  .filter-chip:hover { border-color: var(--border-strong); }
+  .filter-chip.active { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+
+  /* ---------- Reservations list ---------- */
+  .reservation-list { display: flex; flex-direction: column; gap: 2px; max-height: 420px; overflow-y: auto; }
+  .reservation-row {
+    display: flex; align-items: center; gap: 10px; padding: 10px 4px;
+    border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s ease;
+  }
+  .reservation-row:last-child { border-bottom: none; }
+  .reservation-row:hover { background: var(--surface-2); }
+  .r-number {
+    font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 14px;
+    width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; background: var(--surface-2);
+  }
+  .r-body { flex: 1; min-width: 0; }
+  .r-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 5px; }
+  .r-meta { font-size: 11.5px; color: var(--text-faint); margin-top: 1px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .r-status { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 4px 8px; border-radius: 999px; flex-shrink: 0; }
+  .empty-note { text-align: center; color: var(--text-faint); font-size: 13px; padding: 24px 8px; }
+
+  /* ---------- Overlay + Sheets ---------- */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(4,5,7,0.6); backdrop-filter: blur(2px);
+    display: flex; align-items: flex-end; justify-content: center; z-index: 100;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
+  }
+  .overlay.open { opacity: 1; pointer-events: auto; }
+  .overlay.overlay-top { z-index: 150; }
+  @media (min-width: 720px) { .overlay { align-items: center; } }
+
+  .sheet {
+    background: var(--surface); border: 1px solid var(--border-strong); width: 100%; max-width: 480px;
+    border-radius: 20px 20px 0 0; padding: 18px 18px calc(18px + env(safe-area-inset-bottom, 0px));
+    max-height: 88vh; overflow-y: auto; transform: translateY(24px);
+    transition: transform 0.25s cubic-bezier(.2,.9,.3,1); box-shadow: var(--shadow-soft);
+  }
+  .overlay.open .sheet { transform: translateY(0); }
+  @media (min-width: 720px) {
+    .sheet { border-radius: var(--radius-lg); transform: translateY(12px) scale(0.98); }
+    .overlay.open .sheet { transform: translateY(0) scale(1); }
+  }
+  .sheet-grabber { width: 36px; height: 4px; background: var(--border-strong); border-radius: 999px; margin: 0 auto 14px; }
+  @media (min-width: 720px) { .sheet-grabber { display: none; } }
+
+  .sheet-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .sheet-title { font-size: 17px; font-weight: 700; }
+  .sheet-close {
+    width: 30px; height: 30px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text-dim); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 15px; flex-shrink: 0;
+  }
+  .sheet-close:hover { color: var(--text); }
+  .sheet-text { font-size: 13.5px; color: var(--text-dim); line-height: 1.5; }
+
+  .btn-row { display: flex; gap: 10px; margin-top: 18px; }
+  .btn-row + .btn-row { margin-top: 10px; }
+  .btn {
+    flex: 1; padding: 12px; border-radius: var(--radius-sm); font-size: 13.5px; font-weight: 600;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer; transition: all 0.15s ease;
+  }
+  .btn:hover { border-color: var(--border-strong); background: var(--surface-3); }
+  .btn:active { transform: scale(0.97); }
+  .btn.danger { background: color-mix(in srgb, var(--c-danger) 18%, var(--surface-2)); color: var(--c-danger); border-color: color-mix(in srgb, var(--c-danger) 40%, transparent); }
+  .btn.accent { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .btn.winner-btn { background: var(--c-winner-border); color: var(--winner-ink); border-color: transparent; }
+  .btn.full { flex: none; width: 100%; }
+
+  /* ---------- Number detail sheet ---------- */
+  .detail-number { font-family: 'JetBrains Mono', monospace; font-size: 34px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .detail-status-badge {
+    display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+    text-transform: uppercase; padding: 4px 10px; border-radius: 999px;
+  }
+  .detail-fields { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
+  .detail-field .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); margin-bottom: 3px; }
+  .detail-field .v { font-size: 14.5px; font-weight: 500; }
+  .winner-note-box {
+    padding: 10px 12px; border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--c-winner-border) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--c-winner-border) 40%, transparent);
+    color: var(--c-winner-border); font-size: 12.5px; font-weight: 600;
+  }
+  .selected-note-box {
+    padding: 10px 12px; border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    color: var(--accent); font-size: 12.5px; font-weight: 700; letter-spacing: 0.03em;
+  }
+
+  /* ---------- Reservation form ---------- */
+  .form-error { color: var(--c-danger); font-size: 12px; margin-top: 6px; display: none; }
+  .form-error.visible { display: block; }
+
+  .autocomplete-wrap { position: relative; }
+  .autocomplete-list {
+    position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px;
+    background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+    max-height: 220px; overflow-y: auto; z-index: 20; box-shadow: var(--shadow-soft);
+    display: none;
+  }
+  .autocomplete-list.open { display: block; }
+  .autocomplete-item { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid var(--border); transition: background .1s ease; }
+  .autocomplete-item:last-child { border-bottom: none; }
+  .autocomplete-item:hover, .autocomplete-item:active { background: var(--surface-3); }
+  .autocomplete-item .ac-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .autocomplete-item .ac-meta { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
+
+  .recent-contacts { margin-bottom: 14px; }
+  .recent-contacts-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint);
+    margin-bottom: 8px; font-weight: 600;
+  }
+  .recent-contacts-list {
+    border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-2);
+  }
+
+  /* ---------- Customize drawer ---------- */
+  .field-group { margin-bottom: 14px; }
+  .field-group label {
+    display: block; font-size: 11.5px; color: var(--text-dim); margin-bottom: 6px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .field-group input[type="text"], .field-group input[type="tel"], .field-group textarea {
+    width: 100%; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 10px 12px; color: var(--text); font-size: 13.5px; font-family: inherit; outline: none; resize: none;
+  }
+  .field-group input[type="text"]:focus, .field-group input[type="tel"]:focus, .field-group textarea:focus { border-color: var(--accent); }
+  .field-group input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .range-value { font-family: 'JetBrains Mono', monospace; color: var(--text-faint); font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+  .color-field { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
+  .color-field .lbl { font-size: 13.5px; }
+  .swatch-input { width: 38px; height: 30px; border-radius: 8px; border: 1px solid var(--border); background: none; padding: 0; cursor: pointer; }
+
+  .divider-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint);
+    margin: 18px 0 8px; padding-top: 12px; border-top: 1px solid var(--border);
+  }
+  .subsection-label {
+    font-size: 12px; font-weight: 700; color: var(--text); margin: 14px 0 4px;
+  }
+  .subsection-label:first-of-type { margin-top: 4px; }
+
+  /* ---------- Collapsible customize sections ---------- */
+  .section-header {
+    width: 100%; display: flex; align-items: center; gap: 8px;
+    background: none; border: none; border-top: 1px solid var(--border);
+    padding: 14px 0 8px; margin-top: 4px; cursor: pointer;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-faint); font-weight: 700; text-align: left;
+  }
+  .section-header:first-child { border-top: none; margin-top: 0; }
+  .section-header .chevron { font-size: 10px; color: var(--text-faint); width: 12px; display: inline-block; flex-shrink: 0; }
+  .section-body.collapsed { display: none; }
+
+  .editing-design-banner {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+    color: var(--accent); border-radius: var(--radius-sm); padding: 9px 12px;
+    font-size: 12.5px; margin-bottom: 14px;
+  }
+  .mini-link-btn {
+    background: none; border: none; color: inherit; text-decoration: underline;
+    font-size: 11.5px; cursor: pointer; padding: 0; flex-shrink: 0; font-weight: 600;
+  }
+
+  /* ---------- Designs panel ---------- */
+  .design-card {
+    display: flex; gap: 12px; align-items: center;
+    border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: 10px; margin-bottom: 10px; background: var(--surface-2);
+  }
+  .design-thumb {
+    width: 60px; height: 42px; border-radius: 6px; overflow: hidden; flex-shrink: 0;
+    border: 1px solid var(--border-strong);
+    display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(3, 1fr); gap: 1px;
+  }
+  .design-thumb-cell { min-width: 0; min-height: 0; }
+  .design-info { flex: 1; min-width: 0; }
+  .design-name { font-size: 13.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .design-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .design-actions .btn {
+    flex: none; padding: 6px 11px; font-size: 11.5px; border-radius: 999px;
+  }
+  .empty-designs-note { color: var(--text-faint); font-size: 13px; padding: 10px 2px 18px; }
+
+  .switch-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; }
+  .switch-label { font-size: 13.5px; }
+  .switch { position: relative; display: inline-block; width: 42px; height: 24px; flex-shrink: 0; cursor: pointer; }
+  .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .switch-slider { position: absolute; inset: 0; background: var(--surface-3); border: 1px solid var(--border); border-radius: 999px; transition: background .15s ease, border-color .15s ease; }
+  .switch-slider::before { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; background: var(--text-faint); border-radius: 50%; transition: transform .15s ease, background .15s ease; }
+  .switch input:checked + .switch-slider { background: color-mix(in srgb, var(--accent) 55%, var(--surface-3)); border-color: var(--accent); }
+  .switch input:checked + .switch-slider::before { transform: translateX(18px); background: var(--accent-ink); }
+
+  .preset-row { display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .preset-row::-webkit-scrollbar { display: none; }
+  .preset-chip {
+    flex-shrink: 0; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim);
+    padding: 8px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all .15s ease;
+  }
+  .preset-chip.active { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+
+  .segmented { display: flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+  .segmented-btn { flex: 1; padding: 9px; background: var(--surface-2); color: var(--text-dim); border: none; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
+  .segmented-btn.active { background: var(--accent); color: var(--accent-ink); }
+
+  /* ---------- Share modal ---------- */
+  .share-option { border: 1px solid var(--border); border-radius: var(--radius-md); margin-bottom: 10px; overflow: hidden; }
+  .share-option-head { display: flex; align-items: center; gap: 12px; padding: 13px 14px; cursor: pointer; background: var(--surface-2); }
+  .share-option-head:hover { background: var(--surface-3); }
+  .share-option-head .ico { width: 34px; height: 34px; border-radius: 9px; background: var(--surface-3); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .share-option-head .txt { flex: 1; }
+  .share-option-head .txt .t1 { font-size: 13.5px; font-weight: 600; }
+  .share-option-head .txt .t2 { font-size: 11.5px; color: var(--text-faint); margin-top: 1px; }
+  .share-option-head .chev { color: var(--text-faint); font-size: 12px; transition: transform 0.2s ease; }
+  .share-option.open .chev { transform: rotate(180deg); }
+  .share-option-body { max-height: 0; overflow: hidden; transition: max-height 0.25s ease; }
+  .share-option.open .share-option-body { max-height: 300px; }
+  .share-option-body-inner { padding: 14px; font-size: 13px; color: var(--text-dim); }
+
+  .wa-bubble { background: #1f2c22; border: 1px solid color-mix(in srgb, var(--c-available-border) 30%, transparent); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; color: #dcf3e4; line-height: 1.5; white-space: pre-line; }
+  .link-box { display: flex; gap: 8px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-dim); }
+  .link-box span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mini-btn { background: var(--accent); color: var(--accent-ink); border: none; border-radius: 7px; padding: 7px 10px; font-size: 11.5px; font-weight: 700; cursor: pointer; flex-shrink: 0; }
+  .image-preview-card { background: linear-gradient(150deg, var(--surface-3), var(--surface)); border: 1px solid var(--border-strong); border-radius: 12px; padding: 16px; text-align: center; }
+  .image-preview-card .ipc-title { font-size: 11px; letter-spacing: 0.06em; color: var(--text-faint); text-transform: uppercase; }
+  .image-preview-card .ipc-prize { font-size: 20px; font-weight: 700; margin-top: 6px; }
+  .image-preview-card .ipc-sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+  .image-preview-card .ipc-mini-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; margin-top: 12px; }
+  .image-preview-card .ipc-mini-cell { aspect-ratio: 1; border-radius: 2px; background: rgba(255,255,255,0.12); }
+
+  /* ---------- Toast ---------- */
+  .toast-stack {
+    position: fixed; top: 96px; left: 50%; transform: translateX(-50%);
+    display: flex; flex-direction: column; gap: 8px; z-index: 300;
+    width: calc(100% - 28px); max-width: 380px; align-items: center;
+    pointer-events: none;
+  }
+  .toast {
+    background: var(--surface-3); border: 1px solid var(--border-strong); color: var(--text);
+    padding: 11px 16px; border-radius: 999px; font-size: 13px; font-weight: 500; box-shadow: var(--shadow-soft);
+    animation: toastIn 0.2s ease; display: flex; align-items: center; gap: 8px;
+    pointer-events: none; text-align: center;
+  }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes toastOut { to { opacity: 0; transform: translateY(-8px); } }
+
+  .footer-note { text-align: center; color: var(--text-faint); font-size: 11.5px; margin-top: 22px; }
+
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- ============================  HTML  =========================== -->
+<!-- ============================================================ -->
+
+<div class="app-shell">
+
+  <div class="header-card">
+    <div class="header-top-row">
+      <div>
+        <div class="raffle-name" id="raffleNameLbl">Gran Sorteo</div>
+        <h1 class="prize-line">Gana <span id="prizeLbl">$700.000</span></h1>
+        <div class="price-line">Valor por número: <strong id="priceLbl" style="color:var(--text)">$1.000</strong></div>
+        <p class="tagline" id="taglineLbl">Elige tus números favoritos y participa por el gran premio. Cupos limitados.</p>
+      </div>
+      <span class="status-pill"><span class="dot"></span>Activo</span>
+    </div>
+
+    <div class="progress-block">
+      <div class="progress-meta">
+        <span><strong id="occupiedCount">0</strong> / 100 reservados</span>
+        <span id="occupiedPct">0%</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <div class="action-bar">
+    <button class="action-btn" id="btnReset"><span class="ico">↻</span>Reiniciar</button>
+    <button class="action-btn" id="btnCustomize"><span class="ico">🎨</span>Personalizar</button>
+    <button class="action-btn" id="btnOpenDesigns"><span class="ico">🖼️</span>Diseños</button>
+    <button class="action-btn primary" id="btnShare"><span class="ico">↗</span>Compartir</button>
+  </div>
+
+  <div class="content-grid">
+
+    <div class="panel-main">
+      <div class="card" id="gridCard">
+        <div class="card-title">
+          <span>Cuadrícula de números</span>
+          <span class="count-badge">00 – 99</span>
+        </div>
+        <div class="grid-wrap">
+          <div class="number-grid" id="numberGrid"></div>
+        </div>
+      </div>
+
+      <div class="card" id="selectionBar" style="display:none;">
+        <div class="card-title">
+          <span>Seleccionados</span>
+          <span class="count-badge" id="selectionCountBadge">0 números</span>
+        </div>
+        <div class="selection-numbers" id="selectionNumbersList"></div>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="btn" id="btnClearSelection">Limpiar selección</button>
+          <button class="btn accent" id="btnReserveSelected">Reservar</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span>Leyenda</span></div>
+        <div class="legend">
+          <div class="legend-item"><span class="legend-dot available"></span>Disponible</div>
+          <div class="legend-item"><span class="legend-dot reserved"></span>Reservado</div>
+          <div class="legend-item"><span class="legend-dot paid"></span>Pagado</div>
+          <div class="legend-item"><span class="legend-dot winner"></span>Ganador</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-side">
+      <div class="card">
+        <div class="card-title"><span>Estadísticas</span></div>
+        <div class="stats-grid">
+          <div class="stat-chip" data-k="available"><div class="num" id="statAvailable">0</div><div class="lbl">Libres</div></div>
+          <div class="stat-chip" data-k="reserved"><div class="num" id="statReserved">0</div><div class="lbl">Reservados</div></div>
+          <div class="stat-chip" data-k="paid"><div class="num" id="statPaid">0</div><div class="lbl">Pagados</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span>Reservas</span><span class="count-badge" id="reservationCountBadge">0</span></div>
+        <div class="search-input-wrap">
+          <span class="search-ico">⌕</span>
+          <input type="text" class="search-input" id="searchInput" placeholder="Buscar por número, nombre o grupo...">
+        </div>
+        <div class="filter-row" id="filterRow">
+          <button class="filter-chip active" data-filter="all">Todos</button>
+          <button class="filter-chip" data-filter="reserved">Reservados</button>
+          <button class="filter-chip" data-filter="paid">Pagados</button>
+          <button class="filter-chip" data-filter="available">Disponibles</button>
+        </div>
+        <div class="reservation-list" id="reservationList" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="footer-note">Demo visual y funcional con datos de prueba — sin conexión a servidores ni bases de datos.</p>
+</div>
+
+<!-- ============ Overlay: Number detail (info / selección) ============ -->
+<div class="overlay" id="overlayDetail">
+  <div class="sheet">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-header">
+      <div>
+        <div class="detail-number"><span id="detailNumber">00</span></div>
+        <span class="detail-status-badge" id="detailStatusBadge">Disponible</span>
+      </div>
+      <button class="sheet-close" data-close="overlayDetail">✕</button>
+    </div>
+    <div class="detail-fields" id="detailFields"></div>
+    <div id="detailActions"></div>
+  </div>
+</div>
+
+<!-- ============ Overlay: reservar números seleccionados ============ -->
+<div class="overlay" id="overlayReserveForm">
+  <div class="sheet">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-header">
+      <span class="sheet-title" id="reserveFormTitle">Reservar números</span>
+      <button class="sheet-close" data-close="overlayReserveForm">✕</button>
+    </div>
+    <p class="sheet-text" style="margin-bottom:4px;"><strong style="color:var(--text)">Números seleccionados</strong></p>
+    <div class="selection-numbers" id="reserveFormNumbersList" style="margin-bottom:6px;"></div>
+
+    <div class="recent-contacts" id="recentContactsBlock" style="display:none;"></div>
+
+    <div class="field-group autocomplete-wrap" style="margin-top:10px;">
+      <label>Nombre</label>
+      <input type="text" id="bulkResName" placeholder="Nombre de la persona" autocomplete="off">
+      <div class="autocomplete-list" id="nameSuggestions"></div>
+      <div class="form-error" id="bulkResFormError">Ingresa el nombre de la persona.</div>
+    </div>
+    <div class="field-group autocomplete-wrap">
+      <label>Teléfono</label>
+      <input type="tel" id="bulkResPhone" placeholder="3011234567" autocomplete="off">
+      <div class="autocomplete-list" id="phoneSuggestions"></div>
+    </div>
+    <div class="field-group autocomplete-wrap">
+      <label>Grupo de WhatsApp</label>
+      <input type="text" id="bulkResGroup" placeholder="Grupo Norte" autocomplete="off">
+      <div class="autocomplete-list" id="groupSuggestions"></div>
+    </div>
+    <div class="field-group">
+      <label>Observación</label>
+      <textarea id="bulkResNote" rows="2" placeholder="Opcional"></textarea>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn" data-close="overlayReserveForm">Cancelar</button>
+      <button class="btn accent" id="btnConfirmBulkReserve">Confirmar reserva</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Overlay: generic confirmation (reset / liberar / marcar ganador) ============ -->
+<div class="overlay overlay-top" id="overlayConfirm">
+  <div class="sheet" style="max-width:380px;">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-header">
+      <span class="sheet-title" id="confirmTitle">¿Confirmar?</span>
+      <button class="sheet-close" data-close="overlayConfirm">✕</button>
+    </div>
+    <p class="sheet-text" id="confirmMessage"></p>
+    <div class="btn-row">
+      <button class="btn" data-close="overlayConfirm">Cancelar</button>
+      <button class="btn danger" id="confirmActionBtn">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Overlay: Customize ============ -->
+<div class="overlay" id="overlayCustomize">
+  <div class="sheet">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-header">
+      <span class="sheet-title">Personalizar</span>
+      <button class="sheet-close" data-close="overlayCustomize">✕</button>
+    </div>
+
+    <div class="editing-design-banner" id="editingDesignBanner" style="display:none;">
+      <span>Editando: <strong id="editingDesignName"></strong></span>
+      <button type="button" class="mini-link-btn" id="btnStopEditingDesign">Dejar de editar</button>
+    </div>
+
+    <button type="button" class="section-header" data-section="info">
+      <span class="chevron">▼</span> Información del sorteo
+    </button>
+    <div class="section-body" data-section-body="info">
+      <div class="field-group">
+        <label>Nombre del sorteo</label>
+        <input type="text" id="inRaffleName">
+      </div>
+      <div class="field-group">
+        <label>Premio</label>
+        <input type="text" id="inPrize">
+      </div>
+      <div class="field-group">
+        <label>Precio por número</label>
+        <input type="text" id="inPrice">
+      </div>
+      <div class="field-group">
+        <label>Texto principal</label>
+        <textarea id="inTagline" rows="2"></textarea>
+      </div>
+    </div>
+
+    <button type="button" class="section-header" data-section="behavior">
+      <span class="chevron">▼</span> Comportamiento
+    </button>
+    <div class="section-body" data-section-body="behavior">
+      <div class="switch-row">
+        <span class="switch-label">Ocultar números ocupados</span>
+        <label class="switch"><input type="checkbox" id="toggleHideNumbers"><span class="switch-slider"></span></label>
+      </div>
+      <div class="switch-row">
+        <span class="switch-label">Mostrar número ganador</span>
+        <label class="switch"><input type="checkbox" id="toggleShowWinnerNumber"><span class="switch-slider"></span></label>
+      </div>
+    </div>
+
+    <button type="button" class="section-header" data-section="generalColors">
+      <span class="chevron">▼</span> Colores generales
+    </button>
+    <div class="section-body" data-section-body="generalColors">
+      <div class="color-field"><span class="lbl">Fondo de la página</span><input type="color" class="swatch-input" id="inColorPageBg"></div>
+      <div class="color-field"><span class="lbl">Fondo de la tabla</span><input type="color" class="swatch-input" id="inColorTableBg"></div>
+      <div class="color-field"><span class="lbl">Texto general</span><input type="color" class="swatch-input" id="inColorText"></div>
+      <div class="color-field"><span class="lbl">Bordes generales</span><input type="color" class="swatch-input" id="inColorBorder"></div>
+      <div class="color-field"><span class="lbl">Acento</span><input type="color" class="swatch-input" id="inColorAccent"></div>
+    </div>
+
+    <button type="button" class="section-header" data-section="cellAppearance">
+      <span class="chevron">▼</span> Apariencia de celdas
+    </button>
+    <div class="section-body" data-section-body="cellAppearance">
+      <p class="subsection-label">Disponible</p>
+      <div class="color-field"><span class="lbl">Fondo</span><input type="color" class="swatch-input" id="inCellAvailableBg"></div>
+      <div class="color-field"><span class="lbl">Borde</span><input type="color" class="swatch-input" id="inCellAvailableBorder"></div>
+      <p class="subsection-label">Reservado</p>
+      <div class="color-field"><span class="lbl">Fondo</span><input type="color" class="swatch-input" id="inCellReservedBg"></div>
+      <div class="color-field"><span class="lbl">Borde</span><input type="color" class="swatch-input" id="inCellReservedBorder"></div>
+      <p class="subsection-label">Pagado</p>
+      <div class="color-field"><span class="lbl">Fondo</span><input type="color" class="swatch-input" id="inCellPaidBg"></div>
+      <div class="color-field"><span class="lbl">Borde</span><input type="color" class="swatch-input" id="inCellPaidBorder"></div>
+      <p class="subsection-label">Ganador</p>
+      <div class="color-field"><span class="lbl">Fondo</span><input type="color" class="swatch-input" id="inCellWinnerBg"></div>
+      <div class="color-field"><span class="lbl">Borde</span><input type="color" class="swatch-input" id="inCellWinnerBorder"></div>
+      <div class="color-field"><span class="lbl">Estrella</span><input type="color" class="swatch-input" id="inCellWinnerStar"></div>
+    </div>
+
+    <button type="button" class="section-header" data-section="numberAppearance">
+      <span class="chevron">▼</span> Apariencia de números
+    </button>
+    <div class="section-body" data-section-body="numberAppearance">
+      <p class="subsection-label">Disponible</p>
+      <div class="color-field"><span class="lbl">Texto</span><input type="color" class="swatch-input" id="inNumAvailableText"></div>
+      <p class="subsection-label">Reservado</p>
+      <div class="color-field"><span class="lbl">Texto</span><input type="color" class="swatch-input" id="inNumReservedText"></div>
+      <p class="subsection-label">Pagado</p>
+      <div class="color-field"><span class="lbl">Texto</span><input type="color" class="swatch-input" id="inNumPaidText"></div>
+      <p class="subsection-label">Ganador</p>
+      <div class="color-field"><span class="lbl">Texto</span><input type="color" class="swatch-input" id="inNumWinnerText"></div>
+    </div>
+
+    <button type="button" class="section-header" data-section="presets">
+      <span class="chevron">▼</span> Diseños predeterminados
+    </button>
+    <div class="section-body" data-section-body="presets">
+      <div class="preset-row" id="presetRow">
+        <button class="preset-chip" data-preset="clasico">Clásico</button>
+        <button class="preset-chip" data-preset="oscuro">Oscuro</button>
+        <button class="preset-chip active" data-preset="elegante">Elegante</button>
+        <button class="preset-chip" data-preset="whatsapp">WhatsApp</button>
+        <button class="preset-chip" data-preset="custom">Personalizado</button>
+      </div>
+    </div>
+
+    <button type="button" class="section-header" data-section="cellStyle">
+      <span class="chevron">▼</span> Estilo de celdas
+    </button>
+    <div class="section-body" data-section-body="cellStyle">
+      <div class="field-group">
+        <label>Forma</label>
+        <div class="segmented" id="shapeSegmented">
+          <button type="button" class="segmented-btn active" data-radius="10">Redondeado</button>
+          <button type="button" class="segmented-btn" data-radius="3">Cuadrado</button>
+        </div>
+      </div>
+      <div class="field-group">
+        <label>Radio de borde <span class="range-value" id="valCellRadius">8px</span></label>
+        <input type="range" id="inCellRadius" min="0" max="24" step="1">
+      </div>
+      <div class="field-group">
+        <label>Espaciado entre números <span class="range-value" id="valCellGap">6px</span></label>
+        <input type="range" id="inCellGap" min="2" max="16" step="1">
+      </div>
+      <div class="field-group">
+        <label>Grosor del borde <span class="range-value" id="valCellBorder">1px</span></label>
+        <input type="range" id="inCellBorderWidth" min="0" max="4" step="1">
+      </div>
+      <div class="field-group">
+        <label>Tamaño del número <span class="range-value" id="valCellFontSize">15px</span></label>
+        <input type="range" id="inCellFontSize" min="11" max="20" step="1">
+      </div>
+      <div class="field-group">
+        <label>Peso del número</label>
+        <div class="segmented" id="weightSegmented">
+          <button type="button" class="segmented-btn" data-weight="400">Normal</button>
+          <button type="button" class="segmented-btn" data-weight="500">Medio</button>
+          <button type="button" class="segmented-btn active" data-weight="600">Semibold</button>
+          <button type="button" class="segmented-btn" data-weight="700">Bold</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-row" id="editingDesignActions" style="display:none;">
+      <button class="btn accent full" id="btnSaveChangesToDesign">Guardar cambios</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn full" id="btnSaveAsDesign">Guardar como diseño</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn full" id="btnRestoreDefaults" style="flex:1;">Restaurar valores por defecto</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Overlay: guardar diseño (nombrarlo) ============ -->
+<div class="overlay overlay-top" id="overlaySaveDesign">
+  <div class="sheet" style="max-width:380px;">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-header">
+      <span class="sheet-title">Guardar diseño</span>
+      <button class="sheet-close" data-close="overlaySaveDesign">✕</button>
+    </div>
+    <div class="field-group">
+      <label>Nombre del diseño</label>
+      <input type="text" id="inSaveDesignName" placeholder="Mi diseño">
+      <div class="form-error" id="saveDesignFormError">Ingresa un nombre para el diseño.</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" data-close="overlaySaveDesign">Cancelar</button>
+      <button class="btn accent" id="btnConfirmSaveDesign">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Overlay: Diseños (administrar diseños guardados) ============ -->
+<div class="overlay" id="overlayDesigns">
+  <div class="sheet">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-header">
+      <span class="sheet-title">Diseños</span>
+      <button class="sheet-close" data-close="overlayDesigns">✕</button>
+    </div>
+
+    <div class="divider-label" style="margin-top:0;">Predeterminados</div>
+    <div id="presetDesignsList"></div>
+
+    <div class="divider-label">Mis diseños</div>
+    <div id="savedDesignsList"></div>
+  </div>
+</div>
+
+<!-- ============ Overlay: Share ============ -->
+<div class="overlay" id="overlayShare">
+  <div class="sheet">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-header">
+      <span class="sheet-title">Compartir sorteo</span>
+      <button class="sheet-close" data-close="overlayShare">✕</button>
+    </div>
+
+    <div class="share-option" data-share="wa">
+      <div class="share-option-head">
+        <div class="ico">💬</div>
+        <div class="txt"><div class="t1">Compartir por WhatsApp</div><div class="t2">Mensaje listo con los datos del sorteo</div></div>
+        <div class="chev">▾</div>
+      </div>
+      <div class="share-option-body"><div class="share-option-body-inner">
+        <div class="wa-bubble" id="waBubbleText"></div>
+        <div class="btn-row"><button class="btn accent full" id="btnOpenWhatsapp">Abrir WhatsApp</button></div>
+      </div></div>
+    </div>
+
+    <div class="share-option" data-share="link">
+      <div class="share-option-head">
+        <div class="ico">🔗</div>
+        <div class="txt"><div class="t1">Copiar enlace</div><div class="t2">Enlace de demostración</div></div>
+        <div class="chev">▾</div>
+      </div>
+      <div class="share-option-body"><div class="share-option-body-inner">
+        <div class="link-box"><span id="demoLinkText">https://sorteos.demo/gran-sorteo/AB12CD</span><button class="mini-btn" id="btnCopyLink">Copiar</button></div>
+      </div></div>
+    </div>
+
+    <div class="share-option" data-share="image">
+      <div class="share-option-head">
+        <div class="ico">🖼️</div>
+        <div class="txt"><div class="t1">Compartir imagen</div><div class="t2">Previsualización de la tabla</div></div>
+        <div class="chev">▾</div>
+      </div>
+      <div class="share-option-body"><div class="share-option-body-inner">
+        <div class="image-preview-card">
+          <div class="ipc-title" id="imgPrevName">Gran Sorteo</div>
+          <div class="ipc-prize" id="imgPrevPrize">Gana $700.000</div>
+          <div class="ipc-sub" id="imgPrevPrice">Número: $1.000 · Sorteo activo</div>
+          <div class="ipc-mini-grid" id="imgPrevGrid"></div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack"></div>
+
+
+<!-- ============================================================ -->
+<!-- ============================  JS  =========================== -->
+<!-- ============================================================ -->
+<script>
+(function () {
+  "use strict";
+
+  /* =========================================================
+     1. MOCK DATA — single source of truth
+     ---------------------------------------------------------
+     Only three statuses exist: available / reserved / paid.
+     "isWinner" is a completely independent flag. Everything in
+     the UI (grid, stats, reservations, detail) reads from
+     `currentData`, never from separate parallel arrays.
+  ========================================================== */
+
+  function cloneData(data) { return JSON.parse(JSON.stringify(data)); }
+
+  function buildInitialMockData() {
+    const list = [];
+    for (let i = 0; i < 100; i++) {
+      const num = i < 10 ? "0" + i : "" + i;
+      list.push({ number: num, status: "available", isWinner: false, name: null, phone: null, group: null, time: null, origin: null, observation: null });
+    }
+
+    const overrides = [
+      ["05","reserved","Andrés Gómez","301 XXX XXXX","Grupo Norte","7:42 PM","WhatsApp"],
+      ["12","reserved","Laura Ríos","315 XXX XXXX","Grupo Centro","6:10 PM","WhatsApp"],
+      ["18","paid","Carlos Peña","300 XXX XXXX","Grupo Centro","7:45 PM","WhatsApp"],
+      ["23","reserved","Valentina Ruiz","350 XXX XXXX","Grupo Sur","8:02 PM","WhatsApp"],
+      ["27","reserved","Juan Torres",null,"Grupo Sur","7:51 PM","WhatsApp"],
+      ["31","paid","Camila Duarte","320 XXX XXXX","Grupo Norte","5:30 PM","WhatsApp"],
+      ["36","reserved","Sebastián León","312 XXX XXXX","Grupo Familia","6:47 PM","WhatsApp"],
+      ["41","paid","Daniela Vargas","304 XXX XXXX","Grupo Trabajo","3:58 PM","WhatsApp"],
+      ["44","reserved","Felipe Ortiz","318 XXX XXXX","Grupo Norte","7:20 PM","WhatsApp"],
+      ["47","reserved","Andrés","301 XXX XXXX","Grupo Norte","7:42 PM","WhatsApp"],
+      ["49","paid","Natalia Cruz","322 XXX XXXX","Grupo Centro","2:11 PM","WhatsApp"],
+      ["52","reserved","Julián Rey","305 XXX XXXX","Grupo Sur","6:33 PM","WhatsApp"],
+      ["55","paid","Paula Méndez","333 XXX XXXX","Grupo Familia","1:05 PM","WhatsApp"],
+      ["58","reserved","Isabella Soto","311 XXX XXXX","Grupo Trabajo","7:59 PM","WhatsApp"],
+      ["63","paid","Mateo Herrera","307 XXX XXXX","Grupo Norte","4:40 PM","WhatsApp"],
+      ["66","paid","Sofía Castro","309 XXX XXXX","Grupo Centro","8:30 PM","WhatsApp"],
+      ["68","reserved","Diego Salazar","316 XXX XXXX","Grupo Sur","5:52 PM","WhatsApp"],
+      ["71","paid","Andrea López","302 XXX XXXX","Grupo Familia","6:05 PM","WhatsApp"],
+      ["74","reserved","María Puentes","319 XXX XXXX","Grupo Norte","7:15 PM","WhatsApp"],
+      ["77","paid","Santiago Rojas","303 XXX XXXX","Grupo Trabajo","2:47 PM","WhatsApp"],
+      ["80","reserved","Camilo Vega","314 XXX XXXX","Grupo Centro","6:58 PM","WhatsApp"],
+      ["86","paid","Luisa Fernández","308 XXX XXXX","Grupo Sur","3:22 PM","WhatsApp"],
+      ["89","reserved","Tomás Beltrán","317 XXX XXXX","Grupo Familia","7:36 PM","WhatsApp"],
+      ["93","reserved","Renata Duque","321 XXX XXXX","Grupo Norte","8:45 PM","WhatsApp"],
+      ["96","reserved","Emilio Cortés","306 XXX XXXX","Grupo Trabajo","5:12 PM","WhatsApp"]
+    ];
+
+    overrides.forEach(([num, status, name, phone, group, time, origin]) => {
+      const entry = list.find(n => n.number === num);
+      if (entry) Object.assign(entry, { status, name, phone, group, time, origin });
+    });
+
+    return list;
+  }
+
+  const initialMockData = buildInitialMockData();
+  let currentData = cloneData(initialMockData);
+
+  const STATUS_LABELS = { available: "Disponible", reserved: "Reservado", paid: "Pagado" };
+  const STATUS_EMOJI = { available: "🟢", reserved: "🟡", paid: "🔵" };
+  // Used only for chrome accents outside the grid (badges, stat numbers,
+  // reservation rows) — the grid cells themselves read their bg/border/text
+  // from three fully independent variables per status, defined below.
+  const STATUS_COLOR_VAR = { reserved: "--c-reserved-border", paid: "--c-paid-border", available: "--c-available-border" };
+
+  /* =========================================================
+     1B. CONTACTS — reusable mock address book (independent of
+     the raffle numbers). Persisted in localStorage so a name
+     typed once can be found again in a later reservation, in
+     this browser only. The phone number is the primary key: two
+     contacts never share the same digits, so re-using someone
+     just updates their existing record instead of duplicating it.
+  ========================================================== */
+  const initialMockContacts = [
+    { id: 1, name: "Andrés Mercado", phone: "3201234567", group: "Grupo Norte" },
+    { id: 2, name: "Andrés Pérez", phone: "3109988776", group: "Grupo Sur" },
+    { id: 3, name: "Andrea Gómez", phone: "3157766554", group: "Grupo Medellín" },
+    { id: 4, name: "Carlos Pérez", phone: "3009876543", group: "Grupo Centro" },
+    { id: 5, name: "María López", phone: "3209876543", group: "Grupo Centro" },
+    { id: 6, name: "Juan Ramírez", phone: "3125551234", group: "Grupo Sur" }
+  ];
+
+  const CONTACTS_KEY = "sorteoDemoContacts_v1";
+
+  function loadContacts() {
+    try {
+      const raw = localStorage.getItem(CONTACTS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length) return parsed;
+      }
+    } catch (e) { /* ignore malformed storage */ }
+    return cloneData(initialMockContacts);
+  }
+
+  function saveContacts() {
+    try { localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts)); } catch (e) { /* ignore quota errors in demo */ }
+  }
+
+  let contacts = loadContacts();
+
+  function onlyDigits(str) { return (str || "").replace(/\D/g, ""); }
+
+  function nextContactId() {
+    return contacts.reduce((max, c) => Math.max(max, c.id), 0) + 1;
+  }
+
+  // Finds a contact by phone digits, updates it with the latest
+  // name/group, or creates a brand-new one — then moves it to the
+  // front of the list so it shows up under "Contactos recientes".
+  function findOrCreateContact({ name, phone, group }) {
+    const digits = onlyDigits(phone);
+    if (!name || !digits) return null;
+
+    let contact = contacts.find(c => onlyDigits(c.phone) === digits);
+    if (contact) {
+      contact.name = name;
+      contact.group = group || contact.group || null;
+    } else {
+      contact = { id: nextContactId(), name, phone: digits, group: group || null };
+    }
+    contacts = [contact, ...contacts.filter(c => c !== contact)];
+    saveContacts();
+    return contact;
+  }
+
+  function searchContactsByName(query) {
+    const q = query.toLowerCase();
+    return contacts.filter(c => c.name.toLowerCase().split(" ").some(word => word.startsWith(q))).slice(0, 6);
+  }
+
+  function searchContactsByPhone(query) {
+    const digits = onlyDigits(query);
+    if (!digits) return [];
+    return contacts.filter(c => onlyDigits(c.phone).startsWith(digits)).slice(0, 6);
+  }
+
+  function getAllKnownGroups() {
+    const set = new Set();
+    contacts.forEach(c => { if (c.group) set.add(c.group); });
+    currentData.forEach(e => { if (e.group) set.add(e.group); });
+    return Array.from(set).sort();
+  }
+
+  function searchGroups(query) {
+    const q = query.toLowerCase();
+    return getAllKnownGroups().filter(g => g.toLowerCase().startsWith(q)).slice(0, 6);
+  }
+
+  /* =========================================================
+     2. SETTINGS (customizable copy, colors, behavior, cell style)
+     — kept only for visual preferences, never for table data.
+  ========================================================== */
+  const PRESETS = {
+    elegante: {
+      pageBg: "#0a0c10", tableBg: "#12151b", text: "#eef1f6", border: "#242a35", accent: "#d4af6a",
+      availableBg: "#171b23", availableBorder: "#242a35", availableText: "#eef1f6",
+      reservedBg: "#3a331f", reservedBorder: "#a8822f", reservedText: "#f4c247",
+      paidBg: "#1c2e3f", paidBorder: "#3d7dc7", paidText: "#4da3ff",
+      winnerBg: "#4a3f2c", winnerBorder: "#d4af6a", winnerText: "#d4af6a", winnerStar: "#d4af6a"
+    },
+    oscuro: {
+      pageBg: "#08090c", tableBg: "#0f1115", text: "#f2f5fa", border: "#20242c", accent: "#8b7bff",
+      availableBg: "#12151a", availableBorder: "#20242c", availableText: "#f2f5fa",
+      reservedBg: "#332b12", reservedBorder: "#ffe066", reservedText: "#ffe066",
+      paidBg: "#12222b", paidBorder: "#5ad1ff", paidText: "#5ad1ff",
+      winnerBg: "#2a2036", winnerBorder: "#c9a6ff", winnerText: "#c9a6ff", winnerStar: "#c9a6ff"
+    },
+    clasico: {
+      pageBg: "#f3ecd8", tableBg: "#d8c36a", text: "#2b2210", border: "#b89a4f", accent: "#8a6a1f",
+      availableBg: "#e8f2df", availableBorder: "#9fc98a", availableText: "#2b2210",
+      reservedBg: "#fbe9b0", reservedBorder: "#d9a521", reservedText: "#5c3d00",
+      paidBg: "#d9e9fb", paidBorder: "#5b8fc9", paidText: "#1c3a5c",
+      winnerBg: "#f0dfa0", winnerBorder: "#8a6a1f", winnerText: "#5c4712", winnerStar: "#8a6a1f"
+    },
+    whatsapp: {
+      pageBg: "#e9edef", tableBg: "#ffffff", text: "#111b21", border: "#d1d7db", accent: "#25d366",
+      availableBg: "#f0f2f5", availableBorder: "#c7ccd1", availableText: "#111b21",
+      reservedBg: "#fff2cc", reservedBorder: "#e0ac07", reservedText: "#6b4e00",
+      paidBg: "#d7f7e3", paidBorder: "#25d366", paidText: "#0b5a2e",
+      winnerBg: "#cdeee9", winnerBorder: "#128c7e", winnerText: "#0b5a52", winnerStar: "#128c7e"
+    }
+  };
+
+  const DEFAULT_SETTINGS = {
+    raffleName: "Gran Sorteo",
+    prize: "$700.000",
+    price: "$1.000",
+    tagline: "Elige tus números favoritos y participa por el gran premio. Cupos limitados.",
+    hideOccupiedNumbers: true,
+    showWinnerNumber: false,
+    activePreset: "elegante",
+    colors: { ...PRESETS.elegante },
+    cellStyle: { radius: 8, gap: 6, borderWidth: 1, fontSize: 15, fontWeight: 600 }
+  };
+
+  const SETTINGS_KEY = "raffle_current_design";
+  let settings = loadSettings();
+
+  function loadSettings() {
+    try {
+      const raw = localStorage.getItem(SETTINGS_KEY);
+      if (!raw) return JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+      const parsed = JSON.parse(raw);
+      return {
+        ...JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
+        ...parsed,
+        colors: { ...DEFAULT_SETTINGS.colors, ...(parsed.colors || {}) },
+        cellStyle: { ...DEFAULT_SETTINGS.cellStyle, ...(parsed.cellStyle || {}) }
+      };
+    } catch (e) {
+      return JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+    }
+  }
+
+  function saveSettings() {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore quota errors in demo */ }
+  }
+
+  function hexToRgb(hex) {
+    const h = hex.replace("#", "");
+    const v = h.length === 3 ? h.split("").map(c => c + c).join("") : h;
+    const num = parseInt(v, 16);
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  }
+  function pickInk(hex) {
+    try {
+      const { r, g, b } = hexToRgb(hex);
+      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      return luminance > 0.62 ? "#1a1408" : "#ffffff";
+    } catch (e) { return "#1a1408"; }
+  }
+
+  function applyCustomization() {
+    document.getElementById("raffleNameLbl").textContent = settings.raffleName;
+    document.getElementById("prizeLbl").textContent = settings.prize;
+    document.getElementById("priceLbl").textContent = settings.price;
+    document.getElementById("taglineLbl").textContent = settings.tagline;
+
+    const root = document.documentElement.style;
+    const c = settings.colors;
+    root.setProperty("--bg", c.pageBg);
+    root.setProperty("--table-bg", c.tableBg);
+    root.setProperty("--text", c.text);
+    root.setProperty("--border", c.border);
+    root.setProperty("--accent", c.accent);
+    root.setProperty("--accent-ink", pickInk(c.accent));
+
+    // Three fully independent layers per status — none derived from another.
+    root.setProperty("--c-available-bg", c.availableBg);
+    root.setProperty("--c-available-border", c.availableBorder);
+    root.setProperty("--c-available-text", c.availableText);
+
+    root.setProperty("--c-reserved-bg", c.reservedBg);
+    root.setProperty("--c-reserved-border", c.reservedBorder);
+    root.setProperty("--c-reserved-text", c.reservedText);
+
+    root.setProperty("--c-paid-bg", c.paidBg);
+    root.setProperty("--c-paid-border", c.paidBorder);
+    root.setProperty("--c-paid-text", c.paidText);
+
+    root.setProperty("--c-winner-bg", c.winnerBg);
+    root.setProperty("--c-winner-border", c.winnerBorder);
+    root.setProperty("--c-winner-text", c.winnerText);
+    root.setProperty("--c-winner-star", c.winnerStar);
+    root.setProperty("--winner-ink", pickInk(c.winnerBorder));
+
+    root.setProperty("--cell-radius", settings.cellStyle.radius + "px");
+    root.setProperty("--cell-gap", settings.cellStyle.gap + "px");
+    root.setProperty("--cell-border-width", settings.cellStyle.borderWidth + "px");
+    root.setProperty("--cell-font-max", settings.cellStyle.fontSize + "px");
+    root.setProperty("--cell-font-weight", settings.cellStyle.fontWeight);
+
+    document.getElementById("imgPrevName").textContent = settings.raffleName;
+    document.getElementById("imgPrevPrize").textContent = "Gana " + settings.prize;
+    document.getElementById("imgPrevPrice").textContent = "Número: " + settings.price + " · Sorteo activo";
+
+    document.querySelectorAll(".preset-chip").forEach(chip => {
+      chip.classList.toggle("active", chip.dataset.preset === settings.activePreset);
+    });
+  }
+
+  function fillCustomizeForm() {
+    document.getElementById("inRaffleName").value = settings.raffleName;
+    document.getElementById("inPrize").value = settings.prize;
+    document.getElementById("inPrice").value = settings.price;
+    document.getElementById("inTagline").value = settings.tagline;
+
+    document.getElementById("toggleHideNumbers").checked = settings.hideOccupiedNumbers;
+    document.getElementById("toggleShowWinnerNumber").checked = settings.showWinnerNumber;
+
+    const c = settings.colors;
+    document.getElementById("inColorPageBg").value = c.pageBg;
+    document.getElementById("inColorTableBg").value = c.tableBg;
+    document.getElementById("inColorText").value = c.text;
+    document.getElementById("inColorBorder").value = c.border;
+    document.getElementById("inColorAccent").value = c.accent;
+
+    document.getElementById("inCellAvailableBg").value = c.availableBg;
+    document.getElementById("inCellAvailableBorder").value = c.availableBorder;
+    document.getElementById("inCellReservedBg").value = c.reservedBg;
+    document.getElementById("inCellReservedBorder").value = c.reservedBorder;
+    document.getElementById("inCellPaidBg").value = c.paidBg;
+    document.getElementById("inCellPaidBorder").value = c.paidBorder;
+    document.getElementById("inCellWinnerBg").value = c.winnerBg;
+    document.getElementById("inCellWinnerBorder").value = c.winnerBorder;
+    document.getElementById("inCellWinnerStar").value = c.winnerStar;
+
+    document.getElementById("inNumAvailableText").value = c.availableText;
+    document.getElementById("inNumReservedText").value = c.reservedText;
+    document.getElementById("inNumPaidText").value = c.paidText;
+    document.getElementById("inNumWinnerText").value = c.winnerText;
+
+    document.getElementById("inCellRadius").value = settings.cellStyle.radius;
+    document.getElementById("inCellGap").value = settings.cellStyle.gap;
+    document.getElementById("inCellBorderWidth").value = settings.cellStyle.borderWidth;
+    document.getElementById("inCellFontSize").value = settings.cellStyle.fontSize;
+    document.getElementById("valCellRadius").textContent = settings.cellStyle.radius + "px";
+    document.getElementById("valCellGap").textContent = settings.cellStyle.gap + "px";
+    document.getElementById("valCellBorder").textContent = settings.cellStyle.borderWidth + "px";
+    document.getElementById("valCellFontSize").textContent = settings.cellStyle.fontSize + "px";
+
+    document.querySelectorAll("#shapeSegmented .segmented-btn").forEach(b => {
+      b.classList.toggle("active", Number(b.dataset.radius) === settings.cellStyle.radius);
+    });
+    document.querySelectorAll("#weightSegmented .segmented-btn").forEach(b => {
+      b.classList.toggle("active", Number(b.dataset.weight) === settings.cellStyle.fontWeight);
+    });
+  }
+
+  function openCustomize() {
+    fillCustomizeForm();
+    applySectionsState();
+    updateEditingBanner();
+    openOverlay("overlayCustomize");
+  }
+
+  /* =========================================================
+     2B. COLLAPSIBLE SECTIONS — remembers which sections of
+     Personalizar are open/closed, independent of everything else.
+  ========================================================== */
+  const SECTIONS_KEY = "customizerSectionsState";
+  const SECTION_KEYS = ["info", "behavior", "generalColors", "cellAppearance", "numberAppearance", "presets", "cellStyle"];
+
+  function loadSectionsState() {
+    try {
+      const raw = localStorage.getItem(SECTIONS_KEY);
+      if (raw) return { ...Object.fromEntries(SECTION_KEYS.map(k => [k, true])), ...JSON.parse(raw) };
+    } catch (e) { /* ignore malformed storage */ }
+    return Object.fromEntries(SECTION_KEYS.map(k => [k, true]));
+  }
+  function saveSectionsState() {
+    try { localStorage.setItem(SECTIONS_KEY, JSON.stringify(sectionsState)); } catch (e) { /* ignore quota errors in demo */ }
+  }
+  let sectionsState = loadSectionsState();
+
+  function applySectionsState() {
+    document.querySelectorAll("[data-section-body]").forEach(body => {
+      const key = body.dataset.sectionBody;
+      const open = sectionsState[key] !== false;
+      body.classList.toggle("collapsed", !open);
+      const header = document.querySelector('.section-header[data-section="' + key + '"]');
+      if (header) header.querySelector(".chevron").textContent = open ? "▼" : "▶";
+    });
+  }
+
+  document.querySelectorAll("#overlayCustomize .section-header").forEach(header => {
+    header.addEventListener("click", () => {
+      const key = header.dataset.section;
+      sectionsState[key] = !(sectionsState[key] !== false);
+      saveSectionsState();
+      applySectionsState();
+    });
+  });
+
+  /* =========================================================
+     2C. SAVED DESIGNS — a design bundles the FULL visual
+     configuration (theme, per-status cell colors, number size/
+     weight, grid geometry, and the two visibility behaviors).
+     `settings` remains the single live source of truth; a saved
+     design is just a named snapshot of its visual portion that
+     can be restored later. Persisted in its own localStorage key,
+     completely separate from raffle data / contacts / current design.
+  ========================================================== */
+  const DESIGNS_KEY = "raffle_saved_designs";
+
+  function loadSavedDesigns() {
+    try {
+      const raw = localStorage.getItem(DESIGNS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) { /* ignore malformed storage */ }
+    return [];
+  }
+  function saveSavedDesigns() {
+    try { localStorage.setItem(DESIGNS_KEY, JSON.stringify(savedDesigns)); } catch (e) { /* ignore quota errors in demo */ }
+  }
+  let savedDesigns = loadSavedDesigns();
+  let editingDesignId = null;
+
+  function generateDesignId() {
+    return "design-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  // Pulls the visual portion of `settings` into the shareable design
+  // shape described in the spec (theme / cells / numbers / grid / behavior).
+  function designFromCurrentSettings(name) {
+    const c = settings.colors;
+    const now = new Date().toISOString();
+    return {
+      id: generateDesignId(),
+      name: name,
+      createdAt: now,
+      updatedAt: now,
+      theme: {
+        pageBackground: c.pageBg,
+        tableBackground: c.tableBg,
+        generalText: c.text,
+        generalBorders: c.border,
+        accent: c.accent
+      },
+      cells: {
+        available: { bg: c.availableBg, border: c.availableBorder, text: c.availableText },
+        reserved: { bg: c.reservedBg, border: c.reservedBorder, text: c.reservedText },
+        paid: { bg: c.paidBg, border: c.paidBorder, text: c.paidText },
+        winner: { bg: c.winnerBg, border: c.winnerBorder, text: c.winnerText, star: c.winnerStar }
+      },
+      numbers: { size: settings.cellStyle.fontSize, weight: settings.cellStyle.fontWeight },
+      grid: {
+        radius: settings.cellStyle.radius,
+        spacing: settings.cellStyle.gap,
+        borderWidth: settings.cellStyle.borderWidth,
+        shape: settings.cellStyle.radius <= 4 ? "square" : "rounded"
+      },
+      behavior: {
+        hideOccupiedNumbers: settings.hideOccupiedNumbers,
+        showWinnerNumber: settings.showWinnerNumber
+      }
+    };
+  }
+
+  // Writes a full saved-design snapshot back into the live `settings`
+  // object — the single source of truth used by applyCustomization().
+  function applyDesignObjectToSettings(design) {
+    settings.colors.pageBg = design.theme.pageBackground;
+    settings.colors.tableBg = design.theme.tableBackground;
+    settings.colors.text = design.theme.generalText;
+    settings.colors.border = design.theme.generalBorders;
+    settings.colors.accent = design.theme.accent;
+
+    settings.colors.availableBg = design.cells.available.bg;
+    settings.colors.availableBorder = design.cells.available.border;
+    settings.colors.availableText = design.cells.available.text;
+
+    settings.colors.reservedBg = design.cells.reserved.bg;
+    settings.colors.reservedBorder = design.cells.reserved.border;
+    settings.colors.reservedText = design.cells.reserved.text;
+
+    settings.colors.paidBg = design.cells.paid.bg;
+    settings.colors.paidBorder = design.cells.paid.border;
+    settings.colors.paidText = design.cells.paid.text;
+
+    settings.colors.winnerBg = design.cells.winner.bg;
+    settings.colors.winnerBorder = design.cells.winner.border;
+    settings.colors.winnerText = design.cells.winner.text;
+    settings.colors.winnerStar = design.cells.winner.star;
+
+    settings.cellStyle.fontSize = design.numbers.size;
+    settings.cellStyle.fontWeight = design.numbers.weight;
+    settings.cellStyle.radius = design.grid.radius;
+    settings.cellStyle.gap = design.grid.spacing;
+    settings.cellStyle.borderWidth = design.grid.borderWidth;
+
+    settings.hideOccupiedNumbers = design.behavior.hideOccupiedNumbers;
+    settings.showWinnerNumber = design.behavior.showWinnerNumber;
+    settings.activePreset = "custom";
+  }
+
+  function updateEditingBanner() {
+    const banner = document.getElementById("editingDesignBanner");
+    const actionsRow = document.getElementById("editingDesignActions");
+    if (editingDesignId) {
+      const d = savedDesigns.find(x => x.id === editingDesignId);
+      if (d) {
+        document.getElementById("editingDesignName").textContent = d.name;
+        banner.style.display = "flex";
+        actionsRow.style.display = "flex";
+        return;
+      }
+    }
+    banner.style.display = "none";
+    actionsRow.style.display = "none";
+  }
+
+  // Shared by the quick preset chips inside Personalizar AND the
+  // "Predeterminados" cards inside the Diseños panel — one function,
+  // no duplicated logic.
+  function applyPresetByKey(key) {
+    if (!PRESETS[key]) return;
+    settings.colors = { ...PRESETS[key] };
+    settings.activePreset = key;
+    editingDesignId = null;
+    applyCustomization();
+    fillCustomizeForm();
+    updateEditingBanner();
+    saveSettings();
+  }
+
+  function applySavedDesign(id) {
+    const d = savedDesigns.find(x => x.id === id);
+    if (!d) return;
+    applyDesignObjectToSettings(d);
+    editingDesignId = null;
+    applyCustomization();
+    fillCustomizeForm();
+    updateEditingBanner();
+    renderGrid();
+    saveSettings();
+    closeOverlay("overlayDesigns");
+    showToast('Diseño "' + d.name + '" aplicado.');
+  }
+
+  function startEditDesign(id) {
+    const d = savedDesigns.find(x => x.id === id);
+    if (!d) return;
+    applyDesignObjectToSettings(d);
+    editingDesignId = id;
+    applyCustomization();
+    fillCustomizeForm();
+    renderGrid();
+    saveSettings();
+    closeOverlay("overlayDesigns");
+    openCustomize();
+    showToast('Editando "' + d.name + '".');
+  }
+
+  function duplicateDesign(id) {
+    const d = savedDesigns.find(x => x.id === id);
+    if (!d) return;
+    const copy = JSON.parse(JSON.stringify(d));
+    copy.id = generateDesignId();
+    copy.name = d.name + " copia";
+    copy.createdAt = new Date().toISOString();
+    copy.updatedAt = copy.createdAt;
+    savedDesigns = [copy, ...savedDesigns];
+    saveSavedDesigns();
+    renderDesignsPanel();
+    showToast('Diseño duplicado: "' + copy.name + '".');
+  }
+
+  function deleteDesign(id) {
+    savedDesigns = savedDesigns.filter(x => x.id !== id);
+    if (editingDesignId === id) { editingDesignId = null; updateEditingBanner(); }
+    saveSavedDesigns();
+    renderDesignsPanel();
+    showToast("Diseño eliminado.");
+  }
+
+  function confirmDeleteDesign(id) {
+    const d = savedDesigns.find(x => x.id === id);
+    if (!d) return;
+    showConfirm({
+      title: "¿Eliminar este diseño?",
+      message: "Esta acción no se puede deshacer.",
+      confirmLabel: "Eliminar",
+      variant: "danger",
+      onConfirm: () => deleteDesign(id)
+    });
+  }
+
+  function saveCurrentAsDesign(name) {
+    const design = designFromCurrentSettings(name);
+    savedDesigns = [design, ...savedDesigns];
+    saveSavedDesigns();
+    editingDesignId = design.id;
+    updateEditingBanner();
+    showToast('Diseño guardado: "' + name + '".');
+  }
+
+  function saveChangesToEditingDesign() {
+    if (!editingDesignId) return;
+    const idx = savedDesigns.findIndex(d => d.id === editingDesignId);
+    if (idx === -1) return;
+    const updated = designFromCurrentSettings(savedDesigns[idx].name);
+    updated.id = editingDesignId;
+    updated.createdAt = savedDesigns[idx].createdAt;
+    savedDesigns[idx] = updated;
+    saveSavedDesigns();
+    showToast('Cambios guardados en "' + updated.name + '".');
+  }
+
+  // Small 5x3 color-swatch thumbnail — no real numbers needed, it's
+  // just meant to represent the palette (bg / border per status).
+  function buildDesignThumbHTML(look) {
+    const pattern = ["available","available","reserved","available","available",
+                      "paid","available","available","winner","available",
+                      "available","available","available","available","available"];
+    const cells = pattern.map(status => {
+      const bg = look[status + "Bg"];
+      const border = look[status + "Border"];
+      return '<div class="design-thumb-cell" style="background:' + bg + ';border:1px solid ' + border + ';"></div>';
+    }).join("");
+    return '<div class="design-thumb" style="background:' + look.tableBg + ';">' + cells + '</div>';
+  }
+
+  function presetLookForThumb(key) {
+    const p = PRESETS[key];
+    return { tableBg: p.tableBg, availableBg: p.availableBg, availableBorder: p.availableBorder,
+      reservedBg: p.reservedBg, reservedBorder: p.reservedBorder, paidBg: p.paidBg, paidBorder: p.paidBorder,
+      winnerBg: p.winnerBg, winnerBorder: p.winnerBorder };
+  }
+
+  function designLookForThumb(d) {
+    return {
+      tableBg: d.theme.tableBackground,
+      availableBg: d.cells.available.bg, availableBorder: d.cells.available.border,
+      reservedBg: d.cells.reserved.bg, reservedBorder: d.cells.reserved.border,
+      paidBg: d.cells.paid.bg, paidBorder: d.cells.paid.border,
+      winnerBg: d.cells.winner.bg, winnerBorder: d.cells.winner.border
+    };
+  }
+
+  const PRESET_LABELS = { clasico: "Clásico", oscuro: "Oscuro", elegante: "Elegante", whatsapp: "WhatsApp" };
+
+  function renderDesignsPanel() {
+    const presetListEl = document.getElementById("presetDesignsList");
+    presetListEl.innerHTML = Object.keys(PRESETS).map(key => `
+      <div class="design-card">
+        ${buildDesignThumbHTML(presetLookForThumb(key))}
+        <div class="design-info">
+          <div class="design-name">${PRESET_LABELS[key]}</div>
+          <div class="design-actions">
+            <button class="btn accent" data-apply-preset="${key}">Aplicar</button>
+          </div>
+        </div>
+      </div>
+    `).join("");
+    presetListEl.querySelectorAll("[data-apply-preset]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        applyPresetByKey(btn.dataset.applyPreset);
+        renderGrid();
+        closeOverlay("overlayDesigns");
+        showToast('Diseño "' + PRESET_LABELS[btn.dataset.applyPreset] + '" aplicado.');
+      });
+    });
+
+    const savedListEl = document.getElementById("savedDesignsList");
+    if (savedDesigns.length === 0) {
+      savedListEl.innerHTML = '<p class="empty-designs-note">No tienes diseños guardados todavía. Personaliza el sorteo y usa "Guardar como diseño".</p>';
+      return;
+    }
+    savedListEl.innerHTML = savedDesigns.map(d => `
+      <div class="design-card">
+        ${buildDesignThumbHTML(designLookForThumb(d))}
+        <div class="design-info">
+          <div class="design-name">${d.name}</div>
+          <div class="design-actions">
+            <button class="btn accent" data-action="apply" data-id="${d.id}">Aplicar</button>
+            <button class="btn" data-action="edit" data-id="${d.id}">Editar</button>
+            <button class="btn" data-action="duplicate" data-id="${d.id}">Duplicar</button>
+            <button class="btn danger" data-action="delete" data-id="${d.id}">Eliminar</button>
+          </div>
+        </div>
+      </div>
+    `).join("");
+    savedListEl.querySelectorAll("[data-action]").forEach(btn => {
+      const id = btn.dataset.id;
+      const action = btn.dataset.action;
+      btn.addEventListener("click", () => {
+        if (action === "apply") applySavedDesign(id);
+        else if (action === "edit") startEditDesign(id);
+        else if (action === "duplicate") duplicateDesign(id);
+        else if (action === "delete") confirmDeleteDesign(id);
+      });
+    });
+  }
+
+  function openDesigns() {
+    renderDesignsPanel();
+    openOverlay("overlayDesigns");
+  }
+  document.getElementById("btnOpenDesigns").addEventListener("click", openDesigns);
+
+  document.getElementById("btnSaveAsDesign").addEventListener("click", () => {
+    document.getElementById("inSaveDesignName").value = "";
+    document.getElementById("saveDesignFormError").classList.remove("visible");
+    openOverlay("overlaySaveDesign");
+  });
+
+  document.getElementById("btnConfirmSaveDesign").addEventListener("click", () => {
+    const name = document.getElementById("inSaveDesignName").value.trim();
+    const errorEl = document.getElementById("saveDesignFormError");
+    if (!name) {
+      errorEl.classList.add("visible");
+      return;
+    }
+    errorEl.classList.remove("visible");
+    saveCurrentAsDesign(name);
+    closeOverlay("overlaySaveDesign");
+  });
+
+  document.getElementById("btnStopEditingDesign").addEventListener("click", () => {
+    editingDesignId = null;
+    updateEditingBanner();
+  });
+
+  document.getElementById("btnSaveChangesToDesign").addEventListener("click", () => {
+    saveChangesToEditingDesign();
+  });
+
+  /* =========================================================
+     3. STATE — filters, search and the temporary multi-selection.
+     ---------------------------------------------------------
+     `selectedNumbers` is NOT a business status. It never touches
+     `entry.status`; it is only a UI-side list of number strings
+     the administrator has tapped before reserving them together.
+  ========================================================== */
+  let currentFilter = "all";
+  let currentSearch = "";
+  let selectedNumbers = [];
+
+  /* =========================================================
+     4. HELPERS
+  ========================================================== */
+  function formatTimeNow() {
+    const d = new Date();
+    let h = d.getHours();
+    const m = d.getMinutes();
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12; if (h === 0) h = 12;
+    const mm = m < 10 ? "0" + m : "" + m;
+    return h + ":" + mm + " " + ampm;
+  }
+
+  function maskPhone(raw) {
+    if (!raw) return null;
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length < 7) return raw;
+    return digits.slice(0, 3) + " XXX " + digits.slice(-4);
+  }
+
+  function matchesFilter(entry) {
+    if (currentFilter !== "all" && entry.status !== currentFilter) return false;
+    if (currentSearch) {
+      const q = currentSearch.toLowerCase();
+      const hay = [entry.number, entry.name || "", entry.group || ""].join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }
+
+  function isNumberHidden(entry) {
+    const wouldHide = entry.status !== "available" && settings.hideOccupiedNumbers;
+    if (entry.isWinner && settings.showWinnerNumber) return false;
+    return wouldHide;
+  }
+
+  function pluralNumero(n) { return n === 1 ? "número" : "números"; }
+
+  /* =========================================================
+     5. RENDER: grid — always reads from currentData + selectedNumbers
+  ========================================================== */
+  const gridEl = document.getElementById("numberGrid");
+  const cellRefs = {};
+
+  function buildGridSkeleton() {
+    currentData.forEach(entry => {
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      cell.dataset.number = entry.number;
+      cell.addEventListener("click", () => openNumberDetail(entry.number));
+      gridEl.appendChild(cell);
+      cellRefs[entry.number] = cell;
+    });
+  }
+
+  function renderGrid(flashNumber) {
+    currentData.forEach(entry => {
+      const cell = cellRefs[entry.number];
+      cell.dataset.status = entry.status;
+      cell.classList.toggle("is-winner", !!entry.isWinner);
+      cell.classList.toggle("is-selected", entry.status === "available" && selectedNumbers.includes(entry.number));
+
+      const hideNumber = isNumberHidden(entry);
+      let inner = "";
+      if (entry.isWinner && !hideNumber) {
+        inner = '<span class="cell-content compact"><span class="cell-star">★</span><span class="cell-num">' + entry.number + '</span></span>';
+      } else if (entry.isWinner && hideNumber) {
+        inner = '<span class="cell-content"><span class="cell-star">★</span></span>';
+      } else if (!hideNumber) {
+        inner = '<span class="cell-content"><span class="cell-num">' + entry.number + '</span></span>';
+      }
+      cell.innerHTML = inner;
+
+      const isFiltering = currentFilter !== "all" || currentSearch.trim() !== "";
+      cell.classList.toggle("dimmed", isFiltering && !matchesFilter(entry));
+
+      if (flashNumber === entry.number) {
+        cell.classList.add("just-updated");
+        setTimeout(() => cell.classList.remove("just-updated"), 500);
+      }
+    });
+  }
+
+  /* =========================================================
+     6. RENDER: stats — always derived from currentData
+  ========================================================== */
+  function renderStats() {
+    const counts = { available: 0, reserved: 0, paid: 0 };
+    currentData.forEach(n => { if (counts.hasOwnProperty(n.status)) counts[n.status]++; });
+    bumpStat("statAvailable", counts.available);
+    bumpStat("statReserved", counts.reserved);
+    bumpStat("statPaid", counts.paid);
+
+    const occupied = currentData.filter(n => n.status !== "available").length;
+    document.getElementById("occupiedCount").textContent = occupied;
+    document.getElementById("occupiedPct").textContent = occupied + "%";
+    document.getElementById("progressFill").style.width = occupied + "%";
+  }
+
+  function bumpStat(id, value) {
+    const el = document.getElementById(id);
+    if (el.textContent !== String(value)) {
+      el.textContent = value;
+      el.classList.add("bump");
+      setTimeout(() => el.classList.remove("bump"), 200);
+    }
+  }
+
+  /* =========================================================
+     7. RENDER: reservations list — always derived from currentData
+  ========================================================== */
+  function renderReservations() {
+    const listEl = document.getElementById("reservationList");
+    const relevant = currentData.filter(n => n.status !== "available" && n.name);
+    const filtered = relevant.filter(matchesFilter);
+    document.getElementById("reservationCountBadge").textContent = relevant.length;
+
+    listEl.innerHTML = "";
+    if (filtered.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "empty-note";
+      empty.textContent = relevant.length === 0 ? "No hay reservas todavía." : "No hay reservas que coincidan.";
+      listEl.appendChild(empty);
+      return;
+    }
+
+    filtered
+      .slice()
+      .sort((a, b) => a.number.localeCompare(b.number))
+      .forEach(entry => {
+        const row = document.createElement("div");
+        row.className = "reservation-row";
+        row.addEventListener("click", () => openNumberDetail(entry.number));
+
+        const colorVar = STATUS_COLOR_VAR[entry.status] || "--c-reserved";
+        row.innerHTML = `
+          <div class="r-number" style="color:var(${colorVar});">${entry.number}</div>
+          <div class="r-body">
+            <div class="r-name">${entry.isWinner ? "⭐ " : ""}${entry.name}</div>
+            <div class="r-meta">
+              <span>${entry.phone || "Sin teléfono"}</span>
+              <span>·</span>
+              <span>${entry.group || "—"}</span>
+              <span>·</span>
+              <span>${entry.time || "—"}</span>
+            </div>
+          </div>
+          <div class="r-status" style="color:var(${colorVar});background:color-mix(in srgb, var(${colorVar}) 18%, transparent);">${STATUS_LABELS[entry.status]}</div>
+        `;
+        listEl.appendChild(row);
+      });
+  }
+
+  /* =========================================================
+     8. RENDER: selection bar — reflects `selectedNumbers`
+  ========================================================== */
+  function renderSelectionBar() {
+    const bar = document.getElementById("selectionBar");
+    if (selectedNumbers.length === 0) {
+      bar.style.display = "none";
+      return;
+    }
+    bar.style.display = "block";
+    const sorted = selectedNumbers.slice().sort();
+    document.getElementById("selectionCountBadge").textContent = selectedNumbers.length + " " + pluralNumero(selectedNumbers.length);
+    document.getElementById("selectionNumbersList").textContent = sorted.join(" — ");
+    document.getElementById("btnReserveSelected").textContent = "Reservar " + selectedNumbers.length + " " + pluralNumero(selectedNumbers.length);
+  }
+
+  /* =========================================================
+     9. FULL REFRESH
+  ========================================================== */
+  function refreshAll(flashNumber) {
+    renderGrid(flashNumber);
+    renderStats();
+    renderReservations();
+    renderSelectionBar();
+  }
+
+  /* =========================================================
+     10. NUMBER DETAIL (info view: available / reserved / paid)
+  ========================================================== */
+  function setDetailHeader(entry) {
+    document.getElementById("detailNumber").textContent = entry.number;
+    const badge = document.getElementById("detailStatusBadge");
+    const colorVar = STATUS_COLOR_VAR[entry.status] || "--c-available";
+    badge.textContent = STATUS_EMOJI[entry.status] + " " + STATUS_LABELS[entry.status].toUpperCase();
+    badge.style.color = `var(${colorVar})`;
+    badge.style.background = `color-mix(in srgb, var(${colorVar}) 18%, transparent)`;
+  }
+
+  function openNumberDetail(number) {
+    const entry = currentData.find(n => n.number === number);
+    setDetailHeader(entry);
+
+    const fieldsEl = document.getElementById("detailFields");
+    const actionsEl = document.getElementById("detailActions");
+    let fieldsHtml = "";
+
+    if (entry.isWinner) {
+      fieldsHtml += `<div class="winner-note-box">⭐ Marcado manualmente como ganador</div>`;
+    }
+
+    if (entry.status === "available") {
+      const selected = selectedNumbers.includes(number);
+      if (selected) fieldsHtml += `<div class="selected-note-box">✓ SELECCIONADO</div>`;
+      fieldsHtml += `<div class="detail-field"><div class="v">Este número está disponible para reservar.</div></div>`;
+      fieldsEl.innerHTML = fieldsHtml;
+
+      actionsEl.innerHTML = "";
+      const row = document.createElement("div");
+      row.className = "btn-row";
+      if (selected) {
+        row.appendChild(makeBtn("Quitar de selección", "", () => toggleSelection(number, false)));
+      } else {
+        row.appendChild(makeBtn("Seleccionar número", "accent", () => toggleSelection(number, true)));
+      }
+      row.appendChild(makeBtn("Cancelar", "", () => closeOverlay("overlayDetail")));
+      actionsEl.appendChild(row);
+
+    } else {
+      fieldsHtml += `
+        <div class="detail-field"><div class="k">Nombre</div><div class="v">${entry.name || "—"}</div></div>
+        <div class="detail-field"><div class="k">Teléfono</div><div class="v">${entry.phone || "No registrado"}</div></div>
+        <div class="detail-field"><div class="k">Grupo</div><div class="v">${entry.group || "—"}</div></div>
+        <div class="detail-field"><div class="k">Hora</div><div class="v">${entry.time || "—"}</div></div>
+        <div class="detail-field"><div class="k">Origen</div><div class="v">${entry.origin || "—"}</div></div>
+        ${entry.observation ? `<div class="detail-field"><div class="k">Observación</div><div class="v">${entry.observation}</div></div>` : ""}
+      `;
+      fieldsEl.innerHTML = fieldsHtml;
+
+      actionsEl.innerHTML = "";
+      const row1 = document.createElement("div");
+      row1.className = "btn-row";
+      if (entry.status === "reserved") {
+        row1.appendChild(makeBtn("Marcar pagado", "accent", () => markAsPaid(number)));
+        row1.appendChild(makeBtn("Liberar número", "", () => confirmRelease(number)));
+      } else if (entry.status === "paid") {
+        row1.appendChild(makeBtn("Liberar número", "", () => confirmRelease(number)));
+      }
+      actionsEl.appendChild(row1);
+
+      const row2 = document.createElement("div");
+      row2.className = "btn-row";
+      if (entry.isWinner) {
+        row2.appendChild(makeBtn("Quitar ganador", "", () => removeWinner(number)));
+      } else {
+        row2.appendChild(makeBtn("⭐ Marcar ganador", "winner-btn", () => confirmMarkWinner(number)));
+      }
+      actionsEl.appendChild(row2);
+
+      const row3 = document.createElement("div");
+      row3.className = "btn-row";
+      row3.appendChild(makeBtn("Cerrar", "", () => closeOverlay("overlayDetail")));
+      actionsEl.appendChild(row3);
+    }
+
+    openOverlay("overlayDetail");
+  }
+
+  function makeBtn(label, variant, onClick) {
+    const b = document.createElement("button");
+    b.className = "btn full" + (variant ? " " + variant : "");
+    b.style.flex = "1";
+    b.textContent = label;
+    b.addEventListener("click", onClick);
+    return b;
+  }
+
+  /* =========================================================
+     11. SELECTION (temporary, UI-only — never a business status)
+  ========================================================== */
+  function toggleSelection(number, add) {
+    const entry = currentData.find(n => n.number === number);
+    if (add) {
+      if (!entry || entry.status !== "available") {
+        showToast("Este número ya no está disponible.");
+      } else {
+        if (!selectedNumbers.includes(number)) selectedNumbers.push(number);
+        showToast("Número " + number + " añadido a la selección.");
+      }
+    } else {
+      selectedNumbers = selectedNumbers.filter(n => n !== number);
+      showToast("Número " + number + " quitado de la selección.");
+    }
+    renderGrid();
+    renderSelectionBar();
+    closeOverlay("overlayDetail");
+  }
+
+  document.getElementById("btnClearSelection").addEventListener("click", () => {
+    selectedNumbers = [];
+    renderGrid();
+    renderSelectionBar();
+    showToast("Selección limpiada.");
+  });
+
+  document.getElementById("btnReserveSelected").addEventListener("click", () => {
+    openReservationForm();
+  });
+
+  /* =========================================================
+     12. RESERVATION FORM (works for 1..N selected numbers)
+     — includes reusable contact autocomplete (name/phone/group).
+  ========================================================== */
+  function fillContactFields(contact) {
+    document.getElementById("bulkResName").value = contact.name;
+    document.getElementById("bulkResPhone").value = contact.phone;
+    document.getElementById("bulkResGroup").value = contact.group || "";
+  }
+
+  function closeAllSuggestionLists() {
+    document.querySelectorAll(".autocomplete-list").forEach(l => { l.classList.remove("open"); l.innerHTML = ""; });
+  }
+
+  function renderContactSuggestions(listEl, matches) {
+    if (matches.length === 0) {
+      listEl.classList.remove("open");
+      listEl.innerHTML = "";
+      return;
+    }
+    listEl.innerHTML = matches.map(c =>
+      `<div class="autocomplete-item" data-id="${c.id}">
+         <div class="ac-name">${c.name}</div>
+         <div class="ac-meta">${c.phone} · ${c.group || "Sin grupo"}</div>
+       </div>`
+    ).join("");
+    listEl.classList.add("open");
+    listEl.querySelectorAll(".autocomplete-item").forEach(item => {
+      item.addEventListener("click", () => {
+        const contact = contacts.find(c => String(c.id) === item.dataset.id);
+        if (contact) fillContactFields(contact);
+        closeAllSuggestionLists();
+      });
+    });
+  }
+
+  function renderGroupSuggestions(listEl, groups) {
+    if (groups.length === 0) {
+      listEl.classList.remove("open");
+      listEl.innerHTML = "";
+      return;
+    }
+    listEl.innerHTML = groups.map(g => `<div class="autocomplete-item" data-group="${g}"><div class="ac-name">${g}</div></div>`).join("");
+    listEl.classList.add("open");
+    listEl.querySelectorAll(".autocomplete-item").forEach(item => {
+      item.addEventListener("click", () => {
+        document.getElementById("bulkResGroup").value = item.dataset.group;
+        closeAllSuggestionLists();
+      });
+    });
+  }
+
+  document.getElementById("bulkResName").addEventListener("input", (e) => {
+    const q = e.target.value.trim();
+    renderContactSuggestions(document.getElementById("nameSuggestions"), q ? searchContactsByName(q) : []);
+  });
+  document.getElementById("bulkResPhone").addEventListener("input", (e) => {
+    const q = e.target.value.trim();
+    renderContactSuggestions(document.getElementById("phoneSuggestions"), q ? searchContactsByPhone(q) : []);
+  });
+  document.getElementById("bulkResGroup").addEventListener("input", (e) => {
+    const q = e.target.value.trim();
+    renderGroupSuggestions(document.getElementById("groupSuggestions"), q ? searchGroups(q) : []);
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".autocomplete-wrap")) closeAllSuggestionLists();
+  });
+
+  function renderRecentContacts() {
+    const wrap = document.getElementById("recentContactsBlock");
+    const recents = contacts.slice(0, 3);
+    if (recents.length === 0) {
+      wrap.style.display = "none";
+      wrap.innerHTML = "";
+      return;
+    }
+    wrap.style.display = "block";
+    wrap.innerHTML =
+      '<div class="recent-contacts-title">Contactos recientes</div>' +
+      '<div class="recent-contacts-list">' +
+      recents.map(c =>
+        `<div class="autocomplete-item" data-id="${c.id}">
+           <div class="ac-name">${c.name}</div>
+           <div class="ac-meta">${c.phone} · ${c.group || "Sin grupo"}</div>
+         </div>`
+      ).join("") +
+      "</div>";
+    wrap.querySelectorAll(".autocomplete-item").forEach(item => {
+      item.addEventListener("click", () => {
+        const contact = contacts.find(c => String(c.id) === item.dataset.id);
+        if (contact) fillContactFields(contact);
+      });
+    });
+  }
+
+  function openReservationForm() {
+    if (selectedNumbers.length === 0) return;
+    const sorted = selectedNumbers.slice().sort();
+    document.getElementById("reserveFormTitle").textContent = "Reservar " + selectedNumbers.length + " " + pluralNumero(selectedNumbers.length);
+    document.getElementById("reserveFormNumbersList").textContent = sorted.join(" — ");
+    document.getElementById("bulkResName").value = "";
+    document.getElementById("bulkResPhone").value = "";
+    document.getElementById("bulkResGroup").value = "";
+    document.getElementById("bulkResNote").value = "";
+    document.getElementById("bulkResFormError").classList.remove("visible");
+    closeAllSuggestionLists();
+    renderRecentContacts();
+    openOverlay("overlayReserveForm");
+  }
+
+  function reserveNumber(number, data) {
+    const entry = currentData.find(n => n.number === number);
+    if (!entry || entry.status !== "available") return false;
+    entry.status = "reserved";
+    entry.name = data.name;
+    entry.phone = data.phone ? maskPhone(data.phone) : null;
+    entry.group = data.group || null;
+    entry.observation = data.note || null;
+    entry.time = formatTimeNow();
+    entry.origin = "Manual";
+    return true;
+  }
+
+  function reserveSelectedNumbers(data) {
+    const numbersToReserve = selectedNumbers.slice();
+    let successCount = 0;
+    numbersToReserve.forEach(num => { if (reserveNumber(num, data)) successCount++; });
+
+    selectedNumbers = [];
+    refreshAll();
+    closeOverlay("overlayReserveForm");
+
+    if (successCount > 0) {
+      showToast(successCount + " " + pluralNumero(successCount) + " reservado" + (successCount === 1 ? "" : "s") + " correctamente.");
+    } else {
+      showToast("No se pudo reservar ningún número.");
+    }
+  }
+
+  document.getElementById("btnConfirmBulkReserve").addEventListener("click", () => {
+    const name = document.getElementById("bulkResName").value.trim();
+    const phone = document.getElementById("bulkResPhone").value.trim();
+    const group = document.getElementById("bulkResGroup").value.trim();
+    const note = document.getElementById("bulkResNote").value.trim();
+    const errorEl = document.getElementById("bulkResFormError");
+
+    if (!name) {
+      errorEl.classList.add("visible");
+      return;
+    }
+    errorEl.classList.remove("visible");
+    // Reusable contact history: same phone -> update existing contact
+    // (no duplicates); new phone -> create a new contact for next time.
+    findOrCreateContact({ name, phone, group });
+    reserveSelectedNumbers({ name, phone, group, note });
+  });
+
+  /* =========================================================
+     13. STATUS / WINNER ACTIONS
+  ========================================================== */
+  function markAsPaid(number) {
+    const entry = currentData.find(n => n.number === number);
+    if (!entry || entry.status !== "reserved") return;
+    entry.status = "paid";
+    refreshAll(number);
+    openNumberDetail(number);
+    showToast("Número " + number + " marcado como pagado.");
+  }
+
+  function releaseNumber(number) {
+    const entry = currentData.find(n => n.number === number);
+    if (!entry) return;
+    entry.status = "available";
+    entry.isWinner = false;
+    entry.name = null; entry.phone = null; entry.group = null;
+    entry.time = null; entry.origin = null; entry.observation = null;
+    refreshAll(number);
+    closeOverlay("overlayDetail");
+    showToast("Número " + number + " liberado.");
+  }
+
+  function confirmRelease(number) {
+    showConfirm({
+      title: "¿Liberar número " + number + "?",
+      message: "La reserva será eliminada.",
+      confirmLabel: "Liberar",
+      variant: "danger",
+      onConfirm: () => releaseNumber(number)
+    });
+  }
+
+  function markWinner(number) {
+    const entry = currentData.find(n => n.number === number);
+    if (!entry) return;
+    entry.isWinner = true;
+    refreshAll(number);
+    openNumberDetail(number);
+    showToast("Número " + number + " marcado como ganador.");
+  }
+
+  function confirmMarkWinner(number) {
+    showConfirm({
+      title: "¿Marcar " + number + " como ganador?",
+      message: "Se mostrará una estrella sobre este número.",
+      confirmLabel: "Marcar ganador",
+      variant: "winner-btn",
+      onConfirm: () => markWinner(number)
+    });
+  }
+
+  function removeWinner(number) {
+    const entry = currentData.find(n => n.number === number);
+    if (!entry) return;
+    entry.isWinner = false;
+    refreshAll(number);
+    openNumberDetail(number);
+    showToast("Se quitó el ganador del número " + number + ".");
+  }
+
+  /* =========================================================
+     14. RESET — builds a brand-new, fully empty draw.
+     ---------------------------------------------------------
+     "Reiniciar" does NOT restore `initialMockData` (that array
+     intentionally ships with sample reservations/payments just
+     to make the first look at the demo interesting). Reiniciar
+     instead creates a completely fresh 100-number table where
+     every single number is "available" — nothing reserved, paid,
+     or marked winner — regardless of what initialMockData had.
+  ========================================================== */
+  function createEmptyDraw() {
+    return Array.from({ length: 100 }, (_, index) => ({
+      number: String(index).padStart(2, "0"),
+      status: "available",
+      isWinner: false,
+      name: null,
+      phone: null,
+      group: null,
+      time: null,
+      origin: null,
+      observation: null
+    }));
+  }
+
+  function closeAllModals() {
+    ["overlayDetail", "overlayReserveForm", "overlayConfirm", "overlayCustomize", "overlayShare", "overlayDesigns", "overlaySaveDesign"].forEach(closeOverlay);
+  }
+
+  function isFullyEmptyDraw(data) {
+    return Array.isArray(data) && data.length === 100 && data.every(entry =>
+      entry.status === "available" && entry.isWinner === false && !entry.name
+    );
+  }
+
+  function resetDraw() {
+    currentData = createEmptyDraw();
+    selectedNumbers = [];
+    currentFilter = "all";
+    currentSearch = "";
+
+    document.getElementById("searchInput").value = "";
+    document.querySelectorAll(".filter-chip").forEach(c => c.classList.toggle("active", c.dataset.filter === "all"));
+    closeAllModals();
+
+    renderGrid();
+    renderStats();
+    renderReservations();
+    renderSelectionBar();
+
+    if (isFullyEmptyDraw(currentData) && selectedNumbers.length === 0) {
+      showToast("Tabla reiniciada correctamente");
+    } else {
+      showToast("Error: no se pudo reiniciar la tabla. Intenta nuevamente.");
+    }
+  }
+
+  document.getElementById("btnReset").addEventListener("click", () => {
+    showConfirm({
+      title: "¿Reiniciar toda la tabla?",
+      message: "Los 100 números volverán a estar disponibles y se eliminarán todas las reservas, pagos y ganadores de este sorteo.",
+      confirmLabel: "Reiniciar tabla",
+      variant: "danger",
+      onConfirm: resetDraw
+    });
+  });
+
+  /* =========================================================
+     15. GENERIC CONFIRM OVERLAY
+  ========================================================== */
+  function showConfirm({ title, message, confirmLabel, variant, onConfirm }) {
+    document.getElementById("confirmTitle").textContent = title;
+    document.getElementById("confirmMessage").textContent = message || "";
+
+    const oldBtn = document.getElementById("confirmActionBtn");
+    const newBtn = oldBtn.cloneNode(true);
+    oldBtn.parentNode.replaceChild(newBtn, oldBtn);
+    newBtn.textContent = confirmLabel;
+    newBtn.className = "btn " + (variant || "danger");
+    newBtn.addEventListener("click", () => {
+      closeOverlay("overlayConfirm");
+      onConfirm();
+    });
+
+    openOverlay("overlayConfirm");
+  }
+
+  /* =========================================================
+     16. CUSTOMIZE
+  ========================================================== */
+  document.getElementById("btnCustomize").addEventListener("click", openCustomize);
+
+  function bindLiveField(id, applyFn) {
+    document.getElementById(id).addEventListener("input", (e) => {
+      applyFn(e.target.value);
+      applyCustomization();
+      saveSettings();
+    });
+  }
+  bindLiveField("inRaffleName", v => settings.raffleName = v);
+  bindLiveField("inPrize", v => settings.prize = v);
+  bindLiveField("inPrice", v => settings.price = v);
+  bindLiveField("inTagline", v => settings.tagline = v);
+
+  document.getElementById("toggleHideNumbers").addEventListener("change", (e) => {
+    settings.hideOccupiedNumbers = e.target.checked;
+    saveSettings();
+    renderGrid();
+  });
+  document.getElementById("toggleShowWinnerNumber").addEventListener("change", (e) => {
+    settings.showWinnerNumber = e.target.checked;
+    saveSettings();
+    renderGrid();
+  });
+
+  function markCustom() {
+    settings.activePreset = "custom";
+    document.querySelectorAll(".preset-chip").forEach(chip => chip.classList.toggle("active", chip.dataset.preset === "custom"));
+  }
+
+  function bindColorField(id, key) {
+    document.getElementById(id).addEventListener("input", (e) => {
+      settings.colors[key] = e.target.value;
+      markCustom();
+      applyCustomization();
+      saveSettings();
+    });
+  }
+  bindColorField("inColorPageBg", "pageBg");
+  bindColorField("inColorTableBg", "tableBg");
+  bindColorField("inColorText", "text");
+  bindColorField("inColorBorder", "border");
+  bindColorField("inColorAccent", "accent");
+
+  bindColorField("inCellAvailableBg", "availableBg");
+  bindColorField("inCellAvailableBorder", "availableBorder");
+  bindColorField("inCellReservedBg", "reservedBg");
+  bindColorField("inCellReservedBorder", "reservedBorder");
+  bindColorField("inCellPaidBg", "paidBg");
+  bindColorField("inCellPaidBorder", "paidBorder");
+  bindColorField("inCellWinnerBg", "winnerBg");
+  bindColorField("inCellWinnerBorder", "winnerBorder");
+  bindColorField("inCellWinnerStar", "winnerStar");
+
+  bindColorField("inNumAvailableText", "availableText");
+  bindColorField("inNumReservedText", "reservedText");
+  bindColorField("inNumPaidText", "paidText");
+  bindColorField("inNumWinnerText", "winnerText");
+
+  document.getElementById("presetRow").addEventListener("click", (e) => {
+    const chip = e.target.closest(".preset-chip");
+    if (!chip) return;
+    const key = chip.dataset.preset;
+    if (key === "custom") { markCustom(); return; }
+    applyPresetByKey(key);
+  });
+
+  document.getElementById("shapeSegmented").addEventListener("click", (e) => {
+    const btn = e.target.closest(".segmented-btn");
+    if (!btn) return;
+    settings.cellStyle.radius = Number(btn.dataset.radius);
+    document.querySelectorAll("#shapeSegmented .segmented-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("inCellRadius").value = settings.cellStyle.radius;
+    document.getElementById("valCellRadius").textContent = settings.cellStyle.radius + "px";
+    applyCustomization();
+    saveSettings();
+  });
+
+  document.getElementById("weightSegmented").addEventListener("click", (e) => {
+    const btn = e.target.closest(".segmented-btn");
+    if (!btn) return;
+    settings.cellStyle.fontWeight = Number(btn.dataset.weight);
+    document.querySelectorAll("#weightSegmented .segmented-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    applyCustomization();
+    saveSettings();
+  });
+
+  function bindRangeField(id, valueId, key, suffix) {
+    document.getElementById(id).addEventListener("input", (e) => {
+      const val = Number(e.target.value);
+      settings.cellStyle[key] = val;
+      document.getElementById(valueId).textContent = val + suffix;
+      if (key === "radius") {
+        document.querySelectorAll("#shapeSegmented .segmented-btn").forEach(b => b.classList.toggle("active", Number(b.dataset.radius) === val));
+      }
+      applyCustomization();
+      saveSettings();
+    });
+  }
+  bindRangeField("inCellRadius", "valCellRadius", "radius", "px");
+  bindRangeField("inCellGap", "valCellGap", "gap", "px");
+  bindRangeField("inCellBorderWidth", "valCellBorder", "borderWidth", "px");
+  bindRangeField("inCellFontSize", "valCellFontSize", "fontSize", "px");
+
+  document.getElementById("btnRestoreDefaults").addEventListener("click", () => {
+    // Only the visual portion resets — raffle info (name/prize/price/tagline),
+    // saved designs and contacts are untouched.
+    settings.colors = { ...DEFAULT_SETTINGS.colors };
+    settings.cellStyle = { ...DEFAULT_SETTINGS.cellStyle };
+    settings.hideOccupiedNumbers = DEFAULT_SETTINGS.hideOccupiedNumbers;
+    settings.showWinnerNumber = DEFAULT_SETTINGS.showWinnerNumber;
+    settings.activePreset = DEFAULT_SETTINGS.activePreset;
+    editingDesignId = null;
+    applyCustomization();
+    fillCustomizeForm();
+    updateEditingBanner();
+    saveSettings();
+    renderGrid();
+    showToast("Valores por defecto restaurados.");
+  });
+
+  /* =========================================================
+     17. SHARE
+  ========================================================== */
+  function openShare() {
+    document.getElementById("waBubbleText").textContent =
+      "🎉 " + settings.raffleName + "\nGana " + settings.prize + "\nNúmero: " + settings.price + "\n\n¡Reserva tu número por este chat!";
+    buildSharePreviewGrid();
+    openOverlay("overlayShare");
+  }
+  document.getElementById("btnShare").addEventListener("click", openShare);
+
+  document.querySelectorAll(".share-option-head").forEach(head => {
+    head.addEventListener("click", () => {
+      const opt = head.closest(".share-option");
+      const wasOpen = opt.classList.contains("open");
+      document.querySelectorAll(".share-option.open").forEach(o => o.classList.remove("open"));
+      if (!wasOpen) opt.classList.add("open");
+    });
+  });
+
+  document.getElementById("btnOpenWhatsapp").addEventListener("click", () => {
+    const msg = document.getElementById("waBubbleText").textContent;
+    window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
+  });
+
+  document.getElementById("btnCopyLink").addEventListener("click", () => {
+    const link = document.getElementById("demoLinkText").textContent;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(link).then(
+        () => showToast("Enlace copiado"),
+        () => showToast("No se pudo copiar automáticamente. Enlace: " + link)
+      );
+    } else {
+      showToast("Enlace de demostración: " + link);
+    }
+  });
+
+  function buildSharePreviewGrid() {
+    const el = document.getElementById("imgPrevGrid");
+    el.innerHTML = "";
+    currentData.forEach(entry => {
+      const d = document.createElement("div");
+      d.className = "ipc-mini-cell";
+      if (entry.isWinner) {
+        d.style.background = "var(--c-winner-bg)";
+      } else if (entry.status !== "available") {
+        d.style.background = "var(" + STATUS_COLOR_VAR[entry.status] + ")";
+        d.style.opacity = "0.85";
+      }
+      el.appendChild(d);
+    });
+  }
+
+  /* =========================================================
+     18. FILTERS + SEARCH
+  ========================================================== */
+  function filterReservations(key) {
+    currentFilter = key;
+    document.querySelectorAll(".filter-chip").forEach(c => c.classList.toggle("active", c.dataset.filter === key));
+    renderGrid();
+    renderReservations();
+  }
+
+  document.getElementById("filterRow").addEventListener("click", (e) => {
+    const chip = e.target.closest(".filter-chip");
+    if (!chip) return;
+    filterReservations(chip.dataset.filter);
+  });
+
+  function searchReservations(query) {
+    currentSearch = query;
+    renderGrid();
+    renderReservations();
+  }
+
+  document.getElementById("searchInput").addEventListener("input", (e) => {
+    searchReservations(e.target.value);
+  });
+
+  /* =========================================================
+     19. OVERLAY HELPERS
+  ========================================================== */
+  function openOverlay(id) { document.getElementById(id).classList.add("open"); }
+  function closeOverlay(id) { document.getElementById(id).classList.remove("open"); }
+
+  document.querySelectorAll("[data-close]").forEach(btn => {
+    btn.addEventListener("click", () => closeOverlay(btn.dataset.close));
+  });
+  document.querySelectorAll(".overlay").forEach(overlay => {
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeOverlay(overlay.id); });
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") document.querySelectorAll(".overlay.open").forEach(o => closeOverlay(o.id));
+  });
+
+  /* =========================================================
+     20. TOAST — single reusable element: a new message replaces
+     the current one instead of stacking several toasts.
+  ========================================================== */
+  let toastTimer = null;
+
+  function showToast(msg) {
+    const stack = document.getElementById("toastStack");
+    let t = stack.querySelector(".toast");
+
+    if (!t) {
+      t = document.createElement("div");
+      t.className = "toast";
+      stack.appendChild(t);
+    }
+
+    t.textContent = msg;
+    t.style.animation = "none";
+    // eslint-disable-next-line no-unused-expressions
+    t.offsetHeight; // restart the entrance animation on every call
+    t.style.animation = "";
+
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      t.remove();
+      toastTimer = null;
+    }, 1800);
+  }
+
+  /* =========================================================
+     21. INIT
+  ========================================================== */
+  buildGridSkeleton();
+  applyCustomization();
+  fillCustomizeForm();
+  refreshAll();
+
+})();
+</script>
+</body>
+</html>

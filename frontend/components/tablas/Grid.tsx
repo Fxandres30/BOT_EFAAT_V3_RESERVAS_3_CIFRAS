@@ -7,6 +7,8 @@ import NumeroDetalleModal from "./NumeroDetalleModal";
 import Leyenda from "./Leyenda";
 import type { NumeroReserva, PaqueteReserva, EventoActivo } from "./types";
 import { estadoVisualSimplificado, type FiltroEstado } from "./estadoVisual";
+import type { TablaDisenoConfig } from "./disenoTypes";
+import { cssVarsFromConfig } from "./disenoCssVars";
 
 interface Props {
     numeros: NumeroReserva[];
@@ -16,6 +18,7 @@ interface Props {
     busqueda: string;
     filtro: FiltroEstado;
     accionando: string | null;
+    diseno: TablaDisenoConfig;
     onMarcarPagado: (numero: string) => void;
     onLiberar: (numero: string) => void;
     onBloquear: (numero: string, motivo?: string) => void;
@@ -30,6 +33,7 @@ export default function Grid({
     busqueda,
     filtro,
     accionando,
+    diseno,
     onMarcarPagado,
     onLiberar,
     onBloquear,
@@ -79,12 +83,18 @@ export default function Grid({
 
     }, [numeros, busqueda, filtro, numerosEnGrupo, paquetePorNumero]);
 
+    const estiloDiseno = {
+        ...cssVarsFromConfig(diseno),
+        background: "var(--efaat-tabla-table-bg)",
+        borderColor: "var(--efaat-tabla-border)"
+    };
+
     return (
 
-        <div className="bg-white border rounded-2xl shadow-sm p-2.5 sm:p-4">
+        <div className="border rounded-2xl shadow-sm p-2.5 sm:p-4" style={estiloDiseno}>
 
             <div className="flex justify-center sm:justify-start pb-3 sm:pb-4 mb-1 border-b border-gray-100">
-                <Leyenda />
+                <Leyenda diseno={diseno} />
             </div>
 
             {visibles.length === 0 ? (
@@ -95,7 +105,10 @@ export default function Grid({
 
             ) : (
 
-                <div className="mx-auto max-w-2xl grid grid-cols-10 gap-1 sm:gap-1.5 md:gap-2">
+                <div
+                    className="mx-auto max-w-2xl grid grid-cols-10"
+                    style={{ gap: "var(--efaat-tabla-cell-gap)" }}
+                >
 
                     {visibles.map((numero) => {
 
