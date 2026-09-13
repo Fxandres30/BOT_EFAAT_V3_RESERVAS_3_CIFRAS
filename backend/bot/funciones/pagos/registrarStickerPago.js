@@ -27,6 +27,15 @@
 //   - esAdministrador.js           (rol real en vivo — NUNCA se duplica)
 //   - configuracionStickerPago.js  (única persistencia de esta fase)
 //
+// CORRECCIÓN ARQUITECTÓNICA — dos niveles posibles de registro: el sticker
+// entrante puede corresponder a un registro ESPECÍFICO vigente del grupo
+// donde llegó, o al registro PREDETERMINADO vigente del tenant (si el
+// admin activó "Registrar sticker predeterminado" desde el panel y luego
+// lo envía en cualquier grupo real). Se comprueba primero el específico
+// (mismo orden de prioridad que resolverStickerPago() usa para pagos) y
+// solo si no hay ninguno vigente ahí, el predeterminado — nunca los dos a
+// la vez.
+//
 // Nunca lanza: cualquier error se trata como "el mensaje SÍ fue tocado por
 // el registro" (falla cerrado hacia el lado seguro — ver más abajo).
 // ==========================================================================
@@ -60,35 +69,53 @@ async function registrarStickerPago(ctx) {
 
         if (!usuarioId || !grupoId) return { intervino: false };
 
-        const config = await obtenerConfiguracion({ usuarioId, grupoId });
+        // Candidatos en orden de prioridad: específico de ESTE grupo,
+        // luego predeterminado del tenant (grupo_id null). Se limpia
+        // best-effort cualquier candidato vencido que se encuentre en el
+        // camino — nunca afecta al otro nivel ni a otro grupo/tenant.
+        const candidatos = [
 
-        if (!config || config.esperando_registro !== true) {
+            { nivel: "especifico", grupoId },
+            { nivel: "predeterminado", grupoId: null }
 
-            // Nunca hubo (o ya no hay) intención de registro para este
-            // grupo/tenant — el mensaje no tiene nada que ver con esta
-            // fase, sigue de largo hacia confirmarPagoPorSticker.js.
-            return { intervino: false };
+        ];
 
-        }
+        let objetivo = null;
 
-        if (!registroVigente(config)) {
+        for (const candidato of candidatos) {
 
-            // Vencido: se trata como NO ACTIVO. Limpieza best-effort para
-            // que el panel no se quede mostrando "esperando" indefinidamente
-            // — condicionada a (usuario_id, grupo_id) exactos, nunca afecta
-            // otra configuración.
-            try {
+            const config = await obtenerConfiguracion({ usuarioId, grupoId: candidato.grupoId });
 
-                await desactivarModoRegistro({ usuarioId, grupoId });
+            if (!config || config.esperando_registro !== true) continue;
 
-            } catch (errorLimpieza) {
+            if (!registroVigente(config)) {
 
-                console.error("⚠ [STICKER-REGISTRO] No se pudo limpiar el registro vencido:", errorLimpieza.message);
+                try {
+
+                    await desactivarModoRegistro({ usuarioId, grupoId: candidato.grupoId });
+
+                } catch (errorLimpieza) {
+
+                    console.error("⚠ [STICKER-REGISTRO] No se pudo limpiar el registro vencido:", errorLimpieza.message);
+
+                }
+
+                console.log(`[STICKER-REGISTRO] Registro (${candidato.nivel}) vencido — se trata como no activo.`);
+
+                continue;
 
             }
 
-            console.log("[STICKER-REGISTRO] Registro vencido — se trata como no activo, no interviene.");
+            objetivo = candidato;
+            break;
 
+        }
+
+        if (!objetivo) {
+
+            // Ningún registro vigente en ningún nivel — el mensaje no
+            // tiene nada que ver con esta fase, sigue de largo hacia
+            // confirmarPagoPorSticker.js.
             return { intervino: false };
 
         }
@@ -99,7 +126,7 @@ async function registrarStickerPago(ctx) {
         // ==================================================================
 
         console.log("================================");
-        console.log("[STICKER-REGISTRO] Sticker recibido durante modo de registro");
+        console.log(`[STICKER-REGISTRO] Sticker recibido durante modo de registro (nivel: ${objetivo.nivel})`);
         console.log("================================");
 
         const remitenteJid =
@@ -143,7 +170,7 @@ async function registrarStickerPago(ctx) {
         const resultado = await guardarStickerCapturado({
 
             usuarioId,
-            grupoId,
+            grupoId: objetivo.grupoId,
             stickerSha256: datosSticker.fileSha256Hex,
             registradoPor: remitenteJid
 

@@ -51,12 +51,14 @@ const { marcarReservasPagadasPorAdmin } = require("./marcarReservasPagadasPorAdm
 const { sendMessage } = require("../../../services/baileys/send");
 const { enmascararJid: enmascarar } = require("../../utils/enmascararJid");
 
-// FASE 1 (configuración desde el panel): el hash autorizado ya NO viene de
-// STICKER_PAGO_SHA256 (variable de entorno) — viene de Supabase, por
-// (usuario_id, grupo_id), a través del único módulo de persistencia de
-// esta funcionalidad. Ver bot/funciones/pagos/configuracionStickerPago.js
-// y bot/funciones/pagos/registrarStickerPago.js (cómo se registra).
-const { obtenerStickerConfigurado } = require("./configuracionStickerPago");
+// FASE 1 (configuración desde el panel) + corrección arquitectónica
+// (predeterminado/específico): el hash autorizado ya NO viene de
+// STICKER_PAGO_SHA256 (variable de entorno) — viene de Supabase, resuelto
+// por resolverStickerPago() (única función de resolución: específico del
+// grupo primero, predeterminado del tenant como respaldo — ver
+// bot/funciones/pagos/configuracionStickerPago.js). Esta lógica de
+// prioridad NUNCA se duplica aquí.
+const { resolverStickerPago } = require("./configuracionStickerPago");
 
 // El citado es el propio BOT -> nunca se resuelve como cliente (mismo
 // criterio que la fase de diagnóstico: comparación por teléfono
@@ -94,30 +96,33 @@ async function confirmarPagoPorSticker(ctx) {
         console.log("================================");
 
         // ==================================================================
-        // 1. El sticker debe coincidir EXACTO con el configurado en
-        //    Supabase para ESTE (usuario_id, grupo_id) — nunca el de otro
-        //    grupo, nunca el de otro tenant, sin fallback de ningún tipo.
-        //    Sin configuración válida: falla cerrado, no se ejecuta nada.
+        // 1. El sticker debe coincidir EXACTO con el resuelto para ESTE
+        //    (usuario_id, grupo_id): específico del grupo si existe, si no
+        //    el predeterminado del tenant — nunca el de otro grupo, nunca
+        //    el de otro tenant, sin fallback de ningún otro tipo. Sin
+        //    ninguno de los dos: falla cerrado, no se ejecuta nada.
         // ==================================================================
 
         const usuarioIdTenant = ctx.session?.usuarioId || null;
         const grupoIdActual = ctx.chat.remoteJid;
 
-        const hashConfigurado = await obtenerStickerConfigurado({
+        const resuelto = await resolverStickerPago({
 
             usuarioId: usuarioIdTenant,
             grupoId: grupoIdActual
 
         });
 
-        if (!hashConfigurado) {
+        if (!resuelto) {
 
-            console.log("[PAGO-STICKER] Sin sticker de pago configurado en Supabase para este grupo/tenant — no se ejecuta ninguna acción.");
+            console.log("[PAGO-STICKER] Sin sticker de pago configurado (ni específico ni predeterminado) — no se ejecuta ninguna acción.");
             return;
 
         }
 
-        if (!datosSticker.fileSha256Hex || datosSticker.fileSha256Hex !== hashConfigurado) {
+        console.log(`[PAGO-STICKER] Sticker configurado resuelto: nivel=${resuelto.nivel}`);
+
+        if (!datosSticker.fileSha256Hex || datosSticker.fileSha256Hex !== resuelto.hash) {
 
             console.log("[PAGO-STICKER] Hash no coincide con el sticker de pago configurado — IGNORAR.");
             return;

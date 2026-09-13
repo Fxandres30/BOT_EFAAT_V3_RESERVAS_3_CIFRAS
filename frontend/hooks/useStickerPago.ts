@@ -37,10 +37,14 @@ function registroVigente(config: ConfiguracionStickerPago | null, ahora: number)
 
 }
 
-// Único hook fuente-de-verdad de la sección "Sticker de pago" — la UI
-// (ConfiguracionGrupo) solo lee lo que este hook devuelve, nunca vuelve a
-// consultar Supabase por su cuenta (mismo criterio que useTablaPrecio.ts).
-export function useStickerPago(usuarioId: string | null, grupoId: string) {
+// Único hook fuente-de-verdad para UN nivel de configuración —
+// grupoId=null gestiona el PREDETERMINADO del tenant, grupoId=<jid>
+// gestiona el ESPECÍFICO de ese grupo. La UI solo lee lo que este hook
+// devuelve, nunca vuelve a consultar Supabase por su cuenta (mismo
+// criterio que useTablaPrecio.ts). Para la vista combinada de un grupo
+// (específico + saber si hay predeterminado), ver useStickerPagoGrupo.ts,
+// que instancia este mismo hook dos veces en vez de duplicar su lógica.
+export function useStickerPago(usuarioId: string | null, grupoId: string | null) {
 
     const [config, setConfig] = useState<ConfiguracionStickerPago | null>(null);
     const [cargando, setCargando] = useState(true);
@@ -56,7 +60,9 @@ export function useStickerPago(usuarioId: string | null, grupoId: string) {
 
     const cargar = useCallback(async () => {
 
-        if (!usuarioId || !grupoId) return;
+        // grupoId=null es un valor válido (nivel predeterminado) — solo
+        // usuarioId es realmente obligatorio.
+        if (!usuarioId) return;
 
         const { data, error: errorCarga } = await obtenerConfiguracionStickerPago(usuarioId, grupoId);
 
@@ -92,10 +98,10 @@ export function useStickerPago(usuarioId: string | null, grupoId: string) {
     // useSessions.ts.
     useEffect(() => {
 
-        if (!usuarioId || !grupoId) return;
+        if (!usuarioId) return;
 
         const canal = supabase
-            .channel(`sticker-pago-${usuarioId}-${grupoId}`)
+            .channel(`sticker-pago-${usuarioId}-${grupoId ?? "predeterminado"}`)
             .on(
                 "postgres_changes",
                 {
@@ -107,13 +113,17 @@ export function useStickerPago(usuarioId: string | null, grupoId: string) {
                 (payload) => {
 
                     // El filtro de Realtime aquí solo puede expresar una
-                    // columna (usuario_id) — un usuario puede tener varios
-                    // grupos configurados, así que grupo_id se comprueba
-                    // en código antes de recargar (evita una recarga
-                    // innecesaria si cambió la config de OTRO grupo).
-                    const fila = (payload.new ?? payload.old) as { grupo_id?: string } | null;
+                    // columna (usuario_id) — un tenant puede tener varias
+                    // filas (predeterminado + un específico por grupo), así
+                    // que el nivel exacto se comprueba en código antes de
+                    // recargar (evita una recarga innecesaria si cambió la
+                    // config de OTRO nivel/grupo). Normalizado a null en
+                    // ambos lados para comparar correctamente el caso
+                    // predeterminado.
+                    const fila = (payload.new ?? payload.old) as { grupo_id?: string | null } | null;
+                    const filaGrupoId = fila?.grupo_id ?? null;
 
-                    if (fila?.grupo_id && fila.grupo_id !== grupoId) return;
+                    if (filaGrupoId !== grupoId) return;
 
                     cargar();
 

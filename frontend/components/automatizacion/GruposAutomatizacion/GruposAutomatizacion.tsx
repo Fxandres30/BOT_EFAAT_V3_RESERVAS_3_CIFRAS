@@ -12,6 +12,7 @@ import { mergearGrupos, GrupoMergeado } from "@/services/automatizacion/mergeGru
 
 import AutomatizacionNav from "../AutomatizacionNav/AutomatizacionNav";
 import AutorizarGrupoModal from "../AutorizarGrupoModal/AutorizarGrupoModal";
+import StickerPagoPredeterminadoSection from "./StickerPagoPredeterminadoSection";
 
 export default function GruposAutomatizacion() {
 
@@ -156,6 +157,8 @@ export default function GruposAutomatizacion() {
 
                 <>
 
+                    <StickerPagoPredeterminadoSection usuarioId={usuarioId} />
+
                     <div className="grupos-header">
 
                         <div>
@@ -226,6 +229,7 @@ export default function GruposAutomatizacion() {
                                 <div key={g.grupoId} className="grupo-card">
 
                                     <div className="grupo-card-nombre">{g.nombre}</div>
+                                    <div className="grupo-card-jid-label">ID de WhatsApp</div>
                                     <div className="grupo-card-jid">{g.grupoId}</div>
                                     <div className="grupo-card-sesion">📱 {tituloSesiones(g)}</div>
 
@@ -243,7 +247,7 @@ export default function GruposAutomatizacion() {
                                                 href={`/automatizacion/grupos/${encodeURIComponent(g.grupoId)}`}
                                                 className="grupo-card-boton"
                                             >
-                                                Configurar
+                                                Configurar grupo
                                             </Link>
 
                                         ) : (

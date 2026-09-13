@@ -43,6 +43,7 @@ function crearFakeSupabase() {
         const filtrosEq = [];
         const filtrosNeq = [];
         const filtrosIn = [];
+        const filtrosIs = [];
         let limiteN = null;
         let ordenCampo = null;
         let ordenAsc = true;
@@ -112,6 +113,18 @@ function crearFakeSupabase() {
 
             },
 
+            // .is(campo, null) — comparación NULL real de PostgREST.
+            // .eq("x", null) NO existe/no funciona en Supabase real (genera
+            // x=eq.null, que nunca matchea NULL) — este fake solo soporta
+            // el caso null, que es el único que usa este dominio
+            // (configuracion_stickers_pago.grupo_id IS NULL = predeterminado).
+            is(campo, valor) {
+
+                filtrosIs.push([campo, valor]);
+                return builder;
+
+            },
+
             limit(n) {
 
                 limiteN = n;
@@ -154,7 +167,8 @@ function crearFakeSupabase() {
             return (
                 filtrosEq.every(([c, v]) => fila[c] === v) &&
                 filtrosNeq.every(([c, v]) => fila[c] !== v) &&
-                filtrosIn.every(([c, vs]) => vs.includes(fila[c]))
+                filtrosIn.every(([c, vs]) => vs.includes(fila[c])) &&
+                filtrosIs.every(([c, v]) => (fila[c] ?? null) === v)
             );
 
         }
@@ -205,6 +219,34 @@ function crearFakeSupabase() {
                     filas.push(...filasNuevas);
 
                     return { data: filasNuevas, error: null };
+
+                }
+
+                // Simula los 2 índices únicos parciales de
+                // supabase_migrations/013_configuracion_stickers_pago_predeterminado.sql
+                // (uno por usuario_id cuando grupo_id IS NULL, otro por
+                // usuario_id+grupo_id cuando NO es NULL) — ambos casos se
+                // resumen en una sola comparación: mismo usuario_id y
+                // mismo grupo_id-o-null. Necesario para que
+                // configuracionStickerPago.js:activarModoRegistro() pueda
+                // probar de verdad su rama "insert -> 23505 -> update".
+                if (nombreTabla === "configuracion_stickers_pago") {
+
+                    const grupoIdNuevo = payload.grupo_id ?? null;
+
+                    const colision = filas.some(f =>
+                        f.usuario_id === payload.usuario_id &&
+                        (f.grupo_id ?? null) === grupoIdNuevo
+                    );
+
+                    if (colision) {
+
+                        return {
+                            data: null,
+                            error: { code: "23505", message: "duplicate key value violates unique constraint" }
+                        };
+
+                    }
 
                 }
 

@@ -1,57 +1,73 @@
 // ==========================================================================
-// configuracionStickerPago.js — FASE 1 (sticker de pago configurable desde
-// el panel). ÚNICA fuente de verdad de persistencia para
-// "configuracion_stickers_pago" — ningún otro módulo debe leer/escribir
+// configuracionStickerPago.js — ÚNICA fuente de persistencia y resolución
+// para "configuracion_stickers_pago". Ningún otro módulo debe leer/escribir
 // esa tabla directamente (mismo criterio arquitectónico que
 // obtenerUsuarioGlobal.js para "usuarios").
 //
-// Responsabilidades (y solo estas):
-//   - obtener configuración
-//   - activar modo de registro
-//   - comprobar si el registro está vigente
-//   - guardar el fileSha256 capturado
-//   - desactivar el modo de registro
-//   - limpiar una configuración (des-registrar el sticker guardado)
-//   - validar usuario_id + grupo_id
+// CORRECCIÓN ARQUITECTÓNICA — dos niveles de configuración:
 //
-// Explícitamente NO hace nada de: cálculo de deuda, pagos parciales,
-// matching bancario, pagos_movimientos, ni decide NADA sobre reservas —
-// eso sigue siendo exclusivo de confirmarPagoPorSticker.js /
-// marcarReservasPagadasPorAdmin.js, que esta fase no modifica en su lógica
-// de negocio.
+//   Nivel 1 — PREDETERMINADO: usuario_id, grupo_id = NULL.
+//             Un único sticker por tenant, válido para cualquier grupo que
+//             no tenga uno específico.
+//
+//   Nivel 2 — ESPECÍFICO: usuario_id, grupo_id = JID real del grupo.
+//             Opcional. Si existe, tiene PRIORIDAD sobre el predeterminado
+//             para ese grupo exacto.
+//
+// Ver supabase_migrations/013_configuracion_stickers_pago_predeterminado.sql
+// para el esquema (grupo_id nullable + 2 índices únicos parciales).
+//
+// IMPORTANTE — por qué ya NO se usa upsert(): un índice único PARCIAL
+// (como "grupo_id IS NULL" o "grupo_id IS NOT NULL") no puede ser el
+// destino de un ON CONFLICT por lista de columnas (limitación real de
+// Postgres/PostgREST, documentada en la migración 013). En su lugar se usa
+// el mismo patrón YA establecido en el proyecto para esto exacto:
+// "insertar optimista -> si 23505 (unique_violation), la fila ya existe ->
+// hacer UPDATE de esa fila" (ver bot/funciones/usuarios/obtenerUsuarioGlobal.js
+// y backend/pagos/pagosController.js). Nunca hay ventana de carrera: el
+// índice único parcial es quien decide atómicamente, en Postgres, si el
+// INSERT puede pasar o no.
 // ==========================================================================
 
 const supabase = require("../../../lib/supabase");
 
-// Mismo criterio de expiración corta que YA usa el proyecto para "algo
+const CODIGO_VIOLACION_UNICA_POSTGRES = "23505";
+
+// Mismo criterio de expiración corta que ya usa el proyecto para "algo
 // temporal que espera una acción del lado de WhatsApp": el QR de conexión
-// expira en 2 minutos (services/baileys/qr.js). No se inventa una
-// duración distinta para el modo de registro.
+// expira en 2 minutos (services/baileys/qr.js).
 const MINUTOS_EXPIRACION_REGISTRO_DEFECTO = 2;
 
-function validarClave({ usuarioId, grupoId }) {
+function validarUsuario(usuarioId) {
 
-    return !!usuarioId && !!grupoId;
+    return !!usuarioId;
 
 }
 
-// Lectura simple — usada tanto por registrarStickerPago.js (para saber si
-// hay un registro vigente) como por confirmarPagoPorSticker.js (para
-// obtener el hash configurado).
-async function obtenerConfiguracion({ usuarioId, grupoId }) {
+// ==========================================================================
+// Lectura de un nivel puntual. grupoId=null -> predeterminado (Nivel 1);
+// grupoId=<jid> -> específico de ese grupo (Nivel 2). Usa .is() para NULL
+// — .eq("grupo_id", null) NO funciona en PostgREST (genera grupo_id=eq.null,
+// que nunca matchea filas NULL reales).
+// ==========================================================================
+async function obtenerConfiguracion({ usuarioId, grupoId = null }) {
 
-    if (!validarClave({ usuarioId, grupoId })) {
+    if (!validarUsuario(usuarioId)) {
 
         return null;
 
     }
 
-    const { data, error } = await supabase
+    let query = supabase
         .from("configuracion_stickers_pago")
         .select("*")
-        .eq("usuario_id", usuarioId)
-        .eq("grupo_id", grupoId)
-        .maybeSingle();
+        .eq("usuario_id", usuarioId);
+
+    query = grupoId
+        ? query.eq("grupo_id", grupoId)
+        : query.is("grupo_id", null);
+
+    const { data, error } = await query.maybeSingle();
 
     if (error) {
 
@@ -66,8 +82,7 @@ async function obtenerConfiguracion({ usuarioId, grupoId }) {
 }
 
 // Pura: decide si un registro está vigente AHORA. El vencimiento se decide
-// siempre en código (comparando con Date.now()), nunca en SQL — mismo
-// criterio que el resto del proyecto (p. ej. verificarHoraCierre.js).
+// siempre en código (comparando con Date.now()), nunca en SQL.
 function registroVigente(config) {
 
     if (!config) return false;
@@ -80,61 +95,91 @@ function registroVigente(config) {
 
 }
 
-// Activa (o reactiva) el modo de registro para (usuario_id, grupo_id).
-// Upsert sobre unique(usuario_id, grupo_id) — mismo patrón exacto que
-// automation_configs.guardarConfiguracion() / grupos_autorizados.autorizarGrupo()
-// en el frontend: no le importa a quien llama si la fila ya existía.
-async function activarModoRegistro({ usuarioId, grupoId, minutos = MINUTOS_EXPIRACION_REGISTRO_DEFECTO }) {
+// Activa (o reactiva) el modo de registro para el nivel indicado
+// (grupoId=null -> predeterminado; grupoId=<jid> -> específico). Patrón
+// insert-optimista -> 23505 -> update (ver cabecera del archivo).
+async function activarModoRegistro({ usuarioId, grupoId = null, minutos = MINUTOS_EXPIRACION_REGISTRO_DEFECTO }) {
 
-    if (!validarClave({ usuarioId, grupoId })) {
+    if (!validarUsuario(usuarioId)) {
 
-        return { ok: false, error: "usuario_id y grupo_id son obligatorios" };
+        return { ok: false, error: "usuario_id es obligatorio" };
 
     }
 
-    const expira = new Date(Date.now() + minutos * 60 * 1000);
+    const expira = new Date(Date.now() + minutos * 60 * 1000).toISOString();
+    const ahora = new Date().toISOString();
 
-    const { data, error } = await supabase
+    const { data: insertado, error: errorInsert } = await supabase
         .from("configuracion_stickers_pago")
-        .upsert(
-            {
-                usuario_id: usuarioId,
-                grupo_id: grupoId,
-                esperando_registro: true,
-                esperando_registro_expira_en: expira.toISOString(),
-                actualizado_en: new Date().toISOString()
-            },
-            { onConflict: "usuario_id,grupo_id" }
-        )
+        .insert({
+
+            usuario_id: usuarioId,
+            grupo_id: grupoId || null,
+            esperando_registro: true,
+            esperando_registro_expira_en: expira,
+            actualizado_en: ahora
+
+        })
         .select()
         .single();
 
-    if (error) {
+    if (!errorInsert) {
 
-        console.error("❌ [STICKER-PAGO] Error activando modo de registro:", error.message);
-
-        return { ok: false, error: error.message };
+        return { ok: true, configuracion: insertado };
 
     }
 
-    return { ok: true, configuracion: data };
+    if (errorInsert.code !== CODIGO_VIOLACION_UNICA_POSTGRES) {
+
+        console.error("❌ [STICKER-PAGO] Error activando modo de registro:", errorInsert.message);
+
+        return { ok: false, error: errorInsert.message };
+
+    }
+
+    // Ya existía una fila para este nivel (el índice único parcial
+    // correspondiente lo garantiza) — se reutiliza, nunca se duplica.
+    let query = supabase
+        .from("configuracion_stickers_pago")
+        .update({
+
+            esperando_registro: true,
+            esperando_registro_expira_en: expira,
+            actualizado_en: ahora
+
+        })
+        .eq("usuario_id", usuarioId);
+
+    query = grupoId
+        ? query.eq("grupo_id", grupoId)
+        : query.is("grupo_id", null);
+
+    const { data: actualizado, error: errorUpdate } = await query.select().maybeSingle();
+
+    if (errorUpdate || !actualizado) {
+
+        console.error("❌ [STICKER-PAGO] Error activando modo de registro (fila existente):", errorUpdate?.message);
+
+        return { ok: false, error: errorUpdate?.message || "no se pudo activar el registro" };
+
+    }
+
+    return { ok: true, configuracion: actualizado };
 
 }
 
-// Apaga el modo de registro sin tocar el sticker ya guardado (si lo hay).
-// Se usa tanto para cancelar manualmente desde el panel como para limpiar
-// una ventana vencida (ver registrarStickerPago.js) — en ambos casos el
-// UPDATE está condicionado a (usuario_id, grupo_id) exactos, así que NUNCA
-// afecta la configuración de otro grupo/tenant.
-async function desactivarModoRegistro({ usuarioId, grupoId }) {
+// Apaga el modo de registro del nivel indicado, sin tocar un sticker ya
+// guardado. Condicionado a (usuario_id, grupo_id-o-null) exactos — nunca
+// afecta el otro nivel ni otro grupo/tenant.
+async function desactivarModoRegistro({ usuarioId, grupoId = null }) {
 
-    if (!validarClave({ usuarioId, grupoId })) {
+    if (!validarUsuario(usuarioId)) {
 
-        return { ok: false, error: "usuario_id y grupo_id son obligatorios" };
+        return { ok: false, error: "usuario_id es obligatorio" };
 
     }
 
-    const { error } = await supabase
+    let query = supabase
         .from("configuracion_stickers_pago")
         .update({
 
@@ -143,8 +188,13 @@ async function desactivarModoRegistro({ usuarioId, grupoId }) {
             actualizado_en: new Date().toISOString()
 
         })
-        .eq("usuario_id", usuarioId)
-        .eq("grupo_id", grupoId);
+        .eq("usuario_id", usuarioId);
+
+    query = grupoId
+        ? query.eq("grupo_id", grupoId)
+        : query.is("grupo_id", null);
+
+    const { error } = await query;
 
     if (error) {
 
@@ -158,21 +208,19 @@ async function desactivarModoRegistro({ usuarioId, grupoId }) {
 
 }
 
-// Guarda el hash capturado — SOLO si esperando_registro seguía true en la
-// base de datos en el momento exacto del UPDATE (condición en el propio
-// WHERE, no una comprobación previa por separado). Mismo criterio atómico
-// que marcarReservasPagadasPorAdmin.js: si dos stickers casi simultáneos
-// compiten por la misma ventana, el segundo UPDATE no encuentra fila que
-// coincida y devuelve 0 filas — no hay carrera posible.
-async function guardarStickerCapturado({ usuarioId, grupoId, stickerSha256, registradoPor }) {
+// Guarda el hash capturado en el nivel indicado — SOLO si esperando_registro
+// seguía true en la base de datos en el momento exacto del UPDATE
+// (condición en el propio WHERE). Mismo criterio atómico que
+// marcarReservasPagadasPorAdmin.js.
+async function guardarStickerCapturado({ usuarioId, grupoId = null, stickerSha256, registradoPor }) {
 
-    if (!validarClave({ usuarioId, grupoId }) || !stickerSha256) {
+    if (!validarUsuario(usuarioId) || !stickerSha256) {
 
-        return { ok: false, error: "usuario_id, grupo_id y stickerSha256 son obligatorios" };
+        return { ok: false, error: "usuario_id y stickerSha256 son obligatorios" };
 
     }
 
-    const { data, error } = await supabase
+    let query = supabase
         .from("configuracion_stickers_pago")
         .update({
 
@@ -185,9 +233,13 @@ async function guardarStickerCapturado({ usuarioId, grupoId, stickerSha256, regi
 
         })
         .eq("usuario_id", usuarioId)
-        .eq("grupo_id", grupoId)
-        .eq("esperando_registro", true)
-        .select();
+        .eq("esperando_registro", true);
+
+    query = grupoId
+        ? query.eq("grupo_id", grupoId)
+        : query.is("grupo_id", null);
+
+    const { data, error } = await query.select();
 
     if (error) {
 
@@ -199,9 +251,9 @@ async function guardarStickerCapturado({ usuarioId, grupoId, stickerSha256, regi
 
     if (!data || data.length === 0) {
 
-        // El registro ya no estaba vigente en la BD al momento del UPDATE
-        // (otra ejecución lo ganó primero, o venció justo antes) — no es un
-        // error, simplemente no se guarda dos veces.
+        // El registro ya no estaba vigente al momento del UPDATE (otra
+        // ejecución lo ganó primero, o venció justo antes) — no es un
+        // error.
         return { ok: false, motivo: "registro_ya_no_vigente" };
 
     }
@@ -210,19 +262,17 @@ async function guardarStickerCapturado({ usuarioId, grupoId, stickerSha256, regi
 
 }
 
-// "Limpiar una configuración": des-registra el sticker guardado (para
-// volver a registrar uno distinto desde cero). NO toca esperando_registro
-// — activar un nuevo registro es responsabilidad explícita de
-// activarModoRegistro().
-async function limpiarStickerConfigurado({ usuarioId, grupoId }) {
+// Des-registra el sticker guardado del nivel indicado (nunca borra la
+// fila).
+async function limpiarStickerConfigurado({ usuarioId, grupoId = null }) {
 
-    if (!validarClave({ usuarioId, grupoId })) {
+    if (!validarUsuario(usuarioId)) {
 
-        return { ok: false, error: "usuario_id y grupo_id son obligatorios" };
+        return { ok: false, error: "usuario_id es obligatorio" };
 
     }
 
-    const { error } = await supabase
+    let query = supabase
         .from("configuracion_stickers_pago")
         .update({
 
@@ -232,8 +282,13 @@ async function limpiarStickerConfigurado({ usuarioId, grupoId }) {
             actualizado_en: new Date().toISOString()
 
         })
-        .eq("usuario_id", usuarioId)
-        .eq("grupo_id", grupoId);
+        .eq("usuario_id", usuarioId);
+
+    query = grupoId
+        ? query.eq("grupo_id", grupoId)
+        : query.is("grupo_id", null);
+
+    const { error } = await query;
 
     if (error) {
 
@@ -247,21 +302,95 @@ async function limpiarStickerConfigurado({ usuarioId, grupoId }) {
 
 }
 
-// Único punto que usa confirmarPagoPorSticker.js para obtener el hash
-// vigente. Nunca cae a otro grupo/tenant ni a ningún valor por defecto:
-// sin fila, o sin sticker_sha256 guardado, devuelve null — el llamador
-// debe fallar cerrado (no confirmar ningún pago).
-async function obtenerStickerConfigurado({ usuarioId, grupoId }) {
+function normalizarHash(valor) {
 
-    const config = await obtenerConfiguracion({ usuarioId, grupoId });
+    return valor ? String(valor).trim().toLowerCase() : null;
 
-    if (!config?.sticker_sha256) {
+}
+
+// ==========================================================================
+// resolverStickerPago({ usuarioId, grupoId }) — ÚNICA función de
+// resolución para CONFIRMAR UN PAGO. Prioridad: específico del grupo
+// primero, predeterminado del tenant como respaldo. Nunca se duplica esta
+// lógica dentro de confirmarPagoPorSticker.js.
+//
+// Devuelve { hash, nivel: "especifico"|"predeterminado" } o null si no hay
+// ningún sticker configurado en ningún nivel — el llamador debe fallar
+// cerrado (no confirmar ningún pago).
+// ==========================================================================
+async function resolverStickerPago({ usuarioId, grupoId }) {
+
+    if (!validarUsuario(usuarioId)) {
 
         return null;
 
     }
 
-    return String(config.sticker_sha256).trim().toLowerCase();
+    if (grupoId) {
+
+        const especifico = await obtenerConfiguracion({ usuarioId, grupoId });
+        const hashEspecifico = normalizarHash(especifico?.sticker_sha256);
+
+        if (hashEspecifico) {
+
+            return { hash: hashEspecifico, nivel: "especifico" };
+
+        }
+
+    }
+
+    const predeterminado = await obtenerConfiguracion({ usuarioId, grupoId: null });
+    const hashPredeterminado = normalizarHash(predeterminado?.sticker_sha256);
+
+    if (hashPredeterminado) {
+
+        return { hash: hashPredeterminado, nivel: "predeterminado" };
+
+    }
+
+    return null;
+
+}
+
+// ==========================================================================
+// obtenerRegistroVigenteParaCaptura({ usuarioId, grupoId }) — usada por
+// registrarStickerPago.js para decidir, ante un sticker entrante en un
+// grupo concreto, si corresponde a un registro vigente ESPECÍFICO de ese
+// grupo o al registro vigente PREDETERMINADO del tenant. Misma prioridad
+// que resolverStickerPago(): específico primero.
+//
+// Devuelve { nivel, grupoId (null si es predeterminado), config } o null
+// si no hay ningún registro vigente en ningún nivel para este mensaje.
+// ==========================================================================
+async function obtenerRegistroVigenteParaCaptura({ usuarioId, grupoId }) {
+
+    if (!validarUsuario(usuarioId)) {
+
+        return null;
+
+    }
+
+    if (grupoId) {
+
+        const especifico = await obtenerConfiguracion({ usuarioId, grupoId });
+
+        if (registroVigente(especifico)) {
+
+            return { nivel: "especifico", grupoId, config: especifico };
+
+        }
+
+    }
+
+    const predeterminado = await obtenerConfiguracion({ usuarioId, grupoId: null });
+
+    if (registroVigente(predeterminado)) {
+
+        return { nivel: "predeterminado", grupoId: null, config: predeterminado };
+
+    }
+
+    return null;
 
 }
 
@@ -269,13 +398,14 @@ module.exports = {
 
     MINUTOS_EXPIRACION_REGISTRO_DEFECTO,
 
-    validarClave,
     obtenerConfiguracion,
     registroVigente,
     activarModoRegistro,
     desactivarModoRegistro,
     guardarStickerCapturado,
     limpiarStickerConfigurado,
-    obtenerStickerConfigurado
+
+    resolverStickerPago,
+    obtenerRegistroVigenteParaCaptura
 
 };

@@ -35,7 +35,7 @@ interface Props {
     grupoId: string;
 }
 
-type Estado = "cargando" | "sin-sesion" | "listo" | "error";
+type Estado = "cargando" | "sin-sesion" | "listo" | "error" | "no-encontrado";
 
 function Switch({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
     return (
@@ -100,12 +100,24 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
             }
 
             const propia = (autorizadosRes.data || []).find((g: GrupoAutorizado) => g.grupo_id === grupoId) || null;
-            setAutorizacion(propia);
 
             // Prioridad: grupo REAL de la sesión conectada > histórico de
             // mensajes_grupos_sorteos > el JID crudo (ver GruposAutomatizacion).
             const real = disponiblesRes.flatMap((s) => s.grupos).find((g) => g.id === grupoId);
             const conocido = conocidosRes.data.find((g) => g.grupo_id === grupoId);
+
+            // Ningún rastro de este JID en ningún lado (ni conectado ahora,
+            // ni autorizado antes, ni visto alguna vez en mensajes) -> el
+            // JID de la URL no corresponde a nada real. Se corta ACÁ, antes
+            // de crear/guardar cualquier configuración para un grupo que
+            // podría no existir (p. ej. un JID corrupto o mal escrito) —
+            // nunca se "corrige" inventando otro identificador.
+            if (!propia && !real && !conocido) {
+                setEstado("no-encontrado");
+                return;
+            }
+
+            setAutorizacion(propia);
             setNombreGrupo(real?.nombre || conocido?.grupo_nombre || null);
 
             const base = (configRes.data as AutomationConfig | null) || configuracionPorDefecto(uid, grupoId);
@@ -295,6 +307,23 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
         return <div className={styles.state}>{error}</div>;
     }
 
+    if (estado === "no-encontrado") {
+        return (
+            <div className={styles.page}>
+                <AutomatizacionHeader />
+                <div className={styles.state}>
+                    <p className={styles.title}>Grupo no encontrado</p>
+                    <p className={styles.nota}>
+                        Este grupo ya no está disponible en la sesión de WhatsApp conectada.
+                    </p>
+                    <Link href="/automatizacion/grupos" className={styles.back}>
+                        <ChevronLeft size={13} /> Volver a grupos
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
     return (
 
         <div className={styles.page}>
@@ -308,6 +337,7 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
                         <ChevronLeft size={13} /> Grupos
                     </Link>
                     <h1 className={styles.title}>{nombreGrupo || grupoId}</h1>
+                    <p className={styles.jidLabel}>ID de WhatsApp</p>
                     <p className={styles.jid}>{grupoId}</p>
                 </div>
 
