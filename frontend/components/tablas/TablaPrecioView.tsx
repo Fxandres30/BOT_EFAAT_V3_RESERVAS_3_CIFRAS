@@ -30,6 +30,7 @@ export default function TablaPrecioView({ precio }: Props) {
         config,
         loading,
         error,
+        usuarioId,
         numeros,
         eventoActivo,
         coincidePrecio,
@@ -126,6 +127,7 @@ export default function TablaPrecioView({ precio }: Props) {
                             precio={precio}
                             totalNumeros={0}
                             disponibles={0}
+                            usuarioId={usuarioId}
                             onReiniciar={reiniciar}
                         />
                     </div>
@@ -152,6 +154,7 @@ export default function TablaPrecioView({ precio }: Props) {
                         precio={precio}
                         totalNumeros={stats.total}
                         disponibles={stats.disponibles}
+                        usuarioId={usuarioId}
                         onReiniciar={reiniciar}
                     />
                 </div>

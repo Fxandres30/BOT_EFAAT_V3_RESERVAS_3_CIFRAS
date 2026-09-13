@@ -5,11 +5,13 @@ import { useState } from "react";
 import { RotateCcw, Pencil, Share2, Shuffle, type LucideIcon } from "lucide-react";
 
 import ConfirmDialog from "./ConfirmDialog";
+import { compartirTabla } from "@/services/tablas/compartirTabla";
 
 interface Props {
     precio: number;
     totalNumeros: number;
     disponibles: number;
+    usuarioId: string | null;
     onReiniciar: () => Promise<void> | void;
 }
 
@@ -17,6 +19,7 @@ export default function AccionesTabla({
     precio,
     totalNumeros,
     disponibles,
+    usuarioId,
     onReiniciar
 }: Props) {
 
@@ -24,6 +27,7 @@ export default function AccionesTabla({
 
     const [confirmandoReinicio, setConfirmandoReinicio] = useState(false);
     const [reiniciando, setReiniciando] = useState(false);
+    const [compartiendo, setCompartiendo] = useState(false);
 
     async function confirmarReinicio() {
 
@@ -52,15 +56,41 @@ export default function AccionesTabla({
 
     async function compartir() {
 
-        const url = window.location.href;
-
-        if (navigator.share) {
-            await navigator.share({ title: `Tabla $${precio}`, text: "Mira esta dinámica.", url });
+        if (!usuarioId) {
+            alert("Debes iniciar sesión para compartir la tabla.");
             return;
         }
 
-        await navigator.clipboard.writeText(url);
-        alert("Enlace copiado.");
+        setCompartiendo(true);
+
+        try {
+
+            const resultado = await compartirTabla(precio, usuarioId);
+
+            if (!resultado.enviado) {
+
+                const mensajes: Record<string, string> = {
+                    sin_evento_activo: "No hay ningún sorteo activo en esta tabla para compartir.",
+                    tabla_no_configurada: "Esta tabla no está configurada.",
+                    error_envio: "No se pudo enviar la imagen por WhatsApp."
+                };
+
+                alert(mensajes[resultado.motivo || ""] || "No se pudo compartir la tabla.");
+                return;
+
+            }
+
+            alert("Tabla compartida en el grupo de WhatsApp.");
+
+        } catch {
+
+            alert("No se pudo compartir la tabla.");
+
+        } finally {
+
+            setCompartiendo(false);
+
+        }
 
     }
 
@@ -109,9 +139,10 @@ export default function AccionesTabla({
 
                 <BotonIcono
                     icon={Share2}
-                    label="Compartir"
+                    label={compartiendo ? "Compartiendo…" : "Compartir"}
                     color="text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200"
                     destacado
+                    disabled={compartiendo}
                     onClick={compartir}
                 />
 
@@ -139,12 +170,14 @@ function BotonIcono({
     label,
     color,
     destacado = false,
+    disabled = false,
     onClick
 }: {
     icon: LucideIcon;
     label: string;
     color: string;
     destacado?: boolean;
+    disabled?: boolean;
     onClick: () => void;
 }) {
 
@@ -152,9 +185,10 @@ function BotonIcono({
 
         <button
             onClick={onClick}
+            disabled={disabled}
             aria-label={label}
             title={label}
-            className={`flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 rounded-xl text-sm font-medium min-w-[44px] min-h-[44px] border transition-colors ${
+            className={`flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 rounded-xl text-sm font-medium min-w-[44px] min-h-[44px] border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                 destacado
                     ? "bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700"
                     : `bg-white border-gray-200 ${color}`

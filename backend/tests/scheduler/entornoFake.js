@@ -27,13 +27,26 @@ const RUTAS = {
     automationConfigRepo: path.join(RAIZ, "automation/repo/automationConfig.js"),
     eventosBotRepo: path.join(RAIZ, "automation/repo/eventosBot.js"),
     reservasActividadRepo: path.join(RAIZ, "automation/repo/reservasActividad.js"),
-    // Fase 5 (INITIAL_TABLE) — tienen que recargarse igual que el resto:
-    // engine.js las requiere internamente, y sin esto quedarían con una
-    // referencia obsoleta al fakeSupabase de una crearEntorno() anterior.
+    // Siguen recargándose igual que siempre: la fake de compartirTabla
+    // (más abajo) las requiere para reproducir la lectura REAL de
+    // disponibilidad, y sin recargarlas quedarían con una referencia
+    // obsoleta al fakeSupabase de una crearEntorno() anterior.
     tablaEventoRepo: path.join(RAIZ, "automation/repo/tablaEvento.js"),
     tablaInicial: path.join(RAIZ, "automation/tablaInicial.js"),
     engine: path.join(RAIZ, "automation/engine.js"),
-    scheduler: path.join(RAIZ, "automation/scheduler.js")
+    scheduler: path.join(RAIZ, "automation/scheduler.js"),
+    // Fase "Compartir real" — INITIAL_TABLE ahora captura una imagen real
+    // (Puppeteer, contra el panel Next.js real) y la envía por WhatsApp.
+    // Eso es infraestructura pesada/externa que este suite NUNCA debe
+    // levantar de verdad — se fake-ea el módulo completo, pero el fake
+    // reproduce la MISMA lectura real de disponibilidad (tablaEventoRepo)
+    // y la MISMA idempotencia real (ExecutionGuard, conectado al mismo
+    // fakeSupabase) — solo sustituye la parte cara/externa (Puppeteer +
+    // envío real de imagen). Así los tests 21/27-33 siguen probando
+    // disponibilidad real, orden, tabla vacía e idempotencia genuinas; la
+    // captura de imagen real se prueba aparte, contra un servidor real
+    // (ver backend/_test_compartir_tabla_real.js).
+    compartirTabla: path.join(RAIZ, "services/compartirTabla.js")
 };
 
 function inyectar(rutaAbs, exportsObj) {
@@ -92,6 +105,56 @@ function restaurarTimers() {
     _setTimeoutOriginal = null;
 }
 
+// Fake de services/compartirTabla.js para este suite: reproduce la MISMA
+// lectura real de disponibilidad (tablaEventoRepo, contra el fakeSupabase
+// de la prueba) y el MISMO formateo (tablaInicial.js, sin cambios), y
+// envuelve el envío con el ExecutionGuard REAL — así la idempotencia
+// (tests 28-31/33) sigue siendo genuina. Solo sustituye lo que
+// necesitaría Puppeteer/una imagen real, que este suite no debe levantar.
+function crearCompartirTablaFake({ tablaEventoRepo, construirTextoTablaInicial, executionGuard }) {
+
+    async function compartirTabla({ evento, sock, idempotencia = null }) {
+
+        if (!evento || !evento.grupo_id || !evento.tabla) {
+            return { enviado: false, motivo: "evento_invalido" };
+        }
+
+        const ejecutar = async () => {
+
+            const { numerosDisponibles } = await tablaEventoRepo.obtenerNumeros(evento.tabla);
+            const texto = construirTextoTablaInicial(numerosDisponibles);
+
+            await sock.sendMessage(evento.grupo_id, { text: texto });
+
+            return { numerosDisponibles: numerosDisponibles.length };
+
+        };
+
+        if (!idempotencia) {
+            await ejecutar();
+            return { enviado: true };
+        }
+
+        const resultado = await executionGuard.ejecutarUnaVez({
+
+            claveIdempotencia: idempotencia.claveIdempotencia,
+            eventSessionId: idempotencia.eventSessionId,
+            grupoId: evento.grupo_id,
+            usuarioId: evento.usuario_id,
+            tipoAccion: idempotencia.tipoAccion || "INITIAL_TABLE",
+
+            ejecutar
+
+        });
+
+        return resultado.ejecutada ? { enviado: true } : { enviado: false, motivo: resultado.motivo };
+
+    }
+
+    return { compartirTabla };
+
+}
+
 function crearEntorno({ fakeSupabaseExistente = null } = {}) {
 
     limpiarCache();
@@ -106,6 +169,11 @@ function crearEntorno({ fakeSupabaseExistente = null } = {}) {
     const automationConfigRepo = require(RUTAS.automationConfigRepo);
     const eventosBotRepo = require(RUTAS.eventosBotRepo);
     const reservasActividadRepo = require(RUTAS.reservasActividadRepo);
+    const tablaEventoRepo = require(RUTAS.tablaEventoRepo);
+    const { construirTextoTablaInicial } = require(RUTAS.tablaInicial);
+
+    inyectar(RUTAS.compartirTabla, crearCompartirTablaFake({ tablaEventoRepo, construirTextoTablaInicial, executionGuard }));
+
     const engine = require(RUTAS.engine);
     const scheduler = require(RUTAS.scheduler);
 

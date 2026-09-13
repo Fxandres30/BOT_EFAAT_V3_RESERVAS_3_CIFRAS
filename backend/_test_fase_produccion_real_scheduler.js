@@ -1,21 +1,27 @@
-// FASE PRODUCCIÓN REAL — prueba de INTEGRACIÓN REAL (Supabase real, sin
-// mocks de datos) de los DOS bugs encontrados y corregidos:
+// FASE PRODUCCIÓN REAL + "COMPARTIR REAL" — prueba de INTEGRACIÓN REAL
+// (Supabase real, Puppeteer real contra el panel Next.js real corriendo
+// en localhost:3000, sin mocks de datos) de:
 //
-//   1) automation/scheduler.js nunca se arrancaba en producción
-//      (bot/index.js no llamaba a scheduler.start()/stop()).
-//   2) event_sessions se quedaba en "pendiente" para siempre — nada
-//      llamaba a eventSessionsRepo.marcarAbierto() — así que aunque el
-//      Scheduler corriera, nunca encontraba nada que procesar
-//      (obtenerAbiertasPorSesion solo lee "abierto"/"cerrando").
+//   1) automation/scheduler.js nunca se arrancaba en producción (ya
+//      corregido — bot/index.js ahora llama scheduler.start()/stop()).
+//   2) event_sessions se quedaba en "pendiente" para siempre (ya
+//      corregido — detectarEvento.js ahora llama marcarEventSessionAbierta()).
+//   3) INITIAL_TABLE ahora reutiliza la MISMA función real de "Compartir"
+//      (imagen real + texto real) que usa el botón manual del panel —
+//      esta prueba ejecuta AMBOS caminos (manual y automático) y compara
+//      que producen el mismo resultado real.
 //
-// Este script ejercita el código de producción real (engine.js,
-// scheduler.js, eventRules.js, los repos reales) contra Supabase real,
-// usando un usuario/grupo/sesión de PRUEBA (nunca el grupo real en vivo).
-// Solo se sustituye sendMessage (Baileys) — mismo criterio que
-// _test_fase7_dinamismo.js / _test_fase2_variables_globales_e2e.js.
+// Requiere el frontend real corriendo en localhost:3000 (dev server) —
+// si no está corriendo, este script lo indica claramente y falla, en vez
+// de fingir éxito con datos inventados.
+//
+// Solo se sustituye el envío final a WhatsApp (sendImage) — mismo
+// criterio que el resto de _test_*.js de este proyecto: todo lo demás
+// (Supabase, Puppeteer, Express, Next.js) es real.
 require("dotenv").config();
 
 const path = require("path");
+const express = require("express");
 const AUTOMATION_DIR = path.join(__dirname, "automation");
 
 function fakeModule(modId, exportsObj) {
@@ -26,11 +32,14 @@ function fakeModule(modId, exportsObj) {
 const enviados = [];
 
 fakeModule("../services/baileys/send", {
-    sendMessage: async ({ jid, text }) => { enviados.push({ jid, text }); }
+    sendMessage: async ({ jid, text }) => { enviados.push({ tipo: "texto", jid, text }); },
+    sendImage: async ({ jid, image, caption }) => { enviados.push({ tipo: "imagen", jid, image, caption }); }
 });
 
 const engine = require(path.join(AUTOMATION_DIR, "engine.js"));
 const scheduler = require(path.join(AUTOMATION_DIR, "scheduler.js"));
+const { compartirTabla } = require("./services/compartirTabla");
+const tablasRoutes = require("./routes/tablas");
 const supabase = require("./lib/supabase");
 
 const USUARIO_ID = "2491cbd0-5fb5-4cef-a06d-6092e69d40c4";
@@ -41,6 +50,7 @@ const GRUPO_ID = "999999999999999999-testproduccionreal@g.us";
 // filtra por este sessionId, nunca toca la sesión de WhatsApp real activa.
 const SESSION_ID = "55cd8ef9-b137-424d-b9f2-dd5fe856888f";
 const TABLA_REAL_SOLO_LECTURA = "5k_15k_reservas_2_cifras"; // misma tabla real que ya usa el evento de producción — solo SELECT
+const PUERTO_SERVIDOR_PRUEBA = 4000;
 
 let pasaron = 0, fallaron = 0;
 const fallos = [];
@@ -58,17 +68,13 @@ async function limpiar() {
     await supabase.from("eventos_bot").delete().eq("grupo_id", GRUPO_ID);
 }
 
-// scheduler.js::procesarEventSession() lee el evento EN VIVO desde
-// eventos_bot por evento_id (nunca el snapshot, para datos que cambian
-// como "activo") — hace falta una fila real, no solo el objeto en memoria
-// que se le pasa a onEventoDetectado().
-async function crearEventoBotReal() {
+async function crearEventoBotReal(nombreEvento = "__TEST_PRODUCCION_REAL__") {
 
     const { data, error } = await supabase.from("eventos_bot").insert({
         usuario_id: USUARIO_ID,
         session_id: SESSION_ID,
         grupo_id: GRUPO_ID,
-        nombre_evento: "__TEST_PRODUCCION_REAL__",
+        nombre_evento: nombreEvento,
         hora_fin: "23:59",
         hora_cierre: "23:55",
         fecha_evento: "2026-09-13",
@@ -88,40 +94,43 @@ async function crearEventoBotReal() {
 
 }
 
-function eventoFake(eventoBotId) {
-    return {
-        id: eventoBotId,
-        usuario_id: USUARIO_ID,
-        session_id: SESSION_ID,
-        grupo_id: GRUPO_ID,
-        nombre_evento: "__TEST_PRODUCCION_REAL__",
-        hora_fin: "23:59",
-        hora_cierre: "23:55",
-        fecha_evento: "2026-09-13",
-        valor: 5000,
-        premios: [],
-        tabla: TABLA_REAL_SOLO_LECTURA,
-        cifras: 2,
-        cantidad_numeros: 100,
-        grupo_nombre: "Grupo de prueba"
-    };
+function eventoDesde(eventoBotRow) {
+    return { ...eventoBotRow };
+}
+
+async function iniciarServidorPruebaTablas() {
+
+    const app = express();
+    app.use(express.json());
+    app.use("/tablas", tablasRoutes);
+
+    return new Promise((resolve, reject) => {
+
+        const servidor = app.listen(PUERTO_SERVIDOR_PRUEBA, "127.0.0.1", () => resolve(servidor));
+        servidor.on("error", reject);
+
+    });
+
 }
 
 async function main() {
 
     console.log("\n========== SETUP ==========");
+
+    const frontendUp = await fetch("http://localhost:3000/").then(r => r.status < 500).catch(() => false);
+
+    if (!frontendUp) {
+        throw new Error("El frontend real (localhost:3000) no está corriendo — esta prueba necesita el dev server real, no simula la captura de imagen.");
+    }
+
+    const servidorTablas = await iniciarServidorPruebaTablas();
+    console.log(`Servidor de prueba de /tablas/* real levantado en :${PUERTO_SERVIDOR_PRUEBA} (aislado — nunca toca bot/index.js ni la sesión de WhatsApp real).`);
+
     await limpiar();
 
-    // Grupo autorizado + configuración activa, con publicación inicial de
-    // tabla YA vencida (hora "00:00", cualquier día) — para que
-    // evaluarPublicacionInicialTabla() de eventRules.js (SIN cambios) la
-    // permita de inmediato al primer tick, exactamente igual que ya
-    // decide para el grupo real de producción.
-    await supabase.from("grupos_autorizados").insert({
-        usuario_id: USUARIO_ID, grupo_id: GRUPO_ID, activo: true
-    });
-
     const diasTodos = { activo: true, desde: "00:00", hasta: "23:59" };
+
+    await supabase.from("grupos_autorizados").insert({ usuario_id: USUARIO_ID, grupo_id: GRUPO_ID, activo: true });
 
     await supabase.from("automation_configs").insert({
         usuario_id: USUARIO_ID, grupo_id: GRUPO_ID, activo: true,
@@ -139,7 +148,7 @@ async function main() {
     // ============= PRUEBA 1: event_session se crea "pendiente" =============
     console.log("\n========== PRUEBA 1: onEventoDetectado crea el event_session en 'pendiente' ==========");
 
-    const decision = await engine.onEventoDetectado(eventoFake(eventoBot.id));
+    const decision = await engine.onEventoDetectado(eventoDesde(eventoBot));
 
     assert(decision.creoEventSession === true, `event_session creado (motivo: ${decision.motivo})`);
     assert(decision.eventSession?.estado === "pendiente", `estado inicial es 'pendiente' (obtenido: ${decision.eventSession?.estado})`);
@@ -156,21 +165,52 @@ async function main() {
     assert(sesionActualizada.estado === "abierto", `Supabase confirma estado='abierto' (obtenido: ${sesionActualizada.estado})`);
     assert(!!sesionActualizada.abierto_en, "abierto_en quedó registrado con una fecha real");
 
-    // ============= PRUEBA 3: BUG #1 corregido — scheduler.tick() SÍ encuentra y procesa la sesión =============
-    console.log("\n========== PRUEBA 3: scheduler.tick() encuentra la sesión (ya abierta) y publica INITIAL_TABLE con datos reales ==========");
+    // ============= PRUEBA MANUAL: compartirTabla() llamado directamente (botón del panel) =============
+    console.log("\n========== PRUEBA MANUAL: compartirTabla() real (equivalente al botón Compartir) ==========");
+
+    const antesDeManual = enviados.length;
+
+    const resultadoManual = await compartirTabla({ evento: eventoDesde(eventoBot) }); // sin idempotencia — igual que el botón
+
+    assert(resultadoManual.enviado === true, `compartirTabla() manual reporta enviado=true (obtenido: ${JSON.stringify(resultadoManual)})`);
+    assert(enviados.length === antesDeManual + 1, "El envío manual generó exactamente 1 mensaje real");
+
+    const envioManual = enviados[enviados.length - 1];
+
+    assert(envioManual.tipo === "imagen", "El envío manual es una IMAGEN real (no un texto plano)");
+    assert(Buffer.isBuffer(envioManual.image) && envioManual.image.length > 500, `La imagen manual es un buffer PNG real no vacío (bytes: ${envioManual.image?.length})`);
+    assert(envioManual.jid === GRUPO_ID, "El envío manual va al grupo real del evento");
+    assert(typeof envioManual.caption === "string" && envioManual.caption.length > 0, "El envío manual trae texto real (caption)");
+    assert(!/undefined|null|\[object Object\]|NaN/.test(envioManual.caption), "El caption manual no contiene undefined/null/[object Object]/NaN");
+    console.log("Caption REAL (manual):", JSON.stringify(envioManual.caption));
+
+    // ============= PRUEBA 3: BUG #1 corregido — scheduler.tick() SÍ encuentra y procesa la sesión (AUTOMÁTICO) =============
+    console.log("\n========== PRUEBA 3 (AUTOMÁTICO): scheduler.tick() encuentra la sesión y publica INITIAL_TABLE con la MISMA función real ==========");
+
+    const antesDeAuto = enviados.length;
 
     await scheduler.tick({ context: { sessionId: SESSION_ID } });
 
-    assert(enviados.length === 1, `scheduler.tick() causó exactamente 1 envío (obtenido: ${enviados.length})`);
+    assert(enviados.length === antesDeAuto + 1, `scheduler.tick() causó exactamente 1 envío nuevo (obtenido: ${enviados.length - antesDeAuto})`);
 
-    if (enviados.length === 1) {
+    const envioAutomatico = enviados[enviados.length - 1];
 
-        assert(enviados[0].jid === GRUPO_ID, "El mensaje se dirige al grupo real del evento (evento.grupo_id)");
-        assert(typeof enviados[0].text === "string" && enviados[0].text.length > 0, "El texto de INITIAL_TABLE no está vacío");
-        assert(!/undefined|null|\[object Object\]|NaN/.test(enviados[0].text), "El texto no contiene undefined/null/[object Object]/NaN");
-        console.log("Texto INITIAL_TABLE real (primeros 120 caracteres):", enviados[0].text.slice(0, 120));
+    assert(envioAutomatico.tipo === "imagen", "El envío automático (INITIAL_TABLE) también es una IMAGEN real");
+    assert(envioAutomatico.jid === GRUPO_ID, "El envío automático va al grupo real del evento");
+    assert(Buffer.isBuffer(envioAutomatico.image) && envioAutomatico.image.length > 500, `La imagen automática es un buffer PNG real no vacío (bytes: ${envioAutomatico.image?.length})`);
+    console.log("Caption REAL (automático):", JSON.stringify(envioAutomatico.caption));
 
-    }
+    // ============= COMPARACIÓN MANUAL vs AUTOMÁTICO =============
+    console.log("\n========== COMPARACIÓN: manual vs automático ==========");
+
+    assert(envioManual.caption === envioAutomatico.caption, "El texto (caption) manual y automático son IDÉNTICOS — misma plantilla, mismos datos reales");
+    // Los bytes exactos de la imagen pueden variar por detalles de render
+    // (antialiasing/timestamps de captura) — lo que importa, y se prueba
+    // aquí, es que AMBOS caminos producen una imagen real de tamaño
+    // comparable a partir de la MISMA función (nunca dos generadores
+    // distintos).
+    const diferenciaTamano = Math.abs(envioManual.image.length - envioAutomatico.image.length) / envioManual.image.length;
+    assert(diferenciaTamano < 0.05, `Las imágenes manual y automática tienen tamaño equivalente (±5%): manual=${envioManual.image.length}B, automático=${envioAutomatico.image.length}B`);
 
     const { data: accion } = await supabase.from("automation_actions")
         .select("*").eq("event_session_id", eventSession.id).eq("tipo_accion", "INITIAL_TABLE").maybeSingle();
@@ -180,13 +220,18 @@ async function main() {
     // ============= PRUEBA 4: idempotencia real — un segundo tick NO reenvía =============
     console.log("\n========== PRUEBA 4: un segundo tick() no vuelve a enviar (ExecutionGuard real) ==========");
 
+    const antesDeSegundoTick = enviados.length;
     await scheduler.tick({ context: { sessionId: SESSION_ID } });
-    assert(enviados.length === 1, `Sigue habiendo exactamente 1 envío tras un segundo tick (obtenido: ${enviados.length})`);
+    assert(enviados.length === antesDeSegundoTick, `Sin envíos nuevos tras un segundo tick automático (obtenido: ${enviados.length - antesDeSegundoTick} nuevos)`);
+
+    // La llamada MANUAL, en cambio, SÍ debe poder repetirse (un admin que
+    // pulsa "Compartir" dos veces espera que se reenvíe las dos veces —
+    // nunca queda bloqueada como "duplicado").
+    const antesDeSegundoManual = enviados.length;
+    const resultadoManual2 = await compartirTabla({ evento: eventoDesde(eventoBot) });
+    assert(resultadoManual2.enviado === true && enviados.length === antesDeSegundoManual + 1, "compartirTabla() manual SÍ se puede repetir (sin idempotencia — es una acción explícita del admin)");
 
     // ============= PRUEBA 5: sin la corrección del bug #2, esto habría fallado =============
-    // (regresión explícita: confirma que un event_session que se HUBIERA
-    // quedado en "pendiente" jamás es visto por el scheduler — así se sabe
-    // que la Prueba 3 realmente depende de la corrección, no de otra cosa)
     console.log("\n========== PRUEBA 5: control — una sesión 'pendiente' (sin corregir) NUNCA se procesa ==========");
 
     const grupoControl = GRUPO_ID + "-control";
@@ -198,23 +243,22 @@ async function main() {
         publicacion_inicial_tabla: { activo: true, hora: "00:00", dias_permitidos: { lunes: true, martes: true, miercoles: true, jueves: true, viernes: true, sabado: true, domingo: true } }
     });
 
-    const { data: eventoBotControl } = await supabase.from("eventos_bot").insert({
-        usuario_id: USUARIO_ID, session_id: SESSION_ID, grupo_id: grupoControl,
-        nombre_evento: "__TEST_PRODUCCION_REAL_CONTROL__", hora_fin: "23:59", hora_cierre: "23:55",
-        fecha_evento: "2026-09-13", valor: 5000, premios: [], tabla: TABLA_REAL_SOLO_LECTURA,
-        cifras: 2, cantidad_numeros: 100, grupo_nombre: "Grupo de control", activo: true, abierto: true
-    }).select().single();
+    const eventoBotControl = await crearEventoBotReal("__TEST_PRODUCCION_REAL_CONTROL__");
 
-    const evento2 = eventoFake(eventoBotControl.id);
-    evento2.nombre_evento = "__TEST_PRODUCCION_REAL_CONTROL__";
+    const evento2 = eventoDesde(eventoBotControl);
     evento2.grupo_id = grupoControl;
+
+    // Nota: crearEventoBotReal() ya insertó con grupo_id=GRUPO_ID; para el
+    // control necesitamos una fila real con el grupo_id del control.
+    await supabase.from("eventos_bot").update({ grupo_id: grupoControl }).eq("id", eventoBotControl.id);
+    evento2.id = eventoBotControl.id;
 
     const decision2 = await engine.onEventoDetectado(evento2);
     // Deliberadamente NO se llama marcarEventSessionAbierta() aquí.
 
-    const enviadosAntes = enviados.length;
+    const enviadosAntesControl = enviados.length;
     await scheduler.tick({ context: { sessionId: SESSION_ID } });
-    assert(enviados.length === enviadosAntes, "Una sesión que se queda en 'pendiente' sigue sin procesarse (confirma que la Prueba 3 dependía de la corrección real)");
+    assert(enviados.length === enviadosAntesControl, "Una sesión que se queda en 'pendiente' sigue sin procesarse (confirma que la Prueba 3 dependía de la corrección real)");
 
     await supabase.from("event_sessions").delete().eq("id", decision2.eventSession.id);
     await supabase.from("automation_configs").delete().eq("grupo_id", grupoControl);
@@ -224,7 +268,8 @@ async function main() {
     // ============= LIMPIEZA =============
     console.log("\n========== LIMPIEZA ==========");
     await limpiar();
-    console.log("Grupo/config/event_session/acciones de prueba eliminados.");
+    await new Promise(resolve => servidorTablas.close(resolve));
+    console.log("Grupo/config/event_session/acciones de prueba eliminados. Servidor de prueba cerrado.");
 
     console.log("\n============================");
     console.log(`TOTAL: ${pasaron + fallaron}  ✅ PASA: ${pasaron}  ❌ FALLA: ${fallaron}`);

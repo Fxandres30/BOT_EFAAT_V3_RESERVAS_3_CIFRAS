@@ -12,17 +12,25 @@ function esperar(ms) {
 
 }
 
-async function sendMessage({ sock, jid, text, quoted } = {}) {
+// Prioriza el socket que realmente recibió/originó la acción (ctx.sock /
+// llamador explícito). Fallback a la sesión activa solo por compatibilidad
+// — misma regla para cualquier tipo de envío (texto o imagen), un único
+// lugar que la decide.
+function resolverSocketEnvio(sock) {
 
-    // Prioriza el socket que realmente recibió el mensaje (ctx.sock).
-    // Fallback a la sesión activa solo por compatibilidad.
     const socketActivo = sock || manager.getActiveSocket();
 
     if (!socketActivo) {
-
         throw new Error("No hay una sesión activa.");
-
     }
+
+    return socketActivo;
+
+}
+
+async function sendMessage({ sock, jid, text, quoted } = {}) {
+
+    const socketActivo = resolverSocketEnvio(sock);
 
     try {
 
@@ -175,8 +183,51 @@ async function sendMessage({ sock, jid, text, quoted } = {}) {
 
 }
 
+// sendImage({ sock, jid, image, caption }) — envío real de imagen +
+// texto (Baileys soporta { image, caption } de forma nativa). Usado por
+// compartirTabla.js — única función de envío de imagen del proyecto, para
+// que "compartir" manual y automático usen exactamente el mismo camino
+// real, igual que sendMessage ya es el único camino para texto.
+async function sendImage({ sock, jid, image, caption } = {}) {
+
+    const socketActivo = resolverSocketEnvio(sock);
+
+    try {
+
+        const idSesion = identidadDesdeSocket(socketActivo);
+
+        console.log("📤 [WHATSAPP SEND IMAGE]", {
+            sesion: idSesion.nombre,
+            telefono: maskPhone(idSesion.telefono),
+            sessionId: idSesion.sessionId,
+            destino: tipoDestino(jid),
+            jid,
+            longitudCaption: (caption || "").length,
+            bytesImagen: image?.length || 0
+        });
+
+        return await socketActivo.sendMessage(jid, { image, caption: caption || "" });
+
+    } catch (error) {
+
+        const idSesion = identidadDesdeSocket(socketActivo);
+
+        console.log("📤 [WHATSAPP SEND IMAGE ERROR]", {
+            sesion: idSesion.nombre,
+            sessionId: idSesion.sessionId,
+            jid,
+            motivo: error.message
+        });
+
+        throw error;
+
+    }
+
+}
+
 module.exports = {
 
-    sendMessage
+    sendMessage,
+    sendImage
 
 };

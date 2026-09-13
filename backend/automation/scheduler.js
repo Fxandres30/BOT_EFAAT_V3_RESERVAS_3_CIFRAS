@@ -35,6 +35,12 @@ const reservasActividadRepo = require("./repo/reservasActividad");
 const eventRules = require("./eventRules");
 const engine = require("./engine");
 
+// INITIAL_TABLE (Fase "Compartir real"): reutiliza la ÚNICA función real
+// de compartir tabla (imagen real + texto real) — la misma que usa el
+// botón "Compartir" del panel (backend/routes/tablas.js). Nunca un
+// generador de tabla de texto aparte — ver services/compartirTabla.js.
+const { compartirTabla } = require("../services/compartirTabla");
+
 const INTERVALO_MS_DEFECTO = 30000;
 
 const intervalos = new Map(); // sessionId -> intervalId
@@ -213,7 +219,28 @@ async function evaluarPublicacionInicialTabla(evento, eventSession, sock, opcion
 
     }
 
-    await engine.enviarPublicacionInicialTabla({ evento, eventSession, sock });
+    const resultado = await compartirTabla({
+
+        evento,
+        sock,
+
+        idempotencia: {
+            claveIdempotencia: `${eventSession.id}:INITIAL_TABLE`,
+            eventSessionId: eventSession.id,
+            tipoAccion: "INITIAL_TABLE"
+        }
+
+    });
+
+    if (resultado.enviado) {
+
+        console.log(`🤖 [AUTOMATION] INITIAL_TABLE (compartir real) publicada para event_session ${eventSession.id}`);
+
+    } else {
+
+        console.log(`🤖 [AUTOMATION] INITIAL_TABLE no enviada (${resultado.motivo}) para event_session ${eventSession.id}`);
+
+    }
 
 }
 

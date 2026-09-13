@@ -146,8 +146,20 @@ function resolverValorBase(key, contextoGlobal) {
         }
 
         case "cantidad_disponibles": {
+
+            // Sin reserva/consulta en curso (p. ej. un anuncio de tabla
+            // bare como compartirTabla.js), el conteo por gramática
+            // siempre da 0 (no hay ningún resultado de disponibilidad que
+            // leer) — eso sería un "0" incorrecto, no un vacío honesto.
+            // evento.libres ya es el conteo real y vigente (el mismo que
+            // guardarEvento.js mantiene) — se usa como fuente directa aquí.
+            if (!ctx?.reserva && !ctx?.consulta && evento?.libres != null) {
+                return valorSeguro(evento.libres);
+            }
+
             const r = gramatica.calcularNumerosRelevantes(ctx || {}, resultado);
             return valorSeguro(r.cantidadDisponibles);
+
         }
 
         // ---- Variables "huérfanas" conectadas en esta fase (Paso 5) ----
