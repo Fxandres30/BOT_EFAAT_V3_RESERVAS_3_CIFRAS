@@ -254,6 +254,15 @@ const PLANTILLAS_POR_TIPO: Record<string, PlantillaBase[]> = {
 
 };
 
+// "consulta_pago" y "multiple" (Fase 2 — sistema global de variables) NO
+// tienen plantillas semilla a propósito: cada consulta real solo trae UNA
+// faceta (lista/cantidad/monto, o un subconjunto variable en "multiple"),
+// así que una plantilla única "de fábrica" mostraría campos vacíos según
+// qué preguntó el cliente. Sin semilla, el BOT sigue usando su mensaje
+// fijo (resolverConsulta.js) exactamente como hoy — el admin puede crear
+// una plantilla personalizada cuando quiera (botón "Nueva plantilla"),
+// sabiendo que las variables de pago que esa consulta puntual no trajo
+// quedarán vacías (nunca inventadas).
 export function obtenerPlantillasBase(tipoId: string): PlantillaBase[] {
     return PLANTILLAS_POR_TIPO[tipoId] || [];
 }

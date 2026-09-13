@@ -2,9 +2,10 @@ import { formatearListaNumeros } from "./formatearListaNumeros";
 
 // Catálogo de tipos de mensaje configurables — debe coincidir exactamente
 // con backend/bot/ai/plantillaMensaje.js (calcularTipoPresentacion).
-// "total" (precio total a pagar) queda fuera intencionalmente: no existe
-// ninguna lógica de pagos/montos en el backend todavía (ver auditoría
-// Fase 4), así que no se ofrece una variable que nunca tendría dato real.
+// "consulta_pago" y "multiple" (Fase 2 — sistema global de variables) usan
+// además variables de PAGOS/estado (monto_total, numeros_pagados, etc.),
+// conectadas vía backend/shared/variables — ver ese módulo para el detalle
+// de qué contexto necesita cada una.
 //
 // Variables gramaticales (auditoría de frontend, módulo Mensajes): el
 // backend (backend/bot/ai/gramatica.js + plantillaMensaje.js) calcula
@@ -97,7 +98,22 @@ const V = {
     disponibleDisponiblesOcupados: { variable: "disponible_disponibles_ocupados", etiqueta: "\"disponible\"/\"disponibles\" — SOLO de los ocupados", mostrarCampo: "" },
     elNumeroLosNumerosOcupados: { variable: "el_numero_los_numeros_ocupados", etiqueta: "\"el número\"/\"los números\" — SOLO de los ocupados", mostrarCampo: "" },
     esSonOcupados: { variable: "es_son_ocupados", etiqueta: "\"es\"/\"son\" — SOLO de los ocupados", mostrarCampo: "" },
-    libreLibresOcupados: { variable: "libre_libres_ocupados", etiqueta: "\"libre\"/\"libres\" — SOLO de los ocupados", mostrarCampo: "" }
+    libreLibresOcupados: { variable: "libre_libres_ocupados", etiqueta: "\"libre\"/\"libres\" — SOLO de los ocupados", mostrarCampo: "" },
+
+    // ---------------------------------------------------------------
+    // Variables globales de PAGOS/estado del cliente (Fase 2 — sistema
+    // global de variables). Conectadas vía backend/shared/variables: solo
+    // resuelven con datos reales cuando el resultado trae esa faceta
+    // (consulta_pago / multiple); si no, quedan vacías (nunca inventadas).
+    // ---------------------------------------------------------------
+    numerosPagados: { variable: "numeros_pagados", etiqueta: "Números pagados", mostrarCampo: "" },
+    numerosPendientes: { variable: "numeros_pendientes", etiqueta: "Números pendientes de pago", mostrarCampo: "" },
+    numerosTotalesCliente: { variable: "numeros_totales_cliente", etiqueta: "Todos los números del cliente", mostrarCampo: "" },
+    cantidadPagados: { variable: "cantidad_pagados", etiqueta: "Cantidad de números pagados", mostrarCampo: "" },
+    cantidadPendientes: { variable: "cantidad_pendientes", etiqueta: "Cantidad de números pendientes", mostrarCampo: "" },
+    montoTotal: { variable: "monto_total", etiqueta: "Monto total", mostrarCampo: "" },
+    montoPagado: { variable: "monto_pagado", etiqueta: "Monto pagado", mostrarCampo: "" },
+    montoPendiente: { variable: "monto_pendiente", etiqueta: "Monto pendiente", mostrarCampo: "" }
 
 };
 
@@ -241,6 +257,39 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         descripcion: "El cliente pregunta por la lotería, hora o fecha del sorteo.",
         variables: [V.evento, V.fecha, V.hora],
         ejemplo: { evento: "Lotería De Manizales", fecha: "2026-09-03", hora: "22:30" },
+        soportado: true
+    },
+    {
+        id: "consulta_pago",
+        categoria: "Consultas",
+        icono: "💰",
+        nombre: "Consulta de pago",
+        descripcion: "El cliente pregunta cuánto debe, cuánto ha pagado, o cuáles números tiene pagados/pendientes.",
+        // Cada consulta real solo trae UNA faceta (lista, cantidad o monto
+        // — ver construirFacetaEstadoNumeros en resolverConsulta.js), nunca
+        // las tres a la vez. Se listan todas aquí porque el catálogo es
+        // GLOBAL: la que no aplique a la pregunta real del cliente
+        // simplemente queda vacía en esa respuesta puntual (nunca inventa).
+        variables: [V.cliente, V.evento, V.numerosPagados, V.numerosPendientes, V.cantidadPagados, V.cantidadPendientes, V.montoTotal, V.montoPagado, V.montoPendiente],
+        // Ejemplo mínimo a propósito: cada variable de pago no listada aquí
+        // cae al ejemplo genérico del catálogo global en el preview (ver
+        // aplicarPlantillaPreview.ts) — así se ve cómo luce CADA una sin
+        // simular una combinación que una consulta real nunca produce.
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales" },
+        soportado: true
+    },
+    {
+        id: "multiple",
+        categoria: "Consultas",
+        icono: "🧾",
+        nombre: "Consulta combinada (\"mi estado\")",
+        descripcion: "El cliente combina varias preguntas en un solo mensaje (p. ej. \"mis números y cuánto debo\").",
+        // La combinación real depende de lo que el cliente haya preguntado
+        // (ver detectarIntencion.js) — puede incluir cualquier subconjunto
+        // de estas variables. Las que no fueron parte de la combinación
+        // real quedan vacías, nunca inventadas.
+        variables: [V.cliente, V.evento, V.numerosTotalesCliente, V.numerosPagados, V.numerosPendientes, V.cantidadPagados, V.cantidadPendientes, V.montoTotal, V.montoPagado, V.montoPendiente],
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales" },
         soportado: true
     },
 
