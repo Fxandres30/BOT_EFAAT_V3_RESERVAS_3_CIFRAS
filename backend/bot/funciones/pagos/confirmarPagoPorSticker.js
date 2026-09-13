@@ -84,8 +84,15 @@ async function confirmarPagoPorSticker(ctx) {
 
         if (!ctx?.chat?.esGrupo) return;
 
-        if (ctx.message?.key?.fromMe) return;
-
+        // A propósito, NO se descarta fromMe=true aquí: el remitente del
+        // sticker puede ser el mismo número conectado como bot (setups
+        // donde el admin real usa esa misma cuenta de WhatsApp). Esto NO
+        // trata al bot como cliente: la identidad de CLIENTE solo se
+        // resuelve del participante CITADO (quoted_participant, más
+        // abajo), nunca del remitente del sticker — y esElPropioBot() ya
+        // impide resolver al bot como cliente si es justo a él a quien se
+        // cita. fromMe sigue aplicando sin cambios en
+        // obtenerUsuario.js/obtenerUsuarioGlobal.js.
         const datosSticker = extraerDatosSticker(ctx.message);
 
         if (!datosSticker.esSticker) return;
