@@ -15,6 +15,14 @@ require("./eventHandler");
 const commandHandler =
 require("./commandHandler");
 
+// FASE 3 — confirmación real de pago por sticker de administrador (ver
+// AUDITORÍA sección H/I/J). Sustituye al diagnóstico temporal de la fase
+// anterior (bot/funciones/pagos/depurarStickerPago.js, que sigue existiendo
+// y probado, pero ya no se llama aquí para no consultar groupMetadata() ni
+// resolver identidad dos veces por el mismo mensaje).
+const { confirmarPagoPorSticker } =
+require("../funciones/pagos/confirmarPagoPorSticker");
+
 module.exports = async ({
 
     sock,
@@ -107,6 +115,12 @@ module.exports = async ({
             }
 
         }
+
+        // FASE 3 — confirmación de pago por sticker de administrador. Va
+        // ANTES de eventHandler a propósito: eventHandler corta temprano si
+        // no hay texto (ctx.textoOriginal), y un sticker normalmente no
+        // trae texto.
+        await confirmarPagoPorSticker(ctx);
 
         console.log("7️⃣ eventHandler");
 

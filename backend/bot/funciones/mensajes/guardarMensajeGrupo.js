@@ -1,4 +1,5 @@
 const supabase = require("../../../lib/supabase");
+const { obtenerContextInfo } = require("../../utils/obtenerContextInfo");
 
 async function guardarMensajeGrupo({
 
@@ -117,26 +118,11 @@ async function guardarMensajeGrupo({
             tipoMensaje = "sticker";
 
         // ==========================================
-        // Contexto citado
+        // Contexto citado (incluye stickerMessage — ver
+        // bot/utils/obtenerContextInfo.js, único criterio del sistema)
         // ==========================================
 
-        const contextInfo =
-
-            msg.message?.extendedTextMessage?.contextInfo ||
-
-            msg.message?.imageMessage?.contextInfo ||
-
-            msg.message?.videoMessage?.contextInfo ||
-
-            msg.message?.documentMessage?.contextInfo ||
-
-            msg.message?.buttonsResponseMessage?.contextInfo ||
-
-            msg.message?.listResponseMessage?.contextInfo ||
-
-            msg.message?.templateButtonReplyMessage?.contextInfo ||
-
-            null;
+        const contextInfo = obtenerContextInfo(msg);
 
         const quotedId =
 
