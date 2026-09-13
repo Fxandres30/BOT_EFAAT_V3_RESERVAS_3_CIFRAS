@@ -280,6 +280,52 @@ async function enviarMensajeProgramado({
 }
 
 // ==========================================================================
+// marcarEventSessionAbierta(eventSession)
+// ==========================================================================
+//
+// CORRECCIÓN (Fase Producción Real): eventSessionsRepo.crear() siempre
+// inserta con estado "pendiente" — pero scheduler.js SOLO procesa
+// event_sessions en estado "abierto"/"cerrando" (obtenerAbiertasPorSesion).
+// Sin esta transición, un event_session se quedaba en "pendiente" para
+// siempre y el Scheduler nunca lo veía: tabla inicial, recordatorios,
+// actualización y cierre quedaban configurados en el panel pero JAMÁS se
+// ejecutaban (bug real confirmado contra datos de producción: la sesión
+// aa9f32b8 llevaba desde su creación en "pendiente", con
+// publicacion_inicial_tabla/recordatorios/mensaje_actualizacion/
+// mensaje_cierre todos activos y ninguno disparado nunca).
+//
+// Se llama SOLO después de que detectarEvento.js confirmó que abrirGrupo()
+// tuvo éxito — el event_session pasa a "abierto" exactamente cuando el
+// grupo real ya está abierto, que es la precondición correcta.
+//
+// No bloqueante para el llamador (mismo patrón que enviarMensajeApertura):
+// un fallo aquí nunca debe afectar la apertura real del grupo, que ya
+// ocurrió. Nunca lanza.
+async function marcarEventSessionAbierta(eventSession) {
+
+    if (!eventSession?.id) {
+        return { actualizado: false, motivo: "sin_event_session" };
+    }
+
+    if (eventSession.estado === "abierto") {
+        return { actualizado: true, motivo: "ya_estaba_abierto" };
+    }
+
+    try {
+
+        await eventSessionsRepo.marcarAbierto(eventSession.id);
+        return { actualizado: true };
+
+    } catch (err) {
+
+        console.error(`❌ [AUTOMATION] error marcando event_session ${eventSession.id} como abierto:`, err?.message);
+        return { actualizado: false, motivo: "error_actualizacion", error: err?.message };
+
+    }
+
+}
+
+// ==========================================================================
 // enviarMensajeApertura(evento, eventSession, sock)
 // ==========================================================================
 //
@@ -408,6 +454,7 @@ function construirVariablesDesdeEvento(evento) {
 
 module.exports = {
     onEventoDetectado,
+    marcarEventSessionAbierta,
     enviarMensajeApertura,
     enviarMensajeProgramado,
     enviarPublicacionInicialTabla,

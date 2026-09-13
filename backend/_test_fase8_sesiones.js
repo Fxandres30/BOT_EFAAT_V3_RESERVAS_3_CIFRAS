@@ -114,7 +114,11 @@ async function main() {
 
     assert(manager.getActiveSession() === TEST_IDS.A, "A se convierte en activeBotSession (única sesión conectada)");
     assert(netListeners(TEST_IDS.A) === 1, "Exactamente 1 listener neto registrado en A");
-    assert(intervalosActivos.size === 1, "Exactamente 1 worker (interval) activo");
+    // CORRECCIÓN (Fase Producción Real): bot/index.js ahora también arranca
+    // automation/scheduler.js (antes nunca se llamaba scheduler.start() en
+    // producción — bug real corregido) — cada sesión activa registra 2
+    // intervals: el worker de eventos existente + el Scheduler nuevo.
+    assert(intervalosActivos.size === 2, "Exactamente 2 workers activos (worker de eventos + scheduler de automatización)");
 
     // ================= PRUEBA 2: dos conectadas, sin duplicación =================
     console.log("\n========== PRUEBA 2: dos sesiones conectadas ==========");
@@ -126,7 +130,7 @@ async function main() {
 
     assert(manager.getActiveSession() === TEST_IDS.A, "B conectada NO reemplaza a A (ya hay una activa saludable)");
     assert(netListeners(TEST_IDS.A) === 1 && netListeners(TEST_IDS.B) === 0, "Sigue habiendo exactamente 1 listener (en A), ninguno en B");
-    assert(intervalosActivos.size === 1, "Sigue habiendo exactamente 1 worker activo");
+    assert(intervalosActivos.size === 2, "Sigue habiendo exactamente 2 workers activos (worker de eventos + scheduler)");
 
     const okPref = await manager.marcarPreferidaManual(TEST_IDS.B);
     const { data: filaB } = await supabase.from("sesiones").select("principal").eq("id", TEST_IDS.B).single();
@@ -143,7 +147,7 @@ async function main() {
 
     assert(manager.getActiveSession() === TEST_IDS.B, "B pasa a ser la activa del BOT tras la selección explícita, sin reiniciar nada");
     assert(netListeners(TEST_IDS.A) === 0 && netListeners(TEST_IDS.B) === 1, "El listener se movió de A a B, exactamente 1 activo");
-    assert(intervalosActivos.size === 1, "Sigue habiendo exactamente 1 worker activo (el de B)");
+    assert(intervalosActivos.size === 2, "Sigue habiendo exactamente 2 workers activos (los de B)");
 
     // ================= PRUEBA 4/5: desconectar la activa → failover a la otra conectada =================
     console.log("\n========== PRUEBA 4 y 5: failover automático (queda otra conectada) ==========");
@@ -153,7 +157,7 @@ async function main() {
 
     assert(manager.getActiveSession() === TEST_IDS.A, "Al caer B (activa), el BOT continúa automáticamente con A (la otra conectada)");
     assert(netListeners(TEST_IDS.B) === 0 && netListeners(TEST_IDS.A) === 1, "Listener movido de vuelta a A, exactamente 1 activo");
-    assert(intervalosActivos.size === 1, "Exactamente 1 worker activo tras el failover");
+    assert(intervalosActivos.size === 2, "Exactamente 2 workers activos tras el failover");
 
     const { data: filaBTrasFailover } = await supabase.from("sesiones").select("principal").eq("id", TEST_IDS.B).single();
     assert(filaBTrasFailover.principal === true, "La preferencia (B) NO se pierde por el failover automático, aunque B ya no esté activa");
@@ -178,7 +182,7 @@ async function main() {
 
     assert(manager.getActiveSession() === TEST_IDS.C, "C se recupera automáticamente como activeBotSession al conectar (sin sesión activa previa)");
     assert(netListeners(TEST_IDS.C) === 1, "Exactamente 1 listener, en C");
-    assert(intervalosActivos.size === 1, "Exactamente 1 worker activo");
+    assert(intervalosActivos.size === 2, "Exactamente 2 workers activos");
 
     // ================= BUG: misma sesión reconecta con socket NUEVO =================
     console.log("\n========== VERIFICACIÓN DEL BUG: reconexión de la misma sesión con socket nuevo ==========");

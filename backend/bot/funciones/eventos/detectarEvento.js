@@ -264,6 +264,17 @@ if (!grupoAbierto) {
     // este ciclo, pero la apertura ya ocurrió igual.
     if (eventSessionAutorizado) {
 
+        // CORRECCIÓN (Fase Producción Real): sin esto, el event_session
+        // quedaba en "pendiente" para siempre y el Scheduler (tabla
+        // inicial/recordatorios/actualización/cierre) nunca lo procesaba,
+        // aunque el grupo real ya estuviera abierto. No bloqueante, mismo
+        // criterio que el resto de esta rama.
+        automationEngine.marcarEventSessionAbierta(eventSessionAutorizado).catch(err => {
+
+            console.error(`❌ [AUTOMATION] error marcando event_session abierto para ${grupoId}:`, err?.message);
+
+        });
+
         automationEngine.enviarMensajeApertura(eventoGuardado, eventSessionAutorizado, sock).catch(err => {
 
             console.error(`❌ [AUTOMATION] error inesperado enviando OPEN_MESSAGE para ${grupoId}:`, err?.message);

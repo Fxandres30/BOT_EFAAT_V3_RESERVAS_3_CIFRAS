@@ -17,6 +17,15 @@ const {
     detenerWorkerEventos
 } = require("./funciones/eventos/lifecycle/iniciarWorkerEventos");
 
+// CORRECCIÓN (Fase Producción Real): el Scheduler del Automation Engine
+// (tabla inicial/recordatorios/actualización/cierre — automation/scheduler.js)
+// ya existía completo y probado, pero nada en producción llamaba a
+// start()/stop() — su propio comentario de cabecera lo documentaba
+// explícitamente. Se arranca aquí con el MISMO patrón exacto que
+// iniciarWorkerEventos/detenerWorkerEventos (mismo sock, mismo criterio de
+// una sesión = un intervalo, sin crear un segundo scheduler).
+const scheduler = require("../automation/scheduler");
+
 // Escáner de identidades: escaneo inicial completo al conectar/reconectar
 // (ver escanerIdentidadesLifecycle.js). Los escaneos incrementales por
 // apertura de grupo se disparan aparte, desde detectarEvento.js /
@@ -75,6 +84,7 @@ function conectar(socket, sessionId) {
         unregisterMessages(anterior);
         detenerWorkerEventos(anterior);
         detenerEscanerIdentidades(anterior);
+        scheduler.stop(anterior);
 
     }
 
@@ -86,6 +96,8 @@ function conectar(socket, sessionId) {
     registerMessages(socket, sessionId);
 
     iniciarWorkerEventos(socket);
+
+    scheduler.start(socket);
 
     console.log("[WORKER] iniciado:", sessionId);
 
@@ -126,6 +138,7 @@ function detenerBot() {
     unregisterMessages(sesionActual);
     detenerWorkerEventos(sesionActual);
     detenerEscanerIdentidades(sesionActual);
+    scheduler.stop(sesionActual);
 
     console.log("[WORKER] detenido:", sesionActual);
 

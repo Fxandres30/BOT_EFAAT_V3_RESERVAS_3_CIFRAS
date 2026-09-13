@@ -381,7 +381,16 @@ async function main() {
         assert.strictEqual(sesiones.length, 1);
         assert.strictEqual(sesiones[0].grupo_id, GRUPO_ID);
         assert.strictEqual(sesiones[0].usuario_id, usuarioId);
-        assert.strictEqual(sesiones[0].estado, "pendiente");
+        // CORRECCIÓN (Fase Producción Real): antes se quedaba en "pendiente"
+        // para siempre porque nada llamaba a eventSessionsRepo.marcarAbierto()
+        // — el Scheduler solo procesa "abierto"/"cerrando", así que tabla
+        // inicial/recordatorios/actualización/cierre nunca se ejecutaban
+        // (bug real confirmado en datos de producción). detectarEvento.js
+        // ahora llama a automationEngine.marcarEventSessionAbierta() justo
+        // después de que abrirGrupo() confirma la apertura real — este test
+        // ya lo ejercita de punta a punta, por eso el estado esperado aquí
+        // cambió de "pendiente" a "abierto".
+        assert.strictEqual(sesiones[0].estado, "abierto");
         assert.ok(sesiones[0].identidad_ciclo);
         assert.strictEqual(sesiones[0].datos_evento_snapshot.nombre_evento, "Sinuano Dia");
         assert.strictEqual(sesiones[0].datos_evento_snapshot.valor, 1500);
