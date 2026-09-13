@@ -131,6 +131,57 @@ module.exports = async (ctx) => {
     // interruptor de reservas se evalúa más adelante, dentro de
     // responderResultado(), una vez se sabe el resultado real.
     const usuarioId = ctx.session?.usuarioId || null;
+
+    // Fase "consultas combinadas": "mis números y cuánto debo" trae varias
+    // sub-intenciones (ver detectarIntencion.js). Cada una respeta SU
+    // PROPIO interruptor de tipo — si el tenant desactivó "consulta_pago"
+    // pero no "mis_numeros", la combinada responde solo la parte
+    // habilitada; si ninguna sigue habilitada, silencio total (mismo
+    // criterio que el resto de tipos, sin excepción nueva).
+    if (intencion.tipo === "multiple") {
+
+        const subIntencionesHabilitadas = [];
+
+        for (const sub of intencion.intenciones) {
+
+            const habilitadaSub = await estaRespuestaHabilitada(usuarioId, sub.tipo);
+
+            if (habilitadaSub) {
+                subIntencionesHabilitadas.push(sub);
+            }
+
+        }
+
+        if (subIntencionesHabilitadas.length === 0) {
+
+            console.log("🔇 Todas las sub-intenciones de la consulta combinada están desactivadas — silencio, sin consultar Supabase.");
+
+            return;
+
+        }
+
+        const resultadoCombinado = await resolverConsulta({
+
+            tipo: "multiple",
+            intenciones: subIntencionesHabilitadas,
+            evento: ctx.evento,
+            usuario: ctx.usuario
+
+        });
+
+        ctx.consulta = resultadoCombinado;
+
+        console.log("==================================");
+        console.log("🔎 Resultado consulta combinada:", subIntencionesHabilitadas.map(s => s.tipo));
+        console.dir(resultadoCombinado, { depth: null });
+        console.log("==================================");
+
+        await responderResultado(ctx);
+
+        return;
+
+    }
+
     const habilitada = await estaRespuestaHabilitada(usuarioId, intencion.tipo);
 
     if (!habilitada) {

@@ -186,8 +186,16 @@ console.log("\n=== Escenario 3: reserva parcial — solicitados 27,45,60 / reser
         assertEq(vars.numeros_reservados, "( 45 )", "E4: numeros_reservados = ( 45 )");
         assertEq(vars.tu_numero_tus_numeros, "tu número", "E4: concordancia singular");
 
+        // Actualizado en la fase "consultas de estado sin contradicciones":
+        // "mis_numeros" mezcla reservado+pagado a propósito (ver
+        // consultarMisNumeros.js) — decir siempre "reservado" aunque el
+        // número YA estuviera pagado era exactamente la contradicción real
+        // detectada (una consulta decía "pagado", otra "reservado" para el
+        // mismo número). El estado real por separado ya lo reportan
+        // "cuáles pagados"/"cuáles pendientes" (consulta_pago); aquí solo
+        // se listan los números, sin afirmar un estado que puede ser falso.
         const r = await resolverConsulta({ tipo: "mis_numeros", evento: { tabla: "t" }, usuario: { id: "u1" } });
-        assertEq(r.mensaje, "Tu número reservado es: ( 45 )", "E4: fallback fijo exacto");
+        assertEq(r.mensaje, "Tu número es: ( 45 )", "E4: fallback fijo exacto");
         assertFormatoValido(r.mensaje, "E4 fallback");
     }
 
@@ -200,8 +208,9 @@ console.log("\n=== Escenario 3: reserva parcial — solicitados 27,45,60 / reser
         assertEq(vars.numeros_reservados, "( 01 - 27 - 48 )", "E5: numeros_reservados = ( 01 - 27 - 48 )");
         assertEq(vars.tu_numero_tus_numeros, "tus números", "E5: concordancia plural");
 
+        // Ver comentario en E4: misma corrección, ya no afirma "reservados".
         const r = await resolverConsulta({ tipo: "mis_numeros", evento: { tabla: "t" }, usuario: { id: "u1" } });
-        assertEq(r.mensaje, "Tus números reservados son: ( 01 - 27 - 48 )", "E5: fallback fijo exacto");
+        assertEq(r.mensaje, "Tus números son: ( 01 - 27 - 48 )", "E5: fallback fijo exacto");
         assertFormatoValido(r.mensaje, "E5 fallback");
     }
 

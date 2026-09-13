@@ -20,13 +20,171 @@ const TEXTO_ESTADO = {
 
 };
 
-async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket }) {
+// ==========================================================================
+// construirFacetaEstadoNumeros() — ÚNICA función que decide texto/datos
+// para una faceta (modo: lista/cantidad/monto × bucket: pendiente/pagado/
+// total) a partir de una MISMA foto de datos (total/reservados/pagados).
+//
+// Existe para que la corrección "contradicción real" quede estructuralmente
+// imposible: tanto el caso "consulta_pago" en solitario como cada parte de
+// una consulta COMBINADA ("mis números y cuánto debo") llaman a esta misma
+// función con los MISMOS reservados/pagados obtenidos en una única lectura
+// — nunca dos lecturas separadas que puedan divergir entre sí.
+//
+// NO existen pagos parciales en este sistema (cada número vale
+// evento.valor completo) — por eso el monto es siempre
+// cantidad_en_ese_estado * evento.valor, sin abonos ni saldos.
+// ==========================================================================
+function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, pagados, valorUnidad }) {
+
+    if (modo === "lista") {
+
+        // bucket "total" une reservados+pagados — se reordena porque cada
+        // arreglo ya viene ascendente POR SEPARADO (misma consulta que
+        // consultarMisNumerosPorEstado.js), pero concatenados quedarían
+        // agrupados por estado en vez de en orden numérico. Los números
+        // son strings de igual longitud (canonicalizados por
+        // extraerNumeros.js/reservarNumeros.js), así que un sort()
+        // lexicográfico ya es un sort numérico correcto.
+        const lista =
+            bucket === "pagado" ? pagados :
+            bucket === "pendiente" ? reservados :
+            [...reservados, ...pagados].sort();
+
+        let mensaje;
+
+        if (lista.length === 0) {
+
+            mensaje =
+                bucket === "pagado" ? "Todavía no tienes ningún número pagado." :
+                bucket === "pendiente" ? "No tienes ningún número pendiente de pago." :
+                "No tienes números reservados actualmente.";
+
+        } else if (bucket === "pagado") {
+
+            mensaje = `✅ Números pagados: ${formatearListaNumeros(pagados)}.`;
+
+        } else if (bucket === "pendiente") {
+
+            mensaje = `⏳ Pendientes de pago: ${formatearListaNumeros(reservados)}.`;
+
+        } else {
+
+            // bucket==="total": SOLO se listan los números — nunca se
+            // afirma un estado (ni "reservados" ni "pagados"), porque esta
+            // lista mezcla ambos a propósito. Afirmar "reservados" aquí
+            // era exactamente la contradicción real detectada: un número
+            // YA PAGADO seguía apareciendo como "reservado".
+            const g = construirVariablesGramaticales(lista.length);
+
+            mensaje = `${capitalizar(g.tu_numero_tus_numeros)} ${g.es_son}: ${formatearListaNumeros(lista)}`;
+
+        }
+
+        return { tipo, modo, bucket, total, reservados, pagados, numerosDelUsuario: lista, mensaje };
+
+    }
+
+    if (modo === "cantidad") {
+
+        const cantidad =
+            bucket === "pagado" ? pagados.length :
+            bucket === "pendiente" ? reservados.length :
+            total;
+
+        const sufijo = cantidad === 1 ? "" : "s";
+
+        const mensaje =
+            bucket === "pagado" ? `Tienes ${cantidad} número${sufijo} pagado${sufijo}.` :
+            bucket === "pendiente" ? `Tienes ${cantidad} número${sufijo} pendiente${sufijo} de pago.` :
+            `Tienes ${cantidad} número${sufijo} en total.`;
+
+        return { tipo, modo, bucket, total, cantidad, mensaje };
+
+    }
+
+    // modo === "monto"
+    const montoTotal = total * valorUnidad;
+    const montoPagado = pagados.length * valorUnidad;
+    const montoPendiente = reservados.length * valorUnidad;
+
+    const monto =
+        bucket === "pagado" ? montoPagado :
+        bucket === "total" ? montoTotal :
+        montoPendiente;
+
+    const formateado = `$${monto.toLocaleString("es-CO")}`;
+
+    let mensaje;
+
+    if (bucket === "pagado") {
+
+        mensaje = monto > 0 ? `✅ Has pagado: ${formateado}.` : "Todavía no has pagado nada.";
+
+    } else if (bucket === "total") {
+
+        mensaje = `💰 El total de tus números es: ${formateado}.`;
+
+    } else {
+
+        mensaje = monto > 0 ? `💰 Tienes pendiente por pagar: ${formateado}.` : "No tienes ningún pago pendiente.";
+
+    }
+
+    return { tipo, modo, bucket, montoTotal, montoPagado, montoPendiente, mensaje };
+
+}
+
+// Deriva (modo, bucket) implícitos para una sub-intención que no trajo un
+// modo/bucket explícito (mis_numeros/mis_reservas/cantidad_reservas nunca
+// lo traen — solo consulta_pago puede, vía PAGO_FRASES_EXPLICITAS). Único
+// lugar que conoce esta correspondencia — reutilizado tanto por el caso
+// "consulta_pago" en solitario como por "multiple".
+function modoBucketImplicitos(tipo, modo, bucket) {
+
+    return {
+        modo: modo || (tipo === "cantidad_reservas" ? "cantidad" : tipo === "consulta_pago" ? "monto" : "lista"),
+        bucket: bucket || (tipo === "consulta_pago" ? "pendiente" : "total")
+    };
+
+}
+
+async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, intenciones }) {
 
     if (!evento || !usuario) {
         return null;
     }
 
     switch (tipo) {
+
+        // Fase "consultas combinadas" — UNA sola lectura de Supabase para
+        // TODAS las sub-intenciones del mensaje, así es estructuralmente
+        // imposible que dos partes de la misma respuesta se contradigan
+        // (comparten exactamente los mismos reservados/pagados).
+        case "multiple": {
+
+            const datos = await consultarMisNumerosPorEstado({ evento, usuario });
+            const valorUnidad = Number(evento.valor) || 0;
+
+            const resultados = (intenciones || []).map(sub => {
+
+                const { modo: modoSub, bucket: bucketSub } = modoBucketImplicitos(sub.tipo, sub.modo, sub.bucket);
+
+                return construirFacetaEstadoNumeros({
+                    tipo: sub.tipo,
+                    modo: modoSub,
+                    bucket: bucketSub,
+                    ...datos,
+                    valorUnidad
+                });
+
+            });
+
+            const mensaje = resultados.map(r => r.mensaje).join("\n");
+
+            return { tipo, ...datos, resultados, mensaje };
+
+        }
 
         // Fase "activar consultas de pago" — reutiliza EXCLUSIVAMENTE
         // consultarMisNumerosPorEstado() (misma consulta que ya usa
@@ -35,95 +193,12 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket }
         // columna nueva, nunca pagos parciales/abonos/ledger.
         case "consulta_pago": {
 
-            const { total, reservados, pagados } =
-                await consultarMisNumerosPorEstado({ evento, usuario });
-
-            // Defaults seguros: si detectarIntencion.js no pudo fijar un
-            // modo/bucket explícito (disparadores genéricos, no una de las
-            // PAGO_FRASES_EXPLICITAS), "cuánto debo" es la lectura más
-            // común de una pregunta de dinero — nunca se deja sin
-            // respuesta por falta de un sub-tipo.
-            const modoFinal = modo || "monto";
-            const bucketFinal = bucket || "pendiente";
-
-            if (modoFinal === "lista") {
-
-                const lista =
-                    bucketFinal === "pagado" ? pagados :
-                    bucketFinal === "pendiente" ? reservados :
-                    [...reservados, ...pagados];
-
-                let mensaje;
-
-                if (lista.length === 0) {
-
-                    mensaje = bucketFinal === "pagado"
-                        ? "Todavía no tienes ningún número pagado."
-                        : "No tienes ningún número pendiente de pago.";
-
-                } else {
-
-                    mensaje = bucketFinal === "pagado"
-                        ? `✅ Números pagados: ${formatearListaNumeros(pagados)}.`
-                        : `⏳ Pendientes de pago: ${formatearListaNumeros(reservados)}.`;
-
-                }
-
-                return { tipo, modo: modoFinal, bucket: bucketFinal, total, reservados, pagados, numerosDelUsuario: lista, mensaje };
-
-            }
-
-            if (modoFinal === "cantidad") {
-
-                const cantidad =
-                    bucketFinal === "pagado" ? pagados.length :
-                    bucketFinal === "pendiente" ? reservados.length :
-                    total;
-
-                const sufijo = cantidad === 1 ? "" : "s";
-
-                const mensaje = bucketFinal === "pagado"
-                    ? `Tienes ${cantidad} número${sufijo} pagado${sufijo}.`
-                    : `Tienes ${cantidad} número${sufijo} pendiente${sufijo} de pago.`;
-
-                return { tipo, modo: modoFinal, bucket: bucketFinal, total, cantidad, mensaje };
-
-            }
-
-            // modo === "monto". NO existen pagos parciales en este sistema
-            // (cada número vale evento.valor completo, entero) — por eso
-            // la fórmula es siempre cantidad_en_ese_estado * evento.valor,
-            // sin abonos ni saldos.
+            const datos = await consultarMisNumerosPorEstado({ evento, usuario });
             const valorUnidad = Number(evento.valor) || 0;
 
-            const montoTotal = total * valorUnidad;
-            const montoPagado = pagados.length * valorUnidad;
-            const montoPendiente = reservados.length * valorUnidad;
+            const { modo: modoFinal, bucket: bucketFinal } = modoBucketImplicitos(tipo, modo, bucket);
 
-            const monto =
-                bucketFinal === "pagado" ? montoPagado :
-                bucketFinal === "total" ? montoTotal :
-                montoPendiente;
-
-            const formateado = `$${monto.toLocaleString("es-CO")}`;
-
-            let mensaje;
-
-            if (bucketFinal === "pagado") {
-
-                mensaje = monto > 0 ? `✅ Has pagado: ${formateado}.` : "Todavía no has pagado nada.";
-
-            } else if (bucketFinal === "total") {
-
-                mensaje = `💰 El total de tus números es: ${formateado}.`;
-
-            } else {
-
-                mensaje = monto > 0 ? `💰 Tienes pendiente por pagar: ${formateado}.` : "No tienes ningún pago pendiente.";
-
-            }
-
-            return { tipo, modo: modoFinal, bucket: bucketFinal, montoTotal, montoPagado, montoPendiente, mensaje };
+            return construirFacetaEstadoNumeros({ tipo, modo: modoFinal, bucket: bucketFinal, ...datos, valorUnidad });
 
         }
 
@@ -142,11 +217,17 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket }
 
             } else {
 
-                // Fuente única de verdad para singular/plural (gramatica.js)
-                // — nunca una rama ad-hoc distinta a la de plantillaMensaje.js.
+                // CORRECCIÓN — contradicción real detectada: antes decía
+                // siempre "reservado(s)" aunque el número YA estuviera
+                // pagado (esta función mezcla reservado+pagado a
+                // propósito, ver consultarMisNumeros.js). El estado real
+                // por separado ya lo reportan "cuáles pagados"/"cuáles
+                // pendientes" (consulta_pago, más arriba) — aquí solo se
+                // listan los números, SIN afirmar un estado que podría ser
+                // falso.
                 const g = construirVariablesGramaticales(cantidad);
 
-                mensaje = `${capitalizar(g.tu_numero_tus_numeros)} ${g.reservado_reservados} ${g.es_son}: ${formatearListaNumeros(numerosDelUsuario)}`;
+                mensaje = `${capitalizar(g.tu_numero_tus_numeros)} ${g.es_son}: ${formatearListaNumeros(numerosDelUsuario)}`;
 
             }
 
@@ -160,7 +241,9 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket }
 
             const g = construirVariablesGramaticales(cantidad);
 
-            const mensaje = `Tienes ${cantidad} ${g.numero_numeros} ${g.reservado_reservados}.`;
+            // Misma corrección que mis_numeros: no afirmar "reservados"
+            // cuando el conteo puede incluir números ya pagados.
+            const mensaje = `Tienes ${cantidad} ${g.numero_numeros} en total.`;
 
             return { tipo, cantidad, mensaje };
 

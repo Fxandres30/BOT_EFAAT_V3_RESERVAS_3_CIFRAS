@@ -82,19 +82,28 @@ const PAGO_FRASES_EXPLICITAS = [
     { frase: "cuanto he pagado", modo: "monto", bucket: "pagado" },
     { frase: "cuanto llevo", modo: "monto", bucket: "pagado" },
     { frase: "cuanto es lo mio", modo: "monto", bucket: "total" },
+    { frase: "cuanto es todo", modo: "monto", bucket: "total" },
 
     // lista (cuáles números)
     { frase: "cuales debo", modo: "lista", bucket: "pendiente" },
     { frase: "que numeros debo", modo: "lista", bucket: "pendiente" },
     { frase: "cuales me faltan por pagar", modo: "lista", bucket: "pendiente" },
     { frase: "que tengo pendiente", modo: "lista", bucket: "pendiente" },
+    { frase: "cuales estan pendientes", modo: "lista", bucket: "pendiente" },
+    { frase: "cuales pendientes", modo: "lista", bucket: "pendiente" },
     { frase: "cuales ya pague", modo: "lista", bucket: "pagado" },
     { frase: "que numeros ya estan pagos", modo: "lista", bucket: "pagado" },
     { frase: "cuales tengo pagados", modo: "lista", bucket: "pagado" },
+    { frase: "cuales estan pagados", modo: "lista", bucket: "pagado" },
+    { frase: "cuales pagados", modo: "lista", bucket: "pagado" },
 
     // cantidad (cuántos)
     { frase: "cuantos debo", modo: "cantidad", bucket: "pendiente" },
-    { frase: "cuantos ya pague", modo: "cantidad", bucket: "pagado" }
+    { frase: "cuantos estan pendientes", modo: "cantidad", bucket: "pendiente" },
+    { frase: "cuantos pendientes", modo: "cantidad", bucket: "pendiente" },
+    { frase: "cuantos ya pague", modo: "cantidad", bucket: "pagado" },
+    { frase: "cuantos estan pagados", modo: "cantidad", bucket: "pagado" },
+    { frase: "cuantos pagados", modo: "cantidad", bucket: "pagado" }
 
 ];
 
@@ -219,7 +228,84 @@ const INFO_EVENTO_FRASES = ["que dia"];
 // ("cuáles tengo", "mis números").
 const MINIMO_TOKENS_PARA_CONSULTA = 2;
 
+// ============================================================
+// Fase "consultas combinadas" — familia de tipos que SÍ pueden combinarse
+// en un mismo mensaje ("mis números y cuánto debo"). reserva,
+// numero_especifico, disponibilidad e info_evento NUNCA se combinan (no
+// tiene sentido de negocio, y combinarlos arriesgaría tocar el detector de
+// reservas — fuera de alcance de esta fase).
+// ============================================================
+const FAMILIA_COMBINABLE = new Set(["mis_numeros", "mis_reservas", "cantidad_reservas", "consulta_pago"]);
+
+// Separadores de segmentos dentro de un mismo mensaje: " y " (palabra
+// completa, nunca dentro de otra palabra como "hoy"/"muy") y comas. Se
+// aplica sobre el texto ORIGINAL (con tildes) — cada segmento se vuelve a
+// normalizar por su cuenta dentro de detectarIntencionUnica().
+function dividirEnSegmentos(texto) {
+
+    return texto
+        .split(/,|\s+y\s+/i)
+        .map(s => s.trim())
+        .filter(Boolean);
+
+}
+
+function claveIntencion(i) {
+    return `${i.tipo}|${i.modo || ""}|${i.bucket || ""}`;
+}
+
+// Punto de entrada público: primero clasifica el mensaje COMPLETO con la
+// misma lógica de siempre (detectarIntencionUnica, sin cambios de
+// comportamiento) — reserva/numero_especifico/disponibilidad/info_evento/
+// ninguna se devuelven TAL CUAL, sin pasar por combinación. Solo cuando el
+// mensaje completo ya clasificó como parte de la familia combinable se
+// intenta ver si el mensaje trae MÁS de una pregunta de esa misma familia
+// (separadas por "y"/","), cada una resuelta con la MISMA función — nunca
+// una regla nueva de clasificación.
 function detectarIntencion(texto = "", cifras = 2) {
+
+    const principal = detectarIntencionUnica(texto, cifras);
+
+    if (!FAMILIA_COMBINABLE.has(principal.tipo)) {
+        return principal;
+    }
+
+    const segmentos = dividirEnSegmentos(texto || "");
+
+    if (segmentos.length < 2) {
+        return principal;
+    }
+
+    const vistos = new Set();
+    const intenciones = [];
+
+    for (const segmento of segmentos) {
+
+        const r = detectarIntencionUnica(segmento, cifras);
+
+        if (!FAMILIA_COMBINABLE.has(r.tipo)) continue;
+
+        const clave = claveIntencion(r);
+
+        if (vistos.has(clave)) continue;
+
+        vistos.add(clave);
+        intenciones.push(r);
+
+    }
+
+    // Los segmentos no aportaron una combinación real (p. ej. "y" formaba
+    // parte de una sola pregunta, como "mis números y reservas" que ambos
+    // segmentos resuelven igual) — se devuelve el resultado de siempre.
+    if (intenciones.length < 2) {
+        return principal;
+    }
+
+    return { tipo: "multiple", numeros: [], intenciones };
+
+}
+
+function detectarIntencionUnica(texto = "", cifras = 2) {
 
     if (!texto || !texto.trim()) {
         return { tipo: "ninguna", numeros: [] };
