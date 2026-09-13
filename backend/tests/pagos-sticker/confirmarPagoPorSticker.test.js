@@ -10,10 +10,17 @@
 // Supabase, exactamente como lo haría registrarStickerPago.js en
 // producción.
 //
+// Actualizado en la fase "silencio del sticker": confirmarPagoPorSticker.js
+// YA NO envía ningún mensaje de WhatsApp (ni al confirmar, ni "ya estaba
+// pagado", ni "sin reservas") — procesa la base de datos y nada más. El
+// módulo ya NO importa services/baileys/send.js en absoluto. Aun así, este
+// archivo SIGUE inyectando un fake de esa ruta (RUTA_SEND) a propósito:
+// no porque el código bajo prueba lo necesite, sino como guardia de
+// regresión — si alguna vez alguien reintrodujera la importación/llamada,
+// `envios.length` dejaría de ser 0 y estas pruebas fallarían de inmediato.
+//
 // Mismo estilo que el resto del proyecto: script plano de Node (sin jest),
-// fake de Supabase inyectado vía require.cache. services/baileys/send.js
-// también se reemplaza por un fake (solo registra qué se habría enviado) —
-// no es objeto de esta prueba, ya tiene sus propias pruebas de envío.
+// fake de Supabase inyectado vía require.cache.
 //
 //     node backend/tests/pagos-sticker/confirmarPagoPorSticker.test.js
 // ==========================================================================
@@ -307,9 +314,9 @@ async function ejecutarPruebas() {
         assert.strictEqual(actividad[0].realizado_por, JID_ADMIN);
         assert.notStrictEqual(actividad[0].realizado_por, "bot");
 
-        // Respuesta al grupo.
-        assert.strictEqual(envios.length, 1);
-        assert.strictEqual(envios[0].text, "✅ Pago confirmado.");
+        // Regla de silencio: la BD se actualizó (arriba), pero JAMÁS se
+        // envía nada a WhatsApp como consecuencia del sticker.
+        assert.strictEqual(envios.length, 0);
 
         // eventos_bot recalculado vía actualizarEvento.js (no duplicado).
         const evento = filasDe(fake, "eventos_bot")[0];
@@ -324,7 +331,7 @@ async function ejecutarPruebas() {
 
     await test("CASO 2: cliente con varias reservas -> TODAS pasan a pagado", async () => {
 
-        const { fake, confirmarPagoPorSticker } = cargarModulos();
+        const { fake, envios, confirmarPagoPorSticker } = cargarModulos();
         sembrarEscenario(fake, { conVariasReservasCliente1: true });
 
         const sock = crearFakeSock();
@@ -339,6 +346,9 @@ async function ejecutarPruebas() {
 
         const actividad = filasDe(fake, "reservas_actividad");
         assert.strictEqual(actividad.length, 2);
+
+        // Silencio: 4 filas hubieran calzado, 0 mensajes de todos modos.
+        assert.strictEqual(envios.length, 0);
 
     });
 
@@ -430,11 +440,10 @@ async function ejecutarPruebas() {
 
         await confirmarPagoPorSticker(ctx);
 
-        // Nada de "cliente-1" se tocó, y el mensaje correcto es "sin reservas".
+        // Nada de "cliente-1" se tocó; "sin_reservas" tampoco envía nada.
         assert.strictEqual(filasDe(fake, "reservas_test_precio5").find(f => f.numero === "27").estado, "reservado");
         assert.strictEqual(filasDe(fake, "reservas_actividad").length, 0);
-        assert.strictEqual(envios.length, 1);
-        assert.strictEqual(envios[0].text, "⚠️ No encontré ninguna reserva pendiente para este cliente.");
+        assert.strictEqual(envios.length, 0);
 
     });
 
@@ -485,8 +494,8 @@ async function ejecutarPruebas() {
         await confirmarPagoPorSticker(ctx);
 
         assert.strictEqual(filasDe(fake, "reservas_actividad").length, 0);
-        assert.strictEqual(envios.length, 1);
-        assert.strictEqual(envios[0].text, "✅ Este cliente ya estaba pagado.");
+        // "ya_pagado" tampoco envía nada — silencio total del flujo.
+        assert.strictEqual(envios.length, 0);
         // La fecha de pago original no se toca de nuevo.
         assert.strictEqual(filasDe(fake, "reservas_test_precio5").find(f => f.numero === "27").fecha_pago, "2026-01-01");
 
@@ -509,8 +518,7 @@ async function ejecutarPruebas() {
         await confirmarPagoPorSticker(ctx);
 
         assert.strictEqual(filasDe(fake, "reservas_actividad").length, 0);
-        assert.strictEqual(envios.length, 1);
-        assert.strictEqual(envios[0].text, "⚠️ No encontré ninguna reserva pendiente para este cliente.");
+        assert.strictEqual(envios.length, 0);
         // La reserva del OTRO cliente (cliente-1) sigue intacta.
         assert.strictEqual(filasDe(fake, "reservas_test_precio5").find(f => f.numero === "27").estado, "reservado");
 
@@ -578,9 +586,9 @@ async function ejecutarPruebas() {
         const actividad = filasDe(fake, "reservas_actividad");
 
         assert.strictEqual(actividad.length, 1, "la actividad NO debe duplicarse en el segundo sticker");
-        assert.strictEqual(envios.length, 2);
-        assert.strictEqual(envios[0].text, "✅ Pago confirmado.");
-        assert.strictEqual(envios[1].text, "✅ Este cliente ya estaba pagado.");
+        // Silencio en las DOS pasadas — la primera confirma, la segunda
+        // detecta "ya_pagado"; ninguna de las dos envía nada.
+        assert.strictEqual(envios.length, 0);
 
         // El contador de eventos_bot tampoco se desajusta con el segundo envío.
         const evento = filasDe(fake, "eventos_bot")[0];
@@ -677,6 +685,68 @@ async function ejecutarPruebas() {
 
         assert.strictEqual(filasDe(fake, "reservas_test_precio5").find(f => f.numero === "27").estado, "reservado");
         assert.strictEqual(envios.length, 0);
+
+    });
+
+    // ======================================================================
+    // REGLA DE SILENCIO — pedida explícitamente: el sticker válido debe
+    // actualizar la BD pero JAMÁS llamar a ninguna función de envío de
+    // mensaje, sin importar si actualizó 0, 1 o varios números.
+    // ======================================================================
+
+    await test("SILENCIO: sticker válido actualiza 1 número -> BD cambia, CERO llamadas de envío", async () => {
+
+        const { fake, envios, confirmarPagoPorSticker } = cargarModulos();
+        sembrarEscenario(fake); // 1 reserva de cliente-1 ("27")
+
+        const sock = crearFakeSock();
+        const msg = crearMensajeSticker({ remitenteJid: JID_ADMIN, quotedParticipant: JID_CLIENTE_1 });
+
+        await confirmarPagoPorSticker(crearCtx({ sock, message: msg }));
+
+        assert.strictEqual(filasDe(fake, "reservas_test_precio5").find(f => f.numero === "27").estado, "pagado", "la BD SÍ debe actualizarse");
+        assert.strictEqual(filasDe(fake, "reservas_actividad").length, 1, "la auditoría SÍ debe registrarse");
+        assert.strictEqual(envios.length, 0, "no debe llamarse ninguna función de envío de mensaje");
+
+    });
+
+    await test("SILENCIO: sticker válido actualiza 4 números -> BD cambia, CERO llamadas de envío", async () => {
+
+        const { fake, envios, confirmarPagoPorSticker } = cargarModulos();
+        sembrarEscenario(fake, { conVariasReservasCliente1: true }); // 2 reservas...
+
+        // ...se agregan 2 más para llegar a 4 en total, mismo cliente.
+        fake.tabla("reservas_test_precio5").push(
+            { numero: "60", estado: "reservado", usuario_global_id: "cliente-1", usuario_id: USUARIO_ID_TENANT, evento_id: "evento-1", comprador: "Cliente Uno", contacto: "3000000002" },
+            { numero: "61", estado: "reservado", usuario_global_id: "cliente-1", usuario_id: USUARIO_ID_TENANT, evento_id: "evento-1", comprador: "Cliente Uno", contacto: "3000000002" }
+        );
+
+        const sock = crearFakeSock();
+        const msg = crearMensajeSticker({ remitenteJid: JID_ADMIN, quotedParticipant: JID_CLIENTE_1 });
+
+        await confirmarPagoPorSticker(crearCtx({ sock, message: msg }));
+
+        const pagados = filasDe(fake, "reservas_test_precio5").filter(f => f.usuario_global_id === "cliente-1" && f.estado === "pagado");
+
+        assert.strictEqual(pagados.length, 4, "las 4 reservas del cliente deben quedar pagadas");
+        assert.strictEqual(filasDe(fake, "reservas_actividad").length, 4, "la auditoría debe registrar las 4");
+        assert.strictEqual(envios.length, 0, "no debe llamarse ninguna función de envío de mensaje, ni una vez por cada número");
+
+    });
+
+    await test("SILENCIO: sticker válido actualiza 0 números (sin_reservas) -> CERO llamadas de envío", async () => {
+
+        const { fake, envios, confirmarPagoPorSticker } = cargarModulos();
+        sembrarEscenario(fake);
+
+        const sock = crearFakeSock();
+        // Cita a cliente-2, que no tiene ninguna fila -> 0 números afectados.
+        const msg = crearMensajeSticker({ remitenteJid: JID_ADMIN, quotedParticipant: JID_CLIENTE_2 });
+
+        await confirmarPagoPorSticker(crearCtx({ sock, message: msg }));
+
+        assert.strictEqual(filasDe(fake, "reservas_actividad").length, 0);
+        assert.strictEqual(envios.length, 0, "tampoco debe enviarse nada cuando no hay nada que confirmar");
 
     });
 

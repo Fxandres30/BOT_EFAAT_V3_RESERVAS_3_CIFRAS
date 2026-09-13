@@ -20,7 +20,6 @@
 //     reservado -> pagado para este flujo)
 //   - actualizarEvento.js      (recalcula reservados/pagados/libres — YA
 //     existente, no se duplica el cálculo)
-//   - services/baileys/send.js (envío de la respuesta al admin)
 //   - configuracionStickerPago.js (FASE 1 — hash autorizado por
 //     usuario_id+grupo_id, en Supabase; ya NO se lee STICKER_PAGO_SHA256)
 //
@@ -33,6 +32,14 @@
 // dispatcher.js SIEMPRE llama primero a registrarStickerPago.js — este
 // módulo solo se ejecuta cuando ese devuelve intervino:false (ver la
 // cabecera de registrarStickerPago.js para la regla de seguridad completa).
+//
+// REGLA DE NEGOCIO (silencio del sticker): este flujo NUNCA envía un
+// mensaje de WhatsApp como consecuencia del sticker — ni al confirmar,
+// ni al detectar "ya estaba pagado", ni al no encontrar reservas. Procesa
+// la base de datos en silencio, sin importar cuántos números actualizó (0,
+// 1 o varios). services/baileys/send.js deliberadamente NO se importa
+// aquí — si algún día hace falta notificar, debe ser un mecanismo
+// explícito y separado, nunca reintroducir esta llamada.
 //
 // Nunca lanza: cualquier error queda contenido aquí y solo se loguea.
 // ==========================================================================
@@ -48,7 +55,6 @@ const {
 const { consultarEvento } = require("../eventos/consultarEvento");
 const { actualizarEvento } = require("../reservas/actualizarEvento");
 const { marcarReservasPagadasPorAdmin } = require("./marcarReservasPagadasPorAdmin");
-const { sendMessage } = require("../../../services/baileys/send");
 const { enmascararJid: enmascarar } = require("../../utils/enmascararJid");
 
 // FASE 1 (configuración desde el panel) + corrección arquitectónica
@@ -229,8 +235,11 @@ async function confirmarPagoPorSticker(ctx) {
         }
 
         // ==================================================================
-        // 6. Cambio real reservado -> pagado (atómico + idempotente) y
-        //    respuesta al administrador.
+        // 6. Cambio real reservado -> pagado (atómico + idempotente).
+        //    SILENCIOSO por regla de negocio: nunca se envía nada a
+        //    WhatsApp como consecuencia de esto, sin importar el
+        //    resultado (confirmado / ya_pagado / sin_reservas / error) ni
+        //    cuántas filas se actualizaron.
         // ==================================================================
 
         const resultado = await marcarReservasPagadasPorAdmin({
@@ -243,52 +252,20 @@ async function confirmarPagoPorSticker(ctx) {
 
         console.log("[PAGO-STICKER] Resultado:", resultado.estado, "| filas actualizadas:", resultado.actualizadas.length);
 
-        let texto = null;
-
         if (resultado.estado === "confirmado") {
-
-            texto = "✅ Pago confirmado.";
 
             // Recalcula reservados/pagados/libres — mecanismo YA existente,
             // no se duplica el cálculo.
             await actualizarEvento(evento);
 
-        } else if (resultado.estado === "ya_pagado") {
+        } else if (resultado.estado === "error") {
 
-            texto = "✅ Este cliente ya estaba pagado.";
-
-        } else if (resultado.estado === "sin_reservas") {
-
-            texto = "⚠️ No encontré ninguna reserva pendiente para este cliente.";
-
-        } else {
-
-            // "error" — no se inventa un mensaje de éxito; se loguea y no se
-            // responde nada al grupo para no informar algo que no ocurrió.
             console.error("[PAGO-STICKER] No se pudo completar la operación (estado=error).");
-            return;
 
         }
 
-        try {
-
-            await sendMessage({
-
-                sock: ctx.sock,
-                jid: ctx.chat.remoteJid,
-                text: texto,
-                quoted: ctx.message
-
-            });
-
-        } catch (errorEnvio) {
-
-            // El pago (si aplicó) YA quedó guardado — un fallo de envío de
-            // WhatsApp nunca debe hacer parecer que la operación de datos
-            // falló ni se reintenta.
-            console.error("[PAGO-STICKER] Pago procesado pero falló el envío de la respuesta:", errorEnvio.message);
-
-        }
+        // "ya_pagado" y "sin_reservas" no requieren ninguna acción
+        // adicional — ya quedaron reflejados en el log de arriba.
 
     } catch (err) {
 

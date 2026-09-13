@@ -13,6 +13,7 @@ const { validarTextoReserva } = require("../reservas/validarTextoReserva");
 const { extraerNumeros } = require("../reservas/extraerNumeros");
 const {
     contieneAlguna,
+    contieneFrase,
     contieneAlgunaFrase
 } = require("../../utils/coincidenciaAproximada");
 
@@ -43,10 +44,85 @@ const {
 //                numero_especifico: "el 25 ya está pagado" debe seguir
 //                siendo una consulta de ESE número) y sin pregunta de
 //                cantidad en plural.
-const PAGO_PALABRAS_FUERTE = ["debo", "debe", "pague"];
+// "pague" se sacó de FUERTE (Fase "consultas de pago"): FUERTE ignora a
+// propósito si hay un número en el mensaje ("cuánto debo por el 45" sigue
+// siendo pago) — pero "pague"/"pagué" + un número concreto ("el 25 ya lo
+// pagué") es una pregunta de ESE número (numero_especifico, ver más abajo
+// NUMERO_ESPECIFICO_FRASES), nunca una pregunta de dinero general. Se
+// mueve a EXTENDIDA, que sí respeta "solo sin ningún número".
+const PAGO_PALABRAS_FUERTE = ["debo", "debe"];
 const PAGO_PALABRAS_DEBIL = ["llevo", "falta"];
-const PAGO_PALABRAS_EXTENDIDA = ["pagado", "pagar"];
+const PAGO_PALABRAS_EXTENDIDA = ["pagado", "pagar", "pague"];
 const PAGO_FRASES = ["cuanto es lo mio"];
+
+// ============================================================
+// Fase "consultas de pago" — frases COMPLETAS que fijan sin ambigüedad
+// qué debe responder consulta_pago: "modo" (lista de números / cantidad /
+// monto en pesos) y "bucket" (pendiente / pagado / total). Se listan
+// explícitas, mismo estilo que el resto de este archivo (listas
+// curadas con tolerancia a errores, nunca NLP genérico), porque frases
+// gramaticalmente parecidas tienen significados distintos que ninguna
+// heurística de una sola palabra resuelve bien (p. ej. "qué tengo que
+// pagar" = monto, pero "qué tengo pendiente" = lista).
+//
+// Se comprueban ANTES que cualquier otra regla de este archivo — son
+// frases inequívocas del dominio de pagos, nunca chocan con una reserva
+// real (ninguna contiene un número ni un verbo de "tomar").
+// ============================================================
+const PAGO_FRASES_EXPLICITAS = [
+
+    // monto (dinero)
+    { frase: "cuanto debo", modo: "monto", bucket: "pendiente" },
+    { frase: "cuanto me falta pagar", modo: "monto", bucket: "pendiente" },
+    { frase: "cuanto me falta", modo: "monto", bucket: "pendiente" },
+    { frase: "cuanto debo pagar", modo: "monto", bucket: "pendiente" },
+    { frase: "cuanto tengo que pagar", modo: "monto", bucket: "pendiente" },
+    { frase: "que tengo que pagar", modo: "monto", bucket: "pendiente" },
+    { frase: "cuanto me toca pagar", modo: "monto", bucket: "pendiente" },
+    { frase: "cuanto he pagado", modo: "monto", bucket: "pagado" },
+    { frase: "cuanto llevo", modo: "monto", bucket: "pagado" },
+    { frase: "cuanto es lo mio", modo: "monto", bucket: "total" },
+
+    // lista (cuáles números)
+    { frase: "cuales debo", modo: "lista", bucket: "pendiente" },
+    { frase: "que numeros debo", modo: "lista", bucket: "pendiente" },
+    { frase: "cuales me faltan por pagar", modo: "lista", bucket: "pendiente" },
+    { frase: "que tengo pendiente", modo: "lista", bucket: "pendiente" },
+    { frase: "cuales ya pague", modo: "lista", bucket: "pagado" },
+    { frase: "que numeros ya estan pagos", modo: "lista", bucket: "pagado" },
+    { frase: "cuales tengo pagados", modo: "lista", bucket: "pagado" },
+
+    // cantidad (cuántos)
+    { frase: "cuantos debo", modo: "cantidad", bucket: "pendiente" },
+    { frase: "cuantos ya pague", modo: "cantidad", bucket: "pagado" }
+
+];
+
+// esContarPlural evita un falso positivo real: la coincidencia aproximada
+// (coincidenciaAproximada.js) trata "cuantos" y "cuanto" como la misma
+// palabra (distancia de edición 1), así que sin este guard "cuántos
+// llevo" calzaría con la frase "cuanto llevo" (modo monto) en vez de
+// seguir siendo una pregunta de CANTIDAD ("cuántos" siempre es plural /
+// conteo, nunca dinero — mismo criterio que el resto del archivo).
+function buscarFraseExplicitaPago(tokens, esContarPlural) {
+
+    for (const entrada of PAGO_FRASES_EXPLICITAS) {
+
+        if (entrada.modo === "monto" && esContarPlural) {
+            continue;
+        }
+
+        if (contieneFrase(tokens, entrada.frase)) {
+
+            return { modo: entrada.modo, bucket: entrada.bucket };
+
+        }
+
+    }
+
+    return null;
+
+}
 
 // Palabras que, combinadas con un número, indican que se pregunta por EL
 // ESTADO de ese número concreto (nunca una reserva). "puedo reservar/
@@ -77,6 +153,14 @@ const NUMERO_ESPECIFICO_FRASES = [
                     // — NUNCA aparece en una orden de reserva ("tengo", en
                     // cambio, ya lo bloquea validarTextoReserva.js).
     "consulta",
+    // Fase "consultas de pago": "¿el 25 ya lo pagué?" / "ya pagué el 25"
+    // preguntan por el ESTADO de ESE número (nunca dinero en general) — se
+    // agregan aquí en vez de dejar que "pague" (ahora en EXTENDIDA, más
+    // arriba) se coma el mensaje como consulta_pago cuando SÍ hay un
+    // número concreto.
+    "ya pague",
+    "lo pague",
+    "ya lo pague",
     ...FRASES_PUEDO
 ];
 
@@ -150,14 +234,26 @@ function detectarIntencion(texto = "", cifras = 2) {
     // a propósito — "cuánto" (singular, dinero) NO debe activarla.
     const esContarPlural = tokens.some(t => t === "cuantos" || t === "cuantas");
 
+    // -1. Frases EXPLÍCITAS de pago (modo+bucket sin ambigüedad) — máxima
+    // prioridad, antes que cualquier otra regla. Ninguna de estas frases
+    // contiene un número ni un verbo de "tomar", así que nunca choca con
+    // una reserva real.
+    const fraseExplicitaPago = buscarFraseExplicitaPago(tokens, esContarPlural);
+
+    if (fraseExplicitaPago) {
+        return { tipo: "consulta_pago", numeros, ...fraseExplicitaPago };
+    }
+
     if (tokens.length < MINIMO_TOKENS_PARA_CONSULTA) {
         return resolverComoReservaOninguna(texto, numeros);
     }
 
-    // 0. Pago: reconocida, no implementada (silencio intencional en
-    // eventHandler.js). GUARDA: si el mensaje menciona explícitamente la
-    // palabra "número(s)", NUNCA se clasifica como pago — así "qué
-    // números debo" no se confunde con una pregunta de dinero.
+    // 0. Pago (disparadores genéricos, sin modo/bucket explícito —
+    // resolverConsulta.js aplica un valor por defecto seguro). GUARDA: si
+    // el mensaje menciona explícitamente la palabra "número(s)", NUNCA se
+    // clasifica como pago por esta vía genérica — así "qué números debo"
+    // (ya cubierta arriba, en PAGO_FRASES_EXPLICITAS) no se confunde con
+    // "qué números tengo".
     const mencionaNumeroPalabra = contieneAlguna(tokens, NUMERO_RAIZ);
 
     if (!mencionaNumeroPalabra) {

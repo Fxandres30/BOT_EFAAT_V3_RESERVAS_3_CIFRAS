@@ -93,14 +93,6 @@ module.exports = async (ctx) => {
         return;
     }
 
-    if (intencion.tipo === "consulta_pago") {
-
-        console.log("💰 Consulta de pago reconocida, no implementada todavía — silencio.");
-
-        return;
-
-    }
-
     if (intencion.tipo === "reserva") {
 
         const resultado = await detectarReserva({
@@ -157,7 +149,14 @@ module.exports = async (ctx) => {
 
         evento: ctx.evento,
 
-        usuario: ctx.usuario
+        usuario: ctx.usuario,
+
+        // Solo consulta_pago los usa (modo: lista/cantidad/monto; bucket:
+        // pendiente/pagado/total) — el resto de tipos los ignora sin
+        // efecto, ver resolverConsulta.js.
+        modo: intencion.modo,
+
+        bucket: intencion.bucket
 
     });
 

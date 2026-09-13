@@ -104,7 +104,8 @@ const CASOS = [
     { msg: "qué evento es", esperado: "info_evento" },
     { msg: "de qué es el evento", esperado: "info_evento" },
 
-    // ===== 7. PAGOS (no implementado, debe quedar en silencio) =====
+    // ===== 7. PAGOS (clasificación; la resolución real vive en
+    //          resolverConsulta.js / consultarMisNumerosPorEstado.js) =====
     { msg: "qué debo", esperado: "consulta_pago" },
     { msg: "cuánto debo", esperado: "consulta_pago" },
     { msg: "cuánto es lo mío", esperado: "consulta_pago" },
@@ -115,8 +116,13 @@ const CASOS = [
     { msg: "cuánto llevo", esperado: "consulta_pago" },
     { msg: "cuánto he pagado", esperado: "consulta_pago" },
     { msg: "cuánto me falta pagar", esperado: "consulta_pago" },
-    // caso trampa explícito de la auditoría
-    { msg: "qué números debo", esperado: "ninguna" },
+    // Actualizado en la fase "activar consultas de pago": este caso era el
+    // "trampa explícito de la auditoría" (documentaba el hueco real de
+    // ese momento: "número"+"debo" caía a silencio). Ahora es exactamente
+    // la Sección B del pedido ("¿Qué números debo?" -> lista de
+    // pendientes), así que el resultado correcto pasa a ser consulta_pago
+    // (modo lista, bucket pendiente) — cambio intencional, no regresión.
+    { msg: "qué números debo", esperado: "consulta_pago" },
     { msg: "¿cuánto debo por el 25?", esperado: "consulta_pago" },
 
     // ===== 8. NORMALIZACIÓN =====
