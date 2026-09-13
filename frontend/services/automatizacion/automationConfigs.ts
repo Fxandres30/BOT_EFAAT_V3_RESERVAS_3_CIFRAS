@@ -37,13 +37,21 @@ export interface ConfigPublicacionInicialTabla {
     dias_permitidos: DiasSemanaBooleanos;
 }
 
+// backend/automation/eventRules.js::evaluarInicioDia() — MISMA forma
+// exacta que ConfigPublicacionInicialTabla (Master Spec §15/§16: "mismo
+// modelo de horario por día que el resto de la automatización"). El texto
+// real no vive aquí: sale de plantillas_mensaje (tipo_respuesta=
+// "inicio_dia", editable en /mensajes), nunca del Message Pool de
+// Automatización — por eso esta forma no tiene "categoria".
+export type ConfigInicioDia = ConfigPublicacionInicialTabla;
+
 export interface AutomationConfig {
     id: string;
     usuario_id: string;
     grupo_id: string;
     activo: boolean;
     dias_permitidos: DiasPermitidos;
-    mensaje_inicio_dia: Record<string, unknown>;
+    mensaje_inicio_dia: ConfigInicioDia;
     mensaje_apertura: ConfigAccionSimple;
     mensaje_cierre: ConfigAccionSimple;
     stickers: Record<string, unknown>;
@@ -115,6 +123,40 @@ export function normalizarPublicacionInicialTabla(valor: Partial<ConfigPublicaci
 
 }
 
+// Mismos defaults que Tabla inicial (activo:false — acción nueva, el
+// admin la prende explícitamente) pero con su propia hora sugerida.
+export function inicioDiaPorDefecto(): ConfigInicioDia {
+
+    const dias: DiasSemanaBooleanos = {};
+
+    for (const dia of DIAS_SEMANA) {
+        dias[dia.id] = true;
+    }
+
+    return { activo: false, hora: "06:00", dias_permitidos: dias };
+
+}
+
+// Mismo criterio que normalizarPublicacionInicialTabla(): una fila creada
+// antes de que existiera este campo trae mensaje_inicio_dia: {} — se
+// normaliza a los mismos defaults que vería un grupo nuevo.
+export function normalizarInicioDia(valor: Partial<ConfigInicioDia> | null | undefined): ConfigInicioDia {
+
+    const base = inicioDiaPorDefecto();
+
+    if (!valor) return base;
+
+    return {
+        activo: typeof valor.activo === "boolean" ? valor.activo : base.activo,
+        hora: valor.hora || base.hora,
+        dias_permitidos: {
+            ...base.dias_permitidos,
+            ...(valor.dias_permitidos || {})
+        }
+    };
+
+}
+
 export function configuracionPorDefecto(usuarioId: string, grupoId: string): Omit<AutomationConfig, "id" | "creado_en" | "actualizado_en"> {
 
     return {
@@ -122,7 +164,7 @@ export function configuracionPorDefecto(usuarioId: string, grupoId: string): Omi
         grupo_id: grupoId,
         activo: false,
         dias_permitidos: diasPermitidosSiempreAbierto(),
-        mensaje_inicio_dia: {},
+        mensaje_inicio_dia: inicioDiaPorDefecto(),
         mensaje_apertura: { activo: true, categoria: null },
         mensaje_cierre: { activo: false, categoria: null },
         stickers: {},

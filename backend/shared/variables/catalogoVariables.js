@@ -270,10 +270,17 @@ const CATALOGO = [
     // -------------------- EVENTO --------------------
     {
         key: "evento",
-        aliases: ["nombre_evento"],
+        // "loteria": verificado contra bot/funciones/eventos/extractor/
+        // extraerNombreEvento.js — el nombre de la lotería (ej. "Lotería
+        // Boyacá") ES el mismo valor que ya se guarda como
+        // eventos_bot.nombre_evento (extraerNombreEvento() busca la
+        // lotería conocida y ESO es lo que se guarda). No existe una
+        // columna/fuente separada para "lotería" — por eso es un alias,
+        // nunca un dato inventado.
+        aliases: ["nombre_evento", "loteria"],
         categoria: "EVENTO",
-        description: "Nombre del evento/sorteo activo",
-        example: "Sorteo Medellín",
+        description: "Nombre del evento/sorteo activo (incluye la lotería, cuando el nombre coincide con una lotería conocida)",
+        example: "Lotería Boyacá",
         requires: ["evento"],
         type: "texto",
         estado: "EXISTENTE",

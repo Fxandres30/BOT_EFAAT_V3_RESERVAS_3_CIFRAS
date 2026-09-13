@@ -36,6 +36,12 @@ const RUTA_CONSULTAR_MIS_NUMEROS =
 const RUTA_RESERVAR_NUMEROS =
     path.resolve(__dirname, "../../bot/funciones/reservas/reservarNumeros.js");
 
+const RUTA_VALIDAR_RESERVAS =
+    path.resolve(__dirname, "../../bot/funciones/reservas/validarReservas.js");
+
+const RUTA_CONSULTAR_NUMERO =
+    path.resolve(__dirname, "../../bot/funciones/consultas/consultarNumero.js");
+
 // Carga (o recarga) los módulos bajo prueba con un fake de Supabase nuevo y
 // aislado por prueba, para que ninguna prueba contamine a otra.
 function cargarModulos() {
@@ -59,12 +65,16 @@ function cargarModulos() {
     delete require.cache[RUTA_OBTENER_USUARIO];
     delete require.cache[RUTA_CONSULTAR_MIS_NUMEROS];
     delete require.cache[RUTA_RESERVAR_NUMEROS];
+    delete require.cache[RUTA_VALIDAR_RESERVAS];
+    delete require.cache[RUTA_CONSULTAR_NUMERO];
 
     const obtenerUsuarioGlobalMod = require(RUTA_OBTENER_USUARIO_GLOBAL);
     const { guardarMensajeGrupo } = require(RUTA_GUARDAR_MENSAJE_GRUPO);
     const obtenerUsuario = require(RUTA_OBTENER_USUARIO);
     const { consultarMisNumeros } = require(RUTA_CONSULTAR_MIS_NUMEROS);
     const { reservarNumeros } = require(RUTA_RESERVAR_NUMEROS);
+    const { validarReservas } = require(RUTA_VALIDAR_RESERVAS);
+    const { consultarNumero } = require(RUTA_CONSULTAR_NUMERO);
 
     return {
         fake,
@@ -72,7 +82,9 @@ function cargarModulos() {
         guardarMensajeGrupo,
         obtenerUsuario,
         consultarMisNumeros,
-        reservarNumeros
+        reservarNumeros,
+        validarReservas,
+        consultarNumero
     };
 
 }
@@ -770,6 +782,121 @@ async function main() {
             !/\bobtenerUsuarioGlobal\s*\(/.test(fuente),
             "guardarMensajeGrupo.js no debe invocar obtenerUsuarioGlobal(...)"
         );
+
+    });
+
+    // ======================================================================
+    // EXTRA 18. Reserva histórica con usuario_global_id=NULL pero LID
+    //           coincidente -> consultarNumero() la reconoce como del usuario.
+    // ======================================================================
+    await test("18 (extra). Reserva histórica (solo LID) encontrada por consultarNumero", async () => {
+
+        const { fake, obtenerUsuarioGlobalMod, consultarNumero } = cargarModulos();
+
+        const usuario = await obtenerUsuarioGlobalMod.obtenerUsuarioGlobal({ lid: "hist-lid@lid", telefono: "3001112222" });
+
+        fake.tablas["tabla_hist_lid"] = [
+            { numero: 45, estado: "reservado", usuario_global_id: null, lid: "hist-lid@lid", telefono: null, contacto: null }
+        ];
+
+        const resultado = await consultarNumero({ evento: { tabla: "tabla_hist_lid" }, usuario, numero: 45 });
+
+        assert.strictEqual(resultado.estadoReal, "reservado_por_usuario", "debe reconocer la reserva histórica por LID aunque usuario_global_id sea NULL");
+
+    });
+
+    // ======================================================================
+    // EXTRA 19. Reserva histórica con usuario_global_id=NULL pero teléfono
+    //           coincidente (guardado como "contacto") -> reconocida.
+    // ======================================================================
+    await test("19 (extra). Reserva histórica (solo teléfono/contacto) encontrada por consultarMisNumeros", async () => {
+
+        const { fake, obtenerUsuarioGlobalMod, consultarMisNumeros } = cargarModulos();
+
+        const usuario = await obtenerUsuarioGlobalMod.obtenerUsuarioGlobal({ telefono: "3009998888" });
+
+        fake.tablas["tabla_hist_tel"] = [
+            { numero: 12, estado: "reservado", usuario_global_id: null, lid: null, telefono: null, contacto: "3009998888" },
+            { numero: 13, estado: "libre", usuario_global_id: null, lid: null, telefono: null, contacto: null }
+        ];
+
+        const numeros = await consultarMisNumeros({ evento: { tabla: "tabla_hist_tel" }, usuario });
+
+        assert.deepStrictEqual(numeros, [12], "debe encontrar la reserva histórica por contacto=teléfono aunque usuario_global_id sea NULL");
+
+    });
+
+    // ======================================================================
+    // EXTRA 20. Usuario A nunca encuentra reservas de Usuario B, ni siquiera
+    //           por el camino de respaldo (lid/telefono) — solo coincide lo
+    //           que realmente es de A.
+    // ======================================================================
+    await test("20 (extra). Usuario A no encuentra reservas de Usuario B (ruta de respaldo incluida)", async () => {
+
+        const { fake, obtenerUsuarioGlobalMod, consultarMisNumeros } = cargarModulos();
+
+        const usuarioA = await obtenerUsuarioGlobalMod.obtenerUsuarioGlobal({ lid: "userA@lid", telefono: "3001110000" });
+        const usuarioB = await obtenerUsuarioGlobalMod.obtenerUsuarioGlobal({ lid: "userB@lid", telefono: "3002220000" });
+
+        fake.tablas["tabla_aislamiento"] = [
+            { numero: 1, estado: "reservado", usuario_global_id: null, lid: "userB@lid", telefono: null, contacto: null },
+            { numero: 2, estado: "pagado", usuario_global_id: usuarioB.id, lid: null, telefono: null, contacto: "3002220000" }
+        ];
+
+        const numerosDeA = await consultarMisNumeros({ evento: { tabla: "tabla_aislamiento" }, usuario: usuarioA });
+
+        assert.deepStrictEqual(numerosDeA, [], "Usuario A no debe ver ninguna reserva de Usuario B, ni por usuario_global_id ni por lid/contacto");
+
+    });
+
+    // ======================================================================
+    // EXTRA 21. validarReservas.js: "ya son mías" usa el mismo criterio
+    //           único (reservaPerteneceAUsuario), reconoce reserva histórica
+    //           por LID sin depender de usuario_global_id.
+    // ======================================================================
+    await test("21 (extra). validarReservas reconoce reserva histórica como propia (vía LID, sin usuario_global_id)", async () => {
+
+        const { obtenerUsuarioGlobalMod, validarReservas } = cargarModulos();
+
+        const usuario = await obtenerUsuarioGlobalMod.obtenerUsuarioGlobal({ lid: "vr-lid@lid", telefono: "3005556666" });
+
+        const reservas = [
+            { numero: 7, estado: "reservado", usuario_global_id: null, lid: "vr-lid@lid", contacto: null },
+            { numero: 8, estado: "reservado", usuario_global_id: null, lid: "otro@lid", contacto: null }
+        ];
+
+        const resultado = validarReservas(reservas, usuario);
+
+        assert.deepStrictEqual(resultado.yaSonMios.map(r => r.numero), [7], "solo la fila con LID coincidente debe reconocerse como propia");
+        assert.deepStrictEqual(resultado.ocupadosPorOtros.map(r => r.numero), [8]);
+
+    });
+
+    // ======================================================================
+    // EXTRA 22. Conflicto de identidad (LID -> A, teléfono -> B) no modifica
+    //           ningún dato existente — ni de A ni de B.
+    // ======================================================================
+    await test("22 (extra). IDENTITY_CONFLICT no modifica ninguna fila existente", async () => {
+
+        const { fake, obtenerUsuarioGlobalMod } = cargarModulos();
+
+        const usuarioA = await obtenerUsuarioGlobalMod.obtenerUsuarioGlobal({ lid: "conflicto-lid@lid" });
+        const usuarioB = await obtenerUsuarioGlobalMod.obtenerUsuarioGlobal({ telefono: "3007778888" });
+
+        const snapshotAntes = JSON.stringify(fake.tablas.usuarios);
+
+        const resultado = await obtenerUsuarioGlobalMod.obtenerUsuarioGlobal({
+            lid: "conflicto-lid@lid",
+            telefono: "3007778888"
+        });
+
+        assert.strictEqual(resultado, null, "un conflicto LID->A / teléfono->B debe devolver null, nunca fusionar");
+        assert.strictEqual(JSON.stringify(fake.tablas.usuarios), snapshotAntes, "ninguna fila de usuarios debe cambiar ante un conflicto");
+        assert.strictEqual(fake.tablas.usuarios.length, 2, "no debe crear una tercera fila");
+
+        // Referencia explícita para que el linter no marque usuarioA/usuarioB
+        // como no usados: son la prueba de que ya existían ANTES del conflicto.
+        assert.notStrictEqual(usuarioA.id, usuarioB.id);
 
     });
 

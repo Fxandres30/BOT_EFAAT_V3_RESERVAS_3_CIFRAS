@@ -227,6 +227,80 @@ function evaluarPublicacionInicialTabla({
 
 }
 
+// ==========================================================================
+// EVALUAR INICIO DEL DÍA (Master Spec §15)
+// ==========================================================================
+//
+// Función pura, MISMO contrato y MISMA forma que evaluarPublicacionInicialTabla
+// (arriba) — deliberadamente: es "el mismo modelo de horario por día que el
+// resto de la automatización" (Master Spec §15/§16), no una regla nueva.
+// Única diferencia real: lee configuracion.mensaje_inicio_dia en vez de
+// configuracion.publicacion_inicial_tabla. Independiente por completo del
+// ciclo de Event Session — el llamador (scheduler.js) nunca le pasa datos
+// de un evento/sorteo, porque Inicio del día no depende de que exista uno.
+//
+// Devuelve siempre { permitido: boolean, motivo: string|null }.
+function evaluarInicioDia({
+    configuracion,
+    grupoAutorizado,
+    ahora = new Date()
+} = {}) {
+
+    // 1. Grupo autorizado.
+    if (!grupoAutorizado) {
+
+        return { permitido: false, motivo: "grupo_no_autorizado" };
+
+    }
+
+    // 2. Automatización activa (interruptor maestro).
+    if (!configuracion || configuracion.activo !== true) {
+
+        return { permitido: false, motivo: "configuracion_inactiva" };
+
+    }
+
+    const inicio = configuracion.mensaje_inicio_dia;
+
+    // 2b. Esta acción concreta debe estar activa (independiente del
+    //     interruptor maestro, igual que publicacion_inicial_tabla.activo).
+    if (!inicio || inicio.activo !== true) {
+
+        return { permitido: false, motivo: "inicio_dia_inactivo" };
+
+    }
+
+    // 3. Día permitido, propio de esta acción.
+    const claveDia = obtenerClaveDia(ahora);
+    const diaPermitido = inicio.dias_permitidos ? inicio.dias_permitidos[claveDia] === true : false;
+
+    if (!diaPermitido) {
+
+        return { permitido: false, motivo: "dia_no_permitido" };
+
+    }
+
+    // 4. Ya se alcanzó la hora configurada — mismo criterio "sin límite
+    //    superior" que publicacion_inicial_tabla (si el scheduler arrancó
+    //    tarde ese día, igual se envía, en vez de perderse el mensaje).
+    if (typeof inicio.hora !== "string" || !/^\d{1,2}:\d{2}$/.test(inicio.hora)) {
+
+        return { permitido: false, motivo: "hora_no_configurada" };
+
+    }
+
+    const horaActual = obtenerHoraMinuto(ahora);
+
+    if (horaActual < inicio.hora) {
+
+        return { permitido: false, motivo: "todavia_no_es_la_hora" };
+
+    }
+
+    return { permitido: true, motivo: null };
+
+}
+
 // Nombre de día en español (lunes..domingo), calculado sobre la zona
 // horaria del negocio (America/Bogota), sin depender de la configuración
 // regional del proceso Node donde corra el backend.
@@ -249,6 +323,19 @@ function obtenerHoraMinuto(fecha) {
         hour: "2-digit",
         minute: "2-digit",
         hour12: false
+    }).format(fecha);
+
+}
+
+// "YYYY-MM-DD" en America/Bogota para la fecha dada — base de la clave de
+// idempotencia de Inicio del día (Master Spec §8: "grupo_id:DAILY_START_MESSAGE:<fecha>").
+function obtenerFechaISO(fecha) {
+
+    return new Intl.DateTimeFormat("en-CA", {
+        timeZone: ZONA_HORARIA,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
     }).format(fecha);
 
 }
@@ -298,7 +385,9 @@ module.exports = {
     crearIdentidadCiclo,
     evaluarApertura,
     evaluarPublicacionInicialTabla,
+    evaluarInicioDia,
     obtenerClaveDia,
     obtenerHoraMinuto,
+    obtenerFechaISO,
     minutosEntre
 };

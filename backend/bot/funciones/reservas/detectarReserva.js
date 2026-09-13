@@ -38,9 +38,7 @@ async function detectarReserva({
 
         reservas,
 
-        usuario?.telefono,
-
-        lib
+        usuario
 
     );
 

@@ -2,32 +2,37 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, Rocket, Bell, RefreshCw, Lock, TableProperties, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Sunrise, Hourglass, Rocket, TableProperties, Bell, RefreshCw, Lock, Trophy, AlertTriangle } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
 import { StatusBadge } from "@/components/ui/Badge";
+import { Tabs } from "@/components/ui/Tabs";
 
 import { formatHora12 } from "@/lib/formatHora";
 
 import { getUser } from "@/services/auth/getUser";
 import {
     AutomationConfig,
-    ConfigRecordatorios,
     configuracionPorDefecto,
-    diasPermitidosSiempreAbierto,
     normalizarPublicacionInicialTabla,
+    normalizarInicioDia,
     obtenerConfiguracion,
     guardarConfiguracion
 } from "@/services/automatizacion/automationConfigs";
 import { listarGruposAutorizados, autorizarGrupo, GrupoAutorizado } from "@/services/automatizacion/gruposAutorizados";
 import { obtenerGruposConversacion } from "@/services/chats/obtenerGruposConversacion";
 import { obtenerGruposDisponibles } from "@/services/automatizacion/gruposDisponibles";
-import { CATEGORIAS_AUTOMATIZACION, DIAS_SEMANA } from "@/services/automatizacion/tiposCategorias";
 
 import AutomatizacionHeader from "../AutomatizacionNav/AutomatizacionHeader";
 import StickerPagoSection from "./StickerPagoSection";
+import { Dot, Switch } from "./secciones/compartido";
+import SeccionInicioDia from "./secciones/SeccionInicioDia";
+import SeccionApertura from "./secciones/SeccionApertura";
+import SeccionTablaInicial from "./secciones/SeccionTablaInicial";
+import SeccionRecordatorios from "./secciones/SeccionRecordatorios";
+import SeccionActualizacion from "./secciones/SeccionActualizacion";
+import SeccionCierre from "./secciones/SeccionCierre";
+import SeccionProximamente from "./secciones/SeccionProximamente";
 
 import styles from "./ConfiguracionGrupo.module.css";
 
@@ -37,24 +42,23 @@ interface Props {
 
 type Estado = "cargando" | "sin-sesion" | "listo" | "error" | "no-encontrado";
 
-function Switch({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
-    return (
-        <button
-            type="button"
-            className={`${styles.switch} ${on ? styles.switchOn : ""}`}
-            role="switch"
-            aria-checked={on}
-            aria-label={label}
-            onClick={onClick}
-        />
-    );
-}
+type TipoConfig = Omit<AutomationConfig, "id" | "creado_en" | "actualizado_en">;
 
-function Dot({ on }: { on: boolean }) {
-    return (
-        <StatusBadge status={on ? "active" : "inactive"} label={on ? "Sí" : "No"} size="sm" />
-    );
-}
+// Estructura conceptual pedida — CADA acción es su propia pestaña, con su
+// propio guardado (ver secciones/*). Esta pantalla (el detalle de UN
+// grupo) sigue siendo donde vive la CONFIGURACIÓN; la AUTORIZACIÓN
+// (¿puede este grupo operar automatización, sí/no?) sigue viviendo
+// exclusivamente en /automatizacion/grupos — sin cambios aquí.
+const TABS = [
+    { value: "inicio_dia", label: "Inicio del día", icon: <Sunrise size={13} /> },
+    { value: "aviso_apertura", label: "Aviso de apertura", icon: <Hourglass size={13} /> },
+    { value: "apertura", label: "Apertura", icon: <Rocket size={13} /> },
+    { value: "tabla_inicial", label: "Tabla inicial", icon: <TableProperties size={13} /> },
+    { value: "recordatorios", label: "Recordatorios", icon: <Bell size={13} /> },
+    { value: "actualizacion", label: "Actualización", icon: <RefreshCw size={13} /> },
+    { value: "cierre", label: "Cierre", icon: <Lock size={13} /> },
+    { value: "resultado", label: "Resultado", icon: <Trophy size={13} /> }
+];
 
 export default function ConfiguracionGrupo({ grupoId }: Props) {
 
@@ -65,12 +69,9 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
     const [nombreGrupo, setNombreGrupo] = useState<string | null>(null);
     const [autorizacion, setAutorizacion] = useState<GrupoAutorizado | null>(null);
 
-    const [config, setConfig] = useState<Omit<AutomationConfig, "id" | "creado_en" | "actualizado_en"> | null>(null);
-
-    const [guardando, setGuardando] = useState(false);
-    const [guardadoOk, setGuardadoOk] = useState(false);
-
-    const [nuevoOffset, setNuevoOffset] = useState("");
+    const [config, setConfig] = useState<TipoConfig | null>(null);
+    const [tabActiva, setTabActiva] = useState("inicio_dia");
+    const [guardandoActivo, setGuardandoActivo] = useState(false);
 
     useEffect(() => {
 
@@ -106,12 +107,6 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
             const real = disponiblesRes.flatMap((s) => s.grupos).find((g) => g.id === grupoId);
             const conocido = conocidosRes.data.find((g) => g.grupo_id === grupoId);
 
-            // Ningún rastro de este JID en ningún lado (ni conectado ahora,
-            // ni autorizado antes, ni visto alguna vez en mensajes) -> el
-            // JID de la URL no corresponde a nada real. Se corta ACÁ, antes
-            // de crear/guardar cualquier configuración para un grupo que
-            // podría no existir (p. ej. un JID corrupto o mal escrito) —
-            // nunca se "corrige" inventando otro identificador.
             if (!propia && !real && !conocido) {
                 setEstado("no-encontrado");
                 return;
@@ -120,16 +115,37 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
             setAutorizacion(propia);
             setNombreGrupo(real?.nombre || conocido?.grupo_nombre || null);
 
-            const base = (configRes.data as AutomationConfig | null) || configuracionPorDefecto(uid, grupoId);
+            let base = (configRes.data as AutomationConfig | null);
 
-            // Fila vieja (creada antes de la migración 009) o sin guardar
-            // todavía -> publicacion_inicial_tabla llega {} — se normaliza
-            // a los mismos defaults que vería un grupo nuevo, nunca "todo
-            // desmarcado" sin explicación.
+            if (!base) {
+
+                // Grupo sin fila todavía: se materializa UNA vez con los
+                // defaults completos (mismo objeto que ya se usaba como
+                // estado inicial antes de esta fase) — necesario para que,
+                // a partir de ahora, cada sección pueda guardar solo SU
+                // propia columna sin dejar el resto en blanco/NULL en un
+                // INSERT. Nunca se sobreescribe una fila que ya existía.
+                const defecto = configuracionPorDefecto(uid, grupoId);
+                const { data: creada, error: errorCrear } = await guardarConfiguracion(uid, grupoId, defecto);
+
+                if (errorCrear || !creada) {
+                    setError(`No se pudo inicializar la configuración (${errorCrear?.message || "error desconocido"}).`);
+                    setEstado("error");
+                    return;
+                }
+
+                base = creada as AutomationConfig;
+
+            }
+
+            // Filas viejas (creadas antes de las migraciones 009/"Inicio del
+            // día") pueden traer estos campos como "{}" — se normalizan a
+            // los mismos defaults que vería un grupo nuevo, nunca "todo
+            // vacío" sin explicación.
             base.publicacion_inicial_tabla = normalizarPublicacionInicialTabla(base.publicacion_inicial_tabla);
+            base.mensaje_inicio_dia = normalizarInicioDia(base.mensaje_inicio_dia);
 
             setConfig(base);
-
             setEstado("listo");
 
         }
@@ -150,148 +166,25 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
 
     }
 
-    // Apertura sí acepta legado sin el campo "activo" (configs guardadas
-    // antes de que este toggle existiera, columna jsonb libre) — se trata
-    // como activa por defecto, solo un false explícito la apaga.
-    const aperturaActiva = config ? config.mensaje_apertura?.activo !== false : false;
-
-    const recordatorios = config
-        ? Object.entries(config.recordatorios).sort((a, b) => Number(a[0]) - Number(b[0]))
-        : [];
-    const algunRecordatorioActivo = recordatorios.some(([, cfg]) => cfg.activo);
-
-    function alternarTodosRecordatorios() {
-
-        setConfig((prev) => {
-
-            if (!prev) return prev;
-
-            const activarTodos = !Object.values(prev.recordatorios).some((c) => c.activo);
-            const actualizados: ConfigRecordatorios = {};
-
-            for (const [offset, cfg] of Object.entries(prev.recordatorios)) {
-                actualizados[offset] = { ...cfg, activo: activarTodos };
-            }
-
-            return { ...prev, recordatorios: actualizados };
-
-        });
-
-    }
-
-    function actualizarRecordatorio(offset: string, cambios: Partial<{ activo: boolean; categoria: string | null }>) {
-
-        setConfig((prev) => {
-
-            if (!prev) return prev;
-
-            const actual = prev.recordatorios[offset] || { activo: false, categoria: null };
-
-            return {
-                ...prev,
-                recordatorios: {
-                    ...prev.recordatorios,
-                    [offset]: { ...actual, ...cambios }
-                }
-            };
-
-        });
-
-    }
-
-    function quitarRecordatorio(offset: string) {
-
-        setConfig((prev) => {
-
-            if (!prev) return prev;
-
-            const copia = { ...prev.recordatorios };
-            delete copia[offset];
-
-            return { ...prev, recordatorios: copia };
-
-        });
-
-    }
-
-    function alternarDiaTabla(diaId: string) {
-
-        setConfig((prev) => {
-
-            if (!prev) return prev;
-
-            return {
-                ...prev,
-                publicacion_inicial_tabla: {
-                    ...prev.publicacion_inicial_tabla,
-                    dias_permitidos: {
-                        ...prev.publicacion_inicial_tabla.dias_permitidos,
-                        [diaId]: !prev.publicacion_inicial_tabla.dias_permitidos[diaId]
-                    }
-                }
-            };
-
-        });
-
-    }
-
-    function agregarRecordatorio() {
-
-        const minutos = Number(nuevoOffset);
-
-        if (!Number.isFinite(minutos) || minutos <= 0) return;
-
-        setConfig((prev) => {
-
-            if (!prev) return prev;
-
-            if (prev.recordatorios[String(minutos)]) return prev;
-
-            return {
-                ...prev,
-                recordatorios: {
-                    ...prev.recordatorios,
-                    [String(minutos)]: { activo: true, categoria: null }
-                }
-            };
-
-        });
-
-        setNuevoOffset("");
-
-    }
-
-    async function guardar() {
+    // Interruptor MAESTRO del grupo — distinto de las 8 acciones (ninguna
+    // funciona si este está apagado, sin importar su propia configuración).
+    // Se guarda al instante, igual que ya hacen otros interruptores
+    // simples del panel (alternarGrupoAutorizado, alternarTipoHabilitado).
+    async function alternarActivo() {
 
         if (!usuarioId || !config) return;
 
-        setGuardando(true);
-        setGuardadoOk(false);
-        setError(null);
+        const nuevo = !config.activo;
 
-        const { data, error: errorGuardar } = await guardarConfiguracion(usuarioId, grupoId, {
-            activo: config.activo,
-            // Siempre abierto los 7 días — el evento real detectado decide
-            // cuándo arranca el ciclo, no un horario configurado aquí.
-            dias_permitidos: diasPermitidosSiempreAbierto(),
-            mensaje_apertura: config.mensaje_apertura,
-            mensaje_cierre: config.mensaje_cierre,
-            mensaje_actualizacion: config.mensaje_actualizacion,
-            recordatorios: config.recordatorios,
-            publicacion_inicial_tabla: config.publicacion_inicial_tabla,
-            umbral_reservas: config.umbral_reservas,
-            cooldown_minutos: config.cooldown_minutos
-        });
+        setGuardandoActivo(true);
 
-        setGuardando(false);
+        const { data, error: errorGuardar } = await guardarConfiguracion(usuarioId, grupoId, { activo: nuevo });
 
-        if (errorGuardar || !data) {
-            setError(`No se pudo guardar (${errorGuardar?.message || "error desconocido"}).`);
-            return;
+        setGuardandoActivo(false);
+
+        if (!errorGuardar && data) {
+            setConfig((prev) => (prev ? { ...prev, activo: nuevo } : prev));
         }
-
-        setConfig(data as AutomationConfig);
-        setGuardadoOk(true);
 
     }
 
@@ -303,7 +196,7 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
         return <div className={styles.state}>Debes iniciar sesión.</div>;
     }
 
-    if (estado === "error" || !config) {
+    if (estado === "error" || !config || !usuarioId) {
         return <div className={styles.state}>{error}</div>;
     }
 
@@ -323,6 +216,9 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
             </div>
         );
     }
+
+    const aperturaActiva = config.mensaje_apertura?.activo !== false;
+    const algunRecordatorioActivo = Object.values(config.recordatorios).some((c) => c.activo);
 
     return (
 
@@ -352,7 +248,8 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
                 <div className={styles.aviso}>
                     <span>
                         Este grupo todavía no está en <strong>grupos_autorizados</strong> — la
-                        automatización nunca operará aquí hasta autorizarlo.
+                        automatización nunca operará aquí hasta autorizarlo (ver la pantalla
+                        Grupos, que es la única que decide esto).
                     </span>
                     <Button size="sm" variant="secondary" onClick={autorizarSiHaceFalta}>
                         Autorizar ahora
@@ -365,9 +262,16 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
                     <AlertTriangle size={13} /> {error}
                 </p>
             )}
-            {guardadoOk && <p className={styles.noteOk}>Configuración guardada.</p>}
 
             <div className={styles.resumen}>
+                <div className={styles.resumenItem}>
+                    <span className={styles.resumenLabel}>Inicio del día</span>
+                    <span className={styles.resumenValue}>
+                        {config.mensaje_inicio_dia.activo
+                            ? formatHora12(config.mensaje_inicio_dia.hora)
+                            : <Dot on={false} />}
+                    </span>
+                </div>
                 <div className={styles.resumenItem}>
                     <span className={styles.resumenLabel}>Apertura</span>
                     <span className={styles.resumenValue}><Dot on={aperturaActiva} /></span>
@@ -399,255 +303,107 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
             <section className={styles.section}>
                 <h2 className={styles.sectionTitle}>Automatización</h2>
 
-                <label className={styles.checkRow}>
-                    <input
-                        type="checkbox"
-                        checked={config.activo}
-                        onChange={(e) => setConfig({ ...config, activo: e.target.checked })}
-                    />
-                    Automatización activa para este grupo
-                </label>
+                <div className={styles.actionRow} style={{ borderTop: "none" }}>
+                    <span className={styles.actionLabel}>
+                        Automatización activa para este grupo
+                        {guardandoActivo && " (guardando…)"}
+                    </span>
+                    <Switch on={config.activo} label="Automatización activa" onClick={alternarActivo} />
+                </div>
 
                 <p className={styles.nota}>
                     El nombre, valor, premios, hora de cierre y demás datos del sorteo SIEMPRE
-                    vienen del evento real detectado (Automation Engine, sin cambios). Aquí solo
-                    se define qué debe hacer la automatización cuando eso pase — sin horario ni
-                    días propios.
+                    vienen del evento real detectado (Automation Engine, sin cambios). Este
+                    interruptor es el único que afecta a TODAS las acciones de abajo a la vez —
+                    cada una, además, tiene su propio interruptor independiente en su pestaña.
                 </p>
             </section>
 
-            <section className={styles.section}>
-                <h2 className={styles.sectionTitle}>Acciones</h2>
+            <Tabs
+                items={TABS}
+                value={tabActiva}
+                onValueChange={setTabActiva}
+                aria-label="Configuración por acción"
+                fullWidth
+            />
 
-                <div className={styles.actionRow}>
-                    <span className={styles.actionLabel}><Rocket size={14} /> Apertura</span>
-                    <Switch
-                        on={aperturaActiva}
-                        label="Apertura"
-                        onClick={() => setConfig({
-                            ...config,
-                            mensaje_apertura: { ...config.mensaje_apertura, activo: !aperturaActiva }
-                        })}
+            <div style={{ marginTop: 12 }}>
+
+                {tabActiva === "inicio_dia" && (
+                    <SeccionInicioDia
+                        usuarioId={usuarioId}
+                        grupoId={grupoId}
+                        inicial={config.mensaje_inicio_dia}
+                        onGuardado={(nuevo) => setConfig((prev) => (prev ? { ...prev, mensaje_inicio_dia: nuevo } : prev))}
                     />
-                </div>
+                )}
 
-                <div className={styles.actionRow}>
-                    <span className={styles.actionLabel}><Bell size={14} /> Recordatorios</span>
-                    <Switch on={algunRecordatorioActivo} label="Recordatorios" onClick={alternarTodosRecordatorios} />
-                </div>
-
-                <div className={styles.actionRow}>
-                    <span className={styles.actionLabel}><RefreshCw size={14} /> Actualización</span>
-                    <Switch
-                        on={config.mensaje_actualizacion.activo}
-                        label="Actualización"
-                        onClick={() => setConfig({
-                            ...config,
-                            mensaje_actualizacion: { ...config.mensaje_actualizacion, activo: !config.mensaje_actualizacion.activo }
-                        })}
+                {tabActiva === "aviso_apertura" && (
+                    <SeccionProximamente
+                        icon={Hourglass}
+                        titulo="Aviso de apertura"
+                        descripcion="Un mensaje de cuenta regresiva antes de la apertura real del grupo."
                     />
-                </div>
+                )}
 
-                <div className={styles.actionRow}>
-                    <span className={styles.actionLabel}><Lock size={14} /> Cierre</span>
-                    <Switch
-                        on={config.mensaje_cierre.activo}
-                        label="Cierre"
-                        onClick={() => setConfig({
-                            ...config,
-                            mensaje_cierre: { ...config.mensaje_cierre, activo: !config.mensaje_cierre.activo }
-                        })}
+                {tabActiva === "apertura" && (
+                    <SeccionApertura
+                        usuarioId={usuarioId}
+                        grupoId={grupoId}
+                        inicial={config.mensaje_apertura}
+                        onGuardado={(nuevo) => setConfig((prev) => (prev ? { ...prev, mensaje_apertura: nuevo } : prev))}
                     />
-                </div>
-            </section>
+                )}
 
-            <section className={styles.section}>
-                <h2 className={styles.sectionTitle}>Recordatorios</h2>
-
-                <p className={styles.nota}>
-                    Cada recordatorio se calcula sobre la hora de cierre REAL del evento
-                    detectado (evento.hora_cierre − offset) — nunca una hora fija guardada aquí.
-                </p>
-
-                <div className={styles.recordatorios}>
-
-                    {recordatorios.length === 0 && (
-                        <p className={styles.nota}>Sin recordatorios configurados todavía.</p>
-                    )}
-
-                    {recordatorios.map(([offset, cfg]) => (
-                        <div key={offset} className={styles.recRow}>
-                            <span className={styles.recOffset}>{offset} min antes</span>
-                            <Switch
-                                on={cfg.activo}
-                                label={`Recordatorio ${offset} min`}
-                                onClick={() => actualizarRecordatorio(offset, { activo: !cfg.activo })}
-                            />
-                            <button className={styles.recRemove} onClick={() => quitarRecordatorio(offset)}>
-                                Quitar
-                            </button>
-                        </div>
-                    ))}
-
-                </div>
-
-                <div className={styles.recNuevo}>
-                    <Input
-                        type="number"
-                        min={1}
-                        placeholder="Minutos antes"
-                        value={nuevoOffset}
-                        onChange={(e) => setNuevoOffset(e.target.value)}
+                {tabActiva === "tabla_inicial" && (
+                    <SeccionTablaInicial
+                        usuarioId={usuarioId}
+                        grupoId={grupoId}
+                        inicial={config.publicacion_inicial_tabla}
+                        onGuardado={(nuevo) => setConfig((prev) => (prev ? { ...prev, publicacion_inicial_tabla: nuevo } : prev))}
                     />
-                    <Button size="sm" variant="secondary" onClick={agregarRecordatorio}>
-                        Agregar
-                    </Button>
-                </div>
-            </section>
+                )}
 
-            <section className={styles.section}>
-                <h2 className={styles.sectionTitle}>Actualizaciones</h2>
-
-                <div className={styles.grid2}>
-                    <Input
-                        label="Umbral (reservas nuevas)"
-                        type="number"
-                        min={1}
-                        value={config.umbral_reservas}
-                        onChange={(e) => setConfig({ ...config, umbral_reservas: Number(e.target.value) || 1 })}
+                {tabActiva === "recordatorios" && (
+                    <SeccionRecordatorios
+                        usuarioId={usuarioId}
+                        grupoId={grupoId}
+                        inicial={config.recordatorios}
+                        onGuardado={(nuevo) => setConfig((prev) => (prev ? { ...prev, recordatorios: nuevo } : prev))}
                     />
-                    <Input
-                        label="Cooldown (minutos)"
-                        type="number"
-                        min={1}
-                        value={config.cooldown_minutos}
-                        onChange={(e) => setConfig({ ...config, cooldown_minutos: Number(e.target.value) || 1 })}
+                )}
+
+                {tabActiva === "actualizacion" && (
+                    <SeccionActualizacion
+                        usuarioId={usuarioId}
+                        grupoId={grupoId}
+                        inicialMensaje={config.mensaje_actualizacion}
+                        inicialUmbral={config.umbral_reservas}
+                        inicialCooldown={config.cooldown_minutos}
+                        onGuardado={(cambios) => setConfig((prev) => (prev ? { ...prev, ...cambios } : prev))}
                     />
-                </div>
-            </section>
+                )}
 
-            <section className={styles.section}>
-                <h2 className={styles.sectionTitle}><TableProperties size={15} /> Publicación inicial de tabla</h2>
-
-                <label className={styles.checkRow}>
-                    <input
-                        type="checkbox"
-                        checked={config.publicacion_inicial_tabla.activo}
-                        onChange={(e) => setConfig({
-                            ...config,
-                            publicacion_inicial_tabla: { ...config.publicacion_inicial_tabla, activo: e.target.checked }
-                        })}
+                {tabActiva === "cierre" && (
+                    <SeccionCierre
+                        usuarioId={usuarioId}
+                        grupoId={grupoId}
+                        inicial={config.mensaje_cierre}
+                        onGuardado={(nuevo) => setConfig((prev) => (prev ? { ...prev, mensaje_cierre: nuevo } : prev))}
                     />
-                    {config.publicacion_inicial_tabla.activo ? "Activada" : "Desactivada"}
-                </label>
+                )}
 
-                <div className={styles.grid2} style={{ marginTop: 12 }}>
-                    <Input
-                        label="Hora de publicación"
-                        type="time"
-                        value={config.publicacion_inicial_tabla.hora}
-                        onChange={(e) => setConfig({
-                            ...config,
-                            publicacion_inicial_tabla: { ...config.publicacion_inicial_tabla, hora: e.target.value }
-                        })}
+                {tabActiva === "resultado" && (
+                    <SeccionProximamente
+                        icon={Trophy}
+                        titulo="Resultado"
+                        descripcion="Anuncio del número/ganador del sorteo."
                     />
-                </div>
+                )}
 
-                <div className={styles.dias}>
-                    {DIAS_SEMANA.map((dia) => (
-                        <label key={dia.id} className={styles.dia}>
-                            <input
-                                type="checkbox"
-                                checked={!!config.publicacion_inicial_tabla.dias_permitidos[dia.id]}
-                                onChange={() => alternarDiaTabla(dia.id)}
-                            />
-                            {dia.label}
-                        </label>
-                    ))}
-                </div>
-
-                <p className={styles.nota}>
-                    La hora indica cuándo se intenta publicar la primera tabla. Los datos de la
-                    tabla siempre salen del evento real detectado.
-                </p>
-                <p className={styles.nota}>
-                    Si el evento todavía no ha sido detectado, no se envía nada. Cuando el evento
-                    aparezca después de la hora programada, se publicará si todavía no se ha realizado.
-                </p>
-            </section>
-
-            <section className={styles.section}>
-                <h2 className={styles.sectionTitle}>Mensajes</h2>
-
-                <p className={styles.nota}>
-                    Categoría preferida por acción — el texto real siempre sale del Message Pool
-                    (pestaña Mensajes). «Sin categoría» usa cualquiera activa de ese tipo.
-                </p>
-
-                <div className={styles.msgRow}>
-                    <span className={styles.actionLabel}><Rocket size={14} /> Apertura</span>
-                    <SelectorCategoria
-                        valor={config.mensaje_apertura.categoria}
-                        onChange={(categoria) => setConfig({
-                            ...config,
-                            mensaje_apertura: { ...config.mensaje_apertura, categoria }
-                        })}
-                    />
-                </div>
-
-                <div className={styles.msgRow}>
-                    <span className={styles.actionLabel}><Bell size={14} /> Recordatorios</span>
-                    <span className={styles.nota}>Categoría por cada offset, arriba en Recordatorios.</span>
-                </div>
-
-                <div className={styles.msgRow}>
-                    <span className={styles.actionLabel}><RefreshCw size={14} /> Actualización</span>
-                    <SelectorCategoria
-                        valor={config.mensaje_actualizacion.categoria}
-                        onChange={(categoria) => setConfig({
-                            ...config,
-                            mensaje_actualizacion: { ...config.mensaje_actualizacion, categoria }
-                        })}
-                    />
-                </div>
-
-                <div className={styles.msgRow}>
-                    <span className={styles.actionLabel}><Lock size={14} /> Cierre</span>
-                    <SelectorCategoria
-                        valor={config.mensaje_cierre.categoria}
-                        onChange={(categoria) => setConfig({
-                            ...config,
-                            mensaje_cierre: { ...config.mensaje_cierre, categoria }
-                        })}
-                    />
-                </div>
-            </section>
-
-            <div className={styles.saveBar}>
-                <Button disabled={guardando} loading={guardando} onClick={guardar}>
-                    Guardar configuración
-                </Button>
             </div>
 
         </div>
-
-    );
-
-}
-
-function SelectorCategoria({ valor, onChange }: { valor: string | null; onChange: (v: string | null) => void }) {
-
-    return (
-
-        <Select
-            value={valor || ""}
-            onChange={(e) => onChange(e.target.value || null)}
-        >
-            <option value="">Sin categoría (cualquiera)</option>
-            {CATEGORIAS_AUTOMATIZACION.map((c) => (
-                <option key={c.id} value={c.id}>{c.label}</option>
-            ))}
-        </Select>
 
     );
 

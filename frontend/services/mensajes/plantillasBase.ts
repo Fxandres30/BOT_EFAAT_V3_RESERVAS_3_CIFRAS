@@ -250,7 +250,51 @@ const PLANTILLAS_POR_TIPO: Record<string, PlantillaBase[]> = {
         "Hora del sorteo {{evento}}: {{hora}}",
         "¡Es {{evento}}! 🎯 a las {{hora}} ✨🍀",
         ""
-    ])
+    ]),
+
+    // Inicio del día (Master Spec §15) — 8 plantillas de ejemplo tal como
+    // las redactó el usuario. A propósito NO usan los 15 ESTILOS genéricos
+    // de arriba (Natural/Súper corta/...): esos nombres no describen el
+    // tono real de cada una, así que se listan con su propio nombre/tono.
+    // {{evento}}/{{loteria}}/{{premio}} normalmente resolverán vacío en
+    // este tipo (Inicio del día se envía ANTES de detectar el sorteo del
+    // día — ver automation/eventRules.js::evaluarInicioDia) — no es un
+    // error, es la regla real de "nunca inventar un dato que no existe
+    // todavía" aplicada aquí.
+    inicio_dia: [
+        {
+            nombre: "Inicio del día — cálido", estilo: "calido",
+            contenido: "☀️ ¡Muy buenos días, familia! ❤️\n\n🙏 Gracias por estar nuevamente aquí y por la confianza de siempre.\n\n🎲 Ya estamos preparando todo para la dinámica de hoy.\n\n⏳ En unos minutos estaremos comenzando y les compartiremos toda la información.\n\n👀 Estén atentos al grupo.\n\n🍀 Que hoy sea un excelente día y que la suerte esté de su lado."
+        },
+        {
+            nombre: "Inicio del día — energético", estilo: "energetico",
+            contenido: "🌅 ¡BUENOS DÍAS, FAMILIA! 🔥\n\n🎲 ¡Comenzamos un nuevo día de dinámica!\n\n🙏 Gracias por seguir acompañándonos y confiar en nosotros.\n\n🎯 {{nombre_evento}}\n🎰 {{loteria}}\n🏆 {{premio}}\n\n⏰ Ya estamos preparando todo.\n\n👀 En unos minutos comenzamos.\n\n🔥 ¡Vamos con toda y mucha suerte para todos!"
+        },
+        {
+            nombre: "Inicio del día — familiar", estilo: "familiar",
+            contenido: "☀️ ¡Familia, muy buenos días! ❤️\n\nQué alegría tenerlos nuevamente por aquí. 🫶\n\n🎲 Ya tenemos preparada la dinámica de hoy y estamos organizando todo para comenzar.\n\n📋 Tabla lista.\n🎯 Dinámica lista.\n🔥 Nosotros listos.\n\n¡Solo faltan ustedes! 😎🍀\n\n⏳ En unos minutos comenzamos."
+        },
+        {
+            nombre: "Inicio del día — expectativa", estilo: "expectativa",
+            contenido: "🌅 ¡FAMILIA, HOY SE JUEGA! 🎲🔥\n\nMuy buenos días para todos. ❤️\n\n🙏 Gracias por seguir aquí y confiar en nuestro trabajo.\n\n🎯 {{nombre_evento}}\n🎰 {{loteria}}\n🏆 {{premio}}\n\n⏳ Estamos preparando todo para comenzar.\n\n👀 Estén muy atentos al grupo porque ya casi arrancamos.\n\n🍀 ¡Que la suerte los acompañe hoy!"
+        },
+        {
+            nombre: "Inicio del día — comercial", estilo: "comercial",
+            contenido: "☀️ ¡Muy buenos días, familia! 🔥\n\nYa estamos listos para comenzar una nueva dinámica. 🎲\n\n🎯 Hoy tenemos: {{nombre_evento}}\n🎰 {{loteria}}\n🏆 {{premio}}\n\n📋 Estamos terminando de preparar la tabla.\n\n⏳ En unos minutos les estaremos avisando para comenzar.\n\n🍀 Prepárense porque hoy puede ser su día. ❤️"
+        },
+        {
+            nombre: "Inicio del día — corto", estilo: "corto",
+            contenido: "☀️ ¡Buenos días, familia! ❤️\n\n🎲 Ya tenemos lista la dinámica de hoy.\n\n🎯 {{nombre_evento}}\n🎰 {{loteria}}\n\n⏳ En unos minutos comenzamos.\n\n👀 Estén atentos al grupo.\n\n🍀 ¡Mucha suerte para todos! 🔥"
+        },
+        {
+            nombre: "Inicio del día — animado", estilo: "animado",
+            contenido: "🌅 ¡MUY BUENOS DÍAS, FAMILIA! 🎉🔥\n\nOtro día, otra oportunidad y otra dinámica para ustedes. 🎲\n\n🎯 {{nombre_evento}}\n🎰 {{loteria}}\n🏆 {{premio}}\n\nEstamos dejando todo preparado para arrancar. 💪\n\n⏰ Ya casi abrimos.\n\n👀 No se despeguen porque en unos minutos comenzamos.\n\n🍀 ¡Vamos a darle!"
+        },
+        {
+            nombre: "Inicio del día — cercano", estilo: "cercano",
+            contenido: "☀️ ¡Familia, buenos días! 🫶\n\nEsperamos que hayan amanecido muy bien. ❤️\n\nComo siempre, muchas gracias por acompañarnos y hacer parte de esta familia.\n\n🎲 Ya estamos preparando la dinámica de hoy:\n\n🎯 {{nombre_evento}}\n🎰 {{loteria}}\n\n⏳ Falta muy poquito para comenzar.\n\n👀 Atentos al grupo que ya casi arrancamos.\n\n🍀 ¡Muchísima suerte!"
+        }
+    ]
 
 };
 

@@ -25,7 +25,11 @@ export default function Page({
 
   return (
     <DashboardLayout>
-      <ConfiguracionGrupo grupoId={grupoIdReal} />
+      {/* key fuerza un remount completo al cambiar de grupo — cada
+          sección de configuración parte de un useState(inicial) simple,
+          sin efecto de resincronización, así que necesita una montura
+          fresca por grupo (nunca reutilizar el árbol de un grupo previo). */}
+      <ConfiguracionGrupo key={grupoIdReal} grupoId={grupoIdReal} />
     </DashboardLayout>
   );
 

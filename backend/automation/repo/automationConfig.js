@@ -46,7 +46,26 @@ async function estaGrupoAutorizado(usuarioId, grupoId) {
 
 }
 
+// Todas las automation_configs de un usuario — usado por Inicio del día
+// (Master Spec §15): a diferencia del resto de acciones (atadas a un
+// event_session ya abierto), Inicio del día evalúa TODOS los grupos
+// configurados de este usuario en cada tick, sin depender de que exista
+// ningún evento/ciclo detectado todavía.
+async function listarConfiguraciones(usuarioId) {
+
+    const { data, error } = await supabase
+        .from("automation_configs")
+        .select("*")
+        .eq("usuario_id", usuarioId);
+
+    if (error) throw error;
+
+    return data || [];
+
+}
+
 module.exports = {
     obtenerConfiguracion,
-    estaGrupoAutorizado
+    estaGrupoAutorizado,
+    listarConfiguraciones
 };

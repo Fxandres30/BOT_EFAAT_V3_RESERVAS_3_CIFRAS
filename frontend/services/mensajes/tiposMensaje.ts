@@ -30,7 +30,7 @@ export interface VariableMensaje {
 
 export interface TipoMensaje {
     id: string;
-    categoria: "Reservas" | "Consultas" | "Futuro";
+    categoria: "Reservas" | "Consultas" | "Automatización" | "Futuro";
     icono: string;
     nombre: string;
     descripcion: string;
@@ -53,6 +53,12 @@ const V = {
     // ---------------------------------------------------------------
     cliente: { variable: "cliente", etiqueta: "Nombre del cliente", mostrarCampo: "mostrar_nombre" },
     evento: { variable: "evento", etiqueta: "Nombre del evento", mostrarCampo: "mostrar_evento" },
+    // "loteria" es un ALIAS de "evento" (mismo dato real — ver
+    // backend/shared/variables/catalogoVariables.js — no existe una
+    // fuente separada para "lotería"). "premio" sí es un dato propio
+    // (evento.premios[0].premio).
+    loteria: { variable: "loteria", etiqueta: "Lotería (alias de \"evento\")", mostrarCampo: "" },
+    premio: { variable: "premio", etiqueta: "Premio principal del evento", mostrarCampo: "" },
     solicitados: { variable: "numeros_solicitados", etiqueta: "Números solicitados", mostrarCampo: "mostrar_numeros_solicitados" },
     reservados: { variable: "numeros_reservados", etiqueta: "Números reservados", mostrarCampo: "mostrar_numeros_reservados" },
     ocupados: { variable: "numeros_ocupados", etiqueta: "Números ocupados", mostrarCampo: "mostrar_numeros_ocupados" },
@@ -290,6 +296,27 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         // real quedan vacías, nunca inventadas.
         variables: [V.cliente, V.evento, V.numerosTotalesCliente, V.numerosPagados, V.numerosPendientes, V.cantidadPagados, V.cantidadPendientes, V.montoTotal, V.montoPagado, V.montoPendiente],
         ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales" },
+        soportado: true
+    },
+
+    // ============================================================
+    // AUTOMATIZACIÓN — mensajes que el Scheduler envía por su cuenta,
+    // sin que el cliente haya escrito nada (ver automation/scheduler.js).
+    // ============================================================
+    {
+        id: "inicio_dia",
+        categoria: "Automatización",
+        icono: "🌅",
+        nombre: "Inicio del día",
+        descripcion: "Mensaje de saludo que el Scheduler envía automáticamente cada día, antes de que empiece la dinámica (independiente de apertura/tabla — ver Master Spec §15).",
+        // Se envía ANTES de que el sorteo del día se detecte, así que
+        // {{evento}}/{{loteria}}/{{premio}} normalmente NO tendrán un
+        // evento real en contexto todavía — el catálogo global las deja
+        // vacías en ese caso (nunca inventa un valor). Se ofrecen aquí
+        // porque son variables reales del catálogo global, no porque este
+        // tipo garantice tener un evento disponible.
+        variables: [V.cliente, V.evento, V.loteria, V.premio],
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", loteria: "Lotería De Manizales", premio: "200.000" },
         soportado: true
     },
 

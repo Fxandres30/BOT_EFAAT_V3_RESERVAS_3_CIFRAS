@@ -4,7 +4,7 @@
 // de la API encadenable de supabase-js que usan obtenerUsuarioGlobal.js,
 // guardarMensajeGrupo.js, consultarMisNumeros.js y reservarNumeros.js:
 //
-//   .from(tabla).select(cols).eq(c,v).neq(c,v).in(c,vs).limit(n).order(c,opts)
+//   .from(tabla).select(cols).eq(c,v).neq(c,v).in(c,vs).or(str).limit(n).order(c,opts)
 //   .from(tabla).insert(obj).select().single()
 //   .from(tabla).update(obj).eq(c,v).in(c,vs).select()
 //
@@ -59,15 +59,19 @@ function crearFakeSupabase() {
         const filtrosEq = [];
         const filtrosNeq = [];
         const filtrosIn = [];
+        const filtrosOr = []; // grupo de condiciones "campo.eq.valor" (sintaxis PostgREST)
         let limiteN = null;
         let ordenCampo = null;
         let ordenAsc = true;
+        let soloUnaFila = false;
+        let pedirCount = false;
 
         const builder = {
 
-            select(_cols) {
+            select(_cols, opciones) {
 
                 if (modo === null) modo = "select";
+                if (opciones?.count) pedirCount = true;
                 return builder;
 
             },
@@ -109,6 +113,21 @@ function crearFakeSupabase() {
 
             },
 
+            // Sintaxis PostgREST cruda: "campo.eq.valor,campo2.eq.valor2".
+            // Solo soporta el operador "eq" (el único usado hoy en producción).
+            or(condicionStr) {
+
+                for (const token of condicionStr.split(",")) {
+
+                    const [campo, operador, ...resto] = token.split(".");
+                    filtrosOr.push({ campo, operador, valor: resto.join(".") });
+
+                }
+
+                return builder;
+
+            },
+
             limit(n) {
 
                 limiteN = n;
@@ -133,6 +152,13 @@ function crearFakeSupabase() {
 
             },
 
+            maybeSingle() {
+
+                soloUnaFila = true;
+                return builder;
+
+            },
+
             then(onFulfilled, onRejected) {
 
                 return ejecutar().then(onFulfilled, onRejected);
@@ -149,10 +175,25 @@ function crearFakeSupabase() {
 
             if (modo === "select") {
 
+                const forzado = erroresForzados[`${nombreTabla}:select`];
+
+                if (forzado) {
+
+                    delete erroresForzados[`${nombreTabla}:select`];
+
+                    if (forzado.efectoSecundario) forzado.efectoSecundario();
+
+                    return { data: null, error: forzado.error };
+
+                }
+
                 let resultado = filas.filter(fila =>
                     filtrosEq.every(([c, v]) => fila[c] === v) &&
                     filtrosNeq.every(([c, v]) => fila[c] !== v) &&
-                    filtrosIn.every(([c, vs]) => vs.includes(fila[c]))
+                    filtrosIn.every(([c, vs]) => vs.includes(fila[c])) &&
+                    (filtrosOr.length === 0 || filtrosOr.some(({ campo, operador, valor }) =>
+                        operador === "eq" && fila[campo] != null && String(fila[campo]) === String(valor)
+                    ))
                 );
 
                 if (ordenCampo) {
@@ -171,9 +212,21 @@ function crearFakeSupabase() {
 
                 }
 
+                const totalAntesDeLimite = resultado.length;
+
                 if (limiteN != null) resultado = resultado.slice(0, limiteN);
 
-                return { data: resultado, error: null };
+                if (soloUnaFila) {
+
+                    if (resultado.length > 1) {
+                        return { data: null, error: { code: "PGRST116", message: "more than one row returned" } };
+                    }
+
+                    return { data: resultado[0] || null, error: null, count: pedirCount ? totalAntesDeLimite : null };
+
+                }
+
+                return { data: resultado, error: null, count: pedirCount ? totalAntesDeLimite : null };
 
             }
 

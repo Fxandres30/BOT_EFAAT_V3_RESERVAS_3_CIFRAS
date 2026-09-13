@@ -30,7 +30,7 @@ import ModoSeleccion from "../ModoSeleccion/ModoSeleccion";
 
 import styles from "./MensajesPage.module.css";
 
-const CATEGORIAS: TipoMensaje["categoria"][] = ["Reservas", "Consultas", "Futuro"];
+const CATEGORIAS: TipoMensaje["categoria"][] = ["Reservas", "Consultas", "Automatización", "Futuro"];
 
 export default function MensajesPage() {
 
@@ -437,22 +437,34 @@ export default function MensajesPage() {
                                     </p>
                                 )}
 
-                                <ModoSeleccion
-                                    usuarioId={usuarioId}
-                                    tipoId={tipoSeleccionado.id}
-                                    modoActual={configSeleccion?.modo_seleccion || "aleatorio"}
-                                    plantillaFijaId={configSeleccion?.plantilla_fija_id || null}
-                                    plantillas={plantillas}
-                                    onGuardado={(modo: TipoModo, plantillaFijaId: string | null) => {
+                                {tipoSeleccionado.id === "inicio_dia" ? (
 
-                                        setConfigSeleccion((prev) => ({
-                                            ...(prev as ConfiguracionSeleccion),
-                                            modo_seleccion: modo,
-                                            plantilla_fija_id: plantillaFijaId
-                                        }));
+                                    <p className={styles.note}>
+                                        Inicio del día siempre elige al azar entre las plantillas
+                                        habilitadas de abajo, una vez por día — no usa fijo/rotación
+                                        (ver automation/scheduler.js).
+                                    </p>
 
-                                    }}
-                                />
+                                ) : (
+
+                                    <ModoSeleccion
+                                        usuarioId={usuarioId}
+                                        tipoId={tipoSeleccionado.id}
+                                        modoActual={configSeleccion?.modo_seleccion || "aleatorio"}
+                                        plantillaFijaId={configSeleccion?.plantilla_fija_id || null}
+                                        plantillas={plantillas}
+                                        onGuardado={(modo: TipoModo, plantillaFijaId: string | null) => {
+
+                                            setConfigSeleccion((prev) => ({
+                                                ...(prev as ConfiguracionSeleccion),
+                                                modo_seleccion: modo,
+                                                plantilla_fija_id: plantillaFijaId
+                                            }));
+
+                                        }}
+                                    />
+
+                                )}
 
                                 <ListaPlantillas
                                     tipo={tipoSeleccionado}

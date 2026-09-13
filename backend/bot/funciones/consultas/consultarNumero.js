@@ -1,4 +1,5 @@
 const supabase = require("../../../lib/supabase");
+const { reservaPerteneceAUsuario } = require("../usuarios/obtenerUsuarioGlobal");
 
 // READ-ONLY. Determina el estado real de UN número. Solo devuelve estados
 // que realmente existen en la tabla: libre, reservado (por el usuario
@@ -13,7 +14,7 @@ async function consultarNumero({ evento, usuario, numero }) {
 
     const { data, error } = await supabase
         .from(evento.tabla)
-        .select("numero, estado, usuario_global_id")
+        .select("numero, estado, usuario_global_id, lid, telefono, contacto")
         .eq("numero", numero)
         .maybeSingle();
 
@@ -31,7 +32,10 @@ async function consultarNumero({ evento, usuario, numero }) {
 
     }
 
-    const esDelUsuario = data.usuario_global_id === usuario.id;
+    // Mismo criterio único que validarReservas.js/consultarMisNumeros.js:
+    // reconoce también reservas históricas con usuario_global_id=NULL pero
+    // lid/telefono coincidentes, no solo usuario_global_id exacto.
+    const esDelUsuario = reservaPerteneceAUsuario(data, usuario);
 
     if (data.estado === "reservado") {
 

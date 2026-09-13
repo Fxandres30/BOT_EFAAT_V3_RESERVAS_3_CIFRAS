@@ -7,18 +7,31 @@
 // la variable resuelve a "" (nunca undefined/null/[object Object], nunca
 // inventa un valor).
 //
-// Frontera arquitectónica (ver auditoría): este archivo importa
-// bot/ai/gramatica.js y bot/utils/formatHora.js, por lo que SOLO debe
-// consumirse desde el lado bot/ (plantillaMensaje.js, tests). El motor de
-// automatización (automation/variableResolver.js) NO debe requerir este
-// archivo todavía — automation/ tiene prohibido importar nada bajo bot/
-// (mismo límite ya documentado en automation/tablaInicial.js). Unificar
-// ambos motores exigiría primero mover gramatica.js a esta misma carpeta
-// neutral, lo cual es una decisión aparte, no tomada en esta fase.
+// Frontera arquitectónica (ver auditoría): gramatica.js y formatHora.js
+// viven bajo bot/, y automation/ tiene prohibido importar nada bajo bot/
+// (mismo límite ya documentado en automation/tablaInicial.js). Por eso
+// estas dos dependencias se cargan de forma PEREZOSA (solo la primera vez
+// que una variable que realmente las necesita se resuelve, nunca al
+// cargar este módulo) — así, un llamador de automation/ (p. ej. Inicio
+// del día, que solo resuelve evento/premio) puede usar este MISMO
+// resolver global sin que bot/ai/gramatica.js llegue a cargarse nunca en
+// ese proceso. Si algún día automation/ resuelve una variable de
+// concordancia/hora, sí violaría el límite — eso debe evitarse en el
+// llamador, no aquí.
 // ==========================================================================
 
-const gramatica = require("../../bot/ai/gramatica");
-const { formatHora12 } = require("../../bot/utils/formatHora");
+let _gramatica = null;
+function obtenerGramatica() {
+    if (!_gramatica) _gramatica = require("../../bot/ai/gramatica");
+    return _gramatica;
+}
+
+let _formatHora12 = null;
+function obtenerFormatHora12() {
+    if (!_formatHora12) _formatHora12 = require("../../bot/utils/formatHora").formatHora12;
+    return _formatHora12;
+}
+
 const catalogo = require("./catalogoVariables");
 const { contextoTieneRequisitos } = require("./contextoVariables");
 
@@ -60,7 +73,7 @@ function buscarEnResultados(resultado, predicado) {
 
 function resolverValorGramatical(claveBase, conjunto, contextoGlobal) {
 
-    const relevantes = gramatica.calcularNumerosRelevantes(contextoGlobal.ctx || {}, contextoGlobal.resultado);
+    const relevantes = obtenerGramatica().calcularNumerosRelevantes(contextoGlobal.ctx || {}, contextoGlobal.resultado);
 
     if (conjunto) {
 
@@ -70,7 +83,7 @@ function resolverValorGramatical(claveBase, conjunto, contextoGlobal) {
             disponibles: relevantes.cantidadDisponibles
         };
 
-        const formas = gramatica.construirVariablesPorConjunto({ [conjunto]: cantidadesPorConjunto[conjunto] });
+        const formas = obtenerGramatica().construirVariablesPorConjunto({ [conjunto]: cantidadesPorConjunto[conjunto] });
 
         return valorSeguro(formas[`${claveBase}_${conjunto}`]);
 
@@ -83,7 +96,7 @@ function resolverValorGramatical(claveBase, conjunto, contextoGlobal) {
         ? relevantes.cantidadPropiedad
         : relevantes.cantidadNumeros;
 
-    const formas = gramatica.construirVariablesGramaticales(cantidad);
+    const formas = obtenerGramatica().construirVariablesGramaticales(cantidad);
 
     return valorSeguro(formas[claveBase]);
 
@@ -105,7 +118,7 @@ function resolverValorBase(key, contextoGlobal) {
 
         case "fecha": return valorSeguro(evento?.fecha_evento);
 
-        case "hora": return evento?.hora_fin ? valorSeguro(formatHora12(evento.hora_fin)) : "";
+        case "hora": return evento?.hora_fin ? valorSeguro(obtenerFormatHora12()(evento.hora_fin)) : "";
 
         // Mismo dato real que "hora" (cierre del evento) pero sin el
         // formateo 12h — así lo consume hoy automation/engine.js.
@@ -116,32 +129,32 @@ function resolverValorBase(key, contextoGlobal) {
         case "cantidad": return valorSeguro(resultado?.cantidad);
 
         case "numeros_solicitados": {
-            const r = gramatica.calcularNumerosRelevantes(ctx || {}, resultado);
-            return gramatica.formatearListaNumeros(r.numerosSolicitados);
+            const r = obtenerGramatica().calcularNumerosRelevantes(ctx || {}, resultado);
+            return obtenerGramatica().formatearListaNumeros(r.numerosSolicitados);
         }
 
         case "numeros_reservados": {
-            const r = gramatica.calcularNumerosRelevantes(ctx || {}, resultado);
-            return gramatica.formatearListaNumeros(r.numerosReservados);
+            const r = obtenerGramatica().calcularNumerosRelevantes(ctx || {}, resultado);
+            return obtenerGramatica().formatearListaNumeros(r.numerosReservados);
         }
 
         case "numeros_ocupados": {
-            const r = gramatica.calcularNumerosRelevantes(ctx || {}, resultado);
-            return gramatica.formatearListaNumeros(r.numerosOcupados);
+            const r = obtenerGramatica().calcularNumerosRelevantes(ctx || {}, resultado);
+            return obtenerGramatica().formatearListaNumeros(r.numerosOcupados);
         }
 
         case "numeros_disponibles": {
-            const r = gramatica.calcularNumerosRelevantes(ctx || {}, resultado);
-            return gramatica.formatearListaNumeros(r.numerosDisponibles);
+            const r = obtenerGramatica().calcularNumerosRelevantes(ctx || {}, resultado);
+            return obtenerGramatica().formatearListaNumeros(r.numerosDisponibles);
         }
 
         case "cantidad_reservados": {
-            const r = gramatica.calcularNumerosRelevantes(ctx || {}, resultado);
+            const r = obtenerGramatica().calcularNumerosRelevantes(ctx || {}, resultado);
             return valorSeguro(r.cantidadReservados);
         }
 
         case "cantidad_ocupados": {
-            const r = gramatica.calcularNumerosRelevantes(ctx || {}, resultado);
+            const r = obtenerGramatica().calcularNumerosRelevantes(ctx || {}, resultado);
             return valorSeguro(r.cantidadOcupados);
         }
 
@@ -157,7 +170,7 @@ function resolverValorBase(key, contextoGlobal) {
                 return valorSeguro(evento.libres);
             }
 
-            const r = gramatica.calcularNumerosRelevantes(ctx || {}, resultado);
+            const r = obtenerGramatica().calcularNumerosRelevantes(ctx || {}, resultado);
             return valorSeguro(r.cantidadDisponibles);
 
         }
@@ -170,17 +183,17 @@ function resolverValorBase(key, contextoGlobal) {
 
         case "numeros_pagados": {
             const f = buscarEnResultados(resultado, r => Array.isArray(r.pagados));
-            return f ? gramatica.formatearListaNumeros(f.pagados) : "";
+            return f ? obtenerGramatica().formatearListaNumeros(f.pagados) : "";
         }
 
         case "numeros_pendientes": {
             const f = buscarEnResultados(resultado, r => r.modo === "lista" && Array.isArray(r.reservados));
-            return f ? gramatica.formatearListaNumeros(f.reservados) : "";
+            return f ? obtenerGramatica().formatearListaNumeros(f.reservados) : "";
         }
 
         case "numeros_totales_cliente": {
             const f = buscarEnResultados(resultado, r => Array.isArray(r.numerosDelUsuario));
-            return f ? gramatica.formatearListaNumeros(f.numerosDelUsuario) : "";
+            return f ? obtenerGramatica().formatearListaNumeros(f.numerosDelUsuario) : "";
         }
 
         case "cantidad_pagados": {
@@ -265,8 +278,26 @@ function resolverVariablesOrfanas(contextoGlobal) {
 
 }
 
+// resolverTexto(texto, contextoGlobal) -> string — sustituye cada
+// {{variable}} del texto llamando a resolverVariable() (misma resolución,
+// mismos alias, mismo "nunca inventa"), sin necesitar un objeto de
+// variables pre-armado. Punto de entrada genérico para cualquier llamador
+// nuevo (p. ej. Inicio del día, en automation/) que solo tiene un texto de
+// plantilla y un contexto — no es un motor nuevo, es este mismo resolver
+// aplicado a una cadena completa en vez de a una sola clave.
+function resolverTexto(texto, contextoGlobal) {
+
+    if (typeof texto !== "string" || !texto.trim()) {
+        return "";
+    }
+
+    return texto.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, nombre) => resolverVariable(nombre, contextoGlobal));
+
+}
+
 module.exports = {
     resolverVariable,
     resolverVariablesOrfanas,
+    resolverTexto,
     formatearMoneda
 };

@@ -40,57 +40,88 @@ async function reservarNumeros({
         comprador ||
         null;
 
-    const { data, error } = await supabase
+    const payload = {
 
+        estado: "reservado",
+
+        comprador: nombre,
+
+        contacto: telefono,
+
+        usuario_global_id:
+            usuario?.id || null,
+
+        telefono,
+
+        lid,
+
+        nombre,
+
+        grupo_id:
+            evento.grupo_id,
+
+        grupo_nombre:
+            evento.grupo_nombre,
+
+        evento_id:
+            evento.id,
+
+        // Identidad del sorteo REAL (independiente del grupo) — permite que
+        // consultarDisponibilidad/consultarReservas/actualizarEvento/
+        // verificarTodosPagados/consultarMisNumeros/consultarNumero aíslen
+        // correctamente esta reserva de otros eventos/tenants que compartan
+        // la misma tabla física por rango de precio, sin dejar de
+        // compartirla entre los grupos que son el MISMO sorteo. Ver
+        // bot/funciones/eventos/identidadEventoReal.js.
+        identidad_evento_real:
+            evento.identidad_evento_real || null,
+
+        usuario_id:
+            evento.usuario_id,
+
+        telefono_bot:
+            evento.telefono_bot,
+
+        fecha_reserva:
+            fechaReserva,
+
+        hora_reserva:
+            horaReserva,
+
+        lib
+
+    };
+
+    let { data, error } = await supabase
         .from(evento.tabla)
-
-        .update({
-
-            estado: "reservado",
-
-            comprador: nombre,
-
-            contacto: telefono,
-
-            usuario_global_id:
-                usuario?.id || null,
-
-            telefono,
-
-            lid,
-
-            nombre,
-
-            grupo_id:
-                evento.grupo_id,
-
-            grupo_nombre:
-                evento.grupo_nombre,
-
-            evento_id:
-                evento.id,
-
-            usuario_id:
-                evento.usuario_id,
-
-            telefono_bot:
-                evento.telefono_bot,
-
-            fecha_reserva:
-                fechaReserva,
-
-            hora_reserva:
-                horaReserva,
-
-            lib
-
-        })
-
+        .update(payload)
         .in("numero", numeros)
-
         .eq("estado", "libre")
-
         .select();
+
+    // Red de seguridad de despliegue: si la migración 015 (columna
+    // identidad_evento_real) todavía no se aplicó en Supabase cuando este
+    // código ya se está ejecutando, Postgres devuelve 42703 (columna
+    // inexistente) y SIN esto la reserva completa fallaría — se reintenta
+    // una vez sin ese campo para no romper reservas reales mientras se
+    // aplica la migración.
+    if (error?.code === "42703") {
+
+        console.warn("⚠ La columna identidad_evento_real todavía no existe en Supabase (falta aplicar supabase_migrations/015_identidad_evento_real.sql) — reservando sin ella por ahora.");
+
+        const { identidad_evento_real, ...payloadSinIdentidad } = payload;
+
+        const reintento = await supabase
+            .from(evento.tabla)
+            .update(payloadSinIdentidad)
+            .in("numero", numeros)
+            .eq("estado", "libre")
+            .select();
+
+        data = reintento.data;
+        error = reintento.error;
+
+    }
 
     if (error) {
 

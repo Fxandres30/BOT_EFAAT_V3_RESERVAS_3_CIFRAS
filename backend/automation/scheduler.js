@@ -41,6 +41,17 @@ const engine = require("./engine");
 // generador de tabla de texto aparte — ver services/compartirTabla.js.
 const { compartirTabla } = require("../services/compartirTabla");
 
+// Inicio del día (Master Spec §15) — reutiliza el catálogo/resolver
+// GLOBAL de variables (backend/shared/variables, el mismo que usan
+// plantillas_mensaje/consultas) y el mismo repo de plantillas del panel
+// (plantillas_mensaje, vía automation/repo/plantillasMensaje.js — misma
+// tabla que EditorMensaje.tsx ya edita, ninguna tabla/motor nuevo).
+const plantillasMensajeRepo = require("./repo/plantillasMensaje");
+const { construirContextoGlobal } = require("../shared/variables/contextoVariables");
+const { resolverTexto } = require("../shared/variables/resolverVariables");
+const { sendMessage } = require("../services/baileys/send");
+const executionGuard = require("./executionGuard");
+
 const INTERVALO_MS_DEFECTO = 30000;
 
 const intervalos = new Map(); // sessionId -> intervalId
@@ -140,6 +151,125 @@ async function tick(sock, opciones = {}) {
             console.error(`❌ [SCHEDULER] error procesando event_session ${eventSession.id}:`, error?.message);
 
         }
+
+    }
+
+    // Inicio del día (Master Spec §15) — independiente por completo del
+    // ciclo de Event Session (no depende de "abiertas" de arriba, nunca
+    // lee eventos_bot): evalúa TODOS los grupos configurados del usuario
+    // dueño de esta sesión de WhatsApp, cada tick.
+    try {
+
+        await evaluarInicioDiaGlobal(sock, opciones);
+
+    } catch (error) {
+
+        console.error(`❌ [SCHEDULER] error evaluando Inicio del día (${sessionId}):`, error?.message);
+
+    }
+
+}
+
+// ==========================================================================
+// INICIO DEL DÍA (Master Spec §15)
+// ==========================================================================
+//
+// NO crea, NO toca, NO lee eventos_bot — por eso las variables globales
+// que dependen del evento del día (evento/loteria/premio) solo resolverán
+// con dato real si, por la razón que sea, ya existe un evento en el
+// contexto en ese momento; lo normal es que Inicio del día se envíe ANTES
+// de que el sorteo del día se detecte, así que esas variables quedarán en
+// "" (nunca inventadas) en el caso típico — ver informe.
+async function evaluarInicioDiaGlobal(sock, opciones = {}) {
+
+    const usuarioId = sock?.context?.usuarioId;
+
+    if (!usuarioId) return;
+
+    const ahora = opciones.ahora || new Date();
+
+    const configuraciones = await automationConfigRepo.listarConfiguraciones(usuarioId);
+
+    for (const configuracion of configuraciones) {
+
+        try {
+
+            await evaluarInicioDiaPorGrupo({ configuracion, usuarioId, ahora, sock });
+
+        } catch (error) {
+
+            console.error(`❌ [SCHEDULER] error en Inicio del día para grupo ${configuracion?.grupo_id}:`, error?.message);
+
+        }
+
+    }
+
+}
+
+async function evaluarInicioDiaPorGrupo({ configuracion, usuarioId, ahora, sock }) {
+
+    const grupoAutorizado = await automationConfigRepo.estaGrupoAutorizado(usuarioId, configuracion.grupo_id);
+
+    const decision = eventRules.evaluarInicioDia({ configuracion, grupoAutorizado, ahora });
+
+    if (!decision.permitido) {
+        return; // sin log por tick — mismo criterio silencioso que el resto de evaluar*
+    }
+
+    // Las plantillas se leen ANTES de tocar ExecutionGuard: si hoy no hay
+    // ninguna activa todavía, no se consume la idempotencia del día — así,
+    // si el admin activa una plantilla más tarde ese mismo día, el
+    // siguiente tick todavía puede enviarla (mismo criterio que
+    // engine.js::enviarMensajeProgramado con "sin mensajes disponibles").
+    const plantillas = await plantillasMensajeRepo.obtenerPlantillasHabilitadas(usuarioId, "inicio_dia");
+
+    if (plantillas.length === 0) {
+
+        console.log(`🤖 [AUTOMATION] Inicio del día: sin plantillas habilitadas para el grupo ${configuracion.grupo_id} — no se envía nada.`);
+        return;
+
+    }
+
+    // Selección aleatoria entre las activas — una sola, nunca varias
+    // (mismo criterio simple ya usado por automation/messageSelector.js:
+    // Math.random() sobre el arreglo ya filtrado, sin un motor de modos
+    // aparte, porque esta categoría solo pidió "aleatorio").
+    const plantilla = plantillas[Math.floor(Math.random() * plantillas.length)];
+
+    const fecha = eventRules.obtenerFechaISO(ahora);
+    const claveIdempotencia = `${configuracion.grupo_id}:DAILY_START_MESSAGE:${fecha}`;
+
+    const resultado = await executionGuard.ejecutarUnaVez({
+
+        claveIdempotencia,
+        eventSessionId: null, // Inicio del día no pertenece a ningún Event Session (Master Spec §8)
+        grupoId: configuracion.grupo_id,
+        usuarioId,
+        tipoAccion: "DAILY_START_MESSAGE",
+
+        ejecutar: async () => {
+
+            // Sin evento (Inicio del día nunca lee eventos_bot) — las
+            // variables {{evento}}/{{loteria}}/{{premio}} de la plantilla
+            // resuelven a "" si no hay uno en contexto, nunca inventado.
+            const contextoGlobal = construirContextoGlobal({});
+            const texto = resolverTexto(plantilla.contenido, contextoGlobal);
+
+            await sendMessage({ sock, jid: configuracion.grupo_id, text: texto });
+
+            return { plantillaId: plantilla.id };
+
+        }
+
+    });
+
+    if (resultado.ejecutada) {
+
+        console.log(`🤖 [AUTOMATION] Inicio del día publicado para el grupo ${configuracion.grupo_id} (plantilla ${plantilla.id})`);
+
+    } else {
+
+        console.log(`🤖 [AUTOMATION] Inicio del día no enviado (${resultado.motivo}) para el grupo ${configuracion.grupo_id}`);
 
     }
 

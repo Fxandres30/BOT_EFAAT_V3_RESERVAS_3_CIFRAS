@@ -1,4 +1,13 @@
-function validarReservas(reservas = [], telefono, lib) {
+const { reservaPerteneceAUsuario } = require("../usuarios/obtenerUsuarioGlobal");
+
+// Recibe `usuario` (el objeto ya resuelto por obtenerUsuarioGlobal, el mismo
+// que reservarNumeros.js usa para escribir usuario_global_id) en vez de
+// telefono/lib sueltos — así "ya es mío" se decide con el MISMO criterio que
+// consultarMisNumeros.js/consultarNumero.js (reservaPerteneceAUsuario), en
+// vez de una comparación de campos crudos propia que no reconocía reservas
+// históricas guardadas con una identidad distinta a la de hoy (ver auditoría
+// identidad/eventos, Fase Identidad Real).
+function validarReservas(reservas = [], usuario) {
 
     const disponibles = [];
     const ocupadosPorOtros = [];
@@ -14,17 +23,7 @@ function validarReservas(reservas = [], telefono, lib) {
         }
 
         // Ya pertenece al mismo usuario
-        const mismoTelefono =
-            telefono &&
-            reserva.contacto &&
-            reserva.contacto === telefono;
-
-        const mismoLib =
-            lib &&
-            reserva.lib &&
-            reserva.lib === lib;
-
-        if (mismoTelefono || mismoLib) {
+        if (reservaPerteneceAUsuario(reserva, usuario)) {
             yaSonMios.push(reserva);
             continue;
         }

@@ -41,11 +41,26 @@ async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) 
     //    lectura: depende exclusivamente del WHERE del UPDATE de abajo.
     // ======================================================================
 
-    const { data: filas, error: errorSelect } = await supabase
+    // Antes filtraba solo por evento_id (la fila de eventos_bot de ESTE
+    // grupo). Si el mismo sorteo real se anuncia en varios grupos, una
+    // reserva hecha a través de OTRO grupo tiene el evento_id de ESE grupo,
+    // así que un sticker de pago enviado en un grupo distinto al de la
+    // reserva original nunca encontraba la fila ("sin_reservas") y el pago
+    // no quedaba compartido. Se filtra por identidad_evento_real
+    // (independiente del grupo, ver identidadEventoReal.js) para encontrar
+    // la reserva sin importar en qué grupo del mismo sorteo real se hizo. Si
+    // el evento todavía no trae esta identidad (dato histórico previo a esta
+    // migración), se mantiene el comportamiento anterior (por evento_id).
+    let querySelect = supabase
         .from(evento.tabla)
         .select("numero, estado")
-        .eq("usuario_global_id", usuario.id)
-        .eq("evento_id", evento.id);
+        .eq("usuario_global_id", usuario.id);
+
+    querySelect = evento.identidad_evento_real
+        ? querySelect.eq("identidad_evento_real", evento.identidad_evento_real)
+        : querySelect.eq("evento_id", evento.id);
+
+    const { data: filas, error: errorSelect } = await querySelect;
 
     if (errorSelect) {
 
@@ -80,8 +95,15 @@ async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) 
     //    queda vacío — nunca se sobrescribe ni se duplica nada.
     //
     //    Filtros, en orden de intención:
-    //      usuario_global_id -> SOLO este cliente (nunca otro).
-    //      evento_id         -> SOLO este evento (nunca reservas de otro).
+    //      usuario_global_id   -> SOLO este cliente (nunca otro).
+    //      identidad_evento_real -> SOLO este sorteo real, sin importar en
+    //                           qué grupo se hizo la reserva original (ver
+    //                           identidadEventoReal.js) — antes filtraba por
+    //                           evento_id (el grupo actual), lo que dejaba
+    //                           sin marcar reservas hechas vía OTRO grupo del
+    //                           mismo sorteo. Si el evento no trae esta
+    //                           identidad todavía, cae a evento_id (igual que
+    //                           antes de este cambio).
     //      usuario_id        -> SOLO el tenant dueño de este evento (mismo
     //                           campo que reservarNumeros.js ya escribe en
     //                           cada fila — la tabla dinámica es compartida
@@ -100,7 +122,7 @@ async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) 
         timeZone: "America/Bogota"
     });
 
-    const { data: actualizadas, error: errorUpdate } = await supabase
+    let queryUpdate = supabase
         .from(evento.tabla)
         .update({
 
@@ -110,10 +132,14 @@ async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) 
 
         })
         .eq("usuario_global_id", usuario.id)
-        .eq("evento_id", evento.id)
         .eq("usuario_id", evento.usuario_id)
-        .eq("estado", "reservado")
-        .select();
+        .eq("estado", "reservado");
+
+    queryUpdate = evento.identidad_evento_real
+        ? queryUpdate.eq("identidad_evento_real", evento.identidad_evento_real)
+        : queryUpdate.eq("evento_id", evento.id);
+
+    const { data: actualizadas, error: errorUpdate } = await queryUpdate.select();
 
     if (errorUpdate) {
 

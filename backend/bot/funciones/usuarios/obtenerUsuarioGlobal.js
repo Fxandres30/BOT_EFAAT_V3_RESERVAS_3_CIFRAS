@@ -411,6 +411,46 @@ async function obtenerUsuarioGlobal({
 
 }
 
+// ==========================================================================
+// ¿Esta fila (de una tabla dinámica de reservas) pertenece a este usuario ya
+// resuelto por obtenerUsuarioGlobal()? Único criterio de "pertenencia" del
+// sistema — antes existían dos caminos divergentes que no lo usaban:
+//
+//   - validarReservas.js decidía "ya es mío" comparando reserva.contacto
+//     === telefono OR reserva.lib === lid, sin mirar nunca
+//     usuario_global_id.
+//   - consultarMisNumeros.js / consultarNumero.js solo miraban
+//     usuario_global_id, así que una reserva HISTÓRICA con
+//     usuario_global_id = NULL (guardada antes de que existiera esa
+//     columna, o de una carrera ya resuelta) pero con lid/telefono
+//     coincidentes no aparecía como del usuario.
+//
+// Esta función es el único lugar que decide "pertenece", reutilizado por
+// los tres. Prioridad: usuario_global_id (si la fila ya lo tiene) primero;
+// lid y teléfono/contacto como respaldo para filas antiguas que no lo
+// tengan. NUNCA se usa reserva.usuario_id: esa columna es el tenant dueño
+// del bot (evento.usuario_id en reservarNumeros.js), no el comprador — usarla
+// aquí mezclaría dos identidades distintas.
+function reservaPerteneceAUsuario(fila, usuario) {
+
+    if (!fila || !usuario) return false;
+
+    if (fila.usuario_global_id && fila.usuario_global_id === usuario.id) {
+        return true;
+    }
+
+    if (usuario.lid && fila.lid && fila.lid === usuario.lid) {
+        return true;
+    }
+
+    if (usuario.telefono && (fila.telefono === usuario.telefono || fila.contacto === usuario.telefono)) {
+        return true;
+    }
+
+    return false;
+
+}
+
 module.exports = {
 
     obtenerUsuarioGlobal,
@@ -425,6 +465,10 @@ module.exports = {
     // Único criterio de derivación teléfono/LID desde un JID — para que
     // otros módulos de identidad (p. ej. el escáner) lo reutilicen en vez
     // de reimplementarlo.
-    normalizarIdentificadoresDesdeJid
+    normalizarIdentificadoresDesdeJid,
+
+    // Único criterio de "esta fila de reserva es de este usuario" — ver
+    // documentación arriba.
+    reservaPerteneceAUsuario
 
 };

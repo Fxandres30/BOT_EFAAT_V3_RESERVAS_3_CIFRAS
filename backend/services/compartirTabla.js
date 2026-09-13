@@ -86,9 +86,19 @@ async function capturarImagenTabla(precio) {
     const { token } = generarTokenImprimir(precio);
     const url = `${FRONTEND_URL}/tablas/imprimir/${precio}?token=${token}`;
 
+    // Flags defensivos estándar para Chromium headless en un VPS/entorno
+    // virtualizado sin GPU (Windows o Linux) — mitigación conocida para el
+    // crash "STATUS_STACK_BUFFER_OVERRUN" (0xC0000409) que Chromium puede
+    // producir al intentar usar aceleración por GPU donde no existe.
     const browser = await puppeteer.launch({
         headless: true,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"]
+        args: [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-gpu",
+            "--disable-software-rasterizer",
+            "--disable-dev-shm-usage"
+        ]
     });
 
     try {

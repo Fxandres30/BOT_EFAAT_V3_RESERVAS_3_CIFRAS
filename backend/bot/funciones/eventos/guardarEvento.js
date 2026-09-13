@@ -1,5 +1,6 @@
 const supabase = require("../../../lib/supabase");
 const { groupMetadata } = require("../../../services/baileys/groupQueue");
+const { crearIdentidadEventoReal } = require("./identidadEventoReal");
 
 async function guardarEvento({
 
@@ -39,6 +40,20 @@ async function guardarEvento({
 
     const hoy = new Date().toISOString().split("T")[0];
 
+    // Identidad del sorteo REAL (independiente del grupo) — mismo sorteo
+    // anunciado en varios grupos produce el MISMO valor aquí, lo que
+    // permite compartir/aislar correctamente la tabla física de reservas
+    // entre esos grupos. Ver identidadEventoReal.js.
+    const identidadEventoReal = crearIdentidadEventoReal({
+
+        usuario_id: context.usuarioId ?? null,
+        nombre_evento: evento.nombre,
+        hora_fin: evento.hora,
+        valor: evento.valor,
+        fecha_evento: hoy
+
+    });
+
     const datos = {
 
         usuario_id: context.usuarioId ?? null,
@@ -54,6 +69,8 @@ async function guardarEvento({
         hora_fin: evento.hora,
         hora_cierre: evento.horaCierre,
         fecha_evento: hoy,
+
+        identidad_evento_real: identidadEventoReal,
 
         estado: "abierto",
 
@@ -93,12 +110,36 @@ async function guardarEvento({
 
         console.log(`♻ Actualizando: ${eventoAnterior.nombre_evento} → ${evento.nombre}`);
 
-        const { data, error } = await supabase
+        let { data, error } = await supabase
             .from("eventos_bot")
             .update(datos)
             .eq("id", eventoAnterior.id)
             .select()
             .single();
+
+        // Red de seguridad de despliegue: si la migración 015 (columna
+        // identidad_evento_real) todavía no se aplicó en Supabase, Postgres
+        // devuelve 42703 (columna inexistente) y SIN esto la actualización
+        // del evento fallaría por completo — se reintenta una vez sin ese
+        // campo para no romper la apertura/actualización real del evento
+        // mientras se aplica la migración.
+        if (error?.code === "42703") {
+
+            console.warn("⚠ La columna identidad_evento_real todavía no existe en Supabase (falta aplicar supabase_migrations/015_identidad_evento_real.sql) — guardando el evento sin ella por ahora.");
+
+            const { identidad_evento_real, ...datosSinIdentidad } = datos;
+
+            const reintento = await supabase
+                .from("eventos_bot")
+                .update(datosSinIdentidad)
+                .eq("id", eventoAnterior.id)
+                .select()
+                .single();
+
+            data = reintento.data;
+            error = reintento.error;
+
+        }
 
         if (error) {
 
@@ -158,10 +199,26 @@ async function guardarEvento({
     console.log("====================================");
     console.dir(registro, { depth: null });
 
-    const resultado = await supabase
+    let resultado = await supabase
         .from("eventos_bot")
         .insert(registro)
         .select();
+
+    // Misma red de seguridad de despliegue que en la rama de actualización
+    // de arriba (ver comentario ahí) — evita que la CREACIÓN de un evento
+    // nuevo falle por completo si la migración 015 todavía no se aplicó.
+    if (resultado.error?.code === "42703") {
+
+        console.warn("⚠ La columna identidad_evento_real todavía no existe en Supabase (falta aplicar supabase_migrations/015_identidad_evento_real.sql) — creando el evento sin ella por ahora.");
+
+        const { identidad_evento_real, ...registroSinIdentidad } = registro;
+
+        resultado = await supabase
+            .from("eventos_bot")
+            .insert(registroSinIdentidad)
+            .select();
+
+    }
 
     console.log("====================================");
     console.log("📥 RESPUESTA INSERT");

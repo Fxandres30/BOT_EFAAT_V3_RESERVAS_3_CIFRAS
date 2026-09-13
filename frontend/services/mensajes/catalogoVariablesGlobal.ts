@@ -71,7 +71,7 @@ export const CATALOGO_VARIABLES: VariableGlobal[] = [
     { key: "monto_pagado", aliases: [], categoria: "PAGOS", description: "Monto que el cliente ya pagó", example: "$30.000", requires: ["usuario", "evento", "estado_pago"], type: "moneda", estado: "NUEVA" },
     { key: "monto_pendiente", aliases: ["pago_pendiente"], categoria: "PAGOS", description: "Monto que el cliente todavía debe", example: "$20.000", requires: ["usuario", "evento", "estado_pago"], type: "moneda", estado: "NUEVA" },
 
-    { key: "evento", aliases: ["nombre_evento"], categoria: "EVENTO", description: "Nombre del evento/sorteo activo", example: "Sorteo Medellín", requires: ["evento"], type: "texto", estado: "EXISTENTE" },
+    { key: "evento", aliases: ["nombre_evento", "loteria"], categoria: "EVENTO", description: "Nombre del evento/sorteo activo (incluye la lotería, cuando el nombre coincide con una lotería conocida — no existe una fuente separada para \"lotería\")", example: "Lotería Boyacá", requires: ["evento"], type: "texto", estado: "EXISTENTE" },
     { key: "premio", aliases: [], categoria: "EVENTO", description: "Premio principal configurado para el evento activo", example: "Nevera", requires: ["evento"], type: "texto", estado: "NUEVA" },
 
     { key: "fecha", aliases: [], categoria: "FECHA_HORA", description: "Fecha del evento activo", example: "2026-01-20", requires: ["evento"], type: "fecha", estado: "EXISTENTE" },
