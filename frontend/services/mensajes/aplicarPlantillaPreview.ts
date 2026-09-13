@@ -3,6 +3,7 @@
 // La sustitución real en producción la hace siempre el backend con datos reales.
 
 import { formatHora12 } from "@/lib/formatHora";
+import { resolverClaveCanonica } from "./catalogoVariablesGlobal";
 
 const MOSTRAR_POR_VARIABLE: Record<string, string> = {
     cliente: "mostrar_nombre",
@@ -32,7 +33,20 @@ export function aplicarPlantillaPreview(
             return "";
         }
 
-        const valor = variables[nombre] !== undefined ? variables[nombre] : "";
+        // El ejemplo específico del tipo de mensaje manda si existe. Si la
+        // plantilla usa una variable GLOBAL que ese tipo no incluyó en su
+        // "ejemplo" (p. ej. {{monto_pendiente}} en una plantilla de
+        // reserva), se cae al ejemplo genérico del catálogo global en vez
+        // de mostrar vacío — sigue siendo dato de ejemplo, nunca real (ver
+        // sección 15 de la fase de implementación).
+        let valor = variables[nombre];
+
+        if (valor === undefined) {
+
+            const info = resolverClaveCanonica(nombre);
+            valor = info ? info.definicion.example : "";
+
+        }
 
         // La hora se muestra al usuario en 12h (igual que el backend en
         // plantillaMensaje.js). El dato de ejemplo/almacenado no cambia.

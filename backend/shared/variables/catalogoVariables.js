@@ -437,6 +437,41 @@ function esVariableConocida(nombre) {
     return resolverClaveCanonica(nombre) !== null;
 }
 
+// Escanea un contenido de plantilla ({{variable}}) y devuelve los nombres
+// que NO existen en el catálogo (ni como clave, ni como alias, ni como
+// forma sufijada de gramática). Usado al guardar una plantilla — nunca
+// corrige ni sustituye el nombre, solo lo señala (sección 16).
+function extraerVariablesDesconocidas(texto) {
+
+    if (typeof texto !== "string" || !texto) {
+        return [];
+    }
+
+    const encontradas = new Set();
+    const desconocidas = [];
+    const regex = /\{\{\s*(\w+)\s*\}\}/g;
+    let coincidencia;
+
+    while ((coincidencia = regex.exec(texto)) !== null) {
+
+        const nombre = coincidencia[1];
+
+        if (encontradas.has(nombre)) {
+            continue;
+        }
+
+        encontradas.add(nombre);
+
+        if (!esVariableConocida(nombre)) {
+            desconocidas.push(nombre);
+        }
+
+    }
+
+    return desconocidas;
+
+}
+
 module.exports = {
     CATEGORIAS,
     CATALOGO,
@@ -445,5 +480,6 @@ module.exports = {
     resolverClaveCanonica,
     obtenerVariable,
     listarCatalogo,
-    esVariableConocida
+    esVariableConocida,
+    extraerVariablesDesconocidas
 };

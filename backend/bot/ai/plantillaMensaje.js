@@ -4,6 +4,8 @@
 const { construirVariablesGramaticales, construirVariablesPorConjunto, calcularNumerosRelevantes, formatearListaNumeros } = require("./gramatica");
 const { extraerNumeros } = require("../funciones/reservas/extraerNumeros");
 const { formatHora12 } = require("../utils/formatHora");
+const { construirContextoGlobal } = require("../../shared/variables/contextoVariables");
+const { resolverVariablesOrfanas } = require("../../shared/variables/resolverVariables");
 
 const MOSTRAR_POR_VARIABLE = {
 
@@ -17,9 +19,12 @@ const MOSTRAR_POR_VARIABLE = {
     hora: "mostrar_hora",
     precio: "mostrar_precio"
 
-    // NO existe "total": no hay lógica de pagos/montos totales en el
-    // sistema actual (ver auditoría Fase 4). No se ofrece esa variable
-    // para no sugerir una funcionalidad que no existe.
+    // Las variables de pago/estado (monto_total, numeros_pagados, etc.)
+    // no tienen un toggle "mostrar_*" propio todavía — igual que
+    // "cantidad"/"cantidad_reservados", se muestran siempre que resuelvan
+    // con datos reales (ver catálogo global, backend/shared/variables).
+    // No es una omisión: agregar un toggle por variable nueva es una
+    // decisión de UI aparte, no una necesaria para conectarlas.
 
 };
 
@@ -60,7 +65,18 @@ function construirVariables(ctx, resultado) {
         disponibles: cantidadDisponibles
     });
 
+    // Variables globales "huérfanas" conectadas en esta fase (monto_total,
+    // numeros_pagados, cantidad_pendientes, etc. — ver auditoría "SISTEMA
+    // GLOBAL DE VARIABLES EFAAT"). Se calculan por separado, vía el
+    // resolver global (backend/shared/variables), y se colocan ANTES de
+    // las variables ya existentes: si alguna vez coincidiera un nombre,
+    // el comportamiento histórico de abajo gana siempre — cero riesgo de
+    // cambiar una plantilla que ya funciona hoy.
+    const variablesGlobalesOrfanas = resolverVariablesOrfanas(construirContextoGlobal(ctx));
+
     return {
+
+        ...variablesGlobalesOrfanas,
 
         cliente: ctx.usuario?.nombre || "",
         evento: ctx.evento?.nombre_evento || "",
