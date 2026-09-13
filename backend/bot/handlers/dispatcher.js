@@ -23,6 +23,15 @@ require("./commandHandler");
 const { confirmarPagoPorSticker } =
 require("../funciones/pagos/confirmarPagoPorSticker");
 
+// FASE 1 (sticker de pago configurable desde el panel) — SIEMPRE se llama
+// ANTES que confirmarPagoPorSticker. Mientras el panel dejó a este grupo
+// en modo "esperando_registro" vigente, el mensaje queda consumido por el
+// registro y confirmarPagoPorSticker NUNCA se ejecuta en esa misma
+// pasada (regla de seguridad crítica — ver cabecera de
+// registrarStickerPago.js).
+const { registrarStickerPago } =
+require("../funciones/pagos/registrarStickerPago");
+
 module.exports = async ({
 
     sock,
@@ -120,7 +129,18 @@ module.exports = async ({
         // ANTES de eventHandler a propósito: eventHandler corta temprano si
         // no hay texto (ctx.textoOriginal), y un sticker normalmente no
         // trae texto.
-        await confirmarPagoPorSticker(ctx);
+        //
+        // FASE 1 — exclusión mutua obligatoria: si el mensaje fue consumido
+        // por el registro del sticker de pago, confirmarPagoPorSticker NO
+        // se ejecuta en esta misma pasada (nunca "registrar y luego
+        // confirmar pago" en la misma ejecución).
+        const registroSticker = await registrarStickerPago(ctx);
+
+        if (!registroSticker?.intervino) {
+
+            await confirmarPagoPorSticker(ctx);
+
+        }
 
         console.log("7️⃣ eventHandler");
 

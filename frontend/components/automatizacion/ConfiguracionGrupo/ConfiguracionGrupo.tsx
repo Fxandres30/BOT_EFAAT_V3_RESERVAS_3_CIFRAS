@@ -27,6 +27,7 @@ import { obtenerGruposDisponibles } from "@/services/automatizacion/gruposDispon
 import { CATEGORIAS_AUTOMATIZACION, DIAS_SEMANA } from "@/services/automatizacion/tiposCategorias";
 
 import AutomatizacionHeader from "../AutomatizacionNav/AutomatizacionHeader";
+import StickerPagoSection from "./StickerPagoSection";
 
 import styles from "./ConfiguracionGrupo.module.css";
 
@@ -362,6 +363,8 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
                     <span className={styles.resumenValue}><Dot on={config.mensaje_cierre.activo} /></span>
                 </div>
             </div>
+
+            <StickerPagoSection usuarioId={usuarioId} grupoId={grupoId} />
 
             <section className={styles.section}>
                 <h2 className={styles.sectionTitle}>Automatización</h2>

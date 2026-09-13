@@ -10,7 +10,7 @@
 // cálculo de deuda, consulta de pagos, pagos parciales, matching bancario,
 // comprobantes, pagos_movimientos, nuevas tablas de pagos. Ver auditoría.
 //
-// Reutiliza EXACTAMENTE las piezas de la fase anterior — ninguna se
+// Reutiliza EXACTAMENTE las piezas de las fases anteriores — ninguna se
 // reimplementa:
 //   - extraerDatosSticker.js   (detecta sticker + hash + cita)
 //   - esAdministrador.js       (rol real en vivo, sin persistencia)
@@ -21,12 +21,18 @@
 //   - actualizarEvento.js      (recalcula reservados/pagados/libres — YA
 //     existente, no se duplica el cálculo)
 //   - services/baileys/send.js (envío de la respuesta al admin)
+//   - configuracionStickerPago.js (FASE 1 — hash autorizado por
+//     usuario_id+grupo_id, en Supabase; ya NO se lee STICKER_PAGO_SHA256)
 //
 // Sustituye, en el pipeline en vivo (bot/handlers/dispatcher.js), al
 // diagnóstico temporal de la fase anterior
 // (bot/funciones/pagos/depurarStickerPago.js) — ese módulo sigue existiendo
 // y probado, pero ya no se llama desde dispatcher.js, para no consultar
 // groupMetadata() ni resolver identidad DOS veces por el mismo mensaje.
+//
+// dispatcher.js SIEMPRE llama primero a registrarStickerPago.js — este
+// módulo solo se ejecuta cuando ese devuelve intervino:false (ver la
+// cabecera de registrarStickerPago.js para la regla de seguridad completa).
 //
 // Nunca lanza: cualquier error queda contenido aquí y solo se loguea.
 // ==========================================================================
@@ -43,40 +49,14 @@ const { consultarEvento } = require("../eventos/consultarEvento");
 const { actualizarEvento } = require("../reservas/actualizarEvento");
 const { marcarReservasPagadasPorAdmin } = require("./marcarReservasPagadasPorAdmin");
 const { sendMessage } = require("../../../services/baileys/send");
+const { enmascararJid: enmascarar } = require("../../utils/enmascararJid");
 
-// ==========================================================================
-// CONFIGURACIÓN DEL STICKER DE PAGO
-// ==========================================================================
-// A propósito, en esta fase NO se crea una tabla nueva (pedido explícito):
-// un único hash global, vía variable de entorno STICKER_PAGO_SHA256
-// (hexadecimal, el mismo formato que devuelve extraerDatosSticker.js).
-// Para obtenerlo: enviar el sticker candidato desde un admin en un grupo
-// con el bot conectado y leer el log "[PAGO-STICKER] Sticker hash" de más
-// abajo — se imprime SIEMPRE que se detecta un sticker, esté o no
-// configurado/coincida o no, precisamente para poder configurarlo.
-function obtenerHashStickerPagoConfigurado() {
-
-    const valor = process.env.STICKER_PAGO_SHA256;
-
-    return valor ? String(valor).trim().toLowerCase() : null;
-
-}
-
-// Nunca se loguea un JID completo — mismo criterio que el resto del bot
-// (ver maskPhone en services/baileys/identidadSesion.js).
-function enmascarar(jid) {
-
-    if (!jid) return "(ninguno)";
-
-    const [usuario, dominio] = jid.split("@");
-
-    if (!usuario) return "(formato desconocido)";
-
-    const visible = usuario.slice(-4);
-
-    return `***${visible}@${dominio || "?"}`;
-
-}
+// FASE 1 (configuración desde el panel): el hash autorizado ya NO viene de
+// STICKER_PAGO_SHA256 (variable de entorno) — viene de Supabase, por
+// (usuario_id, grupo_id), a través del único módulo de persistencia de
+// esta funcionalidad. Ver bot/funciones/pagos/configuracionStickerPago.js
+// y bot/funciones/pagos/registrarStickerPago.js (cómo se registra).
+const { obtenerStickerConfigurado } = require("./configuracionStickerPago");
 
 // El citado es el propio BOT -> nunca se resuelve como cliente (mismo
 // criterio que la fase de diagnóstico: comparación por teléfono
@@ -114,16 +94,25 @@ async function confirmarPagoPorSticker(ctx) {
         console.log("================================");
 
         // ==================================================================
-        // 1. El sticker debe coincidir EXACTO con el configurado. Si no hay
-        //    configuración, o no coincide: se ignora POR COMPLETO, en
-        //    silencio de negocio (no se responde nada al grupo).
+        // 1. El sticker debe coincidir EXACTO con el configurado en
+        //    Supabase para ESTE (usuario_id, grupo_id) — nunca el de otro
+        //    grupo, nunca el de otro tenant, sin fallback de ningún tipo.
+        //    Sin configuración válida: falla cerrado, no se ejecuta nada.
         // ==================================================================
 
-        const hashConfigurado = obtenerHashStickerPagoConfigurado();
+        const usuarioIdTenant = ctx.session?.usuarioId || null;
+        const grupoIdActual = ctx.chat.remoteJid;
+
+        const hashConfigurado = await obtenerStickerConfigurado({
+
+            usuarioId: usuarioIdTenant,
+            grupoId: grupoIdActual
+
+        });
 
         if (!hashConfigurado) {
 
-            console.log("[PAGO-STICKER] STICKER_PAGO_SHA256 no configurado — no se ejecuta ninguna acción.");
+            console.log("[PAGO-STICKER] Sin sticker de pago configurado en Supabase para este grupo/tenant — no se ejecuta ninguna acción.");
             return;
 
         }

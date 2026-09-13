@@ -36,8 +36,9 @@ function crearFakeSupabase() {
 
     function crearQuery(nombreTabla) {
 
-        let modo = null; // 'select' | 'insert' | 'update'
+        let modo = null; // 'select' | 'insert' | 'update' | 'upsert'
         let payload = null;
+        let columnasConflicto = [];
         let terminal = false; // true tras .single()/.maybeSingle()
         const filtrosEq = [];
         const filtrosNeq = [];
@@ -67,6 +68,25 @@ function crearFakeSupabase() {
 
                 modo = "update";
                 payload = obj;
+                return builder;
+
+            },
+
+            // Mismo contrato que supabase-js: opts.onConflict ("a,b") dice
+            // qué columnas identifican la fila existente. Si coincide,
+            // hace merge (update); si no, inserta una nueva — mismo
+            // comportamiento que ya usan frontend/services/automatizacion/
+            // automationConfigs.ts (guardarConfiguracion) y
+            // gruposAutorizados.ts (autorizarGrupo), y ahora también
+            // configuracionStickerPago.js (activarModoRegistro).
+            upsert(obj, opts) {
+
+                modo = "upsert";
+                payload = obj;
+                columnasConflicto = (opts?.onConflict || "")
+                    .split(",")
+                    .map(s => s.trim())
+                    .filter(Boolean);
                 return builder;
 
             },
@@ -212,6 +232,36 @@ function crearFakeSupabase() {
                 }
 
                 return { data: actualizadas, error: null };
+
+            }
+
+            if (modo === "upsert") {
+
+                const columnas = columnasConflicto.length ? columnasConflicto : Object.keys(payload);
+
+                const existente = filas.find(f => columnas.every(c => f[c] === payload[c]));
+
+                let resultado;
+
+                if (existente) {
+
+                    Object.assign(existente, payload);
+                    resultado = existente;
+
+                } else {
+
+                    resultado = { id: `id-${siguienteId++}`, ...payload };
+                    filas.push(resultado);
+
+                }
+
+                if (terminal) {
+
+                    return { data: resultado, error: null };
+
+                }
+
+                return { data: [resultado], error: null };
 
             }
 

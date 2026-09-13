@@ -4,6 +4,12 @@
 //
 //     STICKER + ADMIN + CITA -> reservado -> pagado (atómico, idempotente)
 //
+// Actualizado en FASE 1 (sticker configurable desde el panel): el hash
+// autorizado ya NO se fija por STICKER_PAGO_SHA256 (variable de entorno) —
+// se siembra como fila de "configuracion_stickers_pago" en el fake de
+// Supabase, exactamente como lo haría registrarStickerPago.js en
+// producción.
+//
 // Mismo estilo que el resto del proyecto: script plano de Node (sin jest),
 // fake de Supabase inyectado vía require.cache. services/baileys/send.js
 // también se reemplaza por un fake (solo registra qué se habría enviado) —
@@ -26,6 +32,7 @@ const RUTAS_A_RECARGAR = [
     "../../bot/funciones/eventos/consultarEvento.js",
     "../../bot/funciones/reservas/actualizarEvento.js",
     "../../bot/funciones/pagos/marcarReservasPagadasPorAdmin.js",
+    "../../bot/funciones/pagos/configuracionStickerPago.js",
     "../../bot/funciones/pagos/confirmarPagoPorSticker.js"
 ].map(p => path.resolve(__dirname, p));
 
@@ -33,6 +40,8 @@ const RUTA_CONFIRMAR_PAGO = path.resolve(__dirname, "../../bot/funciones/pagos/c
 
 const GRUPO_ID = "120363111111111111@g.us";
 const OTRO_GRUPO_ID = "120363222222222222@g.us";
+
+const USUARIO_ID_TENANT = "tenant-1";
 
 const JID_ADMIN = "573000000001@s.whatsapp.net";
 const JID_CLIENTE_1 = "573000000002@s.whatsapp.net";
@@ -138,13 +147,13 @@ function crearMensajeSticker({
 
 }
 
-function crearCtx({ sock, message, grupoId = GRUPO_ID }) {
+function crearCtx({ sock, message, grupoId = GRUPO_ID, usuarioId = USUARIO_ID_TENANT }) {
 
     return {
 
         sock,
         message,
-        session: { telefono: TELEFONO_SESION_BOT },
+        session: { telefono: TELEFONO_SESION_BOT, usuarioId },
 
         chat: {
             esGrupo: true,
@@ -156,11 +165,41 @@ function crearCtx({ sock, message, grupoId = GRUPO_ID }) {
 
 }
 
-// Escenario base: un evento activo, con la tabla dinámica del evento y la
-// identidad de los dos clientes ya conocidas (mismo id que resolvería
-// obtenerUsuarioGlobal para su teléfono real, para poder sembrar filas de
-// reserva con ese usuario_global_id de antemano).
-function sembrarEscenario(fake, { conVariasReservasCliente1 = false } = {}) {
+// FASE 1: siembra la fila de configuracion_stickers_pago con el hash ya
+// registrado — exactamente el estado en el que registrarStickerPago.js
+// dejaría la fila tras una captura exitosa (esperando_registro=false,
+// sticker_sha256 con valor).
+function sembrarStickerConfigurado(fake, {
+
+    usuarioId = USUARIO_ID_TENANT,
+    grupoId = GRUPO_ID,
+    sha256 = HASH_STICKER_PAGO
+
+} = {}) {
+
+    fake.tabla("configuracion_stickers_pago").push({
+
+        usuario_id: usuarioId,
+        grupo_id: grupoId,
+        sticker_sha256: sha256,
+        registrado_en: new Date().toISOString(),
+        registrado_por: JID_ADMIN,
+        esperando_registro: false,
+        esperando_registro_expira_en: null
+
+    });
+
+}
+
+// Escenario base: un evento activo, con la tabla dinámica del evento, la
+// identidad de los dos clientes ya conocidas, y el sticker de pago YA
+// registrado en Supabase para (tenant-1, GRUPO_ID) — salvo que se pida lo
+// contrario explícitamente.
+function sembrarEscenario(fake, { conVariasReservasCliente1 = false, conStickerConfigurado = true } = {}) {
+
+    if (conStickerConfigurado) {
+        sembrarStickerConfigurado(fake);
+    }
 
     fake.tabla("usuarios").push(
         { id: "cliente-1", telefono: "3000000002", lid: null, nombre: "Cliente Uno" },
@@ -172,7 +211,7 @@ function sembrarEscenario(fake, { conVariasReservasCliente1 = false } = {}) {
         id: "evento-1",
         grupo_id: GRUPO_ID,
         tabla: "reservas_test_precio5",
-        usuario_id: "tenant-1",
+        usuario_id: USUARIO_ID_TENANT,
         activo: true,
         cantidad_numeros: 100,
         reservados: 0,
@@ -186,7 +225,7 @@ function sembrarEscenario(fake, { conVariasReservasCliente1 = false } = {}) {
         numero: "27",
         estado: "reservado",
         usuario_global_id: "cliente-1",
-        usuario_id: "tenant-1",
+        usuario_id: USUARIO_ID_TENANT,
         evento_id: "evento-1",
         comprador: "Cliente Uno",
         contacto: "3000000002"
@@ -200,7 +239,7 @@ function sembrarEscenario(fake, { conVariasReservasCliente1 = false } = {}) {
             numero: "45",
             estado: "reservado",
             usuario_global_id: "cliente-1",
-            usuario_id: "tenant-1",
+            usuario_id: USUARIO_ID_TENANT,
             evento_id: "evento-1",
             comprador: "Cliente Uno",
             contacto: "3000000002"
@@ -240,9 +279,6 @@ async function test(nombre, fn) {
 }
 
 async function ejecutarPruebas() {
-
-    const HASH_ORIGINAL_ENV = process.env.STICKER_PAGO_SHA256;
-    process.env.STICKER_PAGO_SHA256 = HASH_STICKER_PAGO;
 
     // ======================================================================
     // CASO 1 — admin + sticker correcto + cita a cliente con 1 reserva
@@ -497,7 +533,7 @@ async function ejecutarPruebas() {
             numero: "88",
             estado: "reservado",
             usuario_global_id: "cliente-1",
-            usuario_id: "tenant-1",
+            usuario_id: USUARIO_ID_TENANT,
             evento_id: "evento-VIEJO",
             comprador: "Cliente Uno",
             contacto: "3000000002"
@@ -559,7 +595,10 @@ async function ejecutarPruebas() {
     await test("EXTRA: sin evento activo para el grupo -> no se modifica nada", async () => {
 
         const { fake, envios, confirmarPagoPorSticker } = cargarModulos();
-        // Sin sembrarEscenario(): no hay eventos_bot ni tabla de reservas.
+        // Sin sembrarEscenario(): no hay eventos_bot ni tabla de reservas,
+        // pero el sticker SÍ está configurado (para aislar exactamente lo
+        // que se prueba: la ausencia de evento, no la ausencia de sticker).
+        sembrarStickerConfigurado(fake);
         fake.tabla("usuarios").push({ id: "cliente-1", telefono: "3000000002", lid: null, nombre: "Cliente Uno" });
 
         const sock = crearFakeSock();
@@ -574,33 +613,46 @@ async function ejecutarPruebas() {
     });
 
     // ======================================================================
-    // Extra — STICKER_PAGO_SHA256 no configurado -> nunca ejecuta nada
+    // Extra — sin configuración de sticker en Supabase -> nunca ejecuta nada
     // ======================================================================
 
-    await test("EXTRA: STICKER_PAGO_SHA256 no configurado -> nunca ejecuta ninguna acción", async () => {
+    await test("EXTRA: sin sticker configurado en Supabase para este grupo/tenant -> nunca ejecuta ninguna acción (falla cerrado)", async () => {
 
-        const anterior = process.env.STICKER_PAGO_SHA256;
-        delete process.env.STICKER_PAGO_SHA256;
+        const { fake, envios, confirmarPagoPorSticker } = cargarModulos();
+        // conStickerConfigurado:false -> ninguna fila en configuracion_stickers_pago.
+        sembrarEscenario(fake, { conStickerConfigurado: false });
 
-        try {
+        const sock = crearFakeSock();
+        const msg = crearMensajeSticker({ remitenteJid: JID_ADMIN, quotedParticipant: JID_CLIENTE_1 });
+        const ctx = crearCtx({ sock, message: msg });
 
-            const { fake, envios, confirmarPagoPorSticker } = cargarModulos();
-            sembrarEscenario(fake);
+        await confirmarPagoPorSticker(ctx);
 
-            const sock = crearFakeSock();
-            const msg = crearMensajeSticker({ remitenteJid: JID_ADMIN, quotedParticipant: JID_CLIENTE_1 });
-            const ctx = crearCtx({ sock, message: msg });
+        assert.strictEqual(filasDe(fake, "reservas_test_precio5").find(f => f.numero === "27").estado, "reservado");
+        assert.strictEqual(envios.length, 0);
+        assert.strictEqual(filasDe(fake, "reservas_actividad").length, 0);
 
-            await confirmarPagoPorSticker(ctx);
+    });
 
-            assert.strictEqual(filasDe(fake, "reservas_test_precio5").find(f => f.numero === "27").estado, "reservado");
-            assert.strictEqual(envios.length, 0);
+    // ======================================================================
+    // Extra — sticker configurado para OTRO tenant no sirve para este
+    // ======================================================================
 
-        } finally {
+    await test("EXTRA: sticker configurado para OTRO tenant -> no se usa como fallback (falla cerrado)", async () => {
 
-            if (anterior !== undefined) process.env.STICKER_PAGO_SHA256 = anterior;
+        const { fake, envios, confirmarPagoPorSticker } = cargarModulos();
+        sembrarEscenario(fake, { conStickerConfigurado: false });
+        // El hash SÍ existe, pero para un tenant distinto.
+        sembrarStickerConfigurado(fake, { usuarioId: "otro-tenant" });
 
-        }
+        const sock = crearFakeSock();
+        const msg = crearMensajeSticker({ remitenteJid: JID_ADMIN, quotedParticipant: JID_CLIENTE_1 });
+        const ctx = crearCtx({ sock, message: msg });
+
+        await confirmarPagoPorSticker(ctx);
+
+        assert.strictEqual(filasDe(fake, "reservas_test_precio5").find(f => f.numero === "27").estado, "reservado");
+        assert.strictEqual(envios.length, 0);
 
     });
 
@@ -627,8 +679,6 @@ async function ejecutarPruebas() {
         assert.strictEqual(envios.length, 0);
 
     });
-
-    process.env.STICKER_PAGO_SHA256 = HASH_ORIGINAL_ENV;
 
     const fallidas = resultados.filter(r => !r.ok);
 

@@ -296,6 +296,25 @@
   border-top: none;
 }
 
+.stickerStatusRow {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.stickerButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.stickerMeta {
+  margin: 4px 0 0;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-muted);
+}
+
 .saveBar {
   position: sticky;
   bottom: 0;
