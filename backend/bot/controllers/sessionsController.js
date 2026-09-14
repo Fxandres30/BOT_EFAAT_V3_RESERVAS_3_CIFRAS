@@ -11,6 +11,10 @@ const {
 } = require("../funciones/usuarios/escanerIdentidades");
 
 const {
+    ejecutarDiagnosticoTelefonosLid
+} = require("../funciones/usuarios/identityScanner/diagnosticoTelefonosLid");
+
+const {
     groupFetchAllParticipating
 } = require("../../services/baileys/groupQueue");
 
@@ -259,6 +263,72 @@ async function escanerIdentidadesDryRun(req, res) {
 }
 
 // ==========================================================================
+// diagnosticoTelefonosLid(req, res) — diagnóstico puntual, 100% READ-ONLY
+// (auditoría de identidad, sección "por qué tan pocos teléfonos").
+//
+// Mismo patrón EXACTO que escanerIdentidadesDryRun() de arriba:
+// manager.getActiveSocket() (409 si no hay sesión), corre el diagnóstico,
+// guarda el reporte en reportes_identidad/, lo imprime en la consola de
+// ESTE proceso (que ya tiene el sock real) y responde el JSON.
+//
+// NUNCA escribe en Supabase, NUNCA toca "usuarios"/reservas, NUNCA llama a
+// obtenerUsuarioGlobal/resolverIdentidad/escanearGrupo/importarIdentidades,
+// NUNCA modifica identityScanner/identityResolver ni la sesión/credenciales
+// de WhatsApp — ver bot/funciones/usuarios/identityScanner/
+// diagnosticoTelefonosLid.js para el detalle de qué hace.
+// ==========================================================================
+async function diagnosticoTelefonosLid(req, res) {
+
+    try {
+
+        const sock = manager.getActiveSocket();
+
+        if (!sock) {
+
+            return res.status(409).json({
+                success: false,
+                error: "No hay una sesión activa conectada (manager.getActiveSocket() es null)."
+            });
+
+        }
+
+        const resultado = await ejecutarDiagnosticoTelefonosLid(sock);
+
+        const dirReportes = path.resolve(__dirname, "../../reportes_identidad");
+
+        if (!fs.existsSync(dirReportes)) {
+            fs.mkdirSync(dirReportes, { recursive: true });
+        }
+
+        const nombreArchivo = `diagnostico_telefonos_lid_${resultado.generadoEn.replace(/[:.]/g, "-")}.json`;
+        const rutaArchivo = path.join(dirReportes, nombreArchivo);
+
+        fs.writeFileSync(rutaArchivo, JSON.stringify(resultado, null, 2), "utf8");
+
+        console.log(resultado.resumenTexto);
+        console.log(`📄 Reporte guardado en: ${rutaArchivo}`);
+
+        res.json({
+            success: true,
+            ruta: rutaArchivo,
+            ...resultado
+        });
+
+    } catch (error) {
+
+        console.error("❌ Error en diagnosticoTelefonosLid");
+        console.error(error);
+
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+
+    }
+
+}
+
+// ==========================================================================
 // gruposDisponibles(req, res) — Fase 4D (panel de Automatización, "+
 // Autorizar grupo").
 //
@@ -328,6 +398,7 @@ module.exports = {
     setPreferred,
 
     escanerIdentidadesDryRun,
+    diagnosticoTelefonosLid,
     gruposDisponibles
 
 };

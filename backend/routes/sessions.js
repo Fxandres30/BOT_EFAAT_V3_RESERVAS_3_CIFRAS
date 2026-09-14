@@ -11,6 +11,7 @@ const {
     setPreferred,
 
     escanerIdentidadesDryRun,
+    diagnosticoTelefonosLid,
     gruposDisponibles
 
 } = require("../bot/controllers/sessionsController");
@@ -31,6 +32,10 @@ router.post("/preferred", setPreferred);
 
 // Escáner de identidades — solo lectura, DRY-RUN. Ver controlador.
 router.get("/active/escaner-identidades", escanerIdentidadesDryRun);
+
+// Diagnóstico puntual LID/teléfono — solo lectura. Ver controlador y
+// bot/funciones/usuarios/identityScanner/diagnosticoTelefonosLid.js.
+router.get("/active/diagnostico-telefonos-lid", diagnosticoTelefonosLid);
 
 // Fase 4D (panel de Automatización, "+ Autorizar grupo") — solo lectura,
 // nunca escribe en Supabase. Ver controlador para el porqué de reutilizar
