@@ -1,5 +1,14 @@
 const messageHandler = require("../handlers/messageHandler");
 
+// Diagnóstico PURO de observabilidad (2026-09) — lee `message` tal cual lo
+// entrega Baileys, en el punto MÁS TEMPRANO posible (aquí mismo, dentro del
+// listener real de messages.upsert), antes de cualquier otra función del
+// bot. Solo observa: nunca modifica `message`, nunca resuelve identidad,
+// nunca toca Supabase, nunca cambia el flujo — ver su cabecera para el
+// detalle completo. Activado con DEBUG_INCOMING_MESSAGES=true (si está
+// apagado, no hace absolutamente nada).
+const { diagnosticarMensajeEntranteOriginal } = require("../funciones/mensajes/diagnosticarMensajeEntranteOriginal");
+
 const listeners = new Map();
 
 function registerMessages(sock, sessionId) {
@@ -21,6 +30,13 @@ function registerMessages(sock, sessionId) {
         }
 
         for (const message of messages) {
+
+            // Diagnóstico ANTES de cualquier otra cosa — incluso antes del
+            // "if (!message.message) continue" de abajo, para poder ver
+            // también los mensajes que el bot descarta sin procesar.
+            // Envuelto en su propio try/catch internamente: esta llamada
+            // nunca puede alterar ni interrumpir el `for` real.
+            diagnosticarMensajeEntranteOriginal(message);
 
             try {
 
