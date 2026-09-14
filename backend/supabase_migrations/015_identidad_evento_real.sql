@@ -31,6 +31,12 @@
 -- anteriores, EN ESTE ORDEN (agregar columnas -> rellenar datos existentes
 -- -> recién después desplegar el código que empieza a filtrar por esta
 -- columna, para que ningún dato activo quede momentáneamente "invisible").
+--
+-- CORREGIDA el 2026-09-13 (todavía no se había aplicado): se agregó la
+-- salvaguarda de la sección 3 tras auditar datos reales y encontrar una
+-- reserva huérfana de un ciclo antiguo que la versión anterior habría
+-- etiquetado mal. NO se creó una migración nueva -- esta sigue siendo
+-- 015, corregida en el mismo archivo, con un único camino de aplicación.
 
 create extension if not exists pgcrypto;
 
@@ -74,12 +80,29 @@ where identidad_evento_real is null;
 --    ya escribe en cada fila desde siempre. Números libres no necesitan
 --    identidad todavía: la obtienen la próxima vez que alguien los reserve
 --    (reservarNumeros.js ya la escribe desde este cambio).
+--
+--    SALVAGUARDA (encontrada auditando datos reales, 2026-09-13): eventos_bot
+--    reutiliza la MISMA fila (UPDATE, no INSERT) entre sorteos distintos del
+--    mismo grupo con el paso del tiempo. Si una reserva quedó sin resetear
+--    de un ciclo VIEJO (p. ej. "5k_15k_reservas_2_cifras".numero=23, creada
+--    2026-06-20, evento_id apuntando a una fila de eventos_bot que HOY ya es
+--    un sorteo distinto con OTRO precio -> tabla física "reservas_dos_cifras"),
+--    su evento_id coincide por accidente con una fila de eventos_bot cuyo
+--    .tabla actual YA NO ES esta tabla física. Reasignarle la identidad
+--    ACTUAL de esa fila sería fusionar datos ambiguos de ciclos distintos
+--    (prohibido explícitamente). Por eso cada UPDATE exige ADEMÁS que
+--    eventos_bot.tabla coincida con la tabla física que se está rellenando
+--    -- así una reserva huérfana de un ciclo anterior queda con
+--    identidad_evento_real NULL (visible igual en disponibilidad/consultas,
+--    nunca oculta -- ver los "fail-open" en el código) en vez de mal
+--    etiquetada.
 -- ==========================================================================
 
 update public."5k_15k_reservas_2_cifras" r
 set identidad_evento_real = e.identidad_evento_real
 from public.eventos_bot e
 where r.evento_id = e.id
+  and e.tabla = '5k_15k_reservas_2_cifras'
   and r.identidad_evento_real is null
   and r.estado <> 'libre';
 
@@ -87,5 +110,6 @@ update public.reservas_dos_cifras r
 set identidad_evento_real = e.identidad_evento_real
 from public.eventos_bot e
 where r.evento_id = e.id
+  and e.tabla = 'reservas_dos_cifras'
   and r.identidad_evento_real is null
   and r.estado <> 'libre';

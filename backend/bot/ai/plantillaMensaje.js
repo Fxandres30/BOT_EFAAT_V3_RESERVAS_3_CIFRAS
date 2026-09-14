@@ -1,11 +1,12 @@
 // Variables reales disponibles para plantillas de mensajes (Fase 5.2).
 // Nunca inventa datos: si un dato no existe para ese tipo de resultado,
 // la variable queda vacía (nunca se rellena con un valor inventado).
-const { construirVariablesGramaticales, construirVariablesPorConjunto, calcularNumerosRelevantes, formatearListaNumeros } = require("./gramatica");
+const { construirVariablesGramaticales, construirVariablesPorConjunto, calcularNumerosRelevantes, formatearListaNumeros, formatearGrillaNumeros } = require("./gramatica");
 const { extraerNumeros } = require("../funciones/reservas/extraerNumeros");
 const { formatHora12 } = require("../utils/formatHora");
 const { construirContextoGlobal } = require("../../shared/variables/contextoVariables");
-const { resolverVariablesOrfanas } = require("../../shared/variables/resolverVariables");
+const { resolverVariablesOrfanas, aplicarModificadorTexto } = require("../../shared/variables/resolverVariables");
+const catalogo = require("../../shared/variables/catalogoVariables");
 
 const MOSTRAR_POR_VARIABLE = {
 
@@ -28,7 +29,13 @@ const MOSTRAR_POR_VARIABLE = {
 
 };
 
-function construirVariables(ctx, resultado) {
+// catalogoExtra (opcional, Fase "Variables Globales"): variables dinámicas
+// del usuario (variables_globales, ya normalizadas — ver
+// catalogoVariables.js::normalizarVariableDinamica), obtenidas por el
+// llamador (responderResultado.js) ANTES de construir el mensaje. Si se
+// omite (todo el código/tests que no la conoce todavía), el comportamiento
+// es exactamente el mismo que antes de esta fase.
+function construirVariables(ctx, resultado, catalogoExtra) {
 
     // Fuente única de verdad (gramatica.js) para saber cuántos números
     // están involucrados en esta respuesta — la misma que usa
@@ -72,7 +79,7 @@ function construirVariables(ctx, resultado) {
     // las variables ya existentes: si alguna vez coincidiera un nombre,
     // el comportamiento histórico de abajo gana siempre — cero riesgo de
     // cambiar una plantilla que ya funciona hoy.
-    const variablesGlobalesOrfanas = resolverVariablesOrfanas(construirContextoGlobal(ctx));
+    const variablesGlobalesOrfanas = resolverVariablesOrfanas(construirContextoGlobal(ctx), catalogoExtra);
 
     return {
 
@@ -83,7 +90,15 @@ function construirVariables(ctx, resultado) {
         numeros_solicitados: formatearListaNumeros(numerosSolicitados),
         numeros_reservados: formatearListaNumeros(numerosReservados),
         numeros_ocupados: formatearListaNumeros(numerosOcupados),
-        numeros_disponibles: formatearListaNumeros(numerosDisponibles),
+        // Único caso con formato propio: grilla de 3 filas visualmente
+        // equilibradas (ver gramatica.js::formatearGrillaNumeros), para
+        // mejorar la presentación del mensaje "Disponibles". El resto de
+        // listas (solicitados/reservados/ocupados) sigue con
+        // formatearListaNumeros "( 27 - 45 )", sin cambios — numerosDisponibles
+        // solo se llena cuando resultado.tipo==="disponibilidad" (ver
+        // gramatica.js::calcularNumerosRelevantes), así que este cambio no
+        // afecta ninguna otra plantilla existente.
+        numeros_disponibles: formatearGrillaNumeros(numerosDisponibles),
         fecha: ctx.evento?.fecha_evento || "",
         // Presentación 12h para el usuario final — el valor almacenado
         // (eventos_bot.hora_fin, 24h) no se toca.
@@ -103,27 +118,44 @@ function construirVariables(ctx, resultado) {
 
 }
 
-// Sustituye {{variable}} por su valor real. "opcionesMostrar" es el objeto
-// JSONB de la columna plantillas_mensaje.variables (Fase 5.3): si su
-// mostrar_* correspondiente es false, se reemplaza por cadena vacía
-// (nunca se deja "{{...}}" literal ni se inventa un valor).
-function aplicarPlantilla(plantilla, variables, opcionesMostrar = {}) {
+// Sustituye {{variable}} (o {{variable|modificador}}, Fase "Variables
+// Globales" — lower/upper/capitalize/title) por su valor real.
+// "opcionesMostrar" es el objeto JSONB de la columna
+// plantillas_mensaje.variables (Fase 5.3): si su mostrar_* correspondiente
+// es false, se reemplaza por cadena vacía (nunca se deja "{{...}}" literal
+// ni se inventa un valor). catalogoExtra (opcional): variables dinámicas
+// del usuario, para que el fallback de alias también las reconozca.
+function aplicarPlantilla(plantilla, variables, opcionesMostrar = {}, catalogoExtra) {
 
     if (typeof plantilla !== "string" || !plantilla.trim()) {
         return null;
     }
 
-    return plantilla.replace(/\{\{\s*(\w+)\s*\}\}/g, (match, nombre) => {
+    return plantilla.replace(/\{\{\s*(\w+)(?:\|(\w+))?\s*\}\}/g, (_match, nombre, modificador) => {
 
-        const campoMostrar = MOSTRAR_POR_VARIABLE[nombre];
+        // Si el nombre escrito es un ALIAS del catálogo global (p. ej.
+        // "nombre_evento"/"loteria" -> "evento", "valor"/"valor_numero" ->
+        // "precio") en vez de la clave con la que este objeto ya viene
+        // armado, se resuelve al MISMO dato real bajo su clave canónica —
+        // nunca se recalcula ni se inventa un valor nuevo. Antes de este
+        // cambio, escribir un alias aquí (fuera de las variables "NUEVA"
+        // ya conectadas vía resolverVariablesOrfanas) quedaba silenciosamente
+        // vacío, aunque el catálogo lo documentara como válido.
+        const claveReal = variables[nombre] !== undefined
+            ? nombre
+            : (catalogo.resolverClaveCanonica(nombre, catalogoExtra)?.definicion?.key ?? nombre);
+
+        const campoMostrar = MOSTRAR_POR_VARIABLE[nombre] || MOSTRAR_POR_VARIABLE[claveReal];
 
         if (campoMostrar && opcionesMostrar[campoMostrar] === false) {
             return "";
         }
 
-        const valor = variables[nombre];
+        const valor = variables[claveReal];
 
-        return valor !== undefined && valor !== null ? valor : "";
+        const valorSeguro = valor !== undefined && valor !== null ? valor : "";
+
+        return aplicarModificadorTexto(valorSeguro, modificador);
 
     });
 

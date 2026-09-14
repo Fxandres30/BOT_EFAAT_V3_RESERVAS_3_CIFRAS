@@ -116,6 +116,68 @@ function formatearListaNumeros(numeros) {
 
 }
 
+// Cuántas columnas usar según la CANTIDAD TOTAL de números (mensaje
+// "Disponibles" — corrección 2026-09-13, reemplaza el diseño anterior de
+// "siempre 3 filas"). Las filas CRECEN según la cantidad: esto solo decide
+// el ANCHO de cada fila, nunca cuántas filas hay en total ni cuántos
+// números se muestran.
+//
+//   > 60 disponibles -> 4 por fila
+//   40-60 disponibles -> 3 por fila
+//   < 40 disponibles  -> 3 por fila mientras sea visualmente adecuado,
+//                        bajando a 2 (pocos) o 1 (uno solo) para que la
+//                        última fila nunca quede casi vacía.
+function determinarColumnasGrilla(total) {
+
+    if (total > 60) return 4;
+    if (total >= 7) return 3;
+    if (total >= 2) return 2;
+    return 1;
+
+}
+
+// Organiza una lista de números en una grilla con 🍀 delante de cada uno,
+// mostrando SIEMPRE todos los números recibidos (la cantidad de FILAS
+// crece según la cantidad total — el ancho de fila lo decide
+// determinarColumnasGrilla(), nunca un límite de filas). Usado SOLO para
+// numeros_disponibles (ver catalogoVariables.js/resolverVariables.js):
+// formatearListaNumeros (arriba) sigue siendo el formato "( 01 - 02 )" para
+// todo lo demás (reservados/ocupados/solicitados), sin cambios.
+//
+// Única fuente de verdad: consultarDisponibilidad() ya entrega el array
+// real, sin duplicados, ordenado — pero esta función NUNCA confía
+// ciegamente en eso: normaliza (quita valores vacíos), elimina duplicados
+// y ordena NUMÉRICAMENTE ella misma antes de construir el texto, para que
+// "datos duplicados" o "datos desordenados" en la entrada nunca produzcan
+// un número repetido ni fuera de orden en la salida. No inventa ni
+// descarta ningún número real: unique()+sort() nunca cambian CUÁLES
+// números hay, solo su orden y unicidad.
+function formatearGrillaNumeros(numeros) {
+
+    const crudos = Array.isArray(numeros) ? numeros : [];
+
+    const unicos = [...new Set(crudos.filter(n => n !== null && n !== undefined && n !== ""))];
+
+    unicos.sort((a, b) => Number(a) - Number(b));
+
+    if (unicos.length === 0) {
+        return "";
+    }
+
+    const columnas = determinarColumnasGrilla(unicos.length);
+
+    const filas = [];
+
+    for (let i = 0; i < unicos.length; i += columnas) {
+        filas.push(unicos.slice(i, i + columnas));
+    }
+
+    return filas
+        .map(fila => fila.map(n => `🍀 ${n}`).join("     "))
+        .join("\n");
+
+}
+
 // Capitaliza la primera letra — usado para iniciar frase con una variable
 // de gramática ("tu número" -> "Tu número") sin duplicar el diccionario.
 function capitalizar(texto) {
@@ -228,5 +290,7 @@ module.exports = {
     construirVariablesPorConjunto,
     calcularNumerosRelevantes,
     formatearListaNumeros,
+    formatearGrillaNumeros,
+    determinarColumnasGrilla,
     capitalizar
 };

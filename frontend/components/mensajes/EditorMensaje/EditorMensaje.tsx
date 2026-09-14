@@ -15,7 +15,8 @@ import {
     valoresPorDefectoVariables
 } from "@/services/mensajes/plantillas";
 import { aplicarPlantillaPreview } from "@/services/mensajes/aplicarPlantillaPreview";
-import { CATALOGO_VARIABLES, extraerVariablesDesconocidas } from "@/services/mensajes/catalogoVariablesGlobal";
+import { listarCatalogo, extraerVariablesDesconocidas, normalizarVariableDinamica, VariableGlobal } from "@/services/mensajes/catalogoVariablesGlobal";
+import { listarVariablesActivas } from "@/services/variables/variablesGlobales";
 import VariableAutocomplete, { ItemAutocomplete } from "@/components/mensajes/VariableAutocomplete/VariableAutocomplete";
 import { calcularPosicionCaret } from "./calcularPosicionCaret";
 
@@ -87,21 +88,52 @@ export default function EditorMensaje({ tipo, usuarioId, plantilla, onGuardada, 
     const [highlightIndex, setHighlightIndex] = useState(0);
     const [posicionPopover, setPosicionPopover] = useState({ top: 0, left: 0 });
 
+    // ---- Catálogo GLOBAL unificado (estático + variables_globales) ----
+    // Se carga una vez por usuario; una variable creada/editada/eliminada
+    // desde el panel "Variables globales" aparece aquí en el próximo
+    // montaje de este editor (no hace falta recargar toda la página).
+    const [variablesDinamicas, setVariablesDinamicas] = useState<VariableGlobal[]>([]);
+
+    useEffect(() => {
+
+        let cancelado = false;
+
+        async function cargar() {
+
+            const { data, error } = await listarVariablesActivas(usuarioId);
+
+            if (!cancelado && !error && data) {
+                setVariablesDinamicas(data.map(normalizarVariableDinamica));
+            }
+
+        }
+
+        cargar();
+
+        return () => { cancelado = true; };
+
+    }, [usuarioId]);
+
+    const catalogoUnificado = useMemo(() => listarCatalogo(variablesDinamicas), [variablesDinamicas]);
+
     const contextoDisponible = useMemo(() => construirContextoDisponible(tipo), [tipo]);
 
     const itemsAutocomplete: ItemAutocomplete[] = useMemo(() => {
 
         const filtro = filtroAutocomplete.toLowerCase();
 
-        const coincide = (v: (typeof CATALOGO_VARIABLES)[number]) =>
+        const coincide = (v: (typeof catalogoUnificado)[number]) =>
             !filtro ||
             v.key.toLowerCase().includes(filtro) ||
             v.aliases.some((a) => a.toLowerCase().includes(filtro)) ||
             v.description.toLowerCase().includes(filtro) ||
             v.categoria.toLowerCase().includes(filtro);
 
-        const filtrados = CATALOGO_VARIABLES.filter(coincide).map((definicion) => ({
+        const filtrados = catalogoUnificado.filter(coincide).map((definicion) => ({
             definicion,
+            // Una variable global sin requires[] (todas las dinámicas de
+            // esta fase) siempre se muestra disponible — nunca se bloquea
+            // artificialmente por el tipo de plantilla actual.
             disponible: definicion.requires.every((r) => contextoDisponible[r] !== false)
         }));
 
@@ -109,7 +141,24 @@ export default function EditorMensaje({ tipo, usuarioId, plantilla, onGuardada, 
         // eliminan estas últimas del listado (sección 12).
         return [...filtrados.filter((i) => i.disponible), ...filtrados.filter((i) => !i.disponible)];
 
-    }, [filtroAutocomplete, contextoDisponible]);
+    }, [filtroAutocomplete, contextoDisponible, catalogoUnificado]);
+
+    // ---- Búsqueda propia de la sección "Variables globales" (chips) ----
+    const [filtroVariablesGlobales, setFiltroVariablesGlobales] = useState("");
+
+    const variablesGlobalesFiltradas = useMemo(() => {
+
+        const filtro = filtroVariablesGlobales.trim().toLowerCase();
+
+        if (!filtro) return catalogoUnificado;
+
+        return catalogoUnificado.filter((v) =>
+            v.key.toLowerCase().includes(filtro) ||
+            v.description.toLowerCase().includes(filtro) ||
+            v.categoria.toLowerCase().includes(filtro)
+        );
+
+    }, [catalogoUnificado, filtroVariablesGlobales]);
 
     // Cero coincidencias -> el selector se comporta como cerrado (nunca se
     // ofrece un popover vacío). Se deriva del render en vez de sincronizar
@@ -183,6 +232,26 @@ export default function EditorMensaje({ tipo, usuarioId, plantilla, onGuardada, 
 
     }
 
+    // Inserción directa desde un chip de "Variables globales" (sin pasar
+    // por el disparador "{"): inserta en la posición actual del cursor, o
+    // al final si el textarea no tiene foco todavía.
+    function insertarClaveEnCursor(clave: string) {
+
+        const textarea = textareaRef.current;
+        const cursorActual = textarea ? textarea.selectionStart : contenido.length;
+        const inserto = `{{${clave}}}`;
+        const nuevoContenido = contenido.slice(0, cursorActual) + inserto + contenido.slice(cursorActual);
+        const nuevaPosicionCursor = cursorActual + inserto.length;
+
+        setContenido(nuevoContenido);
+
+        requestAnimationFrame(() => {
+            textarea?.focus();
+            textarea?.setSelectionRange(nuevaPosicionCursor, nuevaPosicionCursor);
+        });
+
+    }
+
     function manejarTeclaTextarea(e: React.KeyboardEvent<HTMLTextAreaElement>) {
 
         if (!autocompleteAbierto || itemsAutocomplete.length === 0) {
@@ -205,7 +274,10 @@ export default function EditorMensaje({ tipo, usuarioId, plantilla, onGuardada, 
 
     }
 
-    const variablesDesconocidas = useMemo(() => extraerVariablesDesconocidas(contenido), [contenido]);
+    const variablesDesconocidas = useMemo(
+        () => extraerVariablesDesconocidas(contenido, variablesDinamicas),
+        [contenido, variablesDinamicas]
+    );
 
     async function guardar() {
 
@@ -277,15 +349,15 @@ export default function EditorMensaje({ tipo, usuarioId, plantilla, onGuardada, 
     const tieneEjemploDual = !!(tipo.ejemploSingular && tipo.ejemploPlural);
 
     const previa = contenido
-        ? aplicarPlantillaPreview(contenido, tipo.ejemplo, variables as Record<string, boolean>)
+        ? aplicarPlantillaPreview(contenido, tipo.ejemplo, variables as Record<string, boolean>, variablesDinamicas)
         : "(Escribe un contenido para ver la vista previa.)";
 
     const previaSingular = contenido && tipo.ejemploSingular
-        ? aplicarPlantillaPreview(contenido, tipo.ejemploSingular, variables as Record<string, boolean>)
+        ? aplicarPlantillaPreview(contenido, tipo.ejemploSingular, variables as Record<string, boolean>, variablesDinamicas)
         : "(Escribe un contenido para ver la vista previa.)";
 
     const previaPlural = contenido && tipo.ejemploPlural
-        ? aplicarPlantillaPreview(contenido, tipo.ejemploPlural, variables as Record<string, boolean>)
+        ? aplicarPlantillaPreview(contenido, tipo.ejemploPlural, variables as Record<string, boolean>, variablesDinamicas)
         : "(Escribe un contenido para ver la vista previa.)";
 
     return (
@@ -339,17 +411,35 @@ export default function EditorMensaje({ tipo, usuarioId, plantilla, onGuardada, 
             )}
 
             <div className={styles.field}>
-                <span className={styles.label}>Variables de este tipo</span>
+                <span className={styles.label}>🧩 Variables globales</span>
+                <Input
+                    placeholder="Buscar variable (nombre, descripción o categoría)…"
+                    value={filtroVariablesGlobales}
+                    onChange={(e) => setFiltroVariablesGlobales(e.target.value)}
+                />
                 <div className={styles.vars}>
-                    {variablesDisponibles.map((v) => (
-                        <span key={v.variable} className={styles.varChip}>{`{{${v.variable}}}`}</span>
+                    {variablesGlobalesFiltradas.map((v) => (
+                        <button
+                            key={v.key}
+                            type="button"
+                            className={styles.varChip}
+                            title={v.description}
+                            onClick={() => insertarClaveEnCursor(v.key)}
+                        >
+                            {v.dinamica ? "🧩 " : ""}{`{{${v.key}}}`}
+                        </button>
                     ))}
+                    {variablesGlobalesFiltradas.length === 0 && (
+                        <span className={styles.note}>Ninguna variable coincide con la búsqueda.</span>
+                    )}
                 </div>
                 <p className={styles.note}>
-                    Se sustituyen por datos reales sin usar IA. Escribe <code>{"{"}</code> en el
-                    contenido para ver el catálogo completo de variables globales (incluye
-                    concordancia gramatical singular/plural y variables de otros tipos que
-                    también pueden aplicar aquí).
+                    Se sustituyen por datos reales sin usar IA. Incluye las variables del sistema y
+                    las creadas desde <strong>Variables globales</strong> del panel — haz clic en una
+                    para insertarla, o escribe <code>{"{"}</code> en el contenido para el mismo
+                    catálogo con autocomplete. Cualquier variable admite un modificador de texto:{" "}
+                    <code>{"{{variable|upper}}"}</code>, <code>{"{{variable|lower}}"}</code>,{" "}
+                    <code>{"{{variable|capitalize}}"}</code> o <code>{"{{variable|title}}"}</code>.
                 </p>
             </div>
 

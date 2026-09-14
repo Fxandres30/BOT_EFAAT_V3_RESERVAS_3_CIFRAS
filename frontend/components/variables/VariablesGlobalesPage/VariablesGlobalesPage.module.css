@@ -1,0 +1,145 @@
+.page {
+  max-width: 1000px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.state {
+  padding: 48px 16px;
+  text-align: center;
+  color: var(--efaat-text-secondary);
+  font-size: var(--efaat-text-base);
+}
+
+.error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-error-soft);
+  color: var(--efaat-error);
+  font-size: var(--efaat-text-xs);
+}
+
+.lista {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.filaInactiva {
+  opacity: 0.55;
+}
+
+.filaHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--efaat-surface-muted);
+  border: 1px solid var(--efaat-border);
+  font-family: var(--efaat-font-mono);
+  font-size: 11px;
+  color: var(--efaat-text-secondary);
+}
+
+.nombre {
+  font-size: var(--efaat-text-sm);
+  margin-right: 8px;
+}
+
+.categoria {
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+}
+
+.switchLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+  white-space: nowrap;
+}
+
+.badgeSistema {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--efaat-surface-muted);
+  border: 1px solid var(--efaat-border);
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+  white-space: nowrap;
+}
+
+.notaSistema {
+  margin: 10px 0 0;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+  font-style: italic;
+}
+
+.descripcion {
+  margin: 6px 0 0;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+}
+
+.detalle {
+  margin: 6px 0 0;
+  font-size: var(--efaat-text-sm);
+}
+
+.acciones {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.prueba {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--efaat-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.resultadoPrueba {
+  margin: 0;
+  font-size: var(--efaat-text-sm);
+}
+
+.detallePrueba {
+  color: var(--efaat-text-secondary);
+  font-size: var(--efaat-text-xs);
+}
+
+.formulario {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.notaIdentificador {
+  margin: -4px 0 0;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+}

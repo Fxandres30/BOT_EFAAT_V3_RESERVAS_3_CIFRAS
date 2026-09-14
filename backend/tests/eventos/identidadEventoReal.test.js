@@ -9,6 +9,10 @@
 //     node backend/tests/eventos/identidadEventoReal.test.js
 // ==========================================================================
 
+process.env.GROUP_QUEUE_DELAY_MS = "1";
+process.env.GROUP_QUEUE_BACKOFF_MS = "1";
+process.env.GROUP_QUEUE_BACKOFF_MAX_MS = "5";
+
 const assert = require("assert");
 const path = require("path");
 
@@ -24,6 +28,8 @@ const RUTA_VERIFICAR_TODOS_PAGADOS = path.resolve(__dirname, "../../bot/funcione
 const RUTA_CONSULTAR_MIS_NUMEROS = path.resolve(__dirname, "../../bot/funciones/consultas/consultarMisNumeros.js");
 const RUTA_OBTENER_USUARIO_GLOBAL = path.resolve(__dirname, "../../bot/funciones/usuarios/obtenerUsuarioGlobal.js");
 const RUTA_MARCAR_PAGADAS = path.resolve(__dirname, "../../bot/funciones/pagos/marcarReservasPagadasPorAdmin.js");
+const RUTA_CERRAR_EVENTO = path.resolve(__dirname, "../../bot/funciones/eventos/lifecycle/cerrarEvento.js");
+const { crearIdentidadCiclo } = require("../../automation/eventRules");
 
 function cargarModulos() {
 
@@ -45,7 +51,8 @@ function cargarModulos() {
         RUTA_VERIFICAR_TODOS_PAGADOS,
         RUTA_CONSULTAR_MIS_NUMEROS,
         RUTA_OBTENER_USUARIO_GLOBAL,
-        RUTA_MARCAR_PAGADAS
+        RUTA_MARCAR_PAGADAS,
+        RUTA_CERRAR_EVENTO
     ]) {
         delete require.cache[ruta];
     }
@@ -60,7 +67,16 @@ function cargarModulos() {
         verificarTodosPagados: require(RUTA_VERIFICAR_TODOS_PAGADOS).verificarTodosPagados,
         consultarMisNumeros: require(RUTA_CONSULTAR_MIS_NUMEROS).consultarMisNumeros,
         obtenerUsuarioGlobal: require(RUTA_OBTENER_USUARIO_GLOBAL).obtenerUsuarioGlobal,
-        marcarReservasPagadasPorAdmin: require(RUTA_MARCAR_PAGADAS).marcarReservasPagadasPorAdmin
+        marcarReservasPagadasPorAdmin: require(RUTA_MARCAR_PAGADAS).marcarReservasPagadasPorAdmin,
+        cerrarEvento: require(RUTA_CERRAR_EVENTO).cerrarEvento
+    };
+
+}
+
+function crearSockFalso() {
+
+    return {
+        groupSettingUpdate: async () => ({ success: true })
     };
 
 }
@@ -413,6 +429,129 @@ async function main() {
         const fila = fake.tablas.eventos_bot.find(e => e.id === "evento-mio");
         assert.strictEqual(fila.reservados, 1);
         assert.strictEqual(fila.libres, 1);
+
+    });
+
+    // ======================================================================
+    // 15-17. Cierre compartido: cerrar desde CUALQUIER grupo del mismo
+    //        evento real cierra el evento para TODOS los grupos que lo
+    //        comparten (decisión aprobada explícitamente).
+    // ======================================================================
+    await test("15. Cerrar el evento desde Grupo A cierra también B y C (mismo evento real)", async () => {
+
+        const { fake, cerrarEvento } = cargarModulos();
+
+        fake.tablas.eventos_bot = [
+            { id: "evento-A", grupo_id: "grupoA@g.us", usuario_id: "tenant-X", identidad_evento_real: "hash-compartido", activo: true, abierto: true, estado: "abierto" },
+            { id: "evento-B", grupo_id: "grupoB@g.us", usuario_id: "tenant-X", identidad_evento_real: "hash-compartido", activo: true, abierto: true, estado: "abierto" },
+            { id: "evento-C", grupo_id: "grupoC@g.us", usuario_id: "tenant-X", identidad_evento_real: "hash-compartido", activo: true, abierto: true, estado: "abierto" }
+        ];
+
+        const eventoA = fake.tablas.eventos_bot.find(e => e.id === "evento-A");
+
+        const resultado = await cerrarEvento({ sock: crearSockFalso(), evento: { ...eventoA }, motivo: "hora" });
+
+        assert.strictEqual(resultado, true);
+
+        for (const id of ["evento-A", "evento-B", "evento-C"]) {
+
+            const fila = fake.tablas.eventos_bot.find(e => e.id === id);
+            assert.strictEqual(fila.activo, false, `${id} debe quedar activo=false`);
+            assert.strictEqual(fila.abierto, false, `${id} debe quedar abierto=false`);
+            assert.strictEqual(fila.estado, "cerrado", `${id} debe quedar estado='cerrado'`);
+
+        }
+
+    });
+
+    await test("16. Cerrar el evento desde Grupo B (el del medio) cierra también A y C", async () => {
+
+        const { fake, cerrarEvento } = cargarModulos();
+
+        fake.tablas.eventos_bot = [
+            { id: "evento-A", grupo_id: "grupoA@g.us", usuario_id: "tenant-X", identidad_evento_real: "hash-compartido", activo: true, abierto: true, estado: "abierto" },
+            { id: "evento-B", grupo_id: "grupoB@g.us", usuario_id: "tenant-X", identidad_evento_real: "hash-compartido", activo: true, abierto: true, estado: "abierto" },
+            { id: "evento-C", grupo_id: "grupoC@g.us", usuario_id: "tenant-X", identidad_evento_real: "hash-compartido", activo: true, abierto: true, estado: "abierto" }
+        ];
+
+        const eventoB = fake.tablas.eventos_bot.find(e => e.id === "evento-B");
+
+        await cerrarEvento({ sock: crearSockFalso(), evento: { ...eventoB }, motivo: "pagados" });
+
+        for (const id of ["evento-A", "evento-B", "evento-C"]) {
+
+            const fila = fake.tablas.eventos_bot.find(e => e.id === id);
+            assert.strictEqual(fila.activo, false, `${id} debe quedar activo=false (cerrado desde B)`);
+
+        }
+
+    });
+
+    await test("17. Invariante: nunca queda el mismo evento real abierto en un grupo y cerrado en otro", async () => {
+
+        const { fake, cerrarEvento } = cargarModulos();
+
+        fake.tablas.eventos_bot = [
+            { id: "evento-A", grupo_id: "grupoA@g.us", usuario_id: "tenant-X", identidad_evento_real: "hash-compartido", activo: true, abierto: true, estado: "abierto" },
+            { id: "evento-B", grupo_id: "grupoB@g.us", usuario_id: "tenant-X", identidad_evento_real: "hash-compartido", activo: true, abierto: true, estado: "abierto" },
+            // Evento DISTINTO (otro sorteo, otra identidad) -- no debe verse afectado.
+            { id: "evento-otro", grupo_id: "grupoOtro@g.us", usuario_id: "tenant-X", identidad_evento_real: "hash-diferente", activo: true, abierto: true, estado: "abierto" }
+        ];
+
+        const eventoA = fake.tablas.eventos_bot.find(e => e.id === "evento-A");
+
+        await cerrarEvento({ sock: crearSockFalso(), evento: { ...eventoA }, motivo: "hora" });
+
+        const estados = fake.tablas.eventos_bot.map(e => ({ id: e.id, activo: e.activo }));
+
+        const delMismoEvento = estados.filter(e => e.id === "evento-A" || e.id === "evento-B");
+        assert.ok(delMismoEvento.every(e => e.activo === false), "ningún grupo del MISMO evento real puede quedar activo=true si otro ya cerró");
+
+        const otro = estados.find(e => e.id === "evento-otro");
+        assert.strictEqual(otro.activo, true, "un evento REAL distinto (otra identidad_evento_real) nunca debe cerrarse por propagación ajena");
+
+    });
+
+    // ======================================================================
+    // 18-20. Automatización/event_sessions: la identidad del EVENTO REAL
+    //        (compartida entre grupos) y la identidad del CICLO de
+    //        automatización (automation/eventRules.js::crearIdentidadCiclo,
+    //        que sigue incluyendo grupo_id a propósito) son dos conceptos
+    //        separados que no se pisan entre sí. Config individual por
+    //        grupo e idempotencia de automatización quedan intactas — no se
+    //        tocó automation/ en esta fase, esto es una prueba de
+    //        integración que lo confirma con el código real.
+    // ======================================================================
+    await test("18-20. Mismo evento real (3 grupos) produce 3 identidad_ciclo de automatización DISTINTAS (config/idempotencia siguen siendo por grupo)", async () => {
+
+        const { crearIdentidadEventoReal } = cargarModulos();
+
+        const datosComunes = { nombre_evento: "Sinuano Noche", hora_fin: "20:30", valor: "5000", fecha_evento: "2026-09-13" };
+
+        const eventoA = { ...datosComunes, usuario_id: "tenant-X", grupo_id: "grupoA@g.us" };
+        const eventoB = { ...datosComunes, usuario_id: "tenant-X", grupo_id: "grupoB@g.us" };
+        const eventoC = { ...datosComunes, usuario_id: "tenant-X", grupo_id: "grupoC@g.us" };
+
+        // Misma identidad de EVENTO REAL (independiente del grupo) para los 3.
+        const identidadRealA = crearIdentidadEventoReal({ ...datosComunes, usuario_id: eventoA.usuario_id });
+        const identidadRealB = crearIdentidadEventoReal({ ...datosComunes, usuario_id: eventoB.usuario_id });
+        const identidadRealC = crearIdentidadEventoReal({ ...datosComunes, usuario_id: eventoC.usuario_id });
+
+        assert.strictEqual(identidadRealA, identidadRealB);
+        assert.strictEqual(identidadRealB, identidadRealC);
+
+        // Pero identidad_ciclo (automation/eventRules.js, SIN modificar) sigue
+        // siendo distinta por grupo -- cada grupo mantiene su propia
+        // ejecución/idempotencia de automatización (recordatorios, tabla
+        // inicial, cierre, OPEN_MESSAGE), sin enviar 3 veces algo que fuera
+        // realmente global ni dejar de enviar la copia de cada grupo.
+        const cicloA = crearIdentidadCiclo({ grupo_id: eventoA.grupo_id, nombre_evento: eventoA.nombre_evento, hora_fin: eventoA.hora_fin, valor: eventoA.valor, fecha_evento: eventoA.fecha_evento });
+        const cicloB = crearIdentidadCiclo({ grupo_id: eventoB.grupo_id, nombre_evento: eventoB.nombre_evento, hora_fin: eventoB.hora_fin, valor: eventoB.valor, fecha_evento: eventoB.fecha_evento });
+        const cicloC = crearIdentidadCiclo({ grupo_id: eventoC.grupo_id, nombre_evento: eventoC.nombre_evento, hora_fin: eventoC.hora_fin, valor: eventoC.valor, fecha_evento: eventoC.fecha_evento });
+
+        assert.notStrictEqual(cicloA, cicloB, "cada grupo debe seguir teniendo su propia identidad_ciclo (config/idempotencia por grupo)");
+        assert.notStrictEqual(cicloB, cicloC);
+        assert.notStrictEqual(cicloA, cicloC);
 
     });
 

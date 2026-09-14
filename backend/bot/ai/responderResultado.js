@@ -15,6 +15,8 @@ const { sendMessage } = require("../../services/baileys/send");
 const { obtenerConfigSeleccion, obtenerPlantillasHabilitadas, actualizarRotacion, estaRespuestaHabilitada } = require("./configMensajes");
 const { seleccionarPlantilla } = require("./seleccionarPlantilla");
 const { construirVariables, aplicarPlantilla, calcularTipoPresentacion } = require("./plantillaMensaje");
+const { obtenerVariablesActivas } = require("../../shared/variables/variablesGlobalesRepo");
+const { normalizarVariableDinamica } = require("../../shared/variables/catalogoVariables");
 
 async function responderResultado(ctx) {
 
@@ -58,25 +60,34 @@ async function responderResultado(ctx) {
 
     }
 
-    // Config. de selección + plantillas habilitadas (Fase 5.4) — solo
-    // lectura, opcional. Si no hay nada configurado, no hay plantillas
-    // habilitadas, o Supabase falla, el comportamiento es exactamente el
-    // mismo que antes de esta fase.
-    const [config, habilitadas] = await Promise.all([
+    // Config. de selección + plantillas habilitadas (Fase 5.4) + variables
+    // globales dinámicas del usuario (Fase "Variables Globales") — todo
+    // solo lectura, opcional. Si no hay nada configurado, no hay plantillas
+    // habilitadas, no hay variables dinámicas, o Supabase falla en
+    // cualquiera de las tres, el comportamiento es exactamente el mismo que
+    // antes de esta fase (obtenerVariablesActivas ya es best-effort: nunca
+    // lanza, nunca bloquea el envío del mensaje).
+    const [config, habilitadas, variablesDinamicas] = await Promise.all([
         obtenerConfigSeleccion(tipoPresentacion, usuarioId),
-        obtenerPlantillasHabilitadas(tipoPresentacion, usuarioId)
+        obtenerPlantillasHabilitadas(tipoPresentacion, usuarioId),
+        obtenerVariablesActivas(usuarioId)
     ]);
+
+    const catalogoExtra = variablesDinamicas
+        .map(normalizarVariableDinamica)
+        .filter(Boolean);
 
     const { plantilla, nuevoIndiceRotacion } = seleccionarPlantilla(config, habilitadas);
 
     if (plantilla?.contenido) {
 
-        const variables = construirVariables(ctx, resultado);
+        const variables = construirVariables(ctx, resultado, catalogoExtra);
 
         const resultadoPlantilla = aplicarPlantilla(
             plantilla.contenido,
             variables,
-            plantilla.variables || {}
+            plantilla.variables || {},
+            catalogoExtra
         );
 
         if (resultadoPlantilla) {

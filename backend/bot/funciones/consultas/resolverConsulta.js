@@ -8,7 +8,7 @@ const { consultarCantidad } = require("./consultarCantidad");
 const { consultarNumero } = require("./consultarNumero");
 const { consultarDisponibilidad } = require("./consultarDisponibilidad");
 const { consultarInfoEvento } = require("./consultarInfoEvento");
-const { construirVariablesGramaticales, capitalizar, formatearListaNumeros } = require("../../ai/gramatica");
+const { construirVariablesGramaticales, capitalizar, formatearListaNumeros, formatearGrillaNumeros } = require("../../ai/gramatica");
 
 const TEXTO_ESTADO = {
 
@@ -288,7 +288,12 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
 
                 const g = construirVariablesGramaticales(numerosDisponibles.length);
 
-                mensaje = `${capitalizar(g.numero_numeros)} ${g.disponible_disponibles} (${numerosDisponibles.length}): ${formatearListaNumeros(numerosDisponibles)}`;
+                // Mensaje fijo de respaldo (sin plantilla configurada) — usa
+                // la misma grilla de 3 filas que {{numeros_disponibles}}
+                // (ver gramatica.js::formatearGrillaNumeros), para que la
+                // presentación mejorada aplique también sin necesidad de
+                // configurar ninguna plantilla en el panel.
+                mensaje = `${capitalizar(g.numero_numeros)} ${g.disponible_disponibles} (${numerosDisponibles.length}):\n${formatearGrillaNumeros(numerosDisponibles)}`;
 
             }
 

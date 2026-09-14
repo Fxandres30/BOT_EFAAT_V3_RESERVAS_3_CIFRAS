@@ -71,9 +71,30 @@ function buscarEnResultados(resultado, predicado) {
 
 }
 
-function resolverValorGramatical(claveBase, conjunto, contextoGlobal) {
+// Recibe la DEFINICIÓN completa (no solo la clave) para poder distinguir
+// una variable de concordancia DINÁMICA (creada desde el panel —
+// variables_globales, ver catalogoVariables.js::normalizarVariableDinamica)
+// de las 15 ESTÁTICAS de siempre. Si no existe definición dinámica para
+// esa clave, se conserva el fallback actual sin ningún cambio de
+// comportamiento (gramatica.js sigue siendo la fuente de las 15 fijas).
+function resolverValorGramatical(definicion, conjunto, contextoGlobal) {
 
     const relevantes = obtenerGramatica().calcularNumerosRelevantes(contextoGlobal.ctx || {}, contextoGlobal.resultado);
+
+    // ---- Variable de concordancia DINÁMICA (variables_globales) ----
+    // No participa en la mecánica de "por conjunto" (_reservados/_ocupados/
+    // _disponibles) en esta fase: resolverClaveCanonica() solo reconoce ese
+    // sufijo para las claves listadas en GRAMATICA_KEYS (las 15 estáticas),
+    // así que una dinámica nunca llega aquí con `conjunto` distinto de null.
+    if (definicion.dinamica) {
+
+        const esSingular = Number(relevantes.cantidadNumeros) === 1;
+
+        return valorSeguro(esSingular ? definicion.singular : definicion.plural);
+
+    }
+
+    const claveBase = definicion.key;
 
     if (conjunto) {
 
@@ -99,6 +120,36 @@ function resolverValorGramatical(claveBase, conjunto, contextoGlobal) {
     const formas = obtenerGramatica().construirVariablesGramaticales(cantidad);
 
     return valorSeguro(formas[claveBase]);
+
+}
+
+// Aplica un modificador de texto opcional ("{{variable|modificador}}") al
+// valor YA resuelto — nunca antes: nunca cambia CUÁL variable se resuelve,
+// solo transforma el texto resultante. Un modificador desconocido se
+// ignora (se deja el valor tal cual) en vez de romper el mensaje. Nunca se
+// crean variables nuevas para mayúsculas/minúsculas (p. ej. NO existe
+// "disponibles_mayuscula") — este es el único mecanismo para eso.
+function aplicarModificadorTexto(valor, modificador) {
+
+    if (!modificador || typeof valor !== "string" || valor === "") {
+        return valor;
+    }
+
+    switch (modificador) {
+
+        case "lower": return valor.toLowerCase();
+
+        case "upper": return valor.toUpperCase();
+
+        case "capitalize": return valor.charAt(0).toUpperCase() + valor.slice(1).toLowerCase();
+
+        case "title": return valor.replace(/\S+/g, (palabra) =>
+            palabra.charAt(0).toUpperCase() + palabra.slice(1).toLowerCase()
+        );
+
+        default: return valor;
+
+    }
 
 }
 
@@ -144,8 +195,14 @@ function resolverValorBase(key, contextoGlobal) {
         }
 
         case "numeros_disponibles": {
+            // Único caso con formato propio (grilla de 3 filas, ver
+            // gramatica.js::formatearGrillaNumeros) — calcularNumerosRelevantes
+            // solo llena numerosDisponibles cuando tipo==="disponibilidad"
+            // (ver gramatica.js), así que este cambio de formato no afecta
+            // ningún otro tipo de respuesta (reservados/ocupados/solicitados
+            // siguen usando formatearListaNumeros, sin cambios).
             const r = obtenerGramatica().calcularNumerosRelevantes(ctx || {}, resultado);
-            return obtenerGramatica().formatearListaNumeros(r.numerosDisponibles);
+            return obtenerGramatica().formatearGrillaNumeros(r.numerosDisponibles);
         }
 
         case "cantidad_reservados": {
@@ -231,14 +288,16 @@ function resolverValorBase(key, contextoGlobal) {
 
 }
 
-// resolverVariable(nombreEscrito, contextoGlobal) -> string, NUNCA
-// undefined/null/"[object Object]". nombreEscrito puede ser la clave
+// resolverVariable(nombreEscrito, contextoGlobal, catalogoExtra?) -> string,
+// NUNCA undefined/null/"[object Object]". nombreEscrito puede ser la clave
 // canónica, un alias, o una forma sufijada de gramática
 // ("ocupado_ocupados_ocupados"). Si no es una variable conocida, o si el
-// contexto no cumple requires[], devuelve "".
-function resolverVariable(nombreEscrito, contextoGlobal) {
+// contexto no cumple requires[], devuelve "". catalogoExtra (opcional) son
+// las variables dinámicas del usuario (variables_globales, ya normalizadas)
+// — si se omite, el comportamiento es idéntico al de siempre.
+function resolverVariable(nombreEscrito, contextoGlobal, catalogoExtra) {
 
-    const info = catalogo.resolverClaveCanonica(nombreEscrito);
+    const info = catalogo.resolverClaveCanonica(nombreEscrito, catalogoExtra);
 
     if (!info) {
         return "";
@@ -247,7 +306,14 @@ function resolverVariable(nombreEscrito, contextoGlobal) {
     const { definicion, esGramaticaPorConjunto, conjunto } = info;
 
     if (definicion.type === "concordancia" || esGramaticaPorConjunto) {
-        return resolverValorGramatical(definicion.key, esGramaticaPorConjunto ? conjunto : null, contextoGlobal);
+        return resolverValorGramatical(definicion, esGramaticaPorConjunto ? conjunto : null, contextoGlobal);
+    }
+
+    // Variable de tipo "texto" DINÁMICA (variables_globales): un valor fijo
+    // configurado desde el panel, sin requires[] que comprobar (siempre
+    // disponible, igual que cualquier dato constante).
+    if (definicion.dinamica && definicion.type === "texto") {
+        return valorSeguro(definicion.valor);
     }
 
     if (!contextoTieneRequisitos(contextoGlobal, definicion.requires)) {
@@ -259,17 +325,20 @@ function resolverVariable(nombreEscrito, contextoGlobal) {
 }
 
 // Resuelve TODAS las variables "NUEVA" del catálogo (las huérfanas
-// conectadas en esta fase) contra un contexto ya construido — pensado para
-// que plantillaMensaje.js::construirVariables() las incorpore sin
-// duplicar su propia lógica existente para las variables "EXISTENTE".
-function resolverVariablesOrfanas(contextoGlobal) {
+// conectadas en fases anteriores, MÁS las dinámicas de variables_globales
+// que listarCatalogo() ya agrega con estado "NUEVA" — ver
+// catalogoVariables.js::normalizarVariableDinamica) contra un contexto ya
+// construido — pensado para que plantillaMensaje.js::construirVariables()
+// las incorpore sin duplicar su propia lógica existente para las
+// variables "EXISTENTE".
+function resolverVariablesOrfanas(contextoGlobal, catalogoExtra) {
 
     const resultado = {};
 
-    for (const variable of catalogo.listarCatalogo()) {
+    for (const variable of catalogo.listarCatalogo(catalogoExtra)) {
 
         if (variable.estado === "NUEVA") {
-            resultado[variable.key] = resolverVariable(variable.key, contextoGlobal);
+            resultado[variable.key] = resolverVariable(variable.key, contextoGlobal, catalogoExtra);
         }
 
     }
@@ -278,26 +347,31 @@ function resolverVariablesOrfanas(contextoGlobal) {
 
 }
 
-// resolverTexto(texto, contextoGlobal) -> string — sustituye cada
-// {{variable}} del texto llamando a resolverVariable() (misma resolución,
-// mismos alias, mismo "nunca inventa"), sin necesitar un objeto de
-// variables pre-armado. Punto de entrada genérico para cualquier llamador
-// nuevo (p. ej. Inicio del día, en automation/) que solo tiene un texto de
+// resolverTexto(texto, contextoGlobal, catalogoExtra?) -> string —
+// sustituye cada {{variable}} o {{variable|modificador}} del texto
+// llamando a resolverVariable() (misma resolución, mismos alias, mismo
+// "nunca inventa") y aplicando el modificador de texto si se escribió uno
+// (ver aplicarModificadorTexto) — sin necesitar un objeto de variables
+// pre-armado. Punto de entrada genérico para cualquier llamador nuevo
+// (p. ej. Inicio del día, en automation/) que solo tiene un texto de
 // plantilla y un contexto — no es un motor nuevo, es este mismo resolver
 // aplicado a una cadena completa en vez de a una sola clave.
-function resolverTexto(texto, contextoGlobal) {
+function resolverTexto(texto, contextoGlobal, catalogoExtra) {
 
     if (typeof texto !== "string" || !texto.trim()) {
         return "";
     }
 
-    return texto.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, nombre) => resolverVariable(nombre, contextoGlobal));
+    return texto.replace(/\{\{\s*(\w+)(?:\|(\w+))?\s*\}\}/g, (_match, nombre, modificador) =>
+        aplicarModificadorTexto(resolverVariable(nombre, contextoGlobal, catalogoExtra), modificador)
+    );
 
 }
 
 module.exports = {
     resolverVariable,
     resolverVariablesOrfanas,
+    aplicarModificadorTexto,
     resolverTexto,
     formatearMoneda
 };

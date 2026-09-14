@@ -14,7 +14,7 @@
 export type CategoriaVariable =
     | "CLIENTE" | "NUMEROS" | "RESERVAS" | "PAGOS" | "EVENTO"
     | "FECHA_HORA" | "RESULTADO" | "DISPONIBILIDAD" | "AUTOMATIZACION"
-    | "MENSAJES" | "SISTEMA";
+    | "MENSAJES" | "SISTEMA" | "PERSONALIZADA";
 
 export interface DefinicionCategoria {
     emoji: string;
@@ -32,7 +32,12 @@ export const CATEGORIAS: Record<CategoriaVariable, DefinicionCategoria> = {
     DISPONIBILIDAD: { emoji: "📊", label: "Disponibilidad" },
     AUTOMATIZACION: { emoji: "🤖", label: "Automatización" },
     MENSAJES: { emoji: "💬", label: "Mensajes" },
-    SISTEMA: { emoji: "⚙️", label: "Sistema" }
+    SISTEMA: { emoji: "⚙️", label: "Sistema" },
+    // Categoría por defecto de las variables creadas desde el panel
+    // (variables_globales) — el admin puede escribir cualquier texto libre
+    // como "categoria" en la fila; si no coincide con ninguna de las de
+    // arriba, se agrupa aquí (nunca revienta el selector).
+    PERSONALIZADA: { emoji: "🧩", label: "Personalizada" }
 };
 
 export interface VariableGlobal {
@@ -44,6 +49,111 @@ export interface VariableGlobal {
     requires: string[];
     type: "texto" | "numero" | "moneda" | "fecha" | "hora" | "lista" | "concordancia";
     estado: "EXISTENTE" | "NUEVA";
+    // Presentes SOLO en variables dinámicas (creadas desde el panel,
+    // variables_globales) — ver normalizarVariableDinamica() más abajo.
+    // Espejo exacto de backend/shared/variables/catalogoVariables.js.
+    dinamica?: boolean;
+    singular?: string | null;
+    plural?: string | null;
+    valor?: string | null;
+}
+
+// Fila real de la tabla variables_globales (Supabase) — ver
+// frontend/services/variables/variablesGlobales.ts.
+export interface FilaVariableGlobal {
+    id: string;
+    usuario_id: string;
+    identificador: string;
+    nombre_visible: string;
+    tipo: "concordancia" | "texto";
+    singular: string | null;
+    plural: string | null;
+    valor: string | null;
+    categoria: string;
+    descripcion: string;
+    ejemplo: string;
+    activa: boolean;
+    created_at?: string;
+    updated_at?: string;
+}
+
+// Convierte una fila real de variables_globales al MISMO formato que una
+// entrada de CATALOGO_VARIABLES — espejo exacto de
+// backend/shared/variables/catalogoVariables.js::normalizarVariableDinamica.
+// Así el resto de este archivo (resolverClaveCanonica, listarCatalogo...)
+// la trata exactamente igual que cualquier otra variable, sin caminos
+// especiales.
+export function normalizarVariableDinamica(fila: FilaVariableGlobal): VariableGlobal {
+
+    // "categoria" en la fila real es texto libre (columna sin CHECK en
+    // Supabase) — se acepta solo si coincide con una categoría conocida,
+    // para no romper el selector de CATEGORIAS con una clave inexistente;
+    // cualquier otro valor cae a PERSONALIZADA (nunca revienta, nunca
+    // inventa una categoría nueva).
+    const categoriaValida = Object.prototype.hasOwnProperty.call(CATEGORIAS, fila.categoria)
+        ? (fila.categoria as CategoriaVariable)
+        : "PERSONALIZADA";
+
+    // "example" es SOLO metadata de presentación (autocomplete/preview) —
+    // nunca se usa para resolver el valor real. Si el admin escribió un
+    // ejemplo propio (campo "Ejemplo" del panel), ese manda; si lo dejó
+    // vacío, se conserva el fallback automático de siempre (singular /
+    // plural para concordancia, el valor fijo para texto). Espejo exacto
+    // de backend/shared/variables/catalogoVariables.js.
+    const ejemplo = fila.ejemplo && fila.ejemplo.trim()
+        ? fila.ejemplo
+        : (fila.tipo === "concordancia" ? `${fila.singular} / ${fila.plural}` : (fila.valor || ""));
+
+    return {
+        key: fila.identificador,
+        aliases: [],
+        categoria: categoriaValida,
+        description: fila.descripcion || fila.nombre_visible || "",
+        example: ejemplo,
+        requires: [],
+        type: fila.tipo === "concordancia" ? "concordancia" : "texto",
+        estado: "NUEVA",
+        dinamica: true,
+        singular: fila.singular,
+        plural: fila.plural,
+        valor: fila.valor
+    };
+
+}
+
+// Mismo alfabeto que exige \w+ en el regex de sustitución del backend.
+const REGEX_IDENTIFICADOR_VALIDO = /^[a-z][a-z0-9_]*$/;
+
+export function esIdentificadorValido(identificador: string): boolean {
+    return REGEX_IDENTIFICADOR_VALIDO.test(identificador || "");
+}
+
+// Aplica un modificador de texto opcional ("{{variable|modificador}}") —
+// espejo EXACTO de backend/shared/variables/resolverVariables.js::
+// aplicarModificadorTexto. El comportamiento debe ser idéntico en preview
+// y en producción real; si algún día cambia uno, debe cambiar el otro.
+export function aplicarModificadorTexto(valor: string, modificador?: string): string {
+
+    if (!modificador || typeof valor !== "string" || valor === "") {
+        return valor;
+    }
+
+    switch (modificador) {
+
+        case "lower": return valor.toLowerCase();
+
+        case "upper": return valor.toUpperCase();
+
+        case "capitalize": return valor.charAt(0).toUpperCase() + valor.slice(1).toLowerCase();
+
+        case "title": return valor.replace(/\S+/g, (palabra) =>
+            palabra.charAt(0).toUpperCase() + palabra.slice(1).toLowerCase()
+        );
+
+        default: return valor;
+
+    }
+
 }
 
 export const CATALOGO_VARIABLES: VariableGlobal[] = [
@@ -127,7 +237,14 @@ export interface ClaveResuelta {
 // Mismo algoritmo de reconocimiento que el backend (clave canónica, alias,
 // o forma sufijada de gramática "<base>_<conjunto>") — solo LEE datos del
 // catálogo espejo, no decide ni calcula ningún valor.
-export function resolverClaveCanonica(nombre: string): ClaveResuelta | null {
+//
+// catalogoExtra (opcional, Fase "Variables Globales"): variables dinámicas
+// del usuario (ya normalizadas con normalizarVariableDinamica), obtenidas
+// por el llamador desde variables_globales. Si se omite, el comportamiento
+// es idéntico al de siempre — CATÁLOGO GLOBAL UNIFICADO = estático primero,
+// dinámico como respaldo (nunca al revés, así un identificador dinámico
+// jamás puede pisar el comportamiento de uno ya existente).
+export function resolverClaveCanonica(nombre: string, catalogoExtra?: VariableGlobal[]): ClaveResuelta | null {
 
     if (!nombre) return null;
 
@@ -155,27 +272,49 @@ export function resolverClaveCanonica(nombre: string): ClaveResuelta | null {
 
     }
 
+    if (catalogoExtra && catalogoExtra.length > 0) {
+
+        const dinamica = catalogoExtra.find((v) => v.key === nombre);
+
+        if (dinamica) {
+            return { definicion: dinamica, esGramaticaPorConjunto: false, conjunto: null };
+        }
+
+    }
+
     return null;
 
 }
 
-export function esVariableConocida(nombre: string): boolean {
-    return resolverClaveCanonica(nombre) !== null;
+export function esVariableConocida(nombre: string, catalogoExtra?: VariableGlobal[]): boolean {
+    return resolverClaveCanonica(nombre, catalogoExtra) !== null;
 }
 
-export function listarCatalogo(): VariableGlobal[] {
-    return CATALOGO_VARIABLES;
+// listarCatalogo(catalogoExtra?) -> catálogo estático + dinámico. Si un
+// identificador dinámico coincidiera con uno estático (no debería pasar:
+// se valida al crear la variable), el estático queda primero.
+export function listarCatalogo(catalogoExtra?: VariableGlobal[]): VariableGlobal[] {
+
+    if (!catalogoExtra || catalogoExtra.length === 0) {
+        return CATALOGO_VARIABLES;
+    }
+
+    const clavesEstaticas = new Set(CATALOGO_VARIABLES.map((v) => v.key));
+
+    return [...CATALOGO_VARIABLES, ...catalogoExtra.filter((v) => v && !clavesEstaticas.has(v.key))];
+
 }
 
-// Escanea un contenido de plantilla y devuelve los nombres {{...}} que no
-// existen en el catálogo — nunca corrige, solo señala (usado al guardar).
-export function extraerVariablesDesconocidas(texto: string): string[] {
+// Escanea un contenido de plantilla ({{variable}} o {{variable|modificador}})
+// y devuelve los nombres {{...}} que no existen en el catálogo (estático +
+// catalogoExtra) — nunca corrige, solo señala (usado al guardar).
+export function extraerVariablesDesconocidas(texto: string, catalogoExtra?: VariableGlobal[]): string[] {
 
     if (!texto) return [];
 
     const encontradas = new Set<string>();
     const desconocidas: string[] = [];
-    const regex = /\{\{\s*(\w+)\s*\}\}/g;
+    const regex = /\{\{\s*(\w+)(?:\|\w+)?\s*\}\}/g;
     let coincidencia: RegExpExecArray | null;
 
     while ((coincidencia = regex.exec(texto)) !== null) {
@@ -185,7 +324,7 @@ export function extraerVariablesDesconocidas(texto: string): string[] {
         if (encontradas.has(nombre)) continue;
         encontradas.add(nombre);
 
-        if (!esVariableConocida(nombre)) {
+        if (!esVariableConocida(nombre, catalogoExtra)) {
             desconocidas.push(nombre);
         }
 

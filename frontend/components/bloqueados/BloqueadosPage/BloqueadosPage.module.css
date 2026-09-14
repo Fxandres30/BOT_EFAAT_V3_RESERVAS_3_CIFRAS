@@ -1,0 +1,79 @@
+.page {
+  max-width: 800px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.state {
+  padding: 48px 16px;
+  text-align: center;
+  color: var(--efaat-text-secondary);
+  font-size: var(--efaat-text-base);
+}
+
+.resumen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.contador {
+  font-size: var(--efaat-text-sm);
+  color: var(--efaat-text-secondary);
+}
+
+.tiposLeyenda {
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tipoBadge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--efaat-surface-muted);
+  border: 1px solid var(--efaat-border);
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+}
+
+.avisoTecnico {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-surface-muted);
+  color: var(--efaat-text-secondary);
+  font-size: var(--efaat-text-xs);
+  line-height: 1.5;
+}
+
+.lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item {
+  padding: 8px 10px;
+  border-radius: var(--efaat-radius-control);
+  border: 1px solid var(--efaat-border);
+  font-size: var(--efaat-text-sm);
+}
+
+.tipo {
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+  text-transform: uppercase;
+  margin-right: 6px;
+}

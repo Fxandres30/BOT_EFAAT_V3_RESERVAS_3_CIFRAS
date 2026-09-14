@@ -71,7 +71,10 @@ export default function VariableAutocomplete({ items, highlightIndex, top, left,
                             >
                                 <span className={styles.disponibilidad}>{item.disponible ? "🟢" : "⚪"}</span>
                                 <div className={styles.textos}>
-                                    <span className={styles.clave}>{`{{${item.definicion.key}}}`}</span>
+                                    <span className={styles.clave}>
+                                        {item.definicion.dinamica && <span title="Variable global creada desde el panel">🧩 </span>}
+                                        {`{{${item.definicion.key}}}`}
+                                    </span>
                                     <span className={styles.descripcion}>{item.definicion.description}</span>
                                     <span className={styles.ejemplo}>Ejemplo: {item.definicion.example}</span>
                                 </div>

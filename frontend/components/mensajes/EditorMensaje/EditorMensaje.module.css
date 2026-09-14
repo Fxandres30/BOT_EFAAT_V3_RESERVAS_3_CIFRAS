@@ -41,6 +41,12 @@
   font-family: var(--efaat-font-mono);
   font-size: 11px;
   color: var(--efaat-text-secondary);
+  cursor: pointer;
+}
+
+.varChip:hover {
+  background: var(--efaat-surface-hover, var(--efaat-surface-muted));
+  border-color: var(--efaat-primary, var(--efaat-border));
 }
 
 .note {

@@ -180,12 +180,12 @@ const CATALOGO = [
         key: "numeros_disponibles",
         aliases: [],
         categoria: "DISPONIBILIDAD",
-        description: "Números libres del evento activo",
-        example: "( 01 - 02 - 03 )",
+        description: "Números libres del evento activo, organizados en 3 filas visualmente equilibradas",
+        example: "01  04  07  12\n18  23  31  36\n42  47  53  61",
         requires: ["evento"],
         type: "lista",
         estado: "EXISTENTE",
-        fuente: "consultarDisponibilidad() (resolverConsulta.js) / gramatica.js"
+        fuente: "consultarDisponibilidad() (resolverConsulta.js) / gramatica.js::formatearGrillaNumeros"
     },
     {
         key: "numeros_ocupados",
@@ -394,11 +394,92 @@ for (const variable of CATALOGO) {
     MAPA_POR_CLAVE[variable.key] = variable;
 }
 
+// ==========================================================================
+// CATÁLOGO GLOBAL UNIFICADO (Fase "Variables Globales") — el catálogo
+// ESTÁTICO de arriba (CATALOGO) sigue siendo exactamente el mismo, sin
+// tocar ni una fila. Lo único que cambia es que las funciones de
+// reconocimiento ahora aceptan, además, una lista OPCIONAL de variables
+// DINÁMICAS (filas reales de la tabla variables_globales, ya normalizadas
+// con normalizarVariableDinamica() más abajo). Si el llamador no pasa esa
+// lista (todo el código existente que no la conoce), el comportamiento es
+// IDÉNTICO al de siempre — cero regresión.
+//
+// "No crear duplicados silenciosos": la validación de unicidad del
+// identificador contra el catálogo ESTÁTICO (¿ya existe esa clave o alias
+// como variable existente?) se hace al CREAR la variable dinámica (ver
+// variablesGlobalesRepo.js / frontend), no aquí — aquí solo se documenta el
+// contrato: un identificador dinámico NUNCA debe coincidir con una clave o
+// alias ya existente en CATALOGO.
+// ==========================================================================
+
+// Formato válido de un identificador de variable — el mismo alfabeto que ya
+// exige \w+ en el regex de sustitución de aplicarPlantilla()/resolverTexto():
+// debe empezar con letra minúscula, seguido de minúsculas/dígitos/"_".
+const REGEX_IDENTIFICADOR_VALIDO = /^[a-z][a-z0-9_]*$/;
+
+function esIdentificadorValido(identificador) {
+    return typeof identificador === "string" && REGEX_IDENTIFICADOR_VALIDO.test(identificador);
+}
+
+// Convierte una fila real de variables_globales al MISMO formato que una
+// entrada de CATALOGO, para que el resto del sistema (resolverClaveCanonica,
+// listarCatalogo, etc.) la trate exactamente igual sin ningún camino
+// especial. "dinamica: true" es la única marca que la distingue — la usa
+// resolverVariables.js para saber que el singular/plural/valor viene
+// directo de la fila, no de gramatica.js.
+function normalizarVariableDinamica(fila) {
+
+    if (!fila || !fila.identificador) return null;
+
+    // "example" es SOLO metadata de presentación (autocomplete/preview) —
+    // nunca se usa para resolver el valor real (eso siempre lee
+    // singular/plural/valor directo, ver resolverVariables.js). Si el admin
+    // escribió un ejemplo propio (fase "Ejemplo" del panel), ese manda; si
+    // lo dejó vacío, se conserva el fallback automático de siempre
+    // (singular / plural para concordancia, el valor fijo para texto).
+    const ejemplo = fila.ejemplo && String(fila.ejemplo).trim()
+        ? fila.ejemplo
+        : (fila.tipo === "concordancia" ? `${fila.singular} / ${fila.plural}` : (fila.valor || ""));
+
+    return {
+        key: fila.identificador,
+        aliases: [],
+        categoria: fila.categoria || "PERSONALIZADA",
+        description: fila.descripcion || fila.nombre_visible || "",
+        example: ejemplo,
+        requires: [],
+        type: fila.tipo === "concordancia" ? "concordancia" : "texto",
+        estado: "NUEVA",
+        dinamica: true,
+        singular: fila.singular ?? null,
+        plural: fila.plural ?? null,
+        valor: fila.valor ?? null
+    };
+
+}
+
+function mapaPorClaveDe(catalogoExtra) {
+
+    const mapa = {};
+
+    for (const variable of catalogoExtra || []) {
+        if (variable && variable.key) mapa[variable.key] = variable;
+    }
+
+    return mapa;
+
+}
+
 // Resuelve un nombre escrito en una plantilla (puede ser la clave
 // canónica, un alias, o una forma sufijada de gramática) a su definición
 // de catálogo + metadatos de reconocimiento. Devuelve null si el nombre
 // no es una variable conocida — nunca inventa una coincidencia parcial.
-function resolverClaveCanonica(nombre) {
+//
+// catalogoExtra (opcional): variables dinámicas YA normalizadas (ver
+// normalizarVariableDinamica) — se consultan SOLO si el nombre no se
+// reconoce en el catálogo estático (las 15 gramaticales y el resto de
+// EXISTENTE/NUEVA siguen resolviendo exactamente igual que antes).
+function resolverClaveCanonica(nombre, catalogoExtra) {
 
     if (!nombre || typeof nombre !== "string") {
         return null;
@@ -428,6 +509,16 @@ function resolverClaveCanonica(nombre) {
 
     }
 
+    if (catalogoExtra && catalogoExtra.length > 0) {
+
+        const mapaExtra = mapaPorClaveDe(catalogoExtra);
+
+        if (mapaExtra[nombre]) {
+            return { definicion: mapaExtra[nombre], esGramaticaPorConjunto: false, conjunto: null };
+        }
+
+    }
+
     return null;
 
 }
@@ -436,19 +527,34 @@ function obtenerVariable(key) {
     return MAPA_POR_CLAVE[key] || null;
 }
 
-function listarCatalogo() {
-    return CATALOGO;
+// listarCatalogo(catalogoExtra?) -> catálogo estático + dinámico, en ese
+// orden. Si un identificador dinámico coincidiera con uno estático (no
+// debería llegar a pasar: se valida al crear la variable), el estático
+// queda primero y por tanto "gana" en cualquier búsqueda por índice —
+// nunca hay dos comportamientos distintos para el mismo nombre.
+function listarCatalogo(catalogoExtra) {
+
+    if (!catalogoExtra || catalogoExtra.length === 0) {
+        return CATALOGO;
+    }
+
+    const clavesEstaticas = new Set(CATALOGO.map(v => v.key));
+
+    return [...CATALOGO, ...catalogoExtra.filter(v => v && !clavesEstaticas.has(v.key))];
+
 }
 
-function esVariableConocida(nombre) {
-    return resolverClaveCanonica(nombre) !== null;
+function esVariableConocida(nombre, catalogoExtra) {
+    return resolverClaveCanonica(nombre, catalogoExtra) !== null;
 }
 
-// Escanea un contenido de plantilla ({{variable}}) y devuelve los nombres
-// que NO existen en el catálogo (ni como clave, ni como alias, ni como
-// forma sufijada de gramática). Usado al guardar una plantilla — nunca
-// corrige ni sustituye el nombre, solo lo señala (sección 16).
-function extraerVariablesDesconocidas(texto) {
+// Escanea un contenido de plantilla ({{variable}} o {{variable|modificador}})
+// y devuelve los nombres que NO existen en el catálogo (ni como clave, ni
+// como alias, ni como forma sufijada de gramática, ni en catalogoExtra).
+// Usado al guardar una plantilla — nunca corrige ni sustituye el nombre,
+// solo lo señala (sección 16). El modificador ("|upper", etc.) se ignora
+// para esta validación: lo que importa es si la VARIABLE existe.
+function extraerVariablesDesconocidas(texto, catalogoExtra) {
 
     if (typeof texto !== "string" || !texto) {
         return [];
@@ -456,7 +562,7 @@ function extraerVariablesDesconocidas(texto) {
 
     const encontradas = new Set();
     const desconocidas = [];
-    const regex = /\{\{\s*(\w+)\s*\}\}/g;
+    const regex = /\{\{\s*(\w+)(?:\|\w+)?\s*\}\}/g;
     let coincidencia;
 
     while ((coincidencia = regex.exec(texto)) !== null) {
@@ -469,7 +575,7 @@ function extraerVariablesDesconocidas(texto) {
 
         encontradas.add(nombre);
 
-        if (!esVariableConocida(nombre)) {
+        if (!esVariableConocida(nombre, catalogoExtra)) {
             desconocidas.push(nombre);
         }
 
@@ -488,5 +594,7 @@ module.exports = {
     obtenerVariable,
     listarCatalogo,
     esVariableConocida,
-    extraerVariablesDesconocidas
+    extraerVariablesDesconocidas,
+    esIdentificadorValido,
+    normalizarVariableDinamica
 };

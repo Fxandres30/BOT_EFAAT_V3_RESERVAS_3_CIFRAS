@@ -12,6 +12,7 @@ const catalogo = require("../../shared/variables/catalogoVariables");
 const { construirContextoGlobal, contextoTieneRequisitos } = require("../../shared/variables/contextoVariables");
 const { resolverVariable, resolverVariablesOrfanas, formatearMoneda } = require("../../shared/variables/resolverVariables");
 const { construirVariables, aplicarPlantilla } = require("../../bot/ai/plantillaMensaje");
+const { formatearGrillaNumeros, determinarColumnasGrilla } = require("../../bot/ai/gramatica");
 
 const resultados = [];
 
@@ -289,6 +290,213 @@ test("compatibilidad: una plantilla NUEVA con {{monto_pendiente}} funciona cuand
 
     const texto = aplicarPlantilla("{{cliente}}, debes {{monto_pendiente}} de {{monto_total}}.", vars, {});
     assert.strictEqual(texto, "Andrés, debes $20.000 de $50.000.");
+
+});
+
+// ----------------------------------- MENSAJE "DISPONIBLES" — GRILLA CON 🍀
+// (corrección 2026-09-13: las filas CRECEN según la cantidad total — ya no
+// hay un límite de 3 filas, el ancho de fila lo decide
+// determinarColumnasGrilla(). Sin tocar la lógica de disponibilidad real:
+// consultarDisponibilidad.js sigue devolviendo exactamente los mismos
+// números — esto solo cambia cómo se presentan).
+
+// Helpers de verificación reutilizados por todos los casos de cantidad.
+function filasDe(texto) {
+    return texto.split("\n").filter(f => f.length > 0);
+}
+
+function numerosDeFila(fila) {
+    return fila.split("🍀").map(s => s.trim()).filter(Boolean);
+}
+
+function verificarGrillaCompleta(numerosOriginales, columnasEsperadas) {
+
+    const grilla = formatearGrillaNumeros(numerosOriginales);
+    const filas = filasDe(grilla);
+
+    const unicosEsperados = [...new Set(numerosOriginales.filter(n => n !== null && n !== undefined && n !== ""))]
+        .sort((a, b) => Number(a) - Number(b));
+
+    const reconstruido = filas.flatMap(numerosDeFila);
+
+    // 1) Ningún número inventado ni perdido, sin duplicados, orden correcto.
+    assert.deepStrictEqual(reconstruido, unicosEsperados, "deben aparecer TODOS los números reales, sin repetir y en orden ascendente");
+
+    // 2) Todas las filas (salvo quizás la última) tienen exactamente el
+    //    ancho esperado; ninguna fila supera ese ancho.
+    filas.forEach((fila, i) => {
+        const cantidad = numerosDeFila(fila).length;
+        assert.ok(cantidad <= columnasEsperadas, `fila ${i} tiene ${cantidad} números, más que el máximo esperado (${columnasEsperadas})`);
+        if (i < filas.length - 1) {
+            assert.strictEqual(cantidad, columnasEsperadas, `fila ${i} (no es la última) debe tener exactamente ${columnasEsperadas} números`);
+        }
+    });
+
+    // 3) Cada número lleva su 🍀 delante.
+    assert.ok(filas.every(f => numerosDeFila(f).length > 0), "cada fila debe tener al menos un número");
+    assert.ok(grilla.includes("🍀"), "debe llevar el emoji 🍀 delante de los números");
+
+    return { grilla, filas };
+
+}
+
+function generarNumeros(cantidad) {
+    return Array.from({ length: cantidad }, (_, i) => String(i + 1).padStart(2, "0"));
+}
+
+const CASOS_CANTIDAD = [
+    { cantidad: 1, columnas: 1 },
+    { cantidad: 2, columnas: 2 },
+    { cantidad: 7, columnas: 3 },
+    { cantidad: 9, columnas: 3 },
+    { cantidad: 12, columnas: 3 },
+    { cantidad: 39, columnas: 3 },
+    { cantidad: 40, columnas: 3 },
+    { cantidad: 60, columnas: 3 },
+    { cantidad: 61, columnas: 4 },
+    { cantidad: 80, columnas: 4 },
+    { cantidad: 99, columnas: 4 }
+];
+
+for (const { cantidad, columnas } of CASOS_CANTIDAD) {
+
+    test(`formatearGrillaNumeros: ${cantidad} números -> ${columnas} por fila, se muestran TODOS sin duplicar`, () => {
+
+        assert.strictEqual(determinarColumnasGrilla(cantidad), columnas, `determinarColumnasGrilla(${cantidad}) debe devolver ${columnas}`);
+
+        const numeros = generarNumeros(cantidad);
+        const { filas } = verificarGrillaCompleta(numeros, columnas);
+
+        const filasEsperadas = Math.ceil(cantidad / columnas);
+        assert.strictEqual(filas.length, filasEsperadas, `${cantidad} números a ${columnas} por fila deben producir ${filasEsperadas} filas (nunca un límite fijo de filas)`);
+
+    });
+
+}
+
+test("formatearGrillaNumeros: datos DUPLICADOS en la entrada -> cada número aparece una sola vez en la salida", () => {
+
+    const conDuplicados = ["05", "12", "05", "23", "12", "05", "45"];
+    const grilla = formatearGrillaNumeros(conDuplicados);
+    const reconstruido = filasDe(grilla).flatMap(numerosDeFila);
+
+    assert.deepStrictEqual(reconstruido, ["05", "12", "23", "45"], "debe deduplicar antes de construir el texto, no filtrar visualmente después");
+    assert.strictEqual(new Set(reconstruido).size, reconstruido.length, "no debe quedar ningún número repetido");
+
+});
+
+test("formatearGrillaNumeros: datos DESORDENADOS en la entrada -> salida siempre ordenada de menor a mayor", () => {
+
+    const desordenados = ["45", "05", "99", "12", "23", "01"];
+    const grilla = formatearGrillaNumeros(desordenados);
+    const reconstruido = filasDe(grilla).flatMap(numerosDeFila);
+
+    assert.deepStrictEqual(reconstruido, ["01", "05", "12", "23", "45", "99"]);
+
+});
+
+test("formatearGrillaNumeros: 0 números -> cadena vacía (nunca inventa datos)", () => {
+
+    assert.strictEqual(formatearGrillaNumeros([]), "");
+    assert.strictEqual(formatearGrillaNumeros(null), "");
+    assert.strictEqual(formatearGrillaNumeros(undefined), "");
+
+});
+
+test("construirVariables(): numeros_disponibles usa la nueva grilla (con 🍀, todas las filas necesarias) para resultado.tipo='disponibilidad'", () => {
+
+    const numerosDisponibles = generarNumeros(61); // > 60 -> 4 por fila
+    const resultado = { tipo: "disponibilidad", numerosDisponibles, numerosOcupados: [] };
+    const ctx = { usuario: {}, evento: { nombre_evento: "Sinuano Noche" }, consulta: resultado };
+
+    const vars = construirVariables(ctx, resultado);
+    const filas = filasDe(vars.numeros_disponibles);
+
+    assert.strictEqual(filas.length, Math.ceil(61 / 4));
+    assert.strictEqual(numerosDeFila(filas[0]).length, 4);
+    assert.deepStrictEqual(filasDe(vars.numeros_disponibles).flatMap(numerosDeFila), numerosDisponibles);
+
+});
+
+test("construirVariables(): numeros_reservados/ocupados/solicitados NO cambian de formato (compatibilidad)", () => {
+
+    const resultado = { ok: true, reservados: ["12", "45"], ocupados: ["07"] };
+    const ctx = { usuario: { nombre: "Andrés" }, evento: { nombre_evento: "Sorteo X" }, textoOriginal: "12, 45 y 07", reserva: resultado };
+    const vars = construirVariables(ctx, resultado);
+
+    assert.strictEqual(vars.numeros_reservados, "( 12 - 45 )");
+    assert.strictEqual(vars.numeros_ocupados, "( 07 )");
+
+});
+
+// Los 5 estilos pedidos para el mensaje "Disponibles" — se prueban con el
+// código REAL (construirVariables + aplicarPlantilla), no una reimplementación.
+const ESTILOS_DISPONIBLES = {
+
+    clasico:
+        "🎲 *NÚMEROS DISPONIBLES* 🎲\n\n📋 Estos son los números que puedes elegir:\n\n{{numeros_disponibles}}\n\n⚡ ¡Elige rápido antes de que alguien se adelante!\n🍀 *¡Mucha suerte, familia!*",
+
+    dinamico:
+        "🔥 *¡TABLA ACTUALIZADA, FAMILIA!* 🔥\n\n🟢 *Disponibles en este momento:*\n\n{{numeros_disponibles}}\n\n👀 Revisa bien y escoge tu favorito.\n🎲 *¡El que decide rápido, juega tranquilo!* 🍀",
+
+    comercial:
+        "🎯 *¡Todavía hay números disponibles!*\n\n🎲 Dinámica: *{{nombre_evento}}*\n\n{{numeros_disponibles}}\n\n📲 Escríbeme el número que deseas jugar y te ayudo con tu reserva.\n\n🍀 *¡Éxitos familia!*",
+
+    corto:
+        "⚡ *DISPONIBLES AHORA* ⚡\n\n{{numeros_disponibles}}\n\n🟢 Disponibilidad actualizada.\n🎲 *¡A jugar, familia!* 🍀",
+
+    familia:
+        "👑 *FAMILIA, AQUÍ ESTÁ LO QUE QUEDA* 👑\n\n🎲 *{{nombre_evento}}*\n\n{{numeros_disponibles}}\n\n⏳ La disponibilidad puede cambiar en cualquier momento.\n\n🔥 *¡Si tienes uno en mente, no lo dejes pasar!* 🍀"
+
+};
+
+for (const [nombreEstilo, contenido] of Object.entries(ESTILOS_DISPONIBLES)) {
+
+    test(`estilo "${nombreEstilo}": renderiza sin undefined/null/[object Object], con 🍀 y TODOS los números`, () => {
+
+        const numerosDisponibles = generarNumeros(22); // <40 y >=7 -> 3 por fila
+        const resultado = { tipo: "disponibilidad", numerosDisponibles, numerosOcupados: [] };
+        const ctx = { usuario: {}, evento: { nombre_evento: "Sinuano Noche" }, consulta: resultado };
+
+        const vars = construirVariables(ctx, resultado);
+        const texto = aplicarPlantilla(contenido, vars, {});
+
+        assert.ok(texto, "debe producir texto");
+        assert.ok(!texto.includes("undefined"), "no debe contener 'undefined'");
+        assert.ok(!texto.includes("null"), "no debe contener 'null'");
+        assert.ok(!texto.includes("[object Object]"), "no debe contener '[object Object]'");
+        assert.ok(!/\{\{.*\}\}/.test(texto), "no debe quedar ninguna variable sin resolver");
+
+        // Los 22 números deben aparecer todos, con 🍀, sin duplicar.
+        const numerosEnTexto = [...texto.matchAll(/🍀\s*(\d+)/g)].map(m => m[1]);
+        assert.deepStrictEqual(numerosEnTexto, numerosDisponibles);
+
+    });
+
+}
+
+test("estilo \"comercial\": {{nombre_evento}} (alias) resuelve al mismo valor real que {{evento}}", () => {
+
+    const resultado = { tipo: "disponibilidad", numerosDisponibles: ["05"], numerosOcupados: [] };
+    const ctx = { usuario: {}, evento: { nombre_evento: "Loteria de Boyacá" }, consulta: resultado };
+
+    const vars = construirVariables(ctx, resultado);
+    const texto = aplicarPlantilla(ESTILOS_DISPONIBLES.comercial, vars, {});
+
+    assert.ok(texto.includes("Dinámica: *Loteria de Boyacá*"), "el alias nombre_evento debe resolver al mismo dato real que 'evento'");
+
+});
+
+test("estilo \"corto\": sigue funcionando con 0 números disponibles (sin inventar datos)", () => {
+
+    const resultado = { tipo: "disponibilidad", numerosDisponibles: [], numerosOcupados: [] };
+    const ctx = { usuario: {}, evento: { nombre_evento: "Sinuano Noche" }, consulta: resultado };
+
+    const vars = construirVariables(ctx, resultado);
+    const texto = aplicarPlantilla(ESTILOS_DISPONIBLES.corto, vars, {});
+
+    assert.ok(!texto.includes("undefined") && !texto.includes("null"));
+    assert.ok(!/\{\{.*\}\}/.test(texto));
 
 });
 

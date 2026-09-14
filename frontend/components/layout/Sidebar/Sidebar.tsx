@@ -11,6 +11,8 @@ import {
   Target,
   Bot,
   ScanLine,
+  Puzzle,
+  ShieldBan,
   LogOut,
   type LucideIcon,
 } from "lucide-react";
@@ -37,10 +39,12 @@ const NAV: NavItem[] = [
   { href: "/sesiones", label: "Sesiones", icon: Smartphone },
   { href: "/tablas", label: "Reservas", icon: Ticket },
   { href: "/mensajes", label: "Mensajes", icon: MessageSquareText },
+  { href: "/variables-globales", label: "Variables globales", icon: Puzzle },
   { href: "/chats", label: "Chats", icon: MessageCircle },
   { href: "/eventos", label: "Eventos", icon: Target },
   { href: "/automatizacion", label: "Automatización", icon: Bot },
   { href: "/lector-pagos", label: "Lector de pagos", icon: ScanLine },
+  { href: "/bloqueados", label: "Bloqueados", icon: ShieldBan },
 ];
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
