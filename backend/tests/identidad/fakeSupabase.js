@@ -11,6 +11,13 @@
 // El builder es "thenable" (implementa .then), igual que el query builder
 // real de supabase-js, así que `await supabase.from(...).eq(...).limit(2)`
 // funciona sin necesidad de un método terminal explícito.
+//
+// FASE 2 (IdentitySync) agregó `.like(campo, patron)` — lo necesita
+// identityResolver.js::canonicalizarLid() para encontrar un usuario ya
+// guardado con OTRO sufijo de dispositivo en el LID (p. ej. buscar
+// "123456789:%@lid" cuando llegó "123456789:11@lid" y no hay fila exacta
+// ni tampoco la variante sin sufijo). Soporta el comodín "%" de SQL LIKE,
+// traducido a RegExp — suficiente para el único patrón real que se usa hoy.
 // ==========================================================================
 
 function crearFakeSupabase() {
@@ -60,6 +67,7 @@ function crearFakeSupabase() {
         const filtrosNeq = [];
         const filtrosIn = [];
         const filtrosOr = []; // grupo de condiciones "campo.eq.valor" (sintaxis PostgREST)
+        const filtrosLike = [];
         let limiteN = null;
         let ordenCampo = null;
         let ordenAsc = true;
@@ -109,6 +117,18 @@ function crearFakeSupabase() {
             in(campo, valores) {
 
                 filtrosIn.push([campo, valores]);
+                return builder;
+
+            },
+
+            like(campo, patron) {
+
+                // SQL LIKE: "%" = cualquier secuencia de caracteres. Se
+                // escapa todo lo demás antes de convertir a RegExp.
+                const escapado = patron.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                const regex = new RegExp(`^${escapado.replace(/%/g, ".*")}$`);
+
+                filtrosLike.push([campo, regex]);
                 return builder;
 
             },
@@ -191,6 +211,7 @@ function crearFakeSupabase() {
                     filtrosEq.every(([c, v]) => fila[c] === v) &&
                     filtrosNeq.every(([c, v]) => fila[c] !== v) &&
                     filtrosIn.every(([c, vs]) => vs.includes(fila[c])) &&
+                    filtrosLike.every(([c, regex]) => fila[c] != null && regex.test(String(fila[c]))) &&
                     (filtrosOr.length === 0 || filtrosOr.some(({ campo, operador, valor }) =>
                         operador === "eq" && fila[campo] != null && String(fila[campo]) === String(valor)
                     ))

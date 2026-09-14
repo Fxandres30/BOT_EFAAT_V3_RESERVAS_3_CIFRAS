@@ -19,8 +19,16 @@ const { crearFakeSupabase } = require("./fakeSupabase");
 const RUTA_SUPABASE =
     path.resolve(__dirname, "../../lib/supabase.js");
 
+const RUTA_LIFECYCLE =
+    path.resolve(__dirname, "../../bot/funciones/usuarios/escanerIdentidadesLifecycle.js");
+
 const RUTAS_A_RECARGAR = [
     "../../bot/funciones/usuarios/obtenerUsuarioGlobal.js",
+    // FASE 2 (IdentitySync): escanerIdentidades.js pasa por este resolver
+    // para escribir en "usuarios" — si no se limpia también, se queda
+    // pegado al primer fake de Supabase del proceso (ver mismo comentario
+    // en escanerIdentidades.test.js).
+    "../../bot/funciones/usuarios/identityScanner/identityResolver.js",
     "../../bot/funciones/usuarios/escanerIdentidades.js",
     "../../bot/funciones/usuarios/escanerIdentidadesLifecycle.js"
 ].map(p => path.resolve(__dirname, p));
@@ -38,7 +46,7 @@ function cargarModulos() {
 
     RUTAS_A_RECARGAR.forEach(r => delete require.cache[r]);
 
-    const lifecycle = require(RUTAS_A_RECARGAR[2]);
+    const lifecycle = require(RUTA_LIFECYCLE);
 
     return { fake, lifecycle };
 

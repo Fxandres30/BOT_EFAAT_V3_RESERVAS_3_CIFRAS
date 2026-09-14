@@ -12,6 +12,16 @@ const {
     unregisterMessages
 } = require("./events/messages.upsert");
 
+// FASE 2 (IdentitySync) — escaneo EN VIVO de identidades sobre cada
+// mensaje, en un listener TOTALMENTE INDEPENDIENTE del de arriba (ver
+// cabecera de identitySync.upsert.js: aislamiento — un fallo ahí nunca
+// afecta a registerMessages/dispatcher/reservas — y no bloqueante —
+// fire-and-forget, sin await en el camino de negocio).
+const {
+    registerIdentitySync,
+    unregisterIdentitySync
+} = require("./events/identitySync.upsert");
+
 const {
     iniciarWorkerEventos,
     detenerWorkerEventos
@@ -82,6 +92,7 @@ function conectar(socket, sessionId) {
         console.log("[BOT]", { listener: "eliminado", sesion: anterior });
 
         unregisterMessages(anterior);
+        unregisterIdentitySync(anterior);
         detenerWorkerEventos(anterior);
         detenerEscanerIdentidades(anterior);
         scheduler.stop(anterior);
@@ -94,6 +105,8 @@ function conectar(socket, sessionId) {
     console.log("[BOT]", { listener: "registrado", anterior: anterior || "(ninguno)", nuevo: sessionId });
 
     registerMessages(socket, sessionId);
+
+    registerIdentitySync(socket, sessionId);
 
     iniciarWorkerEventos(socket);
 
@@ -136,6 +149,7 @@ function detenerBot() {
     console.log("[BOT]", { listener: "detenido (sin sesión activa disponible)", sesion: sesionActual });
 
     unregisterMessages(sesionActual);
+    unregisterIdentitySync(sesionActual);
     detenerWorkerEventos(sesionActual);
     detenerEscanerIdentidades(sesionActual);
     scheduler.stop(sesionActual);

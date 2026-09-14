@@ -26,13 +26,26 @@ const {
 } = require("@whiskeysockets/baileys");
 
 const {
-    obtenerUsuarioGlobal,
-    normalizarIdentificadoresDesdeJid
-} = require("./obtenerUsuarioGlobal");
-
-const {
     groupMetadata: groupMetadataEncolado
 } = require("../../../services/baileys/groupQueue");
+
+// FASE 2 (IdentitySync) — motor ÚNICO de extracción, ver
+// identityScanner/index.js. Reemplaza la lectura de campos fijos
+// (participant.lid / .phoneNumber / .id) que tenía antes este archivo:
+// ahora recorre el participante COMPLETO (cualquier campo, cualquier
+// anidamiento) y ya no depende de que Baileys siga usando esos 3 nombres
+// de campo. "No crear una segunda implementación del scanner" — este
+// archivo deja de tener su propia extracción y pasa a ser un consumidor
+// más de identityScanner, igual que el escaneo en vivo de mensajes.
+const { escanearObjeto } = require("./identityScanner");
+
+// FASE 2 — el mismo IdentityResolver que usa el escaneo en vivo de
+// mensajes (identitySync). importarIdentidades() deja de llamar a
+// obtenerUsuarioGlobal() directamente y pasa por acá, para que el
+// escaneo de grupos TAMBIÉN se beneficie de la canonicalización de LID
+// (sección 6 — sufijo de dispositivo) con el mismo criterio único, en vez
+// de un segundo camino de resolución.
+const { resolverIdentidad } = require("./identityScanner/identityResolver");
 
 // ==========================================================================
 // Clasificación de un JID crudo (puede venir de participant.id,
@@ -56,17 +69,17 @@ function clasificarJid(jid) {
 
 // ==========================================================================
 // Extrae, de UN participante de grupo (forma Contact de Baileys: id, lid,
-// phoneNumber, name, notify, verifiedName...), el candidato de identidad.
+// phoneNumber, name, notify, verifiedName... — o cualquier otra forma que
+// Baileys use en el futuro), el candidato de identidad.
 //
-// No importa en qué campo llegó cada dato — se revisan todas las fuentes
-// disponibles y se normalizan con el mismo criterio que usa el resto del
-// sistema:
-//   - participant.lid          (ya viene en formato "...@lid")
-//   - participant.phoneNumber  (ya viene en formato "...@s.whatsapp.net")
-//   - participant.id           (respaldo: "preferido" según la doc de
-//                                Baileys, puede ser @lid o @s.whatsapp.net
-//                                según el modo de direccionamiento — se
-//                                clasifica antes de usarlo, NUNCA se asume)
+// FASE 2: ya no lee campos fijos por nombre — delega TODO el recorrido en
+// identityScanner (recorrerObjeto + normalizarCandidatos), que camina el
+// participante completo sin asumir en qué propiedad viene cada dato. Este
+// función solo decide, sobre los candidatos YA encontrados, cuál usar
+// (mismo criterio de "un participante = una persona" de siempre) y arma el
+// mismo shape { lid, telefono, nombre, fuente } que ya esperaban
+// reconciliarIdentidades()/importarIdentidades() — nadie más en este
+// archivo cambia.
 //
 // Nombre: se prioriza "notify" (el nombre que la propia persona configuró
 // en WhatsApp) sobre "name" (el nombre que el TELÉFONO DEL BOT tiene
@@ -76,32 +89,27 @@ function clasificarJid(jid) {
 // ==========================================================================
 function extraerCandidatoDeParticipante(participante, { grupoId } = {}) {
 
-    let lid = null;
-    let telefono = null;
+    const resultado = escanearObjeto(participante, {
+        fuenteBase: grupoId ? `grupo[${grupoId}].participante` : "participante"
+    });
 
-    // 1) Campos explícitos que Baileys ya separó por nosotros.
-    if (participante?.lid && clasificarJid(participante.lid) === "lid") {
+    if (resultado.lids.length > 1) {
 
-        lid = normalizarIdentificadoresDesdeJid(participante.lid).lid;
-
-    }
-
-    if (participante?.phoneNumber && clasificarJid(participante.phoneNumber) === "telefono") {
-
-        telefono = normalizarIdentificadoresDesdeJid(participante.phoneNumber).telefono;
+        console.warn(
+            `⚠️ [ESCÁNER IDENTIDADES] participante con ${resultado.lids.length} LIDs distintos (dato anómalo) — se usa el primero. Todos: ${resultado.lids.join(", ")}`
+        );
 
     }
 
-    // 2) Respaldo: participant.id ("preferido" según Baileys, pero puede
-    //    ser @lid O @s.whatsapp.net — se clasifica, nunca se asume).
-    if ((!lid || !telefono) && participante?.id) {
+    const lid = resultado.lids[0] || null;
 
-        const derivado = normalizarIdentificadoresDesdeJid(participante.id);
-
-        if (!lid && derivado.lid) lid = derivado.lid;
-        if (!telefono && derivado.telefono) telefono = derivado.telefono;
-
-    }
+    // Solo teléfonos con longitud/formato válido (ver normalizarCandidatos.js)
+    // — antes este archivo aceptaba cualquier cosa que quedara tras quitar
+    // el "57" inicial, sin validar longitud. Un candidato inválido no se
+    // descarta silenciosamente: sigue disponible en resultado.candidatos
+    // para quien quiera auditar, solo no se usa como teléfono de "usuarios".
+    const candidatoTelefono = resultado.candidatos.find(c => c.tipo === "phone" && c.valido);
+    const telefono = candidatoTelefono ? candidatoTelefono.valor : null;
 
     const nombre =
         participante?.notify ||
@@ -377,7 +385,8 @@ async function escanearIdentidades({ sock, grupos = null } = {}) {
 // automáticamente desde ningún punto del sistema: requiere una llamada
 // explícita, y solo debería ejecutarse después de revisar el DRY-RUN.
 //
-// Reutiliza obtenerUsuarioGlobal() — el mismo camino seguro que ya usan los
+// Reutiliza resolverIdentidad() (identityResolver.js) — que a su vez
+// reutiliza obtenerUsuarioGlobal(), el mismo camino seguro que ya usan los
 // mensajes reales (resuelve por LID/teléfono, nunca sobrescribe, detecta
 // colisión y no fusiona). El escáner NO inventa un segundo camino de
 // escritura a "usuarios".
@@ -386,22 +395,53 @@ async function importarIdentidades({ identidades }) {
 
     const resultados = [];
 
+    let nuevos = 0, enriquecidos = 0, conflictos = 0, errores = 0;
+
     for (const identidad of identidades) {
 
-        const usuario = await obtenerUsuarioGlobal({
+        try {
 
-            lid: identidad.lid,
-            telefono: identidad.telefono,
-            nombre: identidad.nombre,
-            fromMe: false
+            const r = await resolverIdentidad({
 
-        });
+                lids: identidad.lid ? [identidad.lid] : [],
+                telefonos: identidad.telefono ? [identidad.telefono] : [],
+                candidatos: identidad.telefono
+                    ? [{ tipo: "phone", valor: identidad.telefono, valido: true }]
+                    : [],
+                nombre: identidad.nombre,
+                fromMe: false
 
-        resultados.push({
-            entrada: identidad,
-            usuario,
-            importado: !!usuario
-        });
+            });
+
+            if (r.esNuevo) nuevos++;
+            else if (r.fueEnriquecido) enriquecidos++;
+            else if (r.conflicto) conflictos++;
+
+            resultados.push({
+                entrada: identidad,
+                usuario: r.usuario,
+                importado: !!r.usuario,
+                esNuevo: r.esNuevo,
+                fueEnriquecido: r.fueEnriquecido,
+                conflicto: r.conflicto
+            });
+
+        } catch (err) {
+
+            errores++;
+
+            console.error(`❌ [ESCÁNER IDENTIDADES] error resolviendo identidad (lid=${identidad.lid || "-"}, telefono=${identidad.telefono || "-"}):`, err?.message);
+
+            resultados.push({
+                entrada: identidad,
+                usuario: null,
+                importado: false,
+                esNuevo: false,
+                fueEnriquecido: false,
+                conflicto: false
+            });
+
+        }
 
     }
 
@@ -414,6 +454,10 @@ async function importarIdentidades({ identidades }) {
         total: resultados.length,
         importados,
         noImportados,
+        nuevos,
+        enriquecidos,
+        conflictos,
+        errores,
         resultados
     };
 
@@ -447,6 +491,28 @@ function formatearReporteTexto(resultado) {
 
 }
 
+// ==========================================================================
+// Reporte legible en consola para UN ciclo de IdentitySync (escaneo +
+// importación juntos) — formato pedido en la auditoría de identidad, Fase
+// 2, sección "Logs". Distinto de formatearReporteTexto() (que es solo el
+// DRY-RUN de extracción, sin import, y sus pruebas ya dependen del texto
+// exacto que produce hoy) — este es aditivo, no lo reemplaza.
+// ==========================================================================
+function formatearReporteIdentitySync({ alcance, participantes, encontrados, nuevos, enriquecidos, conflictos, errores }) {
+
+    return [
+        "🔎 IDENTITY SCAN",
+        `${alcance}`,
+        `Participantes: ${participantes}`,
+        `Encontrados: ${encontrados}`,
+        `Nuevos: ${nuevos}`,
+        `Enriquecidos: ${enriquecidos}`,
+        `Conflictos: ${conflictos}`,
+        `Errores: ${errores}`
+    ].join("\n");
+
+}
+
 module.exports = {
 
     // Orquestadores
@@ -461,6 +527,7 @@ module.exports = {
     reconciliarIdentidades,
     listarGruposActivos,
     escanearGrupoPuntual,
-    formatearReporteTexto
+    formatearReporteTexto,
+    formatearReporteIdentitySync
 
 };

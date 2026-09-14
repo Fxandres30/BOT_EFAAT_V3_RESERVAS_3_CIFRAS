@@ -20,6 +20,17 @@ const RUTA_SUPABASE =
 const RUTA_OBTENER_USUARIO_GLOBAL =
     path.resolve(__dirname, "../../bot/funciones/usuarios/obtenerUsuarioGlobal.js");
 
+// FASE 2 (IdentitySync): escanerIdentidades.js ahora pasa por
+// identityScanner/identityResolver.js para escribir en "usuarios" (en vez
+// de llamar a obtenerUsuarioGlobal directamente). Ese módulo guarda su
+// propia referencia a obtenerUsuarioGlobal.js al cargarse — si no se limpia
+// también de la caché de require en cada prueba, se queda pegado al PRIMER
+// fake de Supabase que se creó en todo el proceso, no al de la prueba
+// actual (mismo problema, mismo motivo, que RUTA_OBTENER_USUARIO_GLOBAL de
+// abajo).
+const RUTA_IDENTITY_RESOLVER =
+    path.resolve(__dirname, "../../bot/funciones/usuarios/identityScanner/identityResolver.js");
+
 const RUTA_ESCANER =
     path.resolve(__dirname, "../../bot/funciones/usuarios/escanerIdentidades.js");
 
@@ -38,6 +49,7 @@ function cargarModulos() {
     };
 
     delete require.cache[RUTA_OBTENER_USUARIO_GLOBAL];
+    delete require.cache[RUTA_IDENTITY_RESOLVER];
     delete require.cache[RUTA_ESCANER];
 
     const escaner = require(RUTA_ESCANER);
