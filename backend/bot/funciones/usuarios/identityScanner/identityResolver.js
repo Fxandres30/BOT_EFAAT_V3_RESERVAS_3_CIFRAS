@@ -138,7 +138,21 @@ function elegirTelefono(candidatos) {
 // hacer ante un fallo real de Supabase, esta función deja pasar el error
 // tal cual para que ese try/catch lo capture, ver identitySync).
 // ==========================================================================
-async function resolverIdentidad({ telefonos = [], lids = [], candidatos = [], nombre = null, fromMe = false }) {
+async function resolverIdentidad({
+
+    telefonos = [],
+    lids = [],
+    candidatos = [],
+    nombre = null,
+    fromMe = false,
+
+    // Propagados a obtenerUsuarioGlobal para registrar contactos_tenant
+    // (ver diagnóstico de arquitectura, 2026-09) — opcionales, sin efecto
+    // si el llamador no conoce el tenant todavía.
+    usuarioIdTenant = null,
+    origenContacto = null
+
+}) {
 
     if (fromMe || (telefonos.length === 0 && lids.length === 0)) {
 
@@ -181,7 +195,7 @@ async function resolverIdentidad({ telefonos = [], lids = [], candidatos = [], n
 
     }
 
-    const usuario = await obtenerUsuarioGlobal({ lid, telefono, nombre, fromMe: false });
+    const usuario = await obtenerUsuarioGlobal({ lid, telefono, nombre, fromMe: false, usuarioIdTenant, origenContacto });
 
     if (!usuario) {
 

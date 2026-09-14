@@ -750,6 +750,143 @@ async function ejecutarPruebas() {
 
     });
 
+    // ======================================================================
+    // CORRECCIÓN "kellyJ🥰" / compradores_semanales.whatsapp=null.
+    //
+    // CASO 12 — el cliente reservó siendo "solo LID" (contacto/telefono
+    // null en la fila) pero, para cuando llega el pago, su identidad en
+    // "usuarios" YA tiene teléfono (se resolvió por otra vía mientras
+    // tanto — enriquecimiento normal del sistema). marcarReservasPagadasPorAdmin
+    // debe rellenar contacto/telefono/nombre en la MISMA fila que pasa a
+    // pagado, usando la identidad ya resuelta — sin tocar ninguna otra
+    // columna ni bloquear el pago.
+    // ======================================================================
+
+    await test("CASO 12: cliente reservó solo-LID (contacto null) y ya tiene teléfono en 'usuarios' al pagar -> el pago rellena contacto/telefono/nombre", async () => {
+
+        const { fake, envios, confirmarPagoPorSticker } = cargarModulos();
+
+        sembrarStickerConfigurado(fake);
+
+        // Identidad YA enriquecida con teléfono para cuando llega el pago
+        // (el LID es el mismo con el que se citó al reservar).
+        fake.tabla("usuarios").push({
+            id: "cliente-lid-1",
+            telefono: "3009990000",
+            lid: "900001@lid",
+            nombre: "Kelly J"
+        });
+
+        fake.tabla("eventos_bot").push({
+            id: "evento-1",
+            grupo_id: GRUPO_ID,
+            tabla: "reservas_test_lid",
+            usuario_id: USUARIO_ID_TENANT,
+            activo: true,
+            cantidad_numeros: 100,
+            reservados: 0,
+            pagados: 0,
+            libres: 100
+        });
+
+        // Fila TAL COMO quedó al momento de la reserva: solo LID, sin
+        // contacto/telefono/nombre (el bug original).
+        fake.tabla("reservas_test_lid").push({
+            numero: "27",
+            estado: "reservado",
+            usuario_global_id: "cliente-lid-1",
+            usuario_id: USUARIO_ID_TENANT,
+            evento_id: "evento-1",
+            comprador: null,
+            contacto: null,
+            telefono: null,
+            nombre: null,
+            lid: "900001@lid"
+        });
+
+        const sock = crearFakeSock();
+        const msg = crearMensajeSticker({ remitenteJid: JID_ADMIN, quotedParticipant: "900001@lid" });
+        const ctx = crearCtx({ sock, message: msg });
+
+        await confirmarPagoPorSticker(ctx);
+
+        const fila = filasDe(fake, "reservas_test_lid").find(f => f.numero === "27");
+
+        assert.strictEqual(fila.estado, "pagado", "el pago debe confirmarse igual, sin bloquearse por el refresco de identidad");
+        assert.strictEqual(fila.contacto, "3009990000", "contacto debe rellenarse con el teléfono ya resuelto");
+        assert.strictEqual(fila.telefono, "3009990000", "telefono debe rellenarse igual que contacto");
+        assert.strictEqual(fila.comprador, "Kelly J", "comprador debe rellenarse con el nombre ya resuelto");
+        assert.strictEqual(fila.nombre, "Kelly J");
+        assert.strictEqual(fila.lid, "900001@lid", "el lid ya presente no debe tocarse (sigue siendo el mismo valor)");
+
+        // El trigger externo a este repo (ver supabase_migrations/016_...)
+        // es quien copia esto a compradores_semanales.whatsapp — desde este
+        // repo solo se puede garantizar que la fila fuente ya NO llega null.
+        assert.strictEqual(envios.length, 0, "sigue sin enviar nada a WhatsApp (regla de silencio intacta)");
+
+    });
+
+    // ======================================================================
+    // CASO 13 — el cliente sigue siendo "solo LID" (nunca se resolvió
+    // teléfono, ni al reservar ni al pagar): el pago debe confirmarse
+    // exactamente igual, SIN inventar ningún número y SIN dejar contacto/
+    // telefono con un valor falso — deben quedar tal cual estaban (null).
+    // ======================================================================
+
+    await test("CASO 13: cliente sigue solo-LID (sin teléfono en 'usuarios') -> el pago se confirma igual, sin inventar ningún número", async () => {
+
+        const { fake, envios, confirmarPagoPorSticker } = cargarModulos();
+
+        sembrarStickerConfigurado(fake);
+
+        fake.tabla("usuarios").push({
+            id: "cliente-lid-2",
+            telefono: null,
+            lid: "900002@lid",
+            nombre: "Solo Lid"
+        });
+
+        fake.tabla("eventos_bot").push({
+            id: "evento-1",
+            grupo_id: GRUPO_ID,
+            tabla: "reservas_test_lid2",
+            usuario_id: USUARIO_ID_TENANT,
+            activo: true,
+            cantidad_numeros: 100,
+            reservados: 0,
+            pagados: 0,
+            libres: 100
+        });
+
+        fake.tabla("reservas_test_lid2").push({
+            numero: "45",
+            estado: "reservado",
+            usuario_global_id: "cliente-lid-2",
+            usuario_id: USUARIO_ID_TENANT,
+            evento_id: "evento-1",
+            comprador: null,
+            contacto: null,
+            telefono: null,
+            nombre: null,
+            lid: "900002@lid"
+        });
+
+        const sock = crearFakeSock();
+        const msg = crearMensajeSticker({ remitenteJid: JID_ADMIN, quotedParticipant: "900002@lid" });
+        const ctx = crearCtx({ sock, message: msg });
+
+        await confirmarPagoPorSticker(ctx);
+
+        const fila = filasDe(fake, "reservas_test_lid2").find(f => f.numero === "45");
+
+        assert.strictEqual(fila.estado, "pagado", "el pago NUNCA debe bloquearse por no poder resolver el teléfono");
+        assert.strictEqual(fila.contacto, null, "no debe inventarse ningún número");
+        assert.strictEqual(fila.telefono, null, "no debe inventarse ningún número");
+        assert.strictEqual(fila.comprador, "Solo Lid", "el nombre sí estaba disponible y debe rellenarse");
+        assert.strictEqual(envios.length, 0);
+
+    });
+
     const fallidas = resultados.filter(r => !r.ok);
 
     console.log("\n============================================");

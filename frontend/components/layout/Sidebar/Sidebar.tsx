@@ -7,7 +7,7 @@ import {
   Smartphone,
   Ticket,
   MessageSquareText,
-  MessageCircle,
+  Users,
   Target,
   Bot,
   ScanLine,
@@ -33,14 +33,17 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-// Mismas rutas y etiquetas que antes — solo cambia la presentación del
-// icono (emoji -> Lucide). No se añaden ni se quitan destinos.
+// Mismas rutas y etiquetas que antes, salvo "Chats" -> "Contactos": pasa a
+// ser el directorio central de usuarios (identidad + reservas + pagos +
+// actividad), reemplazando a /chats como pantalla principal. /chats sigue
+// existiendo (mensajes por grupo, solo lectura) — ya no está en la
+// navegación principal, pero no se eliminó ninguna funcionalidad.
 const NAV: NavItem[] = [
   { href: "/sesiones", label: "Sesiones", icon: Smartphone },
   { href: "/tablas", label: "Reservas", icon: Ticket },
   { href: "/mensajes", label: "Mensajes", icon: MessageSquareText },
   { href: "/variables-globales", label: "Variables globales", icon: Puzzle },
-  { href: "/chats", label: "Chats", icon: MessageCircle },
+  { href: "/contactos", label: "Contactos", icon: Users },
   { href: "/eventos", label: "Eventos", icon: Target },
   { href: "/automatizacion", label: "Automatización", icon: Bot },
   { href: "/lector-pagos", label: "Lector de pagos", icon: ScanLine },

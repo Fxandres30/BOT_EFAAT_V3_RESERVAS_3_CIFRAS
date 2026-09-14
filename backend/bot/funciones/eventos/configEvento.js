@@ -59,6 +59,18 @@ function obtenerConfiguracion(valor) {
 
 }
 
+// Nombres únicos de TODAS las tablas físicas de reservas conocidas (varios
+// precios comparten la misma tabla física — ver CONFIG_EVENTOS arriba).
+// Única fuente de verdad para "qué tablas dinámicas existen" — quien
+// necesite recorrerlas todas (p. ej. contactos.js, para agregar reservas
+// por cliente) debe usar esto en vez de hardcodear la lista aparte.
+function obtenerTablasConocidas() {
+
+    return [...new Set(Object.values(CONFIG_EVENTOS).map(c => c.tabla))];
+
+}
+
 module.exports = {
-    obtenerConfiguracion
+    obtenerConfiguracion,
+    obtenerTablasConocidas
 };

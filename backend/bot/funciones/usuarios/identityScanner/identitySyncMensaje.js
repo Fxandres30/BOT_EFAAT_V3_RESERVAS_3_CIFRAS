@@ -104,6 +104,14 @@ async function sincronizarDesdeMensaje({ sock, message }) {
 
     const identidadBot = sock ? extraerIdentidadDelBot(sock) : null;
 
+    // Tenant real de ESTA sesión (nunca inventado) — ver services/baileys/
+    // socket.js::createSocket, que arma sock.context.usuarioId a partir de
+    // sesiones.usuario_id al conectar. Si falta (p. ej. sock no lo trae en
+    // algún camino de pruebas), simplemente no se registra la relación
+    // tenant/contacto — la resolución de identidad real en "usuarios" sigue
+    // funcionando exactamente igual.
+    const usuarioIdTenant = sock?.context?.usuarioId || null;
+
     // ---- ROL 1: remitente real del mensaje ----
     // Se recorre SOLO `key` (más `participant`/`sender` de nivel superior,
     // que algunas formas de Baileys usan como respaldo — ver
@@ -129,7 +137,9 @@ async function sincronizarDesdeMensaje({ sock, message }) {
                 lids: resultado.lids,
                 candidatos: resultado.candidatos,
                 nombre: message.pushName || null,
-                fromMe: false
+                fromMe: false,
+                usuarioIdTenant,
+                origenContacto: "mensaje"
 
             });
 
@@ -188,7 +198,9 @@ async function sincronizarDesdeMensaje({ sock, message }) {
                     lids: resultado.lids,
                     candidatos: resultado.candidatos,
                     nombre: null, // no hay pushName del autor citado
-                    fromMe: false
+                    fromMe: false,
+                    usuarioIdTenant,
+                    origenContacto: "mensaje"
 
                 });
 

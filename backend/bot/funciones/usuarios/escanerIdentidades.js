@@ -381,17 +381,24 @@ async function escanearIdentidades({ sock, grupos = null } = {}) {
 }
 
 // ==========================================================================
-// MODO B — IMPORTACIÓN REAL. Implementado y probado, pero NO se invoca
-// automáticamente desde ningún punto del sistema: requiere una llamada
-// explícita, y solo debería ejecutarse después de revisar el DRY-RUN.
+// MODO B — IMPORTACIÓN REAL. La invoca escanerIdentidadesLifecycle.js
+// (escaneo completo al conectar/reconectar + periódico, y escaneo
+// incremental por grupo) — no es un modo manual/desconectado, es el camino
+// real que puebla "usuarios" a partir de los participantes de grupo.
 //
 // Reutiliza resolverIdentidad() (identityResolver.js) — que a su vez
 // reutiliza obtenerUsuarioGlobal(), el mismo camino seguro que ya usan los
 // mensajes reales (resuelve por LID/teléfono, nunca sobrescribe, detecta
 // colisión y no fusiona). El escáner NO inventa un segundo camino de
 // escritura a "usuarios".
+//
+// `usuarioIdTenant` (opcional) — propagado por escanerIdentidadesLifecycle.js
+// desde sock.context.usuarioId — registra, además, la relación tenant/
+// contacto en contactos_tenant (ver obtenerUsuarioGlobal.js
+// ::registrarContactoTenant). Sin este parámetro, se comporta exactamente
+// igual que antes: solo resuelve/crea en "usuarios".
 // ==========================================================================
-async function importarIdentidades({ identidades }) {
+async function importarIdentidades({ identidades, usuarioIdTenant = null }) {
 
     const resultados = [];
 
@@ -409,7 +416,9 @@ async function importarIdentidades({ identidades }) {
                     ? [{ tipo: "phone", valor: identidad.telefono, valido: true }]
                     : [],
                 nombre: identidad.nombre,
-                fromMe: false
+                fromMe: false,
+                usuarioIdTenant,
+                origenContacto: "escaneo_grupo"
 
             });
 

@@ -27,3 +27,12 @@ export const TABLAS_CONFIG: Record<number, TablaConfig> = {
 export function obtenerTablaConfig(precio: number): TablaConfig | null {
     return TABLAS_CONFIG[precio] || null;
 }
+
+// Nombres únicos de todas las tablas físicas conocidas (varios precios
+// comparten la misma tabla — ver TABLAS_CONFIG arriba). Espejo de
+// backend/bot/funciones/eventos/configEvento.js::obtenerTablasConocidas —
+// usado por hooks/useContactos.ts para suscribirse a cambios en todas las
+// tablas dinámicas sin repetir la lista aparte.
+export function obtenerTablasConocidas(): string[] {
+    return [...new Set(Object.values(TABLAS_CONFIG).map((c) => c.tabla))];
+}

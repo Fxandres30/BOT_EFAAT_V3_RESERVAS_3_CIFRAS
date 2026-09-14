@@ -126,11 +126,11 @@ function ctxGrupoFromMe({ id = "MSG1" } = {}) {
 
 }
 
-function ctxGrupoReal({ participant, pushName = null, id = "MSG1" }) {
+function ctxGrupoReal({ participant, participantAlt = null, pushName = null, id = "MSG1" }) {
 
     return {
         message: {
-            key: { fromMe: false, participant, remoteJid: "grupo1@g.us", id },
+            key: { fromMe: false, participant, participantAlt, remoteJid: "grupo1@g.us", id },
             pushName
         },
         chat: { participante: participant, remoteJid: "grupo1@g.us" }
@@ -500,6 +500,62 @@ async function main() {
         assert.ok(fila);
         assert.strictEqual(fila.usuario_id, usuario.id);
         assert.strictEqual(fila.telefono, "3007001111");
+
+    });
+
+    // ======================================================================
+    // 11-C-2 (CORRECCIÓN "kellyJ🥰" / compradores_semanales.whatsapp=null).
+    // Caso LID + PN: el remitente llega con "participant" en formato @lid
+    // (direccionamiento LID) Y "participantAlt" con el teléfono real del
+    // MISMO remitente (el otro lado del par, tal como lo entrega Baileys
+    // 7.x cuando conoce ambos) — ANTES, la cadena `||` original se quedaba
+    // con "participant" y nunca miraba "participantAlt": el usuario se
+    // creaba solo-LID, sin teléfono, aunque estuviera ahí mismo en el
+    // mensaje. Ahora ambos deben capturarse.
+    // ======================================================================
+    await test("11-C-2. Mensaje con participant=LID + participantAlt=teléfono (mismo remitente) -> el teléfono NO se descarta", async () => {
+
+        const { fake, obtenerUsuario } = cargarModulos();
+
+        const ctx = ctxGrupoReal({
+            participant: "800@lid",
+            participantAlt: "3008001111@s.whatsapp.net",
+            pushName: "Cliente LID+PN"
+        });
+
+        const usuario = await obtenerUsuario(ctx);
+
+        assert.ok(usuario, "debe resolver una identidad");
+        assert.strictEqual(usuario.lid, "800@lid", "el LID de participant debe quedar guardado");
+        assert.strictEqual(usuario.telefono, "3008001111", "el teléfono de participantAlt NO debe descartarse solo por venir en segundo lugar");
+        assert.strictEqual(fake.tablas.usuarios.length, 1, "debe ser una única identidad (LID+teléfono de la misma persona)");
+
+    });
+
+    // ======================================================================
+    // 11-C-3 (mismo pedido: "ambos casos, LID+PN y LID sin teléfono").
+    // Caso LID SIN participantAlt (ni ningún otro teléfono en el mensaje):
+    // debe seguir resolviendo la identidad por LID, con teléfono null, sin
+    // bloquear nada — mismo comportamiento que 11-B, dejado explícito aquí
+    // junto al caso 11-C-2 para que ambos casos pedidos queden uno al lado
+    // del otro y sea evidente que no se rompió el caso "solo LID".
+    // ======================================================================
+    await test("11-C-3. Mensaje con participant=LID y SIN participantAlt -> identidad se resuelve solo-LID, sin teléfono, sin bloquear nada", async () => {
+
+        const { fake, obtenerUsuario } = cargarModulos();
+
+        const ctx = ctxGrupoReal({
+            participant: "801@lid",
+            participantAlt: null,
+            pushName: "Cliente Solo LID"
+        });
+
+        const usuario = await obtenerUsuario(ctx);
+
+        assert.ok(usuario, "debe resolver una identidad aunque no haya teléfono");
+        assert.strictEqual(usuario.lid, "801@lid");
+        assert.strictEqual(usuario.telefono, null, "sin participantAlt ni otro teléfono, no debe inventarse ninguno");
+        assert.strictEqual(fake.tablas.usuarios.length, 1);
 
     });
 

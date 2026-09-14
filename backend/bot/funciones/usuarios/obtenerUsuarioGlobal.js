@@ -71,6 +71,100 @@ function esErrorDeColisionUnica(error) {
 
 }
 
+// ==========================================================================
+// registrarContactoTenant({ usuarioIdTenant, usuarioGlobalId, origen })
+// ==========================================================================
+// Escribe/actualiza la relación tenant<->contacto en "contactos_tenant"
+// (migración 018_contactos_tenant.sql — ver diagnóstico de arquitectura,
+// 2026-09: "usuarios" es GLOBAL, sin usuario_id de tenant; esta tabla es la
+// única forma correcta de saber "este usuarios.id es conocido por este
+// tenant", sin inventar ninguna columna nueva en "usuarios").
+//
+// SOLO se invoca cuando el llamador pasa `usuarioIdTenant` explícito — si
+// no viene (la inmensa mayoría de los usos históricos de
+// obtenerUsuarioGlobal, p. ej. scripts internos o pruebas que no conocen el
+// tenant), esta función ni se llama: el comportamiento de "usuarios" queda
+// exactamente igual que antes, sin ningún efecto secundario nuevo.
+//
+// Selección-then-branch explícita (no upsert de Postgres) para poder
+// controlar con precisión qué columna se toca en cada caso:
+//   - No existía la relación -> INSERT (primer_visto_en usa su DEFAULT
+//     now(), origen se guarda tal cual llegó).
+//   - Ya existía -> UPDATE SOLO de ultimo_visto_en. primer_visto_en y
+//     origen NUNCA se tocan en una fila ya existente (se conserva el
+//     primer origen/fecha con el que se descubrió, pedido explícito).
+//
+// Best-effort y nunca lanza: un fallo aquí (p. ej. la migración 018
+// todavía no se aplicó en Supabase y la tabla no existe) NUNCA debe romper
+// la resolución de identidad real en "usuarios", que sigue siendo la
+// fuente de verdad con o sin esta relación.
+// ==========================================================================
+async function registrarContactoTenant({ usuarioIdTenant, usuarioGlobalId, origen = null }) {
+
+    if (!usuarioIdTenant || !usuarioGlobalId) return;
+
+    try {
+
+        const { data: existente, error: errorSelect } = await supabase
+            .from("contactos_tenant")
+            .select("usuario_id")
+            .eq("usuario_id", usuarioIdTenant)
+            .eq("usuario_global_id", usuarioGlobalId)
+            .maybeSingle();
+
+        if (errorSelect) {
+
+            console.error("❌ [CONTACTOS_TENANT] error consultando relación tenant/contacto:", errorSelect.message);
+            return;
+
+        }
+
+        if (existente) {
+
+            const { error: errorUpdate } = await supabase
+                .from("contactos_tenant")
+                .update({ ultimo_visto_en: new Date() })
+                .eq("usuario_id", usuarioIdTenant)
+                .eq("usuario_global_id", usuarioGlobalId);
+
+            if (errorUpdate) {
+                console.error("❌ [CONTACTOS_TENANT] error actualizando ultimo_visto_en:", errorUpdate.message);
+            }
+
+            return;
+
+        }
+
+        const ahora = new Date();
+
+        const { error: errorInsert } = await supabase
+            .from("contactos_tenant")
+            .insert({
+                usuario_id: usuarioIdTenant,
+                usuario_global_id: usuarioGlobalId,
+                primer_visto_en: ahora,
+                ultimo_visto_en: ahora,
+                origen
+            });
+
+        if (errorInsert && !esErrorDeColisionUnica(errorInsert)) {
+
+            // 23505 aquí == dos resoluciones casi simultáneas del mismo
+            // contacto para el mismo tenant (p. ej. dos mensajes seguidos
+            // antes de que el primer INSERT confirmara) — la otra ganó la
+            // carrera, la relación ya quedó registrada; no es un error real.
+            console.error("❌ [CONTACTOS_TENANT] error insertando relación tenant/contacto:", errorInsert.message);
+
+        }
+
+    } catch (err) {
+
+        console.error("❌ [CONTACTOS_TENANT] error inesperado registrando relación tenant/contacto:", err?.message);
+
+    }
+
+}
+
 // Registra una contingencia de identidad de forma clara y estructurada.
 // Se invoca siempre como `module.exports.registrarContingenciaIdentidad(...)`
 // desde dentro de este archivo para que las pruebas puedan interceptarla
@@ -216,7 +310,14 @@ async function obtenerUsuarioGlobal({
     telefono = null,
     lid = null,
     nombre = null,
-    fromMe = false
+    fromMe = false,
+
+    // Opcionales — solo para registrar la relación tenant/contacto (ver
+    // registrarContactoTenant arriba). Ningún llamador está OBLIGADO a
+    // pasarlos; si faltan, esta función se comporta exactamente igual que
+    // antes de que existiera contactos_tenant.
+    usuarioIdTenant = null,
+    origenContacto = null
 
 }) {
 
@@ -353,6 +454,8 @@ async function obtenerUsuarioGlobal({
 
         }
 
+        await registrarContactoTenant({ usuarioIdTenant, usuarioGlobalId: usuario.id, origen: origenContacto });
+
         return usuario;
 
     }
@@ -394,6 +497,8 @@ async function obtenerUsuarioGlobal({
 
             if (!recuperado.conflicto && recuperado.usuario) {
 
+                await registrarContactoTenant({ usuarioIdTenant, usuarioGlobalId: recuperado.usuario.id, origen: origenContacto });
+
                 return recuperado.usuario;
 
             }
@@ -406,6 +511,8 @@ async function obtenerUsuarioGlobal({
         return null;
 
     }
+
+    await registrarContactoTenant({ usuarioIdTenant, usuarioGlobalId: nuevo.id, origen: origenContacto });
 
     return nuevo;
 
@@ -469,6 +576,11 @@ module.exports = {
 
     // Único criterio de "esta fila de reserva es de este usuario" — ver
     // documentación arriba.
-    reservaPerteneceAUsuario
+    reservaPerteneceAUsuario,
+
+    // Relación tenant/contacto (contactos_tenant) — exportado para pruebas
+    // e instrumentación. Normalmente se invoca solo indirectamente, desde
+    // dentro de obtenerUsuarioGlobal.
+    registrarContactoTenant
 
 };

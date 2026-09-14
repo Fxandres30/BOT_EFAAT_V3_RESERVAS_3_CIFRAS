@@ -26,6 +26,61 @@
 
 const supabase = require("../../../lib/supabase");
 
+// ==========================================================================
+// CORRECCIÓN (auditoría "kellyJ🥰" / compradores_semanales.whatsapp=null,
+// 2026-09): esta función SOLO actualizaba estado/fecha_pago/hora_pago —
+// nunca refrescaba contacto/telefono/nombre/lid de la fila, aunque
+// `usuario` (la identidad YA resuelta, ver confirmarPagoPorSticker.js) haya
+// llegado con datos que la fila no tenía al momento de la reserva (p. ej.
+// un cliente que reservó siendo "solo LID" y luego, antes del pago, su
+// teléfono ya quedó asociado en "usuarios" por otra vía). Un TRIGGER de
+// Postgres (fuera de este repo, ver supabase_migrations/
+// 016_permisos_compradores_semanales.sql) copia estas columnas a
+// compradores_semanales exactamente cuando estado pasa a 'pagado' — si la
+// fila seguía con contacto=null, el trigger escribía whatsapp=null aunque
+// ya existiera un teléfono real para ese usuario.
+//
+// calcularCamposIdentidadARellenar() decide qué columnas puede completar
+// este pago SIN sobrescribir NADA ya guardado: mismo criterio que
+// obtenerUsuarioGlobal.js ("un campo ya asignado nunca se sobrescribe con
+// un valor distinto, solo se completa si está vacío"), aplicado aquí sobre
+// TODAS las filas que se van a marcar pagadas a la vez (mismo cliente,
+// mismo evento). Si `usuario` no trae teléfono (identidad "solo LID" que
+// nunca se resolvió), simplemente no se agrega ninguna columna — el pago
+// se confirma exactamente igual, sin inventar ni bloquear nada.
+// ==========================================================================
+function calcularCamposIdentidadARellenar(filasExistentes, usuario) {
+
+    function puedeRellenar(campo, valorNuevo) {
+
+        if (!valorNuevo) return false;
+
+        // Ninguna de las filas que se van a marcar pagadas puede tener YA
+        // un valor DISTINTO (no vacío) para este campo — si alguna lo
+        // tiene, no se toca ninguna (mejor no arriesgar un dato mezclado
+        // que forzar un refresco parcial).
+        return filasExistentes.every(f => !f[campo] || f[campo] === valorNuevo);
+
+    }
+
+    const campos = {};
+
+    // Teléfono: se guarda duplicado en dos columnas históricas de la tabla
+    // dinámica (ver reservarNumeros.js) — se completan ambas si se puede,
+    // porque no está confirmado cuál de las dos lee el trigger externo.
+    if (puedeRellenar("contacto", usuario.telefono)) campos.contacto = usuario.telefono;
+    if (puedeRellenar("telefono", usuario.telefono)) campos.telefono = usuario.telefono;
+
+    // Nombre: mismo caso, duplicado en "comprador" y "nombre".
+    if (puedeRellenar("comprador", usuario.nombre)) campos.comprador = usuario.nombre;
+    if (puedeRellenar("nombre", usuario.nombre)) campos.nombre = usuario.nombre;
+
+    if (puedeRellenar("lid", usuario.lid)) campos.lid = usuario.lid;
+
+    return campos;
+
+}
+
 async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) {
 
     if (!evento?.tabla || !evento?.id || !usuario?.id) {
@@ -51,9 +106,13 @@ async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) 
     // la reserva sin importar en qué grupo del mismo sorteo real se hizo. Si
     // el evento todavía no trae esta identidad (dato histórico previo a esta
     // migración), se mantiene el comportamiento anterior (por evento_id).
+    // Se piden también contacto/telefono/comprador/nombre/lid (no solo
+    // numero/estado): calcularCamposIdentidadARellenar() los necesita para
+    // decidir qué puede completar sin sobrescribir nada — mismo SELECT,
+    // sin ninguna consulta adicional a Supabase.
     let querySelect = supabase
         .from(evento.tabla)
-        .select("numero, estado")
+        .select("numero, estado, contacto, telefono, comprador, nombre, lid")
         .eq("usuario_global_id", usuario.id);
 
     querySelect = evento.identidad_evento_real
@@ -122,13 +181,23 @@ async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) 
         timeZone: "America/Bogota"
     });
 
+    // Solo las filas que de verdad van a pasar a 'pagado' (estado==='reservado'
+    // en la lectura de arriba) deciden qué columnas de identidad se pueden
+    // completar — una fila ya 'pagado' de un ciclo anterior no debe impedir
+    // (ni condicionar) el refresco de las que sí se están pagando ahora.
+    const filasAPagar = filas.filter(f => f.estado === "reservado");
+
+    const camposIdentidad = calcularCamposIdentidadARellenar(filasAPagar, usuario);
+
     let queryUpdate = supabase
         .from(evento.tabla)
         .update({
 
             estado: "pagado",
             fecha_pago: fechaPago,
-            hora_pago: horaPago
+            hora_pago: horaPago,
+
+            ...camposIdentidad
 
         })
         .eq("usuario_global_id", usuario.id)

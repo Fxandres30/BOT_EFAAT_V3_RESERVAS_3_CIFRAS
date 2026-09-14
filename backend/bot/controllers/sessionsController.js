@@ -15,6 +15,10 @@ const {
 } = require("../funciones/usuarios/identityScanner/diagnosticoTelefonosLid");
 
 const {
+    escanearTodosLosGrupos
+} = require("../funciones/usuarios/escanerIdentidadesLifecycle");
+
+const {
     groupFetchAllParticipating
 } = require("../../services/baileys/groupQueue");
 
@@ -329,6 +333,88 @@ async function diagnosticoTelefonosLid(req, res) {
 }
 
 // ==========================================================================
+// backfillContactos(req, res) — dispara AHORA el escaneo completo real de
+// identidades (Identity Scanner + import) para la sesión activa, en vez de
+// esperar al escaneo periódico (cada 6h) o al próximo reinicio del bot.
+//
+// NO es un mecanismo nuevo: reutiliza tal cual
+// escanerIdentidadesLifecycle.js::escanearTodosLosGrupos(sessionId, sock)
+// — la MISMA función que ya corre automáticamente al conectar cada sesión
+// y cada 6 horas (ver iniciarEscanerIdentidades). Esta ruta solo la
+// dispara manualmente sobre la sesión activa AHORA MISMO. No se reimplementa
+// ninguna extracción/resolución de identidad aquí.
+//
+// SÍ escribe en Supabase (a diferencia de escanerIdentidadesDryRun de
+// arriba): resuelve/crea filas reales en "usuarios" (vía
+// obtenerUsuarioGlobal, con las mismas garantías de siempre: nunca
+// sobrescribe, nunca duplica, detecta conflicto) y, ahora que existe
+// contactos_tenant (migración 018, pendiente de aplicar en Supabase),
+// registra la relación tenant/contacto usando sock.context.usuarioId —
+// nunca un tenant inventado. Si la migración 018 todavía no se aplicó,
+// registrarContactoTenant() falla en silencio (solo loguea) y la
+// resolución de identidad en "usuarios" sigue funcionando igual — ver su
+// cabecera en obtenerUsuarioGlobal.js.
+// ==========================================================================
+async function backfillContactos(req, res) {
+
+    try {
+
+        const sessionId = manager.getActiveSession();
+        const sock = manager.getActiveSocket();
+
+        if (!sock || !sessionId) {
+
+            return res.status(409).json({
+                success: false,
+                error: "No hay una sesión activa conectada (manager.getActiveSocket() es null)."
+            });
+
+        }
+
+        const resultado = await escanearTodosLosGrupos(sessionId, sock);
+
+        if (!resultado) {
+
+            return res.status(409).json({
+                success: false,
+                error: "El escaneo no se ejecutó (sesión no vigente o ya había un escaneo completo en curso). Revisa los logs del bot."
+            });
+
+        }
+
+        res.json({
+
+            success: true,
+            sessionId,
+            usuarioIdTenant: sock.context?.usuarioId || null,
+
+            estadisticas: resultado.resultado.estadisticas,
+
+            importado: {
+                nuevos: resultado.resultadoImport.nuevos,
+                enriquecidos: resultado.resultadoImport.enriquecidos,
+                conflictos: resultado.resultadoImport.conflictos,
+                errores: resultado.resultadoImport.errores,
+                total: resultado.resultadoImport.total
+            }
+
+        });
+
+    } catch (error) {
+
+        console.error("❌ Error en backfillContactos");
+        console.error(error);
+
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+
+    }
+
+}
+
+// ==========================================================================
 // gruposDisponibles(req, res) — Fase 4D (panel de Automatización, "+
 // Autorizar grupo").
 //
@@ -399,6 +485,7 @@ module.exports = {
 
     escanerIdentidadesDryRun,
     diagnosticoTelefonosLid,
+    backfillContactos,
     gruposDisponibles
 
 };

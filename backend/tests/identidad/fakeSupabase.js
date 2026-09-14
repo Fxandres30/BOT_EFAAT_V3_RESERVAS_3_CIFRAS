@@ -68,10 +68,12 @@ function crearFakeSupabase() {
         const filtrosIn = [];
         const filtrosOr = []; // grupo de condiciones "campo.eq.valor" (sintaxis PostgREST)
         const filtrosLike = [];
+        const filtrosNot = []; // solo soporta .not(campo, "is", null) -- el único uso real hoy
         let limiteN = null;
         let ordenCampo = null;
         let ordenAsc = true;
         let soloUnaFila = false;
+        let exigirUnaFila = false; // .single() -- a diferencia de maybeSingle, 0 filas también es error
         let pedirCount = false;
 
         const builder = {
@@ -121,6 +123,13 @@ function crearFakeSupabase() {
 
             },
 
+            not(campo, operador, valor) {
+
+                filtrosNot.push([campo, operador, valor]);
+                return builder;
+
+            },
+
             like(campo, patron) {
 
                 // SQL LIKE: "%" = cualquier secuencia de caracteres. Se
@@ -165,9 +174,12 @@ function crearFakeSupabase() {
 
             single() {
 
-                // No cambia la ejecución en este fake: insert siempre
-                // devuelve la fila única, y select+single no se usa hoy en
-                // el código bajo prueba salvo tras insert.
+                // A diferencia de maybeSingle(), 0 filas TAMBIÉN es error
+                // (mismo comportamiento real de supabase-js) -- importante
+                // para .update(...).select().single(), donde 0 filas
+                // actualizadas significa "no coincidió ninguna fila".
+                soloUnaFila = true;
+                exigirUnaFila = true;
                 return builder;
 
             },
@@ -212,6 +224,7 @@ function crearFakeSupabase() {
                     filtrosNeq.every(([c, v]) => fila[c] !== v) &&
                     filtrosIn.every(([c, vs]) => vs.includes(fila[c])) &&
                     filtrosLike.every(([c, regex]) => fila[c] != null && regex.test(String(fila[c]))) &&
+                    filtrosNot.every(([c, op, v]) => op === "is" && v === null ? fila[c] != null : true) &&
                     (filtrosOr.length === 0 || filtrosOr.some(({ campo, operador, valor }) =>
                         operador === "eq" && fila[campo] != null && String(fila[campo]) === String(valor)
                     ))
@@ -241,6 +254,10 @@ function crearFakeSupabase() {
 
                     if (resultado.length > 1) {
                         return { data: null, error: { code: "PGRST116", message: "more than one row returned" } };
+                    }
+
+                    if (resultado.length === 0 && exigirUnaFila) {
+                        return { data: null, error: { code: "PGRST116", message: "no rows returned" } };
                     }
 
                     return { data: resultado[0] || null, error: null, count: pedirCount ? totalAntesDeLimite : null };
@@ -295,7 +312,8 @@ function crearFakeSupabase() {
                     const coincide =
                         filtrosEq.every(([c, v]) => lista[i][c] === v) &&
                         filtrosNeq.every(([c, v]) => lista[i][c] !== v) &&
-                        filtrosIn.every(([c, vs]) => vs.includes(lista[i][c]));
+                        filtrosIn.every(([c, vs]) => vs.includes(lista[i][c])) &&
+                        filtrosNot.every(([c, op, v]) => op === "is" && v === null ? lista[i][c] != null : true);
 
                     if (coincide) {
 
@@ -303,6 +321,22 @@ function crearFakeSupabase() {
                         actualizadas.push(lista[i]);
 
                     }
+
+                }
+
+                // .single()/.maybeSingle() después de .update(...).select():
+                // colapsa el arreglo a UN objeto, igual que supabase-js real.
+                if (soloUnaFila) {
+
+                    if (actualizadas.length > 1) {
+                        return { data: null, error: { code: "PGRST116", message: "more than one row returned" } };
+                    }
+
+                    if (actualizadas.length === 0 && exigirUnaFila) {
+                        return { data: null, error: { code: "PGRST116", message: "no rows returned" } };
+                    }
+
+                    return { data: actualizadas[0] || null, error: null };
 
                 }
 

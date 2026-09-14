@@ -1,0 +1,287 @@
+.perfil-contacto {
+
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+
+}
+
+.perfil-header {
+
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+
+}
+
+.perfil-avatar {
+
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    border-radius: 50%;
+    background: #2563eb;
+    color: #fff;
+    font-weight: 700;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+}
+
+.perfil-nombre {
+
+    font-size: 18px;
+    font-weight: 700;
+    color: #111827;
+    margin: 0 0 6px;
+
+}
+
+.perfil-identificadores {
+
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+
+}
+
+.perfil-badge {
+
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #334155;
+    border: none;
+    cursor: default;
+
+}
+
+.perfil-badge--telefono {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.perfil-badge--lid {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+.perfil-badge--pendiente {
+    background: #fef3c7;
+    color: #92400e;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.perfil-badge--pendiente:hover {
+    background: #fde68a;
+}
+
+.perfil-form-telefono {
+
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 10px 12px;
+
+}
+
+.perfil-form-telefono input {
+
+    flex: 1;
+    min-width: 160px;
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 14px;
+
+}
+
+.perfil-form-telefono button {
+
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: none;
+    background: #2563eb;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+
+}
+
+.perfil-form-telefono button:disabled {
+    opacity: .6;
+    cursor: default;
+}
+
+.perfil-form-cancelar {
+
+    background: transparent !important;
+    color: #64748b !important;
+
+}
+
+.perfil-error {
+
+    width: 100%;
+    color: #b91c1c;
+    font-size: 12px;
+    margin: 4px 0 0;
+
+}
+
+.perfil-seccion h3 {
+
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    margin: 0 0 8px;
+
+}
+
+.perfil-datos {
+
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 12px;
+    font-size: 13px;
+    margin: 0;
+
+}
+
+.perfil-datos dt {
+    color: #94a3b8;
+}
+
+.perfil-datos dd {
+    margin: 0;
+    color: #111827;
+}
+
+.perfil-vacio {
+
+    color: #94a3b8;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+}
+
+.perfil-spin {
+    animation: perfil-girar 1s linear infinite;
+}
+
+@keyframes perfil-girar {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.perfil-lista-reservas,
+.perfil-lista-actividad,
+.perfil-lista-mensajes {
+
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+
+}
+
+.perfil-reserva {
+
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: #f8fafc;
+
+}
+
+.perfil-reserva--pagado {
+    background: #f0fdf4;
+}
+
+.perfil-reserva-numero {
+    font-weight: 700;
+    color: #111827;
+    min-width: 28px;
+}
+
+.perfil-reserva-estado {
+
+    font-size: 11px;
+    text-transform: uppercase;
+    color: #64748b;
+    background: #e2e8f0;
+    padding: 2px 6px;
+    border-radius: 999px;
+
+}
+
+.perfil-reserva--pagado .perfil-reserva-estado {
+    background: #bbf7d0;
+    color: #166534;
+}
+
+.perfil-reserva-fecha {
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+.perfil-reserva-grupo {
+    margin-left: auto;
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+.perfil-lista-actividad li,
+.perfil-lista-mensajes li {
+
+    font-size: 13px;
+    color: #334155;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: #f8fafc;
+
+}
+
+.perfil-actividad-tipo {
+    font-weight: 600;
+    color: #111827;
+}
+
+.perfil-actividad-fecha,
+.perfil-mensaje-fecha {
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+.perfil-mensaje-texto {
+    display: block;
+    color: #111827;
+    white-space: pre-wrap;
+    word-break: break-word;
+}

@@ -12,6 +12,7 @@ const {
 
     escanerIdentidadesDryRun,
     diagnosticoTelefonosLid,
+    backfillContactos,
     gruposDisponibles
 
 } = require("../bot/controllers/sessionsController");
@@ -36,6 +37,11 @@ router.get("/active/escaner-identidades", escanerIdentidadesDryRun);
 // Diagnóstico puntual LID/teléfono — solo lectura. Ver controlador y
 // bot/funciones/usuarios/identityScanner/diagnosticoTelefonosLid.js.
 router.get("/active/diagnostico-telefonos-lid", diagnosticoTelefonosLid);
+
+// Backfill activo de Contactos — dispara AHORA el escaneo completo real
+// (escribe en "usuarios" y en contactos_tenant, migración 018). Ver
+// controlador para el detalle exacto de qué reutiliza.
+router.post("/active/backfill-contactos", backfillContactos);
 
 // Fase 4D (panel de Automatización, "+ Autorizar grupo") — solo lectura,
 // nunca escribe en Supabase. Ver controlador para el porqué de reutilizar

@@ -224,7 +224,16 @@ async function escanearTodosLosGrupos(sessionId, sock) {
 
         fijarEstado(sessionId, "syncing");
 
-        const resultadoImport = await importarIdentidades({ identidades: resultado.identidades });
+        // sock.context.usuarioId es el tenant REAL de esta sesión (ver
+        // services/baileys/socket.js::createSocket) — nunca se deriva de
+        // otra forma. Registra la relación tenant/contacto (contactos_tenant)
+        // para cada identidad importada, sin duplicar la extracción/
+        // resolución (eso sigue siendo 100% de escanearIdentidades/
+        // resolverIdentidad, aquí solo se propaga el tenant).
+        const resultadoImport = await importarIdentidades({
+            identidades: resultado.identidades,
+            usuarioIdTenant: sock.context?.usuarioId || null
+        });
 
         console.log(formatearReporteIdentitySync({
 
@@ -295,7 +304,10 @@ async function escanearGrupo(sessionId, sock, groupJid) {
 
         fijarEstado(sessionId, "syncing");
 
-        const resultadoImport = await importarIdentidades({ identidades: resultado.identidades });
+        const resultadoImport = await importarIdentidades({
+            identidades: resultado.identidades,
+            usuarioIdTenant: sock.context?.usuarioId || null
+        });
 
         console.log(formatearReporteIdentitySync({
 
