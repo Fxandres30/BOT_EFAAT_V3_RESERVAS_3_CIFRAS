@@ -45,7 +45,7 @@ function obtenerContenido(msg) {
 
 }
 
-module.exports = function (message) {
+function normalizarMensaje(message) {
 
     const contenido = obtenerContenido(message.message);
 
@@ -91,4 +91,17 @@ module.exports = function (message) {
 
     };
 
-};
+}
+
+module.exports = normalizarMensaje;
+
+// Se cuelga como propiedad de la función exportada (en vez de cambiar el
+// export a un objeto) para no romper a su único llamador actual
+// (obtenerContexto.js, que hace `const normalizarMensaje = require(...)` y
+// lo invoca directo como función). Auditoría de mensajes entrantes,
+// 2026-09: el desenvuelto de ephemeral/viewOnce/editedMessage ya existía
+// aquí y es exactamente lo que necesita el diagnóstico para saber el TIPO
+// real de mensaje (conversation/extendedTextMessage/imageMessage/...) —
+// se reutiliza tal cual en vez de reimplementarlo, ver
+// bot/funciones/mensajes/diagnosticoMensajeEntrante.js.
+module.exports.obtenerContenido = obtenerContenido;

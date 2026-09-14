@@ -21,6 +21,7 @@
 
 const { recorrerObjeto } = require("./recorrerObjeto");
 const { normalizarCandidatos } = require("./normalizarCandidatos");
+const { resolverIdentidadMensaje } = require("./resolverIdentidadMensaje");
 
 // Recorre y normaliza CUALQUIER objeto (mensaje, participante, grupo...).
 function escanearObjeto(objeto, { fuenteBase = "" } = {}) {
@@ -119,6 +120,10 @@ module.exports = {
     escanearMensaje,
     escanearParticipante,
     escanearGrupo,
-    escanearTodosLosGrupos
+    escanearTodosLosGrupos,
+
+    // Función central de identidad de UN mensaje entrante (auditoría de
+    // mensajes entrantes, 2026-09) — ver resolverIdentidadMensaje.js.
+    resolverIdentidadMensaje
 
 };

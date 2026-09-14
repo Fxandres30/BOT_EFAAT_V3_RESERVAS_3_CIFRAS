@@ -1,78 +1,47 @@
 const {
-    obtenerUsuarioGlobal
+    obtenerUsuarioGlobal,
+    buscarPorCampo
 } = require("../funciones/usuarios/obtenerUsuarioGlobal");
 
-// Motor de extracción del IdentityScanner — puro, sin Supabase (recorre el
-// objeto y clasifica JIDs con los helpers oficiales de Baileys). Se
-// reutiliza SOLO la extracción/clasificación aquí, no resolverIdentidad()
-// completo: ese resolver está pensado para el observador en segundo plano
-// (identitySyncMensaje.js) y el escaneo periódico de grupos
-// (escanerIdentidades.js), donde el costo extra de canonicalizar el LID
-// contra Supabase (varias consultas más) es aceptable porque no bloquean
-// nada. Este middleware corre en el camino síncrono de CADA mensaje y
-// decide si se puede reservar — se mantiene en una sola resolución vía
-// obtenerUsuarioGlobal (mismo costo de Supabase que antes: 1
-// SELECT + 1 INSERT/UPDATE), solo que ahora eligiendo el candidato entre
-// TODOS los JIDs que trae el mensaje, no solo el primero.
-const { escanearObjeto } = require("../funciones/usuarios/identityScanner");
+// FUENTE ÚNICA de resolución de identidad para un mensaje entrante —
+// auditoría de mensajes entrantes, 2026-09. Antes esta lógica vivía inline
+// aquí mismo (escanearObjeto + elegirTelefono); se extrajo a
+// identityScanner/resolverIdentidadMensaje.js para que sea una función
+// central reutilizable/testeable por separado, sin duplicar el motor de
+// extracción (escanearObjeto) que ya usan identitySyncMensaje.js y
+// escanerIdentidades.js. Este middleware sigue siendo el ÚNICO lugar del
+// pipeline de mensaje entrante que llama a obtenerUsuarioGlobal.
+const { resolverIdentidadMensaje } = require("../funciones/usuarios/identityScanner/resolverIdentidadMensaje");
+
+// Diagnóstico de mensajes entrantes — activable con
+// DEBUG_INCOMING_MESSAGES=true (ver bot/utils/debugIncomingMessages.js).
+// Con el flag apagado, estas llamadas no hacen nada (ni loguean, ni tocan
+// Supabase de más) — ver el "antes" defensivo más abajo.
+const {
+    logIdentidadResuelta,
+    logPersistencia,
+    logErrorPersistencia
+} = require("../funciones/mensajes/diagnosticoMensajeEntrante");
+const { debugMensajesActivo } = require("../utils/debugIncomingMessages");
 
 // ==========================================================================
 // Identificadores disponibles en Baileys (@whiskeysockets/baileys ^7.0.0-rc14
-// — verificado en node_modules/@whiskeysockets/baileys/lib/Types/Message.d.ts)
+// — verificado en node_modules/@whiskeysockets/baileys/lib/Utils/decode-wa-message.js)
 // ==========================================================================
 //  - message.key.participant    → JID del remitente real dentro de un grupo.
-//                                  Puede terminar en "@lid" o en
-//                                  "@s.whatsapp.net" según el modo de
-//                                  direccionamiento de ese chat/remitente.
-//  - message.key.participantAlt → JID alterno del MISMO remitente (el otro
-//                                  lado del par LID/PN) cuando Baileys lo
-//                                  expone — el mismo remitente, no otra
-//                                  persona.
-//  - message.key.remoteJid      → JID del chat. En privado coincide con el
-//                                  remitente; en grupo es el JID del grupo
-//                                  (NO de la persona).
-//  - sock.user.id                → identidad del propio bot. Válida
-//                                  ÚNICAMENTE para decidir que un mensaje es
-//                                  fromMe; JAMÁS se usa para identificar a un
-//                                  cliente.
+//  - message.key.participantAlt → JID alterno del MISMO remitente (grupo).
+//  - message.key.remoteJid      → JID del chat (privado: el remitente;
+//                                  grupo: el grupo, NO la persona).
+//  - message.key.remoteJidAlt   → JID alterno del MISMO remitente (privado).
+//  - sock.user.id                → identidad del propio bot. Nunca un cliente.
 //
-// CORRECCIÓN (auditoría "kellyJ🥰" / compradores_semanales.whatsapp=null,
-// 2026-09): antes esta función tomaba el PRIMER JID no-nulo de la cadena
-// participant/participantAlt/remoteJid y lo mandaba, solo, a
-// obtenerUsuarioGlobal(jid). Un JID solo puede terminar en un dominio a la
-// vez — si "participant" venía en "@lid", el teléfono que Baileys entregaba
-// EN EL MISMO MENSAJE dentro de "participantAlt" se descartaba sin
-// mirarlo, y la reserva quedaba guardada sin teléfono aunque estuviera ahí.
-// Ahora se recorre `key` COMPLETO con el mismo motor que ya usa
-// identitySyncMensaje.js (escanearObjeto + resolverIdentidad de
-// identityScanner/, ver esos archivos) para que AMBOS lados del par LID/PN
-// se consideren como candidatos, nunca solo el primero que aparezca.
+// Ver identityScanner/resolverIdentidadMensaje.js para el detalle completo
+// (incluye por qué "senderPn"/"senderLid" NO son campos reales de esta
+// versión de Baileys).
 //
 // Regla dura de identidad, sin cambios: un JID terminado en "@lid" JAMÁS se
-// convierte en teléfono. Esa clasificación ocurre en
-// identityScanner/clasificarJidEncontrado.js, con los mismos helpers
-// oficiales de Baileys (isLidUser/isPnUser) que ya usaba
-// obtenerUsuarioGlobal — no es un criterio nuevo, es el mismo aplicado a
-// más de un candidato a la vez.
+// convierte en teléfono. NUNCA se inventa un teléfono a partir de un LID.
 // ==========================================================================
-
-// Elige el mejor candidato de teléfono entre TODOS los JIDs encontrados:
-// preferir uno con formato colombiano válido (10 dígitos, empieza en 3 —
-// mismo criterio que normalizarCandidatos.js), pero si ninguno lo tiene,
-// usar el primero tal cual — igual de permisivo que el criterio que ya
-// usaba obtenerUsuarioGlobal.js::normalizarIdentificadoresDesdeJid (nunca
-// validó formato). No se descarta un teléfono real solo porque no calce
-// con el patrón típico: es mejor guardarlo que perder la identidad entera.
-function elegirTelefono(candidatos) {
-
-    const telefonos = candidatos.filter(c => c.tipo === "phone");
-
-    const valido = telefonos.find(c => c.valido);
-    if (valido) return valido.valor;
-
-    return telefonos[0]?.valor || null;
-
-}
 
 module.exports = async function (ctx) {
 
@@ -96,54 +65,58 @@ module.exports = async function (ctx) {
     }
 
     // ==========================================
-    // Verificación temprana: sin NINGÚN JID disponible (ni participant, ni
-    // participantAlt, ni remoteJid) no hay nada que escanear — mismo
-    // criterio defensivo que antes, evita construir/recorrer el objeto
-    // cuando ya se sabe que no hay nada.
+    // Resolución ÚNICA de identidad para este mensaje — vía la función
+    // central (ver cabecera). Nadie más en el pipeline de un mensaje
+    // entrante debe volver a resolver esto: deben reutilizar ctx.usuario.
     // ==========================================
 
-    const hayAlgunJid = !!(
-        ctx.chat?.participante ||
-        ctx.message.key.participant ||
-        ctx.message.key.participantAlt ||
-        ctx.chat?.remoteJid
-    );
+    const identidad = resolverIdentidadMensaje(ctx.message);
 
-    if (!hayAlgunJid) {
+    logIdentidadResuelta(identidad);
+
+    if (!identidad.telefono && !identidad.lid) {
 
         console.log("⚠ No se pudo determinar el JID del usuario.");
+
+        logPersistencia({ antes: null, despues: null, accion: "NO PERSISTIDO" });
 
         return null;
 
     }
 
-    // ==========================================
-    // Recorre `key` COMPLETO (participant + participantAlt + remoteJid, lo
-    // que exista) — ningún candidato se descarta por aparecer segundo.
-    // `ctx.chat.participante` no hace falta escanearlo aparte: es
-    // literalmente `message.key.participant` (ver obtenerChat.js), ya
-    // cubierto al recorrer `key`.
-    // ==========================================
+    // "antes" — SOLO cuando el diagnóstico está activo (una consulta extra
+    // de solo lectura, evitable en el camino normal de producción). No
+    // decide nada del negocio: es únicamente para poder loguear
+    // CREADO/ACTUALIZADO/SIN CAMBIOS con el estado real anterior.
+    let antes = null;
 
-    const hallazgo = escanearObjeto(
-        { key: ctx.message.key },
-        { fuenteBase: "message" }
-    );
+    if (debugMensajesActivo()) {
 
-    const telefono = elegirTelefono(hallazgo.candidatos);
-    const lid = hallazgo.lids[0] || null;
+        try {
 
-    if (hallazgo.lids.length > 1) {
+            if (identidad.lid) {
 
-        console.warn(`⚠️ [obtenerUsuario] más de un LID distinto encontrado en el mismo mensaje — se usa el primero. Todos: ${hallazgo.lids.join(", ")}`);
+                const resultado = await buscarPorCampo("lid", identidad.lid);
+                if (resultado.estado === "encontrado") antes = resultado.usuario;
+
+            }
+
+            if (!antes && identidad.telefono) {
+
+                const resultado = await buscarPorCampo("telefono", identidad.telefono);
+                if (resultado.estado === "encontrado") antes = resultado.usuario;
+
+            }
+
+        } catch (err) {
+
+            // El snapshot "antes" es solo diagnóstico -- si falla, no debe
+            // impedir la resolución real de identidad de abajo.
+            console.error("❌ [DIAGNÓSTICO PERSISTENCIA] error leyendo snapshot 'antes':", err?.message);
+
+        }
 
     }
-
-    // ==========================================
-    // Resolución ÚNICA de identidad para este mensaje. Nadie más en el
-    // pipeline de un mensaje entrante debe volver a llamar a
-    // obtenerUsuarioGlobal — deben reutilizar ctx.usuario.
-    // ==========================================
 
     // Tenant real de esta sesión — ctx.session ES sock.context (ver
     // bot/middleware/obtenerContexto.js: `obtenerUsuario({chat, message,
@@ -152,14 +125,45 @@ module.exports = async function (ctx) {
     // si faltara, simplemente no se registra la relación tenant/contacto
     // (ver obtenerUsuarioGlobal.js::registrarContactoTenant) y la
     // resolución de identidad real sigue funcionando igual.
-    return await obtenerUsuarioGlobal({
+    const usuario = await obtenerUsuarioGlobal({
 
-        telefono,
-        lid,
-        nombre: ctx.message.pushName || null,
+        telefono: identidad.telefono,
+        lid: identidad.lid,
+        nombre: identidad.pushName,
         usuarioIdTenant: ctx.session?.usuarioId || null,
         origenContacto: "mensaje"
 
     });
+
+    if (debugMensajesActivo()) {
+
+        if (!usuario) {
+
+            logPersistencia({ antes, despues: null, accion: "NO PERSISTIDO" });
+
+            logErrorPersistencia({
+                tabla: "usuarios",
+                campo: "lid/telefono",
+                error: "obtenerUsuarioGlobal devolvió null (conflicto de identidad o error de Supabase — ver el log de obtenerUsuarioGlobal.js justo arriba)"
+            });
+
+        } else if (!antes) {
+
+            logPersistencia({ antes, despues: usuario, accion: "CREADO" });
+
+        } else {
+
+            const cambio =
+                antes.telefono !== usuario.telefono ||
+                antes.lid !== usuario.lid ||
+                antes.nombre !== usuario.nombre;
+
+            logPersistencia({ antes, despues: usuario, accion: cambio ? "ACTUALIZADO" : "SIN CAMBIOS" });
+
+        }
+
+    }
+
+    return usuario;
 
 };
