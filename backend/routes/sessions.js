@@ -13,6 +13,7 @@ const {
     escanerIdentidadesDryRun,
     diagnosticoTelefonosLid,
     backfillContactos,
+    estadoBackfillContactos,
     gruposDisponibles
 
 } = require("../bot/controllers/sessionsController");
@@ -42,6 +43,10 @@ router.get("/active/diagnostico-telefonos-lid", diagnosticoTelefonosLid);
 // (escribe en "usuarios" y en contactos_tenant, migración 018). Ver
 // controlador para el detalle exacto de qué reutiliza.
 router.post("/active/backfill-contactos", backfillContactos);
+
+// Solo lectura — estado del escaneo ("idle"|"scanning"|"syncing"|"error"),
+// para que el panel pueda hacer polling sin re-disparar el escaneo.
+router.get("/active/estado-backfill-contactos", estadoBackfillContactos);
 
 // Fase 4D (panel de Automatización, "+ Autorizar grupo") — solo lectura,
 // nunca escribe en Supabase. Ver controlador para el porqué de reutilizar

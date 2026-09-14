@@ -15,7 +15,8 @@ const {
 } = require("../funciones/usuarios/identityScanner/diagnosticoTelefonosLid");
 
 const {
-    escanearTodosLosGrupos
+    escanearTodosLosGrupos,
+    obtenerEstadoIdentitySync
 } = require("../funciones/usuarios/escanerIdentidadesLifecycle");
 
 const {
@@ -366,7 +367,26 @@ async function backfillContactos(req, res) {
 
             return res.status(409).json({
                 success: false,
+                estado: "sin_sesion",
                 error: "No hay una sesión activa conectada (manager.getActiveSocket() es null)."
+            });
+
+        }
+
+        // Se consulta el estado ANTES de intentar disparar el escaneo —
+        // evita depender de adivinar POR QUÉ escanearTodosLosGrupos()
+        // devolvió null (el guard interno, escaneoCompletoEnCurso, no se
+        // toca ni se debilita: esto solo permite responder con un mensaje
+        // claro en vez de un 409 genérico cuando la razón real es "ya hay
+        // uno corriendo", que no es un error funcional.
+        if (obtenerEstadoIdentitySync(sessionId) === "scanning" || obtenerEstadoIdentitySync(sessionId) === "syncing") {
+
+            return res.status(202).json({
+                success: true,
+                yaEnCurso: true,
+                estado: obtenerEstadoIdentitySync(sessionId),
+                sessionId,
+                mensaje: "Ya hay un escaneo completo en curso para esta sesión — no es un error, espera a que termine (puede tardar varios minutos con ~2.800 participantes)."
             });
 
         }
@@ -375,9 +395,13 @@ async function backfillContactos(req, res) {
 
         if (!resultado) {
 
+            // Con el chequeo de arriba, llegar aquí ya casi siempre significa
+            // "la sesión dejó de ser vigente justo en este instante" (carrera
+            // real, no el caso común) — se distingue igual del caso anterior.
             return res.status(409).json({
                 success: false,
-                error: "El escaneo no se ejecutó (sesión no vigente o ya había un escaneo completo en curso). Revisa los logs del bot."
+                estado: obtenerEstadoIdentitySync(sessionId),
+                error: "El escaneo no se ejecutó (la sesión dejó de estar activa justo al intentar escanear). Revisa los logs del bot."
             });
 
         }
@@ -385,6 +409,7 @@ async function backfillContactos(req, res) {
         res.json({
 
             success: true,
+            estado: obtenerEstadoIdentitySync(sessionId),
             sessionId,
             usuarioIdTenant: sock.context?.usuarioId || null,
 
@@ -411,6 +436,32 @@ async function backfillContactos(req, res) {
         });
 
     }
+
+}
+
+// ==========================================================================
+// estadoBackfillContactos(req, res) — GET de solo lectura, para que el
+// panel pueda hacer polling del progreso del escaneo SIN volver a
+// dispararlo (a diferencia de POST /active/backfill-contactos, que sí lo
+// dispara si no hay uno en curso). Reutiliza tal cual
+// obtenerEstadoIdentitySync(sessionId) — "idle" | "scanning" | "syncing" |
+// "error" — no inventa un estado paralelo.
+// ==========================================================================
+function estadoBackfillContactos(req, res) {
+
+    const sessionId = manager.getActiveSession();
+
+    if (!sessionId) {
+
+        return res.json({ success: true, sessionId: null, estado: "sin_sesion" });
+
+    }
+
+    res.json({
+        success: true,
+        sessionId,
+        estado: obtenerEstadoIdentitySync(sessionId)
+    });
 
 }
 
@@ -486,6 +537,7 @@ module.exports = {
     escanerIdentidadesDryRun,
     diagnosticoTelefonosLid,
     backfillContactos,
+    estadoBackfillContactos,
     gruposDisponibles
 
 };

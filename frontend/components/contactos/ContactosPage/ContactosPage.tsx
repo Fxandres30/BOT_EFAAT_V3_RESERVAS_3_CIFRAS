@@ -1,14 +1,23 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, AlertTriangle, Phone, Hash, Loader2, RefreshCw } from "lucide-react";
 
 import "./ContactosPage.css";
 
 import { useContactos } from "@/hooks/useContactos";
-import { backfillContactos, type ResultadoBackfillContactos } from "@/services/sessions/backfillContactos";
+import {
+    backfillContactos,
+    obtenerEstadoBackfillContactos,
+    type ResultadoBackfillContactos
+} from "@/services/sessions/backfillContactos";
 import PerfilContacto from "@/components/contactos/PerfilContacto/PerfilContacto";
 import type { Contacto, FiltroContactos } from "@/components/contactos/types";
+
+// Cada cuánto se consulta el estado del escaneo mientras está en curso —
+// GET de solo lectura (obtenerEstadoBackfillContactos), nunca vuelve a
+// disparar el escaneo.
+const INTERVALO_POLL_ESTADO_MS = 4_000;
 
 const SIETE_DIAS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -57,6 +66,40 @@ function aplicarFiltro(c: Contacto, filtro: FiltroContactos): boolean {
 
 }
 
+// "yaEnCurso"/estado scanning-syncing NUNCA se trata como error — pedido
+// explícito: pulsar el botón mientras ya hay un escaneo corriendo no es un
+// fallo funcional, es el estado esperado (el escaneo de ~2.800
+// participantes puede tardar varios minutos).
+function claseAvisoEscaneo(r: ResultadoBackfillContactos): string {
+
+    if (!r.success) return "contactos-aviso--error";
+    if (r.yaEnCurso || r.estado === "scanning" || r.estado === "syncing") return "contactos-aviso--enCurso";
+    if (r.estado === "error") return "contactos-aviso--error";
+
+    return "contactos-aviso--ok";
+
+}
+
+function textoAvisoEscaneo(r: ResultadoBackfillContactos): string {
+
+    if (!r.success) return `⚠️ ${r.error || "No se pudo ejecutar el escaneo."}`;
+
+    if (r.yaEnCurso || r.estado === "scanning" || r.estado === "syncing") {
+        return `⏳ ${r.mensaje || "Ya hay un escaneo en curso — puede tardar varios minutos con ~2.800 participantes. Siguiendo el progreso automáticamente..."}`;
+    }
+
+    if (r.estado === "error") {
+        return "⚠️ El último escaneo terminó con error — revisa los logs del bot.";
+    }
+
+    if (r.estadisticas) {
+        return `✅ Escaneo completo: ${r.estadisticas.participantesAnalizados} participantes analizados en ${r.estadisticas.gruposEncontrados} grupos — ${r.importado?.nuevos ?? 0} nuevos, ${r.importado?.enriquecidos ?? 0} enriquecidos.`;
+    }
+
+    return "✅ Escaneo completo.";
+
+}
+
 function formatearUltimaActividad(iso: string | null): string {
 
     if (!iso) return "Sin actividad";
@@ -87,6 +130,12 @@ export default function ContactosPage() {
 
     const [escaneando, setEscaneando] = useState(false);
     const [resultadoEscaneo, setResultadoEscaneo] = useState<ResultadoBackfillContactos | null>(null);
+    const [siguiendoProgreso, setSiguiendoProgreso] = useState(false);
+
+    // Evita que un poll tardío siga escribiendo estado después de
+    // desmontar el componente.
+    const vivoRef = useRef(true);
+    useEffect(() => () => { vivoRef.current = false; }, []);
 
     async function ejecutarBackfill() {
 
@@ -98,11 +147,54 @@ export default function ContactosPage() {
         setResultadoEscaneo(resultado);
         setEscaneando(false);
 
-        if (resultado.success) {
+        // "yaEnCurso" NO es un error funcional (pedido explícito) — el
+        // escaneo anterior sigue corriendo, así que se sigue su progreso
+        // en vez de mostrarlo como un fallo. Un escaneo recién completado
+        // (estado idle) sí recarga de inmediato.
+        if (resultado.success && resultado.estado === "idle") {
             recargar();
+        } else if (resultado.success && (resultado.yaEnCurso || resultado.estado === "scanning" || resultado.estado === "syncing")) {
+            setSiguiendoProgreso(true);
         }
 
     }
+
+    // Mientras hay un escaneo en curso (propio o ya en marcha desde antes
+    // — arranque del bot, escaneo periódico), se consulta el estado real
+    // cada pocos segundos. En cuanto termina (idle) o falla (error), se
+    // detiene el seguimiento y se recarga el directorio.
+    useEffect(() => {
+
+        if (!siguiendoProgreso) return;
+
+        const id = setInterval(async () => {
+
+            const estado = await obtenerEstadoBackfillContactos();
+
+            if (!vivoRef.current) return;
+
+            if (estado.estado === "scanning" || estado.estado === "syncing") {
+
+                setResultadoEscaneo((prev) => prev ? { ...prev, estado: estado.estado } : prev);
+                return;
+
+            }
+
+            setSiguiendoProgreso(false);
+
+            setResultadoEscaneo((prev) => ({
+                ...(prev || { success: true }),
+                estado: estado.estado,
+                yaEnCurso: false
+            }));
+
+            if (estado.estado === "idle") recargar();
+
+        }, INTERVALO_POLL_ESTADO_MS);
+
+        return () => clearInterval(id);
+
+    }, [siguiendoProgreso, recargar]);
 
     const contactosFiltrados = useMemo(() => {
 
@@ -146,11 +238,11 @@ export default function ContactosPage() {
                     type="button"
                     className="contactos-boton-escanear"
                     onClick={ejecutarBackfill}
-                    disabled={escaneando}
+                    disabled={escaneando || siguiendoProgreso}
                     title="Escanea ahora todos los grupos de la sesión activa (Identity Scanner) y registra cada participante encontrado como contacto"
                 >
-                    <RefreshCw size={14} className={escaneando ? "contactos-spin" : ""} />
-                    {escaneando ? "Escaneando grupos..." : "Escanear grupos ahora"}
+                    <RefreshCw size={14} className={escaneando || siguiendoProgreso ? "contactos-spin" : ""} />
+                    {escaneando || siguiendoProgreso ? "Escaneando grupos..." : "Escanear grupos ahora"}
                 </button>
 
             </div>
@@ -164,11 +256,9 @@ export default function ContactosPage() {
 
             {resultadoEscaneo && (
 
-                <p className={resultadoEscaneo.success ? "contactos-aviso contactos-aviso--ok" : "contactos-aviso contactos-aviso--error"}>
+                <p className={`contactos-aviso ${claseAvisoEscaneo(resultadoEscaneo)}`}>
 
-                    {resultadoEscaneo.success && resultadoEscaneo.estadisticas
-                        ? `✅ Escaneo completo: ${resultadoEscaneo.estadisticas.participantesAnalizados} participantes analizados en ${resultadoEscaneo.estadisticas.gruposEncontrados} grupos — ${resultadoEscaneo.importado?.nuevos ?? 0} nuevos, ${resultadoEscaneo.importado?.enriquecidos ?? 0} enriquecidos.`
-                        : `⚠️ ${resultadoEscaneo.error || "No se pudo ejecutar el escaneo."}`}
+                    {textoAvisoEscaneo(resultadoEscaneo)}
 
                 </p>
 

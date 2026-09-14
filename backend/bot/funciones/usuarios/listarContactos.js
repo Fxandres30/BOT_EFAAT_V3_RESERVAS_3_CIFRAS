@@ -26,6 +26,91 @@ const { obtenerTablasConocidas } = require("../eventos/configEvento");
 
 const COLUMNAS_RESERVA = "usuario_global_id, estado";
 
+// ==========================================================================
+// Lotes para leer "usuarios" por id (optimización 2026-09 — informe "Bad
+// Request" en producción con ~2.800 contactos_tenant). Un solo
+// .in("id", ids) con ~2.800 UUIDs genera una URL de ~100.000 caracteres,
+// que el gateway delante de PostgREST rechaza con 400 Bad Request ANTES de
+// llegar a ejecutar SQL — no es un error de sintaxis ni de permisos, es un
+// límite de transporte HTTP. Se trocea en lotes de tamaño seguro y se
+// ejecutan con concurrencia acotada (no los ~12 lotes todos a la vez, ni
+// uno por uno).
+// ==========================================================================
+const TAMANO_LOTE_IDS = 250;
+const CONCURRENCIA_LOTES_IDS = 5;
+
+function trocear(array, tamano) {
+
+    const lotes = [];
+
+    for (let i = 0; i < array.length; i += tamano) {
+        lotes.push(array.slice(i, i + tamano));
+    }
+
+    return lotes;
+
+}
+
+// Ejecuta `fn` sobre `items` con concurrencia limitada — mismo patrón que
+// ya usa diagnosticoTelefonosLid.js::enLotes, reutilizado aquí en vez de
+// reimplementarlo aparte.
+async function conConcurrenciaLimitada(items, concurrencia, fn) {
+
+    const resultados = [];
+
+    for (let i = 0; i < items.length; i += concurrencia) {
+
+        const grupo = items.slice(i, i + concurrencia);
+        const parcial = await Promise.all(grupo.map(fn));
+        resultados.push(...parcial);
+
+    }
+
+    return resultados;
+
+}
+
+// Divide `ids` en lotes seguros y los combina — misma consulta
+// (select "id, nombre, telefono, lid"), mismo resultado final que un único
+// .in("id", ids), solo que sin exceder el límite de URL. Un lote que falle
+// se loguea y se omite (los contactos de ESE lote no aparecen esta vez, en
+// vez de vaciar el listado completo por un problema puntual).
+async function obtenerUsuariosPorIds(ids) {
+
+    const lotes = trocear(ids, TAMANO_LOTE_IDS);
+
+    const resultadosPorLote = await conConcurrenciaLimitada(lotes, CONCURRENCIA_LOTES_IDS, async (lote) => {
+
+        const { data, error } = await supabase
+            .from("usuarios")
+            .select("id, nombre, telefono, lid")
+            .in("id", lote);
+
+        return { data, error, tamanoLote: lote.length };
+
+    });
+
+    const usuarios = [];
+    let huboError = false;
+
+    for (const r of resultadosPorLote) {
+
+        if (r.error) {
+
+            huboError = true;
+            console.error(`❌ [CONTACTOS] error leyendo identidades (lote de ${r.tamanoLote}):`, r.error.message);
+            continue;
+
+        }
+
+        if (r.data) usuarios.push(...r.data);
+
+    }
+
+    return { usuarios, huboError };
+
+}
+
 // Solo para AGREGAR conteos (cantidadReservas/cantidadPagadas) sobre
 // contactos que contactos_tenant ya determinó que existen — nunca para
 // decidir existencia. Mismo criterio tenant-scoped de siempre
@@ -141,16 +226,19 @@ async function listarContactos({ usuarioId }) {
     const ids = relaciones.map((r) => r.usuario_global_id);
 
     const [resultadoUsuarios, filasReserva] = await Promise.all([
-        supabase.from("usuarios").select("id, nombre, telefono, lid").in("id", ids),
+        obtenerUsuariosPorIds(ids),
         obtenerFilasDeReservasPorTenant(usuarioId)
     ]);
 
-    if (resultadoUsuarios.error) {
-        console.error("❌ [CONTACTOS] error leyendo identidades:", resultadoUsuarios.error.message);
+    // Solo se corta en seco si TODOS los lotes fallaron (0 identidades
+    // leídas) — un fallo parcial ya se logueó por lote y simplemente deja
+    // fuera a esos contactos de esta respuesta, en vez de vaciar todo el
+    // directorio por un problema puntual en un lote.
+    if (resultadoUsuarios.huboError && resultadoUsuarios.usuarios.length === 0) {
         return { contactos: [] };
     }
 
-    const usuariosPorId = new Map((resultadoUsuarios.data || []).map((u) => [u.id, u]));
+    const usuariosPorId = new Map(resultadoUsuarios.usuarios.map((u) => [u.id, u]));
     const conteosPorCliente = agregarConteosPorCliente(filasReserva);
 
     const contactos = relaciones
@@ -195,4 +283,14 @@ async function listarContactos({ usuarioId }) {
 
 }
 
-module.exports = { listarContactos, obtenerFilasDeReservasPorTenant, estadoIdentificacion };
+module.exports = {
+    listarContactos,
+    obtenerFilasDeReservasPorTenant,
+    estadoIdentificacion,
+
+    // Exportados para pruebas e instrumentación (lotes de .in() por ids).
+    obtenerUsuariosPorIds,
+    trocear,
+    conConcurrenciaLimitada,
+    TAMANO_LOTE_IDS
+};

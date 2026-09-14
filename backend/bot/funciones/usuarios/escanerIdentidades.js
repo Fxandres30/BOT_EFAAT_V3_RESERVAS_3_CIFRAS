@@ -397,58 +397,104 @@ async function escanearIdentidades({ sock, grupos = null } = {}) {
 // contacto en contactos_tenant (ver obtenerUsuarioGlobal.js
 // ::registrarContactoTenant). Sin este parámetro, se comporta exactamente
 // igual que antes: solo resuelve/crea en "usuarios".
+//
+// CONCURRENCIA (optimización 2026-09 — informe "escaneo de ~2.800
+// participantes tarda 30-60min"): antes se procesaba una identidad a la
+// vez, en serie (`for...of` con `await` adentro) — con ~7 round-trips a
+// Supabase por participante, ~2.800 participantes se volvían ~19.600
+// llamadas HTTP en serie. Ahora se procesan en lotes de
+// CONCURRENCIA_IMPORTACION identidades EN PARALELO (Promise.all por lote,
+// lotes en serie entre sí) — el guard de un-solo-escaneo-por-sesión
+// (escanerIdentidadesLifecycle.js::escaneoCompletoEnCurso) NO se toca: sigue
+// habiendo exactamente UN escaneo completo en vuelo por sesión, esto solo
+// acelera lo que pasa DENTRO de ese único escaneo.
+//
+// Es seguro procesar en paralelo porque:
+//   1. `identidades` ya viene deduplicada por reconciliarIdentidades()
+//      (ver escanearIdentidades() más arriba) — dos entradas del mismo lote
+//      nunca comparten lid ni teléfono exactos.
+//   2. Si dos resoluciones concurrentes (de personas distintas que
+//      canonicalizan al mismo usuario por sufijo de dispositivo, caso raro)
+//      compitieran por crear la misma fila, obtenerUsuarioGlobal.js YA
+//      maneja esa carrera (unique_violation 23505 -> reutiliza la fila
+//      ganadora, nunca duplica — ver su propio comentario "Concurrencia" y
+//      la prueba 14 de identidad.test.js).
+//   3. Cada identidad sigue en su propio try/catch: una que falle no aborta
+//      el lote ni el resto del escaneo, se cuenta como error y se sigue.
 // ==========================================================================
+const CONCURRENCIA_IMPORTACION = 18;
+
+async function importarUnaIdentidad(identidad, usuarioIdTenant) {
+
+    try {
+
+        const r = await resolverIdentidad({
+
+            lids: identidad.lid ? [identidad.lid] : [],
+            telefonos: identidad.telefono ? [identidad.telefono] : [],
+            candidatos: identidad.telefono
+                ? [{ tipo: "phone", valor: identidad.telefono, valido: true }]
+                : [],
+            nombre: identidad.nombre,
+            fromMe: false,
+            usuarioIdTenant,
+            origenContacto: "escaneo_grupo"
+
+        });
+
+        return {
+            entrada: identidad,
+            usuario: r.usuario,
+            importado: !!r.usuario,
+            esNuevo: r.esNuevo,
+            fueEnriquecido: r.fueEnriquecido,
+            conflicto: r.conflicto,
+            errorInesperado: false
+        };
+
+    } catch (err) {
+
+        // Una identidad individual que falle (error real de Supabase,
+        // dato inesperado, etc.) NUNCA debe abortar el resto del escaneo —
+        // se registra como error y se continúa con las demás.
+        console.error(`❌ [ESCÁNER IDENTIDADES] error resolviendo identidad (lid=${identidad.lid || "-"}, telefono=${identidad.telefono || "-"}):`, err?.message);
+
+        return {
+            entrada: identidad,
+            usuario: null,
+            importado: false,
+            esNuevo: false,
+            fueEnriquecido: false,
+            conflicto: false,
+            errorInesperado: true
+        };
+
+    }
+
+}
+
 async function importarIdentidades({ identidades, usuarioIdTenant = null }) {
 
     const resultados = [];
 
     let nuevos = 0, enriquecidos = 0, conflictos = 0, errores = 0;
 
-    for (const identidad of identidades) {
+    for (let i = 0; i < identidades.length; i += CONCURRENCIA_IMPORTACION) {
 
-        try {
+        const lote = identidades.slice(i, i + CONCURRENCIA_IMPORTACION);
 
-            const r = await resolverIdentidad({
+        const resultadosLote = await Promise.all(
+            lote.map((identidad) => importarUnaIdentidad(identidad, usuarioIdTenant))
+        );
 
-                lids: identidad.lid ? [identidad.lid] : [],
-                telefonos: identidad.telefono ? [identidad.telefono] : [],
-                candidatos: identidad.telefono
-                    ? [{ tipo: "phone", valor: identidad.telefono, valido: true }]
-                    : [],
-                nombre: identidad.nombre,
-                fromMe: false,
-                usuarioIdTenant,
-                origenContacto: "escaneo_grupo"
+        for (const r of resultadosLote) {
 
-            });
-
-            if (r.esNuevo) nuevos++;
+            if (r.errorInesperado) errores++;
+            else if (r.esNuevo) nuevos++;
             else if (r.fueEnriquecido) enriquecidos++;
             else if (r.conflicto) conflictos++;
 
-            resultados.push({
-                entrada: identidad,
-                usuario: r.usuario,
-                importado: !!r.usuario,
-                esNuevo: r.esNuevo,
-                fueEnriquecido: r.fueEnriquecido,
-                conflicto: r.conflicto
-            });
-
-        } catch (err) {
-
-            errores++;
-
-            console.error(`❌ [ESCÁNER IDENTIDADES] error resolviendo identidad (lid=${identidad.lid || "-"}, telefono=${identidad.telefono || "-"}):`, err?.message);
-
-            resultados.push({
-                entrada: identidad,
-                usuario: null,
-                importado: false,
-                esNuevo: false,
-                fueEnriquecido: false,
-                conflicto: false
-            });
+            resultados.push(r);
 
         }
 

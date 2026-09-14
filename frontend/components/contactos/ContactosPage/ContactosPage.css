@@ -87,6 +87,11 @@
     color: #991b1b;
 }
 
+.contactos-aviso--enCurso {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
 .contactos-buscador {
 
     position: relative;

@@ -48,23 +48,30 @@ const { quitarSufijoDispositivo } = require("./normalizarCandidatos");
 // Ambigüedad (2+ filas) o error -> null: mejor no arriesgar una fusión
 // incorrecta que forzar una.
 // ==========================================================================
+// Devuelve la FILA completa (no solo el string del lid) — optimización
+// 2026-09 (informe "Bad Request" / escaneo lento): quien llama
+// (canonicalizarLid) necesitaba antes hacer una consulta APARTE para
+// obtener la fila completa de este mismo lid; con esto ya no hace falta,
+// se ahorra un SELECT redundante por participante sin cambiar ningún
+// criterio de búsqueda (mismo LIKE, mismo límite, misma regla de
+// ambigüedad).
 async function buscarLidConCualquierSufijo(user) {
 
     const { data, error } = await supabase
         .from("usuarios")
-        .select("lid")
+        .select("*")
         .like("lid", `${user}:%@lid`)
         .limit(2);
 
     if (error || !data || data.length !== 1) return null;
 
-    return data[0].lid;
+    return data[0];
 
 }
 
 // ==========================================================================
-// canonicalizarLid(lidCrudo) — devuelve el valor de LID que hay que pasarle
-// a obtenerUsuarioGlobal() para que reconozca a esta persona aunque el
+// canonicalizarLid(lidCrudo) — decide qué valor de LID pasarle a
+// obtenerUsuarioGlobal() para que reconozca a esta persona aunque el
 // sufijo de dispositivo no coincida byte a byte con lo ya guardado.
 //
 //   1. ¿Existe una fila EXACTA con este lid? -> se usa tal cual (camino
@@ -80,18 +87,34 @@ async function buscarLidConCualquierSufijo(user) {
 // sigue teniendo el candidato con su `crudo` original para logging/
 // auditoría — esta función solo decide qué valor usar para la
 // RESOLUCIÓN/ESCRITURA en "usuarios", no descarta el dato visto.
+//
+// Devuelve { lid, usuarioEncontrado } — no solo el string. `usuarioEncontrado`
+// es la fila YA leída en el proceso de canonicalizar (o null si de verdad no
+// existe todavía / hay colisión). Optimización 2026-09 (informe "escaneo
+// lento" — ~2.800 participantes tardaban ~40min): antes, resolverIdentidad()
+// volvía a consultar por este mismo lid justo después ("snapshot antes"),
+// repitiendo exactamente la misma lectura que esta función ya había hecho.
+// Reutilizar el resultado aquí ahorra 1 SELECT por participante con LID
+// (la inmensa mayoría) sin cambiar ningún criterio de búsqueda/canonicalización.
 // ==========================================================================
 async function canonicalizarLid(lidCrudo) {
 
     const exacto = await buscarPorCampo("lid", lidCrudo);
 
-    if (exacto.estado === "encontrado" || exacto.estado === "colision") {
-        return lidCrudo;
+    if (exacto.estado === "encontrado") {
+        return { lid: lidCrudo, usuarioEncontrado: exacto.usuario };
+    }
+
+    if (exacto.estado === "colision") {
+        // Mismo comportamiento que antes: no se intenta bare/otro-dispositivo
+        // ante una colisión ya detectada -- obtenerUsuarioGlobal la vuelve a
+        // detectar y decide qué hacer (nunca fusiona).
+        return { lid: lidCrudo, usuarioEncontrado: null };
     }
 
     const user = jidDecode(lidCrudo)?.user || null;
 
-    if (!user) return lidCrudo;
+    if (!user) return { lid: lidCrudo, usuarioEncontrado: null };
 
     const bare = `${user}@lid`;
 
@@ -99,15 +122,19 @@ async function canonicalizarLid(lidCrudo) {
 
         const porBare = await buscarPorCampo("lid", bare);
 
-        if (porBare.estado === "encontrado") return bare;
+        if (porBare.estado === "encontrado") {
+            return { lid: bare, usuarioEncontrado: porBare.usuario };
+        }
 
     }
 
     const porOtroDispositivo = await buscarLidConCualquierSufijo(user);
 
-    if (porOtroDispositivo) return porOtroDispositivo;
+    if (porOtroDispositivo) {
+        return { lid: porOtroDispositivo.lid, usuarioEncontrado: porOtroDispositivo };
+    }
 
-    return lidCrudo;
+    return { lid: lidCrudo, usuarioEncontrado: null };
 
 }
 
@@ -169,22 +196,21 @@ async function resolverIdentidad({
     const telefono = elegirTelefono(candidatos);
     let lid = lids[0] || null;
 
-    if (lid) {
-        lid = await canonicalizarLid(lid);
-    }
-
     // ---- snapshot "antes" (para saber si hubo enriquecimiento real) ----
-    // Se busca por LID primero (mismo criterio de prioridad que
-    // obtenerUsuarioGlobal.js) y, si no aparece nada por LID (o no hay
-    // LID), se intenta por teléfono — así se detecta correctamente el caso
-    // "ya existía por teléfono y ahora se le agrega el LID", donde una
-    // búsqueda que solo mirara por LID nunca lo habría encontrado.
+    // canonicalizarLid() ya lee la fila por LID como parte de su propio
+    // trabajo (ver su cabecera) — se reutiliza ese resultado como "antes"
+    // en vez de volver a consultar por el mismo lid (optimización 2026-09).
+    // Si no hay LID (o no se encontró nada por LID), se intenta por
+    // teléfono — así se detecta correctamente el caso "ya existía por
+    // teléfono y ahora se le agrega el LID", donde una búsqueda que solo
+    // mirara por LID nunca lo habría encontrado.
     let antes = null;
 
     if (lid) {
 
-        const resultado = await buscarPorCampo("lid", lid);
-        if (resultado.estado === "encontrado") antes = resultado.usuario;
+        const canonicalizado = await canonicalizarLid(lid);
+        lid = canonicalizado.lid;
+        antes = canonicalizado.usuarioEncontrado;
 
     }
 
