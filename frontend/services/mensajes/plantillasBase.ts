@@ -234,23 +234,37 @@ const PLANTILLAS_POR_TIPO: Record<string, PlantillaBase[]> = {
     // info_evento nunca habla de varios números — siempre UN evento. El
     // "es" que aparece aquí es el verbo copulativo de "Es {{evento}}", sin
     // relación con conteo; no se migra por eso (mismo criterio que Fase 2).
-    info_evento: construir([
-        "Este sorteo es: {{evento}}, a las {{hora}}.",
-        "{{evento}} — {{hora}}",
-        "Es {{evento}}, hoy a las {{hora}} 😊",
-        "¡Hola! El sorteo es {{evento}}, a las {{hora}}.",
-        "¡Es {{evento}}! Sorteo a las {{hora}} 🎉 ¡mucha suerte!",
-        "{{evento}} a las {{hora}}. ¡Suerte para todos! 🍀",
-        "El evento activo actualmente es {{evento}}, programado para el {{fecha}} a las {{hora}}.",
-        "{{evento}}, {{hora}}",
-        "Es {{evento}}, {{hora}}.",
-        "Se informa que el sorteo vigente es {{evento}}, con cierre programado a las {{hora}} del {{fecha}}.",
-        "Evento: {{evento}} | Hora: {{hora}}",
-        "Sorteo: {{evento}} — Fecha: {{fecha}} — Hora: {{hora}}",
-        "Hora del sorteo {{evento}}: {{hora}}",
-        "¡Es {{evento}}! 🎯 a las {{hora}} ✨🍀",
-        ""
-    ]),
+    //
+    // Auditoría "completar plantillas vacías" (2026-09): info_evento YA
+    // tenía sus 15 base originales (arriba, sin cambios) — las 5 de abajo
+    // son ADICIONALES, pedidas explícitamente encima de las existentes.
+    // Ninguna de las 15 originales se tocó (mismo array, mismo orden,
+    // mismo contenido). Solo usan las variables reales del tipo
+    // (evento/fecha/hora — ver tiposMensaje.ts), sin inventar ninguna.
+    info_evento: [
+        ...construir([
+            "Este sorteo es: {{evento}}, a las {{hora}}.",
+            "{{evento}} — {{hora}}",
+            "Es {{evento}}, hoy a las {{hora}} 😊",
+            "¡Hola! El sorteo es {{evento}}, a las {{hora}}.",
+            "¡Es {{evento}}! Sorteo a las {{hora}} 🎉 ¡mucha suerte!",
+            "{{evento}} a las {{hora}}. ¡Suerte para todos! 🍀",
+            "El evento activo actualmente es {{evento}}, programado para el {{fecha}} a las {{hora}}.",
+            "{{evento}}, {{hora}}",
+            "Es {{evento}}, {{hora}}.",
+            "Se informa que el sorteo vigente es {{evento}}, con cierre programado a las {{hora}} del {{fecha}}.",
+            "Evento: {{evento}} | Hora: {{hora}}",
+            "Sorteo: {{evento}} — Fecha: {{fecha}} — Hora: {{hora}}",
+            "Hora del sorteo {{evento}}: {{hora}}",
+            "¡Es {{evento}}! 🎯 a las {{hora}} ✨🍀",
+            ""
+        ]),
+        { nombre: "Aviso breve", estilo: "aviso_breve", contenido: "🎯 {{evento}} — cierra a las {{hora}}." },
+        { nombre: "Cordial", estilo: "cordial", contenido: "¡Hola! Te cuento que hoy el sorteo es {{evento}} 😊 Cierra a las {{hora}}." },
+        { nombre: "Completa", estilo: "completa", contenido: "Sorteo vigente: {{evento}}. Fecha: {{fecha}} · Hora de cierre: {{hora}}." },
+        { nombre: "Recordatorio", estilo: "recordatorio", contenido: "📅 Recuerda: el evento de hoy es {{evento}}, cierra a las {{hora}} el {{fecha}}." },
+        { nombre: "Cercana", estilo: "cercana", contenido: "🎲 ¡Vamos con {{evento}}! Cierre {{hora}} ⏰🍀" }
+    ],
 
     // Inicio del día (Master Spec §15) — 8 plantillas de ejemplo tal como
     // las redactó el usuario. A propósito NO usan los 15 ESTILOS genéricos
@@ -294,19 +308,46 @@ const PLANTILLAS_POR_TIPO: Record<string, PlantillaBase[]> = {
             nombre: "Inicio del día — cercano", estilo: "cercano",
             contenido: "☀️ ¡Familia, buenos días! 🫶\n\nEsperamos que hayan amanecido muy bien. ❤️\n\nComo siempre, muchas gracias por acompañarnos y hacer parte de esta familia.\n\n🎲 Ya estamos preparando la dinámica de hoy:\n\n🎯 {{nombre_evento}}\n🎰 {{loteria}}\n\n⏳ Falta muy poquito para comenzar.\n\n👀 Atentos al grupo que ya casi arrancamos.\n\n🍀 ¡Muchísima suerte!"
         }
+    ],
+
+    // consulta_pago (auditoría "completar plantillas vacías", 2026-09):
+    // antes sin semilla a propósito (ver nota de "multiple" abajo, que
+    // sigue aplicando sin cambios). consulta_pago SÍ recibe semilla ahora
+    // porque, a diferencia de "multiple", es una única faceta por
+    // respuesta — el modo por defecto (sin frase explícita de
+    // lista/cantidad) siempre es "monto" (ver resolverConsulta.js::
+    // modoBucketImplicitos), que siempre trae montoTotal/montoPagado/
+    // montoPendiente ya resueltos. Por eso estas 5 usan EXCLUSIVAMENTE
+    // {{cliente}}, {{evento}}, {{monto_total}}, {{monto_pagado}},
+    // {{monto_pendiente}} — las únicas variables de este tipo que
+    // resuelven de forma fiable en el caso real más común. Se evitó a
+    // propósito {{numeros_pagados}}/{{numeros_pendientes}}/
+    // {{cantidad_pagados}}/{{cantidad_pendientes}}: esas solo se llenan
+    // cuando el cliente usa una frase explícita de "lista" o "cantidad"
+    // (modo!=="monto"), así que en el caso por defecto quedarían vacías.
+    consulta_pago: [
+        { nombre: "Natural", estilo: "natural", contenido: "Hola {{cliente}} 👋 tu saldo pendiente es de {{monto_pendiente}}. Ya llevas pagado {{monto_pagado}} de un total de {{monto_total}}." },
+        { nombre: "Profesional", estilo: "profesional", contenido: "Estimado/a {{cliente}}, este es el estado de su cuenta para {{evento}}: total {{monto_total}}, pagado {{monto_pagado}}, pendiente {{monto_pendiente}}." },
+        { nombre: "Informativa", estilo: "informativa", contenido: "{{cliente}}, tu resumen de pago: total {{monto_total}} · pagado {{monto_pagado}} · pendiente {{monto_pendiente}}." },
+        { nombre: "Directa", estilo: "directa", contenido: "{{cliente}}: te falta {{monto_pendiente}} por pagar." },
+        { nombre: "Cercana", estilo: "cercana", contenido: "¡Hola {{cliente}}! 💰 Vas pagando {{monto_pagado}} de {{monto_total}}. Te falta {{monto_pendiente}} 🙌" }
     ]
 
 };
 
-// "consulta_pago" y "multiple" (Fase 2 — sistema global de variables) NO
-// tienen plantillas semilla a propósito: cada consulta real solo trae UNA
-// faceta (lista/cantidad/monto, o un subconjunto variable en "multiple"),
-// así que una plantilla única "de fábrica" mostraría campos vacíos según
-// qué preguntó el cliente. Sin semilla, el BOT sigue usando su mensaje
-// fijo (resolverConsulta.js) exactamente como hoy — el admin puede crear
-// una plantilla personalizada cuando quiera (botón "Nueva plantilla"),
-// sabiendo que las variables de pago que esa consulta puntual no trajo
-// quedarán vacías (nunca inventadas).
+// "multiple" (Fase 2 — sistema global de variables) NO tiene plantillas
+// semilla a propósito: cada consulta real combina un número VARIABLE de
+// facetas (lista/cantidad/monto de una o más sub-intenciones a la vez —
+// ver resolverConsulta.js caso "multiple"), así que una plantilla única
+// "de fábrica" mostraría campos vacíos según qué combinación preguntó el
+// cliente. Sin semilla, el BOT sigue usando su mensaje fijo
+// (resolverConsulta.js, que ya concatena cada faceta correctamente) tal
+// como hoy — el admin puede crear una plantilla personalizada cuando
+// quiera (botón "Nueva plantilla"), sabiendo que las variables que esa
+// combinación puntual no trajo quedarán vacías (nunca inventadas).
+// Confirmado en la auditoría "completar plantillas vacías" (2026-09):
+// se revisó de nuevo esta decisión y se mantiene sin cambios — no es
+// técnicamente compatible con una plantilla estática única.
 export function obtenerPlantillasBase(tipoId: string): PlantillaBase[] {
     return PLANTILLAS_POR_TIPO[tipoId] || [];
 }
