@@ -196,9 +196,22 @@ function calcularTipoPresentacion(ctx, resultado) {
 
     if (ctx?.consulta) {
 
-        // Tipos de consulta ya usan el nombre correcto (mis_numeros,
-        // mis_reservas, cantidad_reservas, numero_especifico,
-        // disponibilidad, info_evento) — puestos por resolverConsulta.js.
+        // consulta_pago NUNCA usa una sola plantilla universal: se reparte
+        // en 4 categorías según el ESTADO REAL de pago del usuario
+        // (resultado.estadoPago, calculado siempre por
+        // construirFacetaEstadoNumeros vía determinarEstadoPago() — ver
+        // backend/shared/pagos/determinarEstadoPago.js, única fuente de
+        // verdad). "multiple" (consulta combinada) NUNCA se reparte así:
+        // sigue usando su propio tipo_respuesta="multiple" sin cambios,
+        // tal como antes de esta separación.
+        if (resultado?.tipo === "consulta_pago" && resultado?.estadoPago) {
+            return `consulta_pago_${resultado.estadoPago}`;
+        }
+
+        // Resto de tipos de consulta ya usan el nombre correcto
+        // (mis_numeros, mis_reservas, cantidad_reservas, numero_especifico,
+        // disponibilidad, info_evento, multiple) — puestos por
+        // resolverConsulta.js.
         return resultado?.tipo || null;
 
     }

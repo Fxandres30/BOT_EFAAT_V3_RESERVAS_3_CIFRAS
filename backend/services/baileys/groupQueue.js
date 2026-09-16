@@ -218,6 +218,20 @@ function groupMetadata(sock, grupoId) {
 
 }
 
+// Fase "Bloqueo automático de WhatsApp": expulsar un participante también es
+// una IQ de grupo (mismo canal que groupSettingUpdate/groupMetadata) — pasa
+// por la misma cola/backoff en vez de llamarse suelta, para no competir con
+// otras operaciones de grupo en vuelo (p. ej. el escaneo incremental que ya
+// dispara el mismo evento group-participants.update).
+function groupParticipantsUpdate(sock, grupoId, participantes, accion) {
+
+    return encolar(
+        () => sock.groupParticipantsUpdate(grupoId, participantes, accion),
+        { desc: `groupParticipantsUpdate(${accion})`, grupoId }
+    );
+
+}
+
 // Fase 4D (panel de Automatización, "+ Autorizar grupo"): lista TODOS los
 // grupos reales en los que participa la cuenta de WhatsApp de esta sesión
 // — es una IQ distinta de groupMetadata (una sola por sesión, no por
@@ -241,6 +255,7 @@ module.exports = {
     groupSettingUpdate,
     groupMetadata,
     groupFetchAllParticipating,
+    groupParticipantsUpdate,
     esRateOverlimit,
     _estado
 };

@@ -4,6 +4,7 @@
 // igual patrón que reserva.mensaje en detectarReserva.js). Gemini solo
 // redacta a partir de este resultado; nunca lo calcula.
 const { consultarMisNumeros, consultarMisNumerosPorEstado } = require("./consultarMisNumeros");
+const { determinarEstadoPago } = require("../../../shared/pagos/determinarEstadoPago");
 const { consultarCantidad } = require("./consultarCantidad");
 const { consultarNumero } = require("./consultarNumero");
 const { consultarDisponibilidad } = require("./consultarDisponibilidad");
@@ -36,6 +37,18 @@ const TEXTO_ESTADO = {
 // cantidad_en_ese_estado * evento.valor, sin abonos ni saldos.
 // ==========================================================================
 function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, pagados, valorUnidad }) {
+
+    // Montos y estado de pago se calculan SIEMPRE, sin importar el modo
+    // (lista/cantidad/monto): el estado real del usuario (sin_pago/
+    // pago_parcial/pago_completo/sin_saldo) es el mismo sin importar qué
+    // faceta preguntó — determinarEstadoPago() es la única fuente de
+    // verdad, reutilizada también por calcularTipoPresentacion
+    // (backend/bot/ai/plantillaMensaje.js) para elegir la categoría de
+    // plantilla correcta. Nunca se duplica este cálculo en otro lugar.
+    const montoTotal = total * valorUnidad;
+    const montoPagado = pagados.length * valorUnidad;
+    const montoPendiente = reservados.length * valorUnidad;
+    const estadoPago = determinarEstadoPago({ total, montoTotal, montoPagado, montoPendiente });
 
     if (modo === "lista") {
 
@@ -81,7 +94,7 @@ function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, p
 
         }
 
-        return { tipo, modo, bucket, total, reservados, pagados, numerosDelUsuario: lista, mensaje };
+        return { tipo, modo, bucket, total, reservados, pagados, numerosDelUsuario: lista, mensaje, montoTotal, montoPagado, montoPendiente, estadoPago };
 
     }
 
@@ -99,15 +112,11 @@ function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, p
             bucket === "pendiente" ? `Tienes ${cantidad} número${sufijo} pendiente${sufijo} de pago.` :
             `Tienes ${cantidad} número${sufijo} en total.`;
 
-        return { tipo, modo, bucket, total, cantidad, mensaje };
+        return { tipo, modo, bucket, total, cantidad, mensaje, montoTotal, montoPagado, montoPendiente, estadoPago };
 
     }
 
     // modo === "monto"
-    const montoTotal = total * valorUnidad;
-    const montoPagado = pagados.length * valorUnidad;
-    const montoPendiente = reservados.length * valorUnidad;
-
     const monto =
         bucket === "pagado" ? montoPagado :
         bucket === "total" ? montoTotal :
@@ -127,11 +136,29 @@ function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, p
 
     } else {
 
-        mensaje = monto > 0 ? `💰 Tienes pendiente por pagar: ${formateado}.` : "No tienes ningún pago pendiente.";
+        // bucket === "pendiente" — el caso por defecto de "consulta de
+        // pago" ("cuánto debo"). El texto depende del ESTADO REAL
+        // (estadoPago), NUNCA de una plantilla universal: pago_completo
+        // jamás dice "te falta $0", y sin_saldo nunca reutiliza el texto
+        // de pago_parcial/sin_pago (ver auditoría "consulta de pago
+        // contextual").
+        if (estadoPago === "pago_completo") {
+
+            mensaje = "✅ Ya pagaste el total. No tienes ningún saldo pendiente.";
+
+        } else if (estadoPago === "sin_saldo") {
+
+            mensaje = "No tienes reservas activas ni ningún pago pendiente.";
+
+        } else {
+
+            mensaje = `💰 Tienes pendiente por pagar: ${formateado}.`;
+
+        }
 
     }
 
-    return { tipo, modo, bucket, montoTotal, montoPagado, montoPendiente, mensaje };
+    return { tipo, modo, bucket, montoTotal, montoPagado, montoPendiente, estadoPago, mensaje };
 
 }
 

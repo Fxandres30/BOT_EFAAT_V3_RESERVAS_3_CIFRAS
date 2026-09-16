@@ -310,27 +310,58 @@ const PLANTILLAS_POR_TIPO: Record<string, PlantillaBase[]> = {
         }
     ],
 
-    // consulta_pago (auditoría "completar plantillas vacías", 2026-09):
-    // antes sin semilla a propósito (ver nota de "multiple" abajo, que
-    // sigue aplicando sin cambios). consulta_pago SÍ recibe semilla ahora
-    // porque, a diferencia de "multiple", es una única faceta por
-    // respuesta — el modo por defecto (sin frase explícita de
-    // lista/cantidad) siempre es "monto" (ver resolverConsulta.js::
-    // modoBucketImplicitos), que siempre trae montoTotal/montoPagado/
-    // montoPendiente ya resueltos. Por eso estas 5 usan EXCLUSIVAMENTE
+    // CONSULTA DE PAGO — auditoría "consulta de pago contextual" (2026-09):
+    // antes existía UNA sola plantilla universal ("Has pagado X de Y. Te
+    // falta Z.") aplicada a los 4 estados reales posibles, aunque el
+    // cliente no hubiera pagado nada o ya no tuviera saldo pendiente. Cada
+    // uno de los 4 estados (ver determinarEstadoPago en
+    // backend/shared/pagos) recibe ahora su PROPIO grupo de 5 semillas —
+    // ninguna se comparte entre estados. Todas usan EXCLUSIVAMENTE
     // {{cliente}}, {{evento}}, {{monto_total}}, {{monto_pagado}},
-    // {{monto_pendiente}} — las únicas variables de este tipo que
-    // resuelven de forma fiable en el caso real más común. Se evitó a
-    // propósito {{numeros_pagados}}/{{numeros_pendientes}}/
-    // {{cantidad_pagados}}/{{cantidad_pendientes}}: esas solo se llenan
-    // cuando el cliente usa una frase explícita de "lista" o "cantidad"
-    // (modo!=="monto"), así que en el caso por defecto quedarían vacías.
-    consulta_pago: [
+    // {{monto_pendiente}} — las mismas variables del caso "monto" por
+    // defecto (ver resolverConsulta.js::modoBucketImplicitos).
+
+    // 🔴 SIN NINGÚN PAGO — monto_pagado = 0, monto_pendiente > 0. Nunca
+    // menciona "pagaste X" (sería falso): siempre parte de que el pago
+    // está en cero.
+    consulta_pago_sin_pago: [
+        { nombre: "Natural", estilo: "natural", contenido: "Hola {{cliente}} 👋 aún no registras ningún pago. Debes {{monto_pendiente}} de un total de {{monto_total}}." },
+        { nombre: "Profesional", estilo: "profesional", contenido: "Estimado/a {{cliente}}, le informamos que actualmente no registra ningún pago para {{evento}}. El valor total a cancelar es de {{monto_total}}." },
+        { nombre: "Informativa", estilo: "informativa", contenido: "{{cliente}}, estado de pago: total {{monto_total}} · pagado {{monto_pagado}} · pendiente {{monto_pendiente}}. Todavía no registras ningún pago." },
+        { nombre: "Directa", estilo: "directa", contenido: "{{cliente}}: no has pagado nada. Debes {{monto_pendiente}}." },
+        { nombre: "Cercana", estilo: "cercana", contenido: "¡Hola {{cliente}}! 🙌 Todavía no has hecho ningún pago. Recuerda que el total es {{monto_total}} 💰" }
+    ],
+
+    // 🟡 PAGO PARCIAL — monto_pagado > 0 y monto_pendiente > 0. Es el
+    // ÚNICO estado donde "has pagado X de Y, te falta Z" es correcto.
+    consulta_pago_pago_parcial: [
         { nombre: "Natural", estilo: "natural", contenido: "Hola {{cliente}} 👋 tu saldo pendiente es de {{monto_pendiente}}. Ya llevas pagado {{monto_pagado}} de un total de {{monto_total}}." },
         { nombre: "Profesional", estilo: "profesional", contenido: "Estimado/a {{cliente}}, este es el estado de su cuenta para {{evento}}: total {{monto_total}}, pagado {{monto_pagado}}, pendiente {{monto_pendiente}}." },
         { nombre: "Informativa", estilo: "informativa", contenido: "{{cliente}}, tu resumen de pago: total {{monto_total}} · pagado {{monto_pagado}} · pendiente {{monto_pendiente}}." },
-        { nombre: "Directa", estilo: "directa", contenido: "{{cliente}}: te falta {{monto_pendiente}} por pagar." },
+        { nombre: "Directa", estilo: "directa", contenido: "{{cliente}}: has pagado {{monto_pagado}} de {{monto_total}}. Te falta {{monto_pendiente}} por pagar." },
         { nombre: "Cercana", estilo: "cercana", contenido: "¡Hola {{cliente}}! 💰 Vas pagando {{monto_pagado}} de {{monto_total}}. Te falta {{monto_pendiente}} 🙌" }
+    ],
+
+    // 🟢 PAGO COMPLETO — monto_pendiente = 0. Nunca dice "te falta $0":
+    // confirma explícitamente que no queda ningún saldo pendiente.
+    consulta_pago_pago_completo: [
+        { nombre: "Natural", estilo: "natural", contenido: "Hola {{cliente}} 👋 tu pago ya está completo: {{monto_pagado}} de {{monto_total}}. No tienes ningún saldo pendiente ✅" },
+        { nombre: "Profesional", estilo: "profesional", contenido: "Estimado/a {{cliente}}, le confirmamos que su pago para {{evento}} está completo ({{monto_total}}). No registra ningún saldo pendiente." },
+        { nombre: "Informativa", estilo: "informativa", contenido: "{{cliente}}, estado de pago: total {{monto_total}} · pagado {{monto_pagado}} · sin saldo pendiente." },
+        { nombre: "Directa", estilo: "directa", contenido: "{{cliente}}: pago completo. No debes nada." },
+        { nombre: "Cercana", estilo: "cercana", contenido: "¡Hola {{cliente}}! 🎉 Ya pagaste todo ({{monto_total}}). ¡Gracias! No tienes nada pendiente 🙌" }
+    ],
+
+    // ⚪ SIN SALDO / RESERVAS CANCELADAS — sin números activos (nunca
+    // reservó, o sus reservas fueron liberadas/canceladas). Nunca se trata
+    // como pago parcial ni muestra montos de reservas que ya no existen
+    // — por eso NO usa {{monto_total}}/{{monto_pagado}}/{{monto_pendiente}}.
+    consulta_pago_sin_saldo: [
+        { nombre: "Natural", estilo: "natural", contenido: "Hola {{cliente}} 👋 no tienes ningún saldo pendiente ni reservas activas en este momento." },
+        { nombre: "Profesional", estilo: "profesional", contenido: "Estimado/a {{cliente}}, actualmente no registra reservas activas ni ningún saldo pendiente." },
+        { nombre: "Informativa", estilo: "informativa", contenido: "{{cliente}}, no tienes reservas activas en este momento — no existe ningún saldo pendiente." },
+        { nombre: "Directa", estilo: "directa", contenido: "{{cliente}}: no tienes saldo pendiente ni reservas activas." },
+        { nombre: "Cercana", estilo: "cercana", contenido: "¡Hola {{cliente}}! 🙌 Por ahora no tienes ninguna reserva activa ni saldo pendiente." }
     ]
 
 };

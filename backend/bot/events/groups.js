@@ -15,6 +15,15 @@ const {
     escanearGrupo
 } = require("../funciones/usuarios/escanerIdentidadesLifecycle");
 
+// BLOQUEO AUTOMÁTICO DE WHATSAPP: expulsión inmediata de bloqueados al
+// entrar a un grupo — ver bot/funciones/bloqueo/bloqueoParticipantesGrupo.js.
+// Se dispara directo desde el propio payload del evento
+// (data.participants), nunca desde el escáner de identidades ni desde
+// ningún mensaje/reserva.
+const {
+    procesarIngresoParticipante
+} = require("../funciones/bloqueo/bloqueoParticipantesGrupo");
+
 // Evita sincronizar varias veces el mismo grupo
 const pendientes = new Map();
 
@@ -100,6 +109,21 @@ function registerGroups(sock) {
                 escanearGrupo(sessionIdParaEscaner, sock, data.id).catch(err => {
 
                     console.error(`❌ [ESCÁNER IDENTIDADES] error tras nuevo participante en ${data.id}:`, err?.message);
+
+                });
+
+            }
+
+            // Bloqueo automático: NO espera al escáner de arriba ni a
+            // ningún mensaje — se evalúa cada participante del propio
+            // evento de inmediato, en paralelo (fire-and-forget, uno por
+            // participante para que uno lento/con error nunca bloquee a
+            // los demás).
+            for (const participante of data.participants || []) {
+
+                procesarIngresoParticipante(sock, data.id, participante).catch(err => {
+
+                    console.error(`❌ [BLOQUEO] error evaluando participante entrante en ${data.id}:`, err?.message);
 
                 });
 

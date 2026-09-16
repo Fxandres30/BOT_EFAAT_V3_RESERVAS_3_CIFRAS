@@ -10,6 +10,7 @@ const sessionsRoutes = require("./routes/sessions");
 const pagosRoutes = require("./routes/pagos");
 const tablasRoutes = require("./routes/tablas");
 const contactosRoutes = require("./routes/contactos");
+const bloqueadosRoutes = require("./routes/bloqueados");
 
 const supabase = require("./lib/supabase");
 
@@ -25,6 +26,7 @@ app.use("/sessions", sessionsRoutes);
 app.use("/pagos", pagosRoutes);
 app.use("/tablas", tablasRoutes);
 app.use("/contactos", contactosRoutes);
+app.use("/bloqueados", bloqueadosRoutes);
 
 app.listen(4000, async () => {
 

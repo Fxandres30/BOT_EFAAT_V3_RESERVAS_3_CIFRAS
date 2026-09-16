@@ -34,7 +34,7 @@ function construirContextoDisponible(tipo: TipoMensaje): Record<string, boolean>
     }
 
     if (tipo.categoria === "Consultas") {
-        const esPago = tipo.id === "consulta_pago" || tipo.id === "multiple";
+        const esPago = tipo.id.startsWith("consulta_pago") || tipo.id === "multiple";
         return { usuario: true, evento: true, reserva: false, consulta: true, estado_pago: esPago };
     }
 

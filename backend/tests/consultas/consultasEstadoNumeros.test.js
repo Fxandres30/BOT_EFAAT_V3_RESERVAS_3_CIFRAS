@@ -23,6 +23,7 @@ const path = require("path");
 
 const { crearFakeSupabase } = require("../identidad/fakeSupabase");
 const { detectarIntencion } = require("../../bot/funciones/consultas/detectarIntencion");
+const { calcularTipoPresentacion } = require("../../bot/ai/plantillaMensaje");
 
 const RUTA_SUPABASE = path.resolve(__dirname, "../../lib/supabase.js");
 const RUTA_CONSULTAR_MIS_NUMEROS = path.resolve(__dirname, "../../bot/funciones/consultas/consultarMisNumeros.js");
@@ -195,7 +196,12 @@ async function ejecutarPruebas() {
         const cuantoPagado = await resolverConsulta({ tipo: "consulta_pago", modo: "monto", bucket: "pagado", evento: EVENTO, usuario: USUARIO });
 
         assert.strictEqual(cuantoDebo.montoPendiente, 0);
-        assert.strictEqual(cuantoDebo.mensaje, "No tienes ningún pago pendiente.");
+        assert.strictEqual(cuantoDebo.estadoPago, "pago_completo");
+        // "pago_completo" nunca reutiliza el texto genérico de sin_pago/
+        // sin_saldo ("No tienes ningún pago pendiente.") — confirma
+        // explícitamente que el pago está completo (ver auditoría
+        // "consulta de pago contextual").
+        assert.strictEqual(cuantoDebo.mensaje, "✅ Ya pagaste el total. No tienes ningún saldo pendiente.");
 
         assert.strictEqual(cuantoPagado.montoPagado, 2 * 5000);
         assert.ok(cuantoPagado.mensaje.includes("10.000"));
@@ -203,6 +209,77 @@ async function ejecutarPruebas() {
         // Invariante matemática que hace la contradicción imposible por
         // construcción: pagado + pendiente SIEMPRE es el total.
         assert.strictEqual(cuantoDebo.montoPendiente + cuantoPagado.montoPagado, cuantoPagado.montoTotal);
+
+    });
+
+    // ======================================================================
+    // "CONSULTA DE PAGO CONTEXTUAL" — calcularTipoPresentacion reparte
+    // consulta_pago en 4 categorías reales según estadoPago, NUNCA una
+    // plantilla universal (ver backend/bot/ai/plantillaMensaje.js +
+    // backend/shared/pagos/determinarEstadoPago.js).
+    // ======================================================================
+
+    await test('tipo_respuesta = "consulta_pago_pago_parcial" cuando pagado>0 y pendiente>0', async () => {
+
+        const { fake, resolverConsulta } = cargarModulos();
+        sembrarEscenarioMixto(fake);
+
+        const resultado = await resolverConsulta({ tipo: "consulta_pago", modo: "monto", bucket: "pendiente", evento: EVENTO, usuario: USUARIO });
+
+        assert.strictEqual(resultado.estadoPago, "pago_parcial");
+        assert.strictEqual(calcularTipoPresentacion({ consulta: resultado }, resultado), "consulta_pago_pago_parcial");
+
+    });
+
+    await test('tipo_respuesta = "consulta_pago_pago_completo" cuando ya pagó el total', async () => {
+
+        const { fake, resolverConsulta } = cargarModulos();
+        sembrarEscenarioTotalmentePagado(fake);
+
+        const resultado = await resolverConsulta({ tipo: "consulta_pago", modo: "monto", bucket: "pendiente", evento: EVENTO, usuario: USUARIO });
+
+        assert.strictEqual(resultado.estadoPago, "pago_completo");
+        assert.strictEqual(calcularTipoPresentacion({ consulta: resultado }, resultado), "consulta_pago_pago_completo");
+
+    });
+
+    await test('tipo_respuesta = "consulta_pago_sin_pago" cuando no ha pagado nada', async () => {
+
+        const { fake, resolverConsulta } = cargarModulos();
+
+        fake.tablas[TABLA] = [
+            { numero: "10", estado: "reservado", usuario_global_id: "cliente-1" },
+            { numero: "20", estado: "reservado", usuario_global_id: "cliente-1" }
+        ];
+
+        const resultado = await resolverConsulta({ tipo: "consulta_pago", modo: "monto", bucket: "pendiente", evento: EVENTO, usuario: USUARIO });
+
+        assert.strictEqual(resultado.estadoPago, "sin_pago");
+        assert.strictEqual(calcularTipoPresentacion({ consulta: resultado }, resultado), "consulta_pago_sin_pago");
+
+    });
+
+    await test('tipo_respuesta = "consulta_pago_sin_saldo" cuando no tiene ninguna reserva activa', async () => {
+
+        const { fake, resolverConsulta } = cargarModulos();
+        fake.tablas[TABLA] = [];
+
+        const resultado = await resolverConsulta({ tipo: "consulta_pago", modo: "monto", bucket: "pendiente", evento: EVENTO, usuario: USUARIO });
+
+        assert.strictEqual(resultado.estadoPago, "sin_saldo");
+        assert.strictEqual(calcularTipoPresentacion({ consulta: resultado }, resultado), "consulta_pago_sin_saldo");
+
+    });
+
+    await test('"multiple" (consulta combinada) NUNCA se reparte por estadoPago — conserva tipo_respuesta="multiple"', async () => {
+
+        const { fake, resolverConsulta } = cargarModulos();
+        sembrarEscenarioMixto(fake);
+
+        const intencion = detectarIntencion("mis números y cuánto debo");
+        const resultado = await resolverConsulta({ tipo: "multiple", intenciones: intencion.intenciones, evento: EVENTO, usuario: USUARIO });
+
+        assert.strictEqual(calcularTipoPresentacion({ consulta: resultado }, resultado), "multiple");
 
     });
 

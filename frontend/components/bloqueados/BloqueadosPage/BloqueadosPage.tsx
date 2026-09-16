@@ -1,47 +1,59 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ShieldBan, Plus, Search } from "lucide-react";
+import { ShieldBan, Search, Unlock, Phone, Hash } from "lucide-react";
 
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Badge } from "@/components/ui/Badge";
 
 import { getUser } from "@/services/auth/getUser";
-import { listarBloqueados, FilaBloqueado } from "@/services/bloqueados/bloqueados";
+import { listarBloqueados, desbloquear } from "@/services/bloqueados/bloqueados";
+import type { Bloqueado } from "@/components/bloqueados/types";
 
 import styles from "./BloqueadosPage.module.css";
 
 // ==========================================================================
-// Sección "Bloqueados" — SOLO estructura preparada para el futuro.
+// Panel "Bloqueados" — bloqueo automático de WhatsApp: un contacto
+// bloqueado no puede usar el bot, no puede reservar, y se expulsa
+// automáticamente de cualquier grupo administrado por el bot (ver
+// backend/bot/funciones/bloqueo/bloqueoParticipantesGrupo.js).
 //
-// Esta fase NO implementa ninguna acción real: el botón "Agregar bloqueo"
-// está deshabilitado a propósito (no basta con "no abrir un formulario" --
-// debe ser estructuralmente imposible crear un registro por accidente en
-// esta fase, incluso si alguien lo intenta hacer clic). No hay ninguna
-// conexión con WhatsApp, ningún middleware de bloqueo, ninguna expulsión
-// ni impedimento de mensajes, ningún trigger/listener/scheduler. La
-// condición obligatoria de esta fase es que la tabla "bloqueados" empiece
-// y termine en 0 filas.
+// UN SOLO CONCEPTO DE NEGOCIO: "bloqueado" — no existe un panel/tabla
+// separado de "vetados".
 // ==========================================================================
 
-const ETIQUETA_TIPO: Record<FilaBloqueado["tipo"], string> = {
-    telefono: "Teléfono",
-    jid: "JID",
-    lid: "LID"
-};
+function formatearFecha(iso: string | null): string {
+
+    if (!iso) return "—";
+
+    const fecha = new Date(iso);
+    if (Number.isNaN(fecha.getTime())) return "—";
+
+    return fecha.toLocaleString("es-CO", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+    });
+
+}
 
 export default function BloqueadosPage() {
 
     const [usuarioId, setUsuarioId] = useState<string | null>(null);
     const [cargandoUsuario, setCargandoUsuario] = useState(true);
 
-    const [bloqueados, setBloqueados] = useState<FilaBloqueado[]>([]);
+    const [bloqueados, setBloqueados] = useState<Bloqueado[]>([]);
     const [cargando, setCargando] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const [busqueda, setBusqueda] = useState("");
+    const [mostrarDesbloqueados, setMostrarDesbloqueados] = useState(false);
+    const [procesandoId, setProcesandoId] = useState<string | null>(null);
 
     useEffect(() => {
 
@@ -62,20 +74,23 @@ export default function BloqueadosPage() {
         async function cargar() {
 
             setCargando(true);
+            setError(null);
 
-            const { data, error: err } = await listarBloqueados(usuarioId!);
+            try {
 
-            if (err) {
-                // Tabla todavía no creada (migración 017 pendiente) u otro
-                // error de lectura -- se trata igual que "sin bloqueados",
-                // nunca se inventa un dato ni se rompe la pantalla.
-                setError(`No se pudo consultar Supabase (${err.message}). Probablemente la migración 017 todavía no está aplicada.`);
+                const data = await listarBloqueados(usuarioId!);
+                setBloqueados(data);
+
+            } catch (e) {
+
+                setError(e instanceof Error ? e.message : "No se pudo cargar la lista de bloqueados.");
                 setBloqueados([]);
-            } else {
-                setBloqueados(data || []);
-            }
 
-            setCargando(false);
+            } finally {
+
+                setCargando(false);
+
+            }
 
         }
 
@@ -83,9 +98,37 @@ export default function BloqueadosPage() {
 
     }, [usuarioId]);
 
-    const filtrados = bloqueados.filter((b) =>
-        !busqueda.trim() || b.identificador.toLowerCase().includes(busqueda.trim().toLowerCase())
-    );
+    async function onDesbloquear(bloqueado: Bloqueado) {
+
+        if (!usuarioId) return;
+
+        setProcesandoId(bloqueado.id);
+
+        const resultado = await desbloquear(bloqueado.id, usuarioId);
+
+        setProcesandoId(null);
+
+        if (resultado.ok) {
+            setBloqueados((prev) => prev.map((b) => (b.id === bloqueado.id ? { ...b, activo: false } : b)));
+        }
+
+    }
+
+    const filtrados = bloqueados
+        .filter((b) => mostrarDesbloqueados || b.activo)
+        .filter((b) => {
+
+            if (!busqueda.trim()) return true;
+
+            const q = busqueda.trim().toLowerCase();
+
+            return [b.nombre, b.telefono, b.lid, b.motivo]
+                .filter(Boolean)
+                .some((campo) => String(campo).toLowerCase().includes(q));
+
+        });
+
+    const activos = bloqueados.filter((b) => b.activo).length;
 
     if (cargandoUsuario) {
         return <div className={styles.state}>Cargando…</div>;
@@ -97,33 +140,29 @@ export default function BloqueadosPage() {
             <PageHeader
                 icon={<ShieldBan size={20} />}
                 title="🚫 Bloqueados"
-                description="Teléfonos, JID o LID bloqueados globalmente. Estructura preparada para el futuro — todavía no ejecuta ninguna acción sobre WhatsApp ni sobre los grupos."
-                actions={
-                    <Button
-                        leftIcon={<Plus size={14} />}
-                        disabled
-                        title="Próximamente — esta fase solo prepara la estructura, todavía no permite crear bloqueos"
-                    >
-                        Agregar bloqueo (Próximamente)
-                    </Button>
-                }
+                description="Contactos bloqueados en EFAAT: no pueden usar el bot ni reservar, y se expulsan automáticamente en cuanto intentan entrar a cualquier grupo administrado por el bot."
             />
 
             <div className={styles.resumen}>
 
                 <span className={styles.contador}>
-                    <strong>{bloqueados.length}</strong> bloqueado{bloqueados.length === 1 ? "" : "s"}
+                    <strong>{activos}</strong> bloqueado{activos === 1 ? "" : "s"} activo{activos === 1 ? "" : "s"}
                 </span>
 
-                <span className={styles.tiposLeyenda}>
-                    Tipos soportados: <span className={styles.tipoBadge}>Teléfono</span> <span className={styles.tipoBadge}>JID</span> <span className={styles.tipoBadge}>LID</span>
-                </span>
+                <label className={styles.toggleHistorial}>
+                    <input
+                        type="checkbox"
+                        checked={mostrarDesbloqueados}
+                        onChange={(e) => setMostrarDesbloqueados(e.target.checked)}
+                    />
+                    Mostrar desbloqueados
+                </label>
 
             </div>
 
             <Input
                 leftIcon={<Search size={14} />}
-                placeholder="Buscar por identificador…"
+                placeholder="Buscar por nombre, teléfono, LID o motivo…"
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
             />
@@ -141,24 +180,83 @@ export default function BloqueadosPage() {
                     title="🚫 No hay bloqueados"
                     description={
                         bloqueados.length === 0
-                            ? "Todavía no tienes ningún teléfono, JID o LID registrado como bloqueado."
-                            : "Ningún bloqueado coincide con la búsqueda."
+                            ? "Todavía no has bloqueado a ningún contacto. Bloquear un contacto se hace desde su ficha en Contactos."
+                            : "Ningún bloqueado coincide con la búsqueda/filtro actual."
                     }
                 />
 
             ) : (
 
-                // No debería llegar a renderizarse en esta fase (0 registros
-                // garantizado) — se deja preparado para cuando exista la
-                // lógica real de creación, en vez de descartar los datos.
-                <ul className={styles.lista}>
-                    {filtrados.map((b) => (
-                        <li key={b.id} className={styles.item}>
-                            <span className={styles.tipo}>{ETIQUETA_TIPO[b.tipo]}</span> {b.identificador}
-                            {b.motivo ? ` — ${b.motivo}` : ""}
-                        </li>
-                    ))}
-                </ul>
+                <div className={styles.tablaWrap}>
+
+                    <table className={styles.tabla}>
+
+                        <thead>
+                            <tr>
+                                <th>Contacto</th>
+                                <th>Motivo</th>
+                                <th>Bloqueado desde</th>
+                                <th>Intentos</th>
+                                <th>Expulsiones</th>
+                                <th>Último grupo</th>
+                                <th>Último intento</th>
+                                <th>Estado</th>
+                                <th />
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            {filtrados.map((b) => (
+
+                                <tr key={b.id} className={!b.activo ? styles.filaInactiva : undefined}>
+
+                                    <td>
+                                        <div className={styles.contactoCelda}>
+                                            <span className={styles.contactoNombre}>{b.nombre || "Sin nombre"}</span>
+                                            <span className={styles.contactoIdentificadores}>
+                                                {b.telefono && <span><Phone size={11} /> {b.telefono}</span>}
+                                                {b.lid && <span><Hash size={11} /> {b.lid}</span>}
+                                            </span>
+                                        </div>
+                                    </td>
+
+                                    <td>{b.motivo || "—"}</td>
+                                    <td>{formatearFecha(b.creado_en)}</td>
+                                    <td>{b.intentos_ingreso}</td>
+                                    <td>{b.expulsiones}</td>
+                                    <td>{b.ultimo_grupo_nombre || b.ultimo_grupo_id || "—"}</td>
+                                    <td>{formatearFecha(b.ultimo_intento_en)}</td>
+
+                                    <td>
+                                        {b.activo ? (
+                                            <Badge tone="error">Bloqueado</Badge>
+                                        ) : (
+                                            <Badge tone="neutral">Desbloqueado</Badge>
+                                        )}
+                                    </td>
+
+                                    <td>
+                                        {b.activo && (
+                                            <Button
+                                                size="sm"
+                                                variant="secondary"
+                                                leftIcon={<Unlock size={13} />}
+                                                onClick={() => onDesbloquear(b)}
+                                                disabled={procesandoId === b.id}
+                                            >
+                                                {procesandoId === b.id ? "Desbloqueando..." : "Desbloquear"}
+                                            </Button>
+                                        )}
+                                    </td>
+
+                                </tr>
+
+                            ))}
+                        </tbody>
+
+                    </table>
+
+                </div>
 
             )}
 

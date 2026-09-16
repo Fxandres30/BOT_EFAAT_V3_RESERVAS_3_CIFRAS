@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Phone, Hash, Clock, Loader2 } from "lucide-react";
+import { AlertTriangle, Phone, Hash, Clock, Loader2, Ban, Unlock } from "lucide-react";
 
 import "./PerfilContacto.css";
 
 import { obtenerPerfilContacto } from "@/services/contactos/obtenerPerfilContacto";
 import { agregarTelefonoContacto } from "@/services/contactos/agregarTelefonoContacto";
+import { obtenerBloqueoDeContacto, crearBloqueo, desbloquear } from "@/services/bloqueados/bloqueados";
+import { getUser } from "@/services/auth/getUser";
 import type { Contacto, PerfilContacto as PerfilContactoTipo } from "@/components/contactos/types";
+import type { Bloqueado } from "@/components/bloqueados/types";
 
 interface Props {
     contacto: Contacto;
@@ -74,6 +77,90 @@ export default function PerfilContacto({ contacto, usuarioId, onTelefonoAgregado
     const [telefonoInput, setTelefonoInput] = useState("");
     const [guardando, setGuardando] = useState(false);
     const [errorGuardar, setErrorGuardar] = useState<string | null>(null);
+
+    const [bloqueo, setBloqueo] = useState<Bloqueado | null>(null);
+    const [cargandoBloqueo, setCargandoBloqueo] = useState(true);
+    const [bloqueoFormularioAbierto, setBloqueoFormularioAbierto] = useState(false);
+    const [motivoInput, setMotivoInput] = useState("");
+    const [procesandoBloqueo, setProcesandoBloqueo] = useState(false);
+    const [errorBloqueo, setErrorBloqueo] = useState<string | null>(null);
+
+    useEffect(() => {
+
+        let vivo = true;
+
+        async function cargarBloqueo() {
+
+            setCargandoBloqueo(true);
+
+            const b = await obtenerBloqueoDeContacto(usuarioId, {
+                telefono: contacto.telefono,
+                lid: contacto.lid
+            });
+
+            if (vivo) {
+                setBloqueo(b);
+                setCargandoBloqueo(false);
+            }
+
+        }
+
+        cargarBloqueo();
+
+        return () => { vivo = false; };
+
+    }, [contacto.id, contacto.telefono, contacto.lid, usuarioId]);
+
+    async function bloquearContacto() {
+
+        setProcesandoBloqueo(true);
+        setErrorBloqueo(null);
+
+        const { data } = await getUser();
+
+        const resultado = await crearBloqueo({
+            usuarioId,
+            telefono: contacto.telefono,
+            lid: contacto.lid,
+            nombre: contacto.nombre,
+            motivo: motivoInput.trim() || null,
+            bloqueadoPor: data.user?.email || null
+        });
+
+        setProcesandoBloqueo(false);
+
+        if (!resultado.ok || !resultado.bloqueado) {
+            setErrorBloqueo(resultado.motivo === "sin_identificador"
+                ? "Este contacto no tiene teléfono ni LID todavía — no se puede bloquear."
+                : "No se pudo bloquear al contacto. Intenta de nuevo.");
+            return;
+        }
+
+        setBloqueo(resultado.bloqueado);
+        setBloqueoFormularioAbierto(false);
+        setMotivoInput("");
+
+    }
+
+    async function desbloquearContacto() {
+
+        if (!bloqueo) return;
+
+        setProcesandoBloqueo(true);
+        setErrorBloqueo(null);
+
+        const resultado = await desbloquear(bloqueo.id, usuarioId);
+
+        setProcesandoBloqueo(false);
+
+        if (!resultado.ok) {
+            setErrorBloqueo("No se pudo desbloquear al contacto. Intenta de nuevo.");
+            return;
+        }
+
+        setBloqueo(null);
+
+    }
 
     useEffect(() => {
 
@@ -189,9 +276,77 @@ export default function PerfilContacto({ contacto, usuarioId, onTelefonoAgregado
 
                     </div>
 
+                    {!cargandoBloqueo && (
+
+                        <div className="perfil-bloqueo">
+
+                            {bloqueo ? (
+
+                                <>
+                                    <span className="perfil-badge perfil-badge--bloqueado">
+                                        <Ban size={13} /> CONTACTO BLOQUEADO
+                                    </span>
+
+                                    <button
+                                        type="button"
+                                        className="perfil-boton-desbloquear"
+                                        onClick={desbloquearContacto}
+                                        disabled={procesandoBloqueo}
+                                    >
+                                        <Unlock size={13} /> {procesandoBloqueo ? "Desbloqueando..." : "Desbloquear contacto"}
+                                    </button>
+                                </>
+
+                            ) : !bloqueoFormularioAbierto ? (
+
+                                <button
+                                    type="button"
+                                    className="perfil-boton-bloquear"
+                                    onClick={() => setBloqueoFormularioAbierto(true)}
+                                >
+                                    <Ban size={13} /> Bloquear contacto
+                                </button>
+
+                            ) : null}
+
+                        </div>
+
+                    )}
+
                 </div>
 
             </div>
+
+            {bloqueoFormularioAbierto && !bloqueo && (
+
+                <div className="perfil-form-bloqueo">
+
+                    <input
+                        type="text"
+                        placeholder="Motivo del bloqueo (opcional)"
+                        value={motivoInput}
+                        onChange={(e) => setMotivoInput(e.target.value)}
+                        disabled={procesandoBloqueo}
+                    />
+
+                    <button type="button" onClick={bloquearContacto} disabled={procesandoBloqueo}>
+                        {procesandoBloqueo ? "Bloqueando..." : "Confirmar bloqueo"}
+                    </button>
+
+                    <button
+                        type="button"
+                        className="perfil-form-cancelar"
+                        onClick={() => { setBloqueoFormularioAbierto(false); setErrorBloqueo(null); setMotivoInput(""); }}
+                        disabled={procesandoBloqueo}
+                    >
+                        Cancelar
+                    </button>
+
+                    {errorBloqueo && <p className="perfil-error">{errorBloqueo}</p>}
+
+                </div>
+
+            )}
 
             {formularioAbierto && (
 

@@ -1,5 +1,5 @@
 .page {
-  max-width: 800px;
+  max-width: 1100px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -26,23 +26,13 @@
   color: var(--efaat-text-secondary);
 }
 
-.tiposLeyenda {
-  font-size: var(--efaat-text-xs);
-  color: var(--efaat-text-secondary);
+.toggleHistorial {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
-}
-
-.tipoBadge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--efaat-surface-muted);
-  border: 1px solid var(--efaat-border);
   font-size: var(--efaat-text-xs);
   color: var(--efaat-text-secondary);
+  cursor: pointer;
 }
 
 .avisoTecnico {
@@ -55,25 +45,63 @@
   line-height: 1.5;
 }
 
-.lista {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.tablaWrap {
+  overflow-x: auto;
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-control);
+}
+
+.tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--efaat-text-sm);
+  white-space: nowrap;
+}
+
+.tabla th {
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--efaat-surface-muted);
+  color: var(--efaat-text-secondary);
+  font-size: var(--efaat-text-xs);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  border-bottom: 1px solid var(--efaat-border);
+}
+
+.tabla td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--efaat-border);
+  vertical-align: middle;
+}
+
+.tabla tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.filaInactiva {
+  opacity: .55;
+}
+
+.contactoCelda {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 }
 
-.item {
-  padding: 8px 10px;
-  border-radius: var(--efaat-radius-control);
-  border: 1px solid var(--efaat-border);
-  font-size: var(--efaat-text-sm);
+.contactoNombre {
+  font-weight: 600;
 }
 
-.tipo {
+.contactoIdentificadores {
+  display: flex;
+  gap: 10px;
   font-size: var(--efaat-text-xs);
   color: var(--efaat-text-secondary);
-  text-transform: uppercase;
-  margin-right: 6px;
+}
+
+.contactoIdentificadores span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }

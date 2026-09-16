@@ -265,22 +265,58 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         ejemplo: { evento: "Lotería De Manizales", fecha: "2026-09-03", hora: "22:30" },
         soportado: true
     },
+    // ============================================================
+    // CONSULTA DE PAGO — auditoría "consulta de pago contextual"
+    // (2026-09): antes existía UN solo tipo "consulta_pago" con una
+    // plantilla universal ("Has pagado X de Y. Te falta Z."), aplicada
+    // incluso cuando el cliente no había pagado nada o ya no tenía saldo
+    // pendiente. El backend (calcularTipoPresentacion, ver
+    // backend/bot/ai/plantillaMensaje.js) ahora reparte SIEMPRE la
+    // consulta_pago real en una de estas 4 categorías, según el ESTADO
+    // REAL calculado por determinarEstadoPago() (backend/shared/pagos) —
+    // la única fuente de verdad, nunca duplicada aquí. Cada categoría
+    // tiene sus propias plantillas (Natural/Profesional/Informativa/
+    // Directa/Cercana); no existe ninguna plantilla compartida entre
+    // ellas. "Consulta combinada" (id "multiple", más abajo) NUNCA usa
+    // este reparto — sigue siendo su propio tipo, sin cambios.
+    // ============================================================
     {
-        id: "consulta_pago",
+        id: "consulta_pago_sin_pago",
         categoria: "Consultas",
-        icono: "💰",
-        nombre: "Consulta de pago",
-        descripcion: "El cliente pregunta cuánto debe, cuánto ha pagado, o cuáles números tiene pagados/pendientes.",
-        // Cada consulta real solo trae UNA faceta (lista, cantidad o monto
-        // — ver construirFacetaEstadoNumeros en resolverConsulta.js), nunca
-        // las tres a la vez. Se listan todas aquí porque el catálogo es
-        // GLOBAL: la que no aplique a la pregunta real del cliente
-        // simplemente queda vacía en esa respuesta puntual (nunca inventa).
-        variables: [V.cliente, V.evento, V.numerosPagados, V.numerosPendientes, V.cantidadPagados, V.cantidadPendientes, V.montoTotal, V.montoPagado, V.montoPendiente],
-        // Ejemplo mínimo a propósito: cada variable de pago no listada aquí
-        // cae al ejemplo genérico del catálogo global en el preview (ver
-        // aplicarPlantillaPreview.ts) — así se ve cómo luce CADA una sin
-        // simular una combinación que una consulta real nunca produce.
+        icono: "🔴",
+        nombre: "Consulta de pago — Sin ningún pago",
+        descripcion: "El cliente tiene reservas activas pero todavía no ha pagado nada (monto_pagado = 0, monto_pendiente > 0).",
+        variables: [V.cliente, V.evento, V.montoTotal, V.montoPagado, V.montoPendiente],
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", monto_total: "$20.000", monto_pagado: "$0", monto_pendiente: "$20.000" },
+        soportado: true
+    },
+    {
+        id: "consulta_pago_pago_parcial",
+        categoria: "Consultas",
+        icono: "🟡",
+        nombre: "Consulta de pago — Pago parcial",
+        descripcion: "El cliente ya pagó una parte, pero todavía tiene saldo pendiente (monto_pagado > 0 y monto_pendiente > 0). Es el ÚNICO caso donde tiene sentido decir \"has pagado X de Y, te falta Z\".",
+        variables: [V.cliente, V.evento, V.montoTotal, V.montoPagado, V.montoPendiente],
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", monto_total: "$20.000", monto_pagado: "$10.000", monto_pendiente: "$10.000" },
+        soportado: true
+    },
+    {
+        id: "consulta_pago_pago_completo",
+        categoria: "Consultas",
+        icono: "🟢",
+        nombre: "Consulta de pago — Pago completo",
+        descripcion: "El cliente ya pagó el total: no tiene ningún saldo pendiente (monto_pendiente = 0). Nunca debe decir \"te falta $0\" — confirma explícitamente que no hay saldo.",
+        variables: [V.cliente, V.evento, V.montoTotal, V.montoPagado, V.montoPendiente],
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", monto_total: "$20.000", monto_pagado: "$20.000", monto_pendiente: "$0" },
+        soportado: true
+    },
+    {
+        id: "consulta_pago_sin_saldo",
+        categoria: "Consultas",
+        icono: "⚪",
+        nombre: "Consulta de pago — Sin saldo / reservas canceladas",
+        descripcion: "El cliente no tiene ninguna reserva activa en este momento (nunca reservó, o sus reservas fueron liberadas/canceladas): no existe ninguna obligación de pago vigente. Nunca se trata como pago parcial ni muestra montos de reservas ya canceladas.",
+        variables: [V.cliente, V.evento],
         ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales" },
         soportado: true
     },
