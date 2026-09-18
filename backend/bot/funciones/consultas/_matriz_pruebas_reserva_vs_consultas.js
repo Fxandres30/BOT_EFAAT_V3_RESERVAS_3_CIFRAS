@@ -31,7 +31,9 @@ const CASOS = [
     { msg: "dame el 23", esperado: "reserva" },
     { msg: "me das el 45", esperado: "reserva" },
     { msg: "apúntame el 72", esperado: "reserva" },
-    { msg: "apártame el 9", esperado: "reserva" },
+    // Auditoría "reservas por número de cifras": evento de 2 cifras ->
+    // el número de prueba necesita sus 2 dígitos ("09", no "9").
+    { msg: "apártame el 09", esperado: "reserva" },
     { msg: "resérvame el 18", esperado: "reserva" },
     { msg: "quiero apartar el 15", esperado: "reserva" },
     { msg: "me apunto el 30", esperado: "reserva" },
@@ -39,7 +41,7 @@ const CASOS = [
     { msg: "regálame el 50", esperado: "reserva" },
     { msg: "quiero 12 y 34", esperado: "reserva" },
     { msg: "los 45 y 89 para mí", esperado: "reserva" },
-    { msg: "el 8 y el 9 para mí", esperado: "reserva" },
+    { msg: "el 08 y el 09 para mí", esperado: "reserva" },
     { msg: "yo el 33", esperado: "reserva" },
     // el caso reportado
     { msg: "mío el 55 con bogota gracias", esperado: "reserva" },
@@ -135,7 +137,55 @@ const CASOS = [
     { msg: "¿qué números tengo?", esperado: "mis_numeros" },
     { msg: "¿cuántos tengo?", esperado: "cantidad_reservas" },
     { msg: "¿quién tiene el 45?", esperado: "numero_especifico" },
-    { msg: "¿el 45 está ocupado?", esperado: "numero_especifico" }
+    { msg: "¿el 45 está ocupado?", esperado: "numero_especifico" },
+
+    // ===== SEGURIDAD — auditoría "reservas por número de cifras": una
+    // sola cifra NUNCA reserva en un evento de 2 cifras (default) =====
+    { msg: "1", esperado: "ninguna" },
+    { msg: "5", esperado: "ninguna" },
+    { msg: "9", esperado: "ninguna" },
+    { msg: "quiero el 9", esperado: "ninguna" },
+    { msg: "apártame el 5", esperado: "ninguna" },
+    { msg: "apartame el 5", esperado: "ninguna" },
+    { msg: "aparta el 8", esperado: "ninguna" },
+    // "resérvame"/"reservame" fuzzy-matchea "reservado" (distancia de
+    // edición 2, dentro de tolerancia) y cae en mis_reservas en vez de
+    // silencio — hallazgo aparte de esta auditoría (coincidenciaAproximada.js,
+    // NO tocado aquí: fuera de alcance de "reservas por número de cifras").
+    // Lo único que exige esta auditoría — NUNCA reserva con una cifra
+    // inválida — se sigue cumpliendo.
+    { msg: "resérvame el 5", esperado: "mis_reservas" },
+    { msg: "reservame el 5", esperado: "mis_reservas" },
+    // "me llevo" + una cifra inválida (numeros=[]) coincide con el
+    // disparador débil de pago "llevo" sin número — comportamiento ya
+    // documentado en detectarIntencion.js para "cuánto llevo"; NUNCA
+    // reserva, que es lo que exige esta auditoría.
+    { msg: "me llevo el 5", esperado: "consulta_pago" },
+    // ...pero con el cero inicial escrito, sigue siendo reserva válida
+    { msg: "quiero el 05", esperado: "reserva" },
+    { msg: "resérvame el 05", esperado: "reserva" },
+    { msg: "reservame el 05", esperado: "reserva" },
+    { msg: "apártame el 05", esperado: "reserva" },
+    { msg: "apartame el 05", esperado: "reserva" },
+    // ...y 3+ cifras tampoco reservan
+    { msg: "100", esperado: "ninguna" },
+    { msg: "quiero el 100", esperado: "ninguna" },
+    // mismo hallazgo aparte que "resérvame el 5" (arriba): "resérvame"
+    // fuzzy-matchea "reservado" -> mis_reservas en vez de silencio, pero
+    // NUNCA reserva con un número de 3 cifras, que es lo exigido aquí.
+    { msg: "resérvame el 123", esperado: "mis_reservas" },
+    { msg: "quiero el 300", esperado: "ninguna" },
+    // ...ni teléfonos/cédulas
+    { msg: "mi teléfono es 3001234567", esperado: "ninguna" },
+    { msg: "mi cédula es 1023456789", esperado: "ninguna" },
+    { msg: "nequi 3216549870", esperado: "ninguna" },
+    // ...múltiples números: el inválido se ignora, el válido se conserva
+    // TAL CUAL lo escribió el cliente (sin fusionarse ni convertirse)
+    { msg: "05 25", esperado: "reserva" },
+    { msg: "05 y 25", esperado: "reserva" },
+    { msg: "quiero el 05 y 25", esperado: "reserva" },
+    { msg: "5 25", esperado: "reserva" }, // el "5" se ignora, reserva solo el 25
+    { msg: "05 5", esperado: "reserva" }  // el "5" se ignora, reserva solo el 05
 
 ];
 

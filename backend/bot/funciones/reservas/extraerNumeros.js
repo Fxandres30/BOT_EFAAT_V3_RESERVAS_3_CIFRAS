@@ -4,12 +4,20 @@
 // evento (eventos_bot.cifras, que viene de configEvento.js), NO se asume.
 // El parámetro `cifras` es opcional y por defecto 2 — así todos los
 // puntos del código que todavía no pasan la config del evento mantienen
-// exactamente el comportamiento anterior (universo 00–99, forma canónica
-// de 2 dígitos).
+// exactamente el comportamiento anterior (universo 00–99).
 //
-//   evento de 1 cifra  -> universo 0–9,   forma "1"
-//   evento de 2 cifras -> universo 00–99, forma "01"
-//   evento de 3 cifras -> universo 000–999, forma "001"
+//   evento de 1 cifra  -> universo 0–9,   forma "5"
+//   evento de 2 cifras -> universo 00–99, forma "05"
+//   evento de 3 cifras -> universo 000–999, forma "005"
+//
+// Auditoría "reservas por número de cifras": el mensaje debe traer
+// EXACTAMENTE `cifras` dígitos escritos para que cuente como número de la
+// dinámica — NUNCA se completa con ceros a la izquierda un número más
+// corto de lo escrito ("5" en un evento de 2 cifras NO es "05": son datos
+// distintos, y solo el segundo es válido). Antes de esta corrección el
+// patrón aceptaba de 1 a `cifras` dígitos y luego rellenaba con
+// padStart(), lo que convertía "5" en "05" silenciosamente y dejaba
+// reservar con un formato que el cliente nunca escribió.
 //
 // La reserva/consulta física sigue el flujo existente sin cambios: este
 // módulo solo se asegura de que el valor correcto llegue a ese flujo.
@@ -71,23 +79,26 @@ function extraerNumeros(texto = "", cifras = 2) {
     texto = texto.replace(/[^0-9\s-]/g, " ");
 
     // ==========================
-    // Extraer números (hasta `n` dígitos, según la config del evento)
+    // Extraer números (EXACTAMENTE `n` dígitos, según la config del
+    // evento) — nunca menos. Un token de menos de `n` dígitos ("5" en un
+    // evento de 2 cifras) no es un candidato válido y se ignora, igual
+    // que ya se ignoraba uno de más de `n` dígitos (un teléfono, una
+    // cédula): ambos casos son "el cliente no escribió el formato exacto
+    // de la dinámica".
     // ==========================
 
-    const patron = new RegExp(`\\b\\d{1,${n}}\\b`, "g");
+    const patron = new RegExp(`\\b\\d{${n}}\\b`, "g");
 
     const encontrados = texto.match(patron) || [];
 
     // ==========================
-    // Formatear a la forma canónica del universo configurado
+    // Deduplicar (la forma ya es la canónica: siempre trae `n` dígitos)
     // ==========================
 
     const numeros = [
         ...new Set(
             encontrados
-                .map(x => parseInt(x, 10))
-                .filter(x => x >= 0 && x <= maximo)
-                .map(x => x.toString().padStart(n, "0"))
+                .filter(x => parseInt(x, 10) <= maximo)
         )
     ];
 
@@ -95,6 +106,26 @@ function extraerNumeros(texto = "", cifras = 2) {
 
 }
 
+// Valida que un número YA EXTRAÍDO (o cualquier string que vaya a usarse
+// como número de la dinámica) tenga el formato EXACTO de la configuración
+// actual — ni menos dígitos ("5" para un evento de 2 cifras) ni más
+// ("100"). Es la MISMA regla que aplica extraerNumeros() de aquí arriba,
+// expuesta aparte para poder usarse como segunda/tercera capa de defensa
+// justo antes de tocar Supabase (ver detectarReserva.js y
+// reservarNumeros.js) sin depender de que la extracción del texto sea la
+// única puerta de entrada.
+function validarFormatoNumero(numero, cifras = 2) {
+
+    const n =
+        Number.isInteger(cifras) && cifras >= 1 && cifras <= 4
+            ? cifras
+            : 2;
+
+    return typeof numero === "string" && new RegExp(`^\\d{${n}}$`).test(numero);
+
+}
+
 module.exports = {
-    extraerNumeros
+    extraerNumeros,
+    validarFormatoNumero
 };

@@ -142,7 +142,11 @@ const CASOS = [
     // ===== Reservas reales — NO deben cambiar =====
     { msg: "quiero el 27 y el 45", esperado: "reserva" },
     { msg: "dame el 12", esperado: "reserva" },
-    { msg: "aparta el 8", esperado: "reserva" }
+    // Auditoría "reservas por número de cifras": el evento es de 2 cifras
+    // (default), así que el número de prueba debe traer sus 2 dígitos
+    // ("08", no "8") — una sola cifra ya NO es válida (ver
+    // extraerNumeros.test.js / reservaCifras.test.js).
+    { msg: "aparta el 08", esperado: "reserva" }
 
 ];
 

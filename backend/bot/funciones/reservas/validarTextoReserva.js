@@ -28,6 +28,7 @@ const PALABRAS_NO_PERMITIDAS = [
     "sorteo",
     "nequi",
     "pago",
+    "pagar",
     "pague",
     "pagado",
     "reservado",

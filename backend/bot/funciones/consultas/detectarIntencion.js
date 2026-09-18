@@ -29,31 +29,49 @@ const {
 // (ver guarda más abajo) — así "qué números debo" nunca se confunde con
 // una pregunta de dinero.
 //
-// Tres niveles, a propósito:
-//   FUERTE    -> inequívocas de dinero. Cuentan como pago incluso si el
-//                mensaje trae un número ("¿cuánto debo por el 25?" sigue
-//                siendo pago, no reserva ni numero_especifico).
-//   DÉBIL     -> "llevo"/"falta" también aparecen en frases de RESERVA
-//                ("me llevo el 44") y de CANTIDAD ("cuántos llevo"). Solo
-//                cuentan como pago cuando NO hay ningún número en el
-//                mensaje y NO es una pregunta de cantidad en plural
-//                ("cuántos/cuántas ..."). Así "cuánto llevo" sigue siendo
-//                pago, "me llevo el 44" es reserva y "cuántos llevo" es
-//                cantidad.
-//   EXTENDIDA -> "pagado"/"pagar". Solo sin ningún número (colisiona con
-//                numero_especifico: "el 25 ya está pagado" debe seguir
-//                siendo una consulta de ESE número) y sin pregunta de
-//                cantidad en plural.
-// "pague" se sacó de FUERTE (Fase "consultas de pago"): FUERTE ignora a
-// propósito si hay un número en el mensaje ("cuánto debo por el 45" sigue
-// siendo pago) — pero "pague"/"pagué" + un número concreto ("el 25 ya lo
-// pagué") es una pregunta de ESE número (numero_especifico, ver más abajo
-// NUMERO_ESPECIFICO_FRASES), nunca una pregunta de dinero general. Se
-// mueve a EXTENDIDA, que sí respeta "solo sin ningún número".
+// Dos niveles, a propósito:
+//   FUERTE -> inequívocas de dinero. Cuentan como pago incluso si el
+//             mensaje trae un número ("¿cuánto debo por el 25?" sigue
+//             siendo pago, no reserva ni numero_especifico).
+//   DÉBIL  -> "llevo"/"falta" también aparecen en frases de RESERVA
+//             ("me llevo el 44") y de CANTIDAD ("cuántos llevo"). Solo
+//             cuentan como pago cuando NO hay ningún número en el
+//             mensaje y NO es una pregunta de cantidad en plural
+//             ("cuántos/cuántas ..."). Así "cuánto llevo" sigue siendo
+//             pago, "me llevo el 44" es reserva y "cuántos llevo" es
+//             cantidad.
+// "pago"/"pagar"/"pague"/"pagado" (verbos de ACCIÓN/estado de pago) ya NO
+// viven aquí — se resuelven aparte, en PAGO_PALABRAS_ACCION más abajo, ver
+// ese comentario para el porqué.
 const PAGO_PALABRAS_FUERTE = ["debo", "debe"];
 const PAGO_PALABRAS_DEBIL = ["llevo", "falta"];
-const PAGO_PALABRAS_EXTENDIDA = ["pagado", "pagar", "pague"];
 const PAGO_FRASES = ["cuanto es lo mio"];
+
+// Auditoría "PAGO > CONSULTA" y "PAGO nunca es RESERVA ni CONSULTA
+// genérica de números" (Problemas 1 y 2): las cuatro formas de un mismo
+// campo semántico de pago. El cliente está afirmando/preguntando/
+// declarando su intención de pago — nunca "qué números tengo" ni tomando
+// un número — así que valen SIEMPRE, aunque el mensaje diga "número(s)"
+// ("pago mis números", "quiero pagar los números que tengo") o traiga un
+// número concreto ("pago el 25", "el 25 ya está pagado"). Se comprueban
+// en un paso aparte (-0.5), ANTES de la guarda de "número(s)" de más
+// abajo Y antes de la lógica de reserva/numero_especifico. Ninguna es
+// válida como reserva: validarTextoReserva.js ya bloquea las cuatro, así
+// que esta prioridad nunca le quita un mensaje real a una reserva.
+//
+// Con un número concreto en el mensaje ("pago el 25", "ya pagué el 25",
+// "el 25 está pagado"), el sistema NUNCA puede tomarle la palabra al
+// cliente sobre si pagó o no — el único pago real se confirma por sticker
+// (ver confirmarPagoPorSticker.js) o por un administrador, nunca por
+// texto libre. Por eso, con número, la respuesta correcta es siempre el
+// ESTADO REAL de ESE número (numero_especifico -> consultarNumero.js),
+// sea que el cliente haya preguntado ("¿el 25 está pagado?"), afirmado
+// ("ya pagué el 25") o declarado una intención ("quiero pagar el 25") —
+// las tres formas reciben la MISMA respuesta honesta, nunca una
+// confirmación fabricada. Sin número, no hay nada específico que
+// consultar y se responde con el estado de pago agregado del cliente
+// (consulta_pago, igual que "cuánto debo").
+const PAGO_PALABRAS_ACCION = ["pago", "pagar", "pague", "pagado", "pagos"];
 
 // ============================================================
 // Fase "consultas de pago" — frases COMPLETAS que fijan sin ambigüedad
@@ -155,21 +173,20 @@ const NUMERO_ESPECIFICO_FRASES = [
     "esta libre",
     "esta ocupado",
     "esta reservado",
-    "esta pagado",
     "esta disponible",
     "quien tiene",
     "tiene",        // 3ª persona ("¿alguien tiene el 45?", "¿lo tiene alguien?")
                     // — NUNCA aparece en una orden de reserva ("tengo", en
                     // cambio, ya lo bloquea validarTextoReserva.js).
     "consulta",
-    // Fase "consultas de pago": "¿el 25 ya lo pagué?" / "ya pagué el 25"
-    // preguntan por el ESTADO de ESE número (nunca dinero en general) — se
-    // agregan aquí en vez de dejar que "pague" (ahora en EXTENDIDA, más
-    // arriba) se coma el mensaje como consulta_pago cuando SÍ hay un
-    // número concreto.
-    "ya pague",
-    "lo pague",
-    "ya lo pague",
+    // NOTA: "esta pagado" / "ya pague" / "lo pague" / "ya lo pague" ya NO
+    // están aquí — el paso -0.5 (PAGO_PALABRAS_ACCION) resuelve CUALQUIER
+    // mensaje con "pagado"/"pague" + un número concreto como
+    // numero_especifico, sin necesidad de listar la frase completa. Mismo
+    // resultado exacto para "el 25 ya está pagado"/"el 25 ya lo pagué"
+    // (ver tests protegidos en consultasPago.test.js #14/#15), pero
+    // también cubre frases nuevas antes no listadas ("pague el 25",
+    // "el 25 pagado").
     ...FRASES_PUEDO
 ];
 
@@ -334,6 +351,23 @@ function detectarIntencionUnica(texto = "", cifras = 2) {
         return resolverComoReservaOninguna(texto, numeros);
     }
 
+    // -0.5. Verbos/estado de ACCIÓN de pago ("pago", "pagar", "pague",
+    // "pagado") — ver comentario de PAGO_PALABRAS_ACCION arriba. Máxima
+    // prioridad después de las frases explícitas: nunca se apaga por la
+    // palabra "número(s)" ni por traer un número concreto. Con un número
+    // concreto se resuelve como numero_especifico (estado REAL de ESE
+    // número, nunca una confirmación de pago fabricada desde texto libre);
+    // sin número, como consulta_pago (estado agregado del cliente).
+    if (contieneAlguna(tokens, PAGO_PALABRAS_ACCION)) {
+
+        if (numeros.length > 0) {
+            return { tipo: "numero_especifico", numeros };
+        }
+
+        return { tipo: "consulta_pago", numeros };
+
+    }
+
     // 0. Pago (disparadores genéricos, sin modo/bucket explícito —
     // resolverConsulta.js aplica un valor por defecto seguro). GUARDA: si
     // el mensaje menciona explícitamente la palabra "número(s)", NUNCA se
@@ -348,15 +382,14 @@ function detectarIntencionUnica(texto = "", cifras = 2) {
             return { tipo: "consulta_pago", numeros };
         }
 
-        // Disparadores débiles y ampliados: solo cuando NO hay ningún
-        // número en el mensaje y NO es una pregunta de conteo en plural
-        // (ver comentarios de las constantes, arriba). Así "me llevo el
-        // 44" queda como reserva y "cuántos llevo" como cantidad.
+        // Disparadores débiles: solo cuando NO hay ningún número en el
+        // mensaje y NO es una pregunta de conteo en plural (ver
+        // comentarios de las constantes, arriba). Así "me llevo el 44"
+        // queda como reserva y "cuántos llevo" como cantidad.
         if (numeros.length === 0 && !esContarPlural) {
 
             if (
                 contieneAlguna(tokens, PAGO_PALABRAS_DEBIL) ||
-                contieneAlguna(tokens, PAGO_PALABRAS_EXTENDIDA) ||
                 contieneAlgunaFrase(tokens, PAGO_FRASES)
             ) {
                 return { tipo: "consulta_pago", numeros };

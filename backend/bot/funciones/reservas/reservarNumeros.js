@@ -1,4 +1,5 @@
 const supabase = require("../../../lib/supabase");
+const { validarFormatoNumero } = require("./extraerNumeros");
 
 async function reservarNumeros({
 
@@ -13,6 +14,29 @@ async function reservarNumeros({
 
     if (!Array.isArray(numeros) || numeros.length === 0) {
         return [];
+    }
+
+    // Última capa de defensa (auditoría "reservas por número de cifras")
+    // ANTES de tocar Supabase: sin importar quién llame a esta función ni
+    // si detectarReserva.js ya filtró, ningún número cuyo formato textual
+    // no tenga EXACTAMENTE las cifras configuradas del evento ("5" en un
+    // evento de 2 cifras) puede llegar al UPDATE de abajo.
+    //
+    // Solo se aplica cuando el evento REALMENTE trae `cifras` configurado
+    // (siempre el caso en producción: configEvento.js fija cifras=2 en
+    // cada evento real). Si `cifras` no viene (código/tests que reservan
+    // directamente por otros motivos, ajenos al formato de la dinámica —
+    // p. ej. las pruebas de aislamiento de identidad/tenant), esta función
+    // no inventa un valor por defecto ni les cambia su contrato: sigue
+    // confiando en los `numeros` que ya le pasó el llamador, como siempre.
+    if (Number.isInteger(evento?.cifras)) {
+
+        numeros = numeros.filter(n => validarFormatoNumero(n, evento.cifras));
+
+        if (numeros.length === 0) {
+            return [];
+        }
+
     }
 
     const ahora = new Date();

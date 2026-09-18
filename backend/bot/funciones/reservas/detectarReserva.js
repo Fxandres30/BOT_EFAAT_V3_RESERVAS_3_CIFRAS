@@ -1,5 +1,5 @@
 const { validarTextoReserva } = require("./validarTextoReserva");
-const { extraerNumeros } = require("./extraerNumeros");
+const { extraerNumeros, validarFormatoNumero } = require("./extraerNumeros");
 const { consultarReservas } = require("./consultarReservas");
 const { validarReservas } = require("./validarReservas");
 const { reservarNumeros } = require("./reservarNumeros");
@@ -26,7 +26,14 @@ async function detectarReserva({
     // La cantidad de cifras la decide la configuración real del evento
     // (eventos_bot.cifras). Si no viene, extraerNumeros usa 2 por defecto
     // (comportamiento previo).
-    const numeros = extraerNumeros(texto, evento?.cifras);
+    const numerosExtraidos = extraerNumeros(texto, evento?.cifras);
+
+    // Defensa en profundidad (auditoría "reservas por número de cifras"):
+    // no confiar en que extraerNumeros() sea la única puerta de entrada.
+    // Cualquier candidato cuyo formato textual no tenga EXACTAMENTE las
+    // cifras configuradas ("5" en un evento de 2 cifras) se descarta aquí
+    // también, antes de consultar/escribir Supabase.
+    const numeros = numerosExtraidos.filter(n => validarFormatoNumero(n, evento?.cifras));
 
     if (!numeros.length) {
         return null;
