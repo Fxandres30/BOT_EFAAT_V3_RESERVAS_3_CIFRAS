@@ -11,6 +11,7 @@ const pagosRoutes = require("./routes/pagos");
 const tablasRoutes = require("./routes/tablas");
 const contactosRoutes = require("./routes/contactos");
 const bloqueadosRoutes = require("./routes/bloqueados");
+const analiticaRoutes = require("./routes/analitica");
 
 const supabase = require("./lib/supabase");
 
@@ -20,6 +21,11 @@ require("./services/baileys/manager");
 const app = express();
 
 app.use(cors());
+
+// Antes del express.json() global: usa su propio límite de cuerpo (8 KB).
+app.use("/analitica", analiticaRoutes);
+require("./analitica/retencion").iniciarRetencion();
+
 app.use(express.json());
 
 app.use("/sessions", sessionsRoutes);
