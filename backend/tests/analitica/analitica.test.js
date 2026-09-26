@@ -280,6 +280,45 @@ async function main() {
         assert.strictEqual(resolverIp("1.2.3.4, basura"), null);
     });
 
+    // ---------------- Ubicación aproximada (cabeceras de CDN) ----------------
+
+    const { ubicacionAproximada } = require(path.join(RAIZ, "analitica/ubicacionAproximada.js"));
+
+    await test("GEO 1. Cloudflare con 'visitor location headers': país, región, ciudad, código", () => {
+        assert.deepStrictEqual(
+            ubicacionAproximada({ "cf-ipcountry": "CO", "cf-region": "Antioquia", "cf-region-code": "ANT", "cf-ipcity": "Medellín" }),
+            { country: "Colombia", region: "Antioquia", city: "Medellín", countryCode: "CO" }
+        );
+    });
+
+    await test("GEO 2. Cloudflare básico (solo país): ciudad/región null, no se inventan", () => {
+        assert.deepStrictEqual(ubicacionAproximada({ "cf-ipcountry": "CO" }), { country: "Colombia", region: null, city: null, countryCode: "CO" });
+    });
+
+    await test("GEO 3. Vercel (ciudad URL-encoded, región como código)", () => {
+        assert.deepStrictEqual(
+            ubicacionAproximada({ "x-vercel-ip-country": "CO", "x-vercel-ip-country-region": "DC", "x-vercel-ip-city": "Bogot%C3%A1" }),
+            { country: "Colombia", region: "DC", city: "Bogotá", countryCode: "CO" }
+        );
+    });
+
+    await test("GEO 4. sin CDN / país desconocido (XX, T1) / basura => todo null", () => {
+        const vacia = { country: null, region: null, city: null, countryCode: null };
+        assert.deepStrictEqual(ubicacionAproximada({}), vacia);
+        assert.deepStrictEqual(ubicacionAproximada(undefined), vacia);
+        assert.deepStrictEqual(ubicacionAproximada({ "cf-ipcountry": "XX", "cf-ipcity": "Medellín" }), vacia);
+        assert.deepStrictEqual(ubicacionAproximada({ "cf-ipcountry": "T1" }), vacia);
+        assert.deepStrictEqual(ubicacionAproximada({ "cf-ipcountry": "Colombia" }), vacia);
+        assert.deepStrictEqual(ubicacionAproximada({ "cf-ipcity": "Medellín" }), vacia, "ciudad sin país no se guarda");
+        assert.strictEqual(ubicacionAproximada({ "cf-ipcountry": "CO", "cf-ipcity": "x".repeat(300) }).city, null);
+    });
+
+    await test("GEO 5. nunca se leen ni guardan coordenadas", () => {
+        const r = ubicacionAproximada({ "cf-ipcountry": "CO", "cf-ipcity": "Bello", "cf-iplatitude": "6.33", "cf-iplongitude": "-75.55", "x-vercel-ip-latitude": "6.3" });
+        assert.deepStrictEqual(Object.keys(r).sort(), ["city", "country", "countryCode", "region"]);
+        assert.ok(!JSON.stringify(r).includes("6.3"));
+    });
+
     // ---------------- Ingestión ----------------
 
     await test("REC 1. evento válido llega a la RPC con dispositivo del UA real e IP", async () => {
@@ -295,6 +334,18 @@ async function main() {
         assert.strictEqual(p.p_ip, "190.24.10.7");
         assert.strictEqual(p.p_timeout_segundos, 1800);
         assert.strictEqual(p.p_screen_width, 390);
+        assert.strictEqual(p.p_country, null, "sin cabeceras de CDN: ubicación null");
+        assert.strictEqual(p.p_city, null);
+    });
+
+    await test("REC 1b. con cabeceras de CDN la ubicación aproximada llega a la RPC", async () => {
+        const { c, fake, limite } = crearEntorno();
+        limite.reiniciar();
+        const req = reqRecolectar();
+        req.body.contexto.geo = { "cf-ipcountry": "CO", "cf-region": "Antioquia", "cf-ipcity": "Medellín" };
+        assert.strictEqual((await ejecutar([c.recolectar], req)).statusCode, 200);
+        const p = fake.llamadas[0].parametros;
+        assert.deepStrictEqual([p.p_country, p.p_region, p.p_city, p.p_country_code], ["Colombia", "Antioquia", "Medellín", "CO"]);
     });
 
     await test("REC 2. inválido => 400 sin tocar Supabase; bot/Puppeteer => 202 ignorado", async () => {

@@ -350,3 +350,36 @@
   .panel { padding-top: var(--efaat-space-4); }
   .tileValor { font-size: var(--efaat-text-xl); }
 }
+
+/* ---------- Ciudades (ubicación aproximada) ---------- */
+
+.ciudades {
+  margin-top: var(--efaat-space-4);
+}
+
+.listaCiudades {
+  list-style: none;
+  margin: 0 0 var(--efaat-space-2);
+  padding: 0;
+  max-width: 420px;
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-card);
+}
+
+.listaCiudades li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--efaat-space-3);
+  padding: var(--efaat-space-2) var(--efaat-space-3);
+  font-size: var(--efaat-text-sm);
+}
+
+.listaCiudades li + li {
+  border-top: 1px solid var(--efaat-border);
+}
+
+.cifra {
+  font-weight: var(--efaat-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}

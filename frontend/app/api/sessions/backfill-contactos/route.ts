@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { botApiHeaders } from "@/lib/botApi";
 
 const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
 
@@ -11,7 +12,8 @@ export async function POST() {
     try {
 
         const res = await fetch(`${API}/sessions/active/backfill-contactos`, {
-            method: "POST"
+            method: "POST",
+            headers: botApiHeaders()
         });
 
         const text = await res.text();

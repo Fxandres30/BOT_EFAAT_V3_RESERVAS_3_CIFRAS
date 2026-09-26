@@ -1,9 +1,27 @@
+const { generateMessageIDV2 } = require("@whiskeysockets/baileys");
+
 const manager = require("./manager");
 const {
     identidadDesdeSocket,
     maskPhone,
     tipoDestino
 } = require("./identidadSesion");
+const { registrarEnviado } = require("../../bot/utils/mensajesEnviados");
+
+// Genera el id del mensaje ANTES de enviarlo y lo marca como "salida del
+// programa", para que su eco en messages.upsert no se procese como entrada
+// de usuario (ver bot/utils/mensajesEnviados.js). Mismo generador que usa
+// Baileys por defecto; se le pasa como `messageId`.
+function prepararIdSalida(socket) {
+
+    const messageId = generateMessageIDV2(socket?.user?.id);
+    registrarEnviado(messageId);
+    return messageId;
+
+}
+
+// Los JID (contienen el teléfono) solo se loguean enmascarados.
+const { enmascararJid } = require("../../bot/utils/enmascararJid");
 
 function esperar(ms) {
 
@@ -88,7 +106,7 @@ async function sendMessage({ sock, jid, text, quoted } = {}) {
             esSocketActivo: socketActivo === manager.getActiveSocket(),
             usoFallbackSocketActivo: !sock,
             destino: tipoDestino(jid),
-            jid,
+            jid: enmascararJid(jid),
             tipo: "respuesta_bot",
             longitudTexto: texto.length
         });
@@ -104,7 +122,7 @@ async function sendMessage({ sock, jid, text, quoted } = {}) {
         const socketManagerActivo = manager.getActiveSocket();
 
         console.log("[REAL SEND 1] antes de socketActivo.sendMessage", {
-            jid,
+            jid: enmascararJid(jid),
             sessionId: idSesion.sessionId,
             estadoSesion: idSesion.estado,
             ctxSockEsMismaReferenciaQueActiveSocket: socketActivo === socketManagerActivo,
@@ -116,10 +134,12 @@ async function sendMessage({ sock, jid, text, quoted } = {}) {
 
         const DIAG_TIMEOUT = Symbol("diag-timeout");
 
+        const messageId = prepararIdSalida(socketActivo);
+
         const sendPromise = socketActivo.sendMessage(
             jid,
             { text: texto },
-            quoted ? { quoted } : undefined
+            quoted ? { quoted, messageId } : { messageId }
         );
 
         const diagTimeoutPromise = new Promise(resolve => {
@@ -131,7 +151,7 @@ async function sendMessage({ sock, jid, text, quoted } = {}) {
         if (raceResultado === DIAG_TIMEOUT) {
 
             console.log("[REAL SEND TIMEOUT] sendMessage no resolvió en 10s", {
-                jid,
+                jid: enmascararJid(jid),
                 sessionId: idSesion.sessionId,
                 ctxSockEsMismaReferenciaQueActiveSocket: socketActivo === manager.getActiveSocket()
             });
@@ -143,7 +163,7 @@ async function sendMessage({ sock, jid, text, quoted } = {}) {
             : raceResultado;
 
         console.log("[REAL SEND 2] sendMessage RESOLVIÓ", {
-            jid,
+            jid: enmascararJid(jid),
             tardoMasDe10s: raceResultado === DIAG_TIMEOUT
         });
         // ===== FIN INSTRUMENTACIÓN TEMPORAL =====
@@ -159,7 +179,7 @@ async function sendMessage({ sock, jid, text, quoted } = {}) {
         const idSesion = identidadDesdeSocket(socketActivo);
 
         console.log("[REAL SEND ERROR]", {
-            jid,
+            jid: enmascararJid(jid),
             sessionId: idSesion.sessionId,
             motivo: error.message
         });
@@ -168,7 +188,7 @@ async function sendMessage({ sock, jid, text, quoted } = {}) {
             sesion: idSesion.nombre,
             sessionId: idSesion.sessionId,
             destino: tipoDestino(jid),
-            jid,
+            jid: enmascararJid(jid),
             motivo: error.message
         });
 
@@ -201,12 +221,16 @@ async function sendImage({ sock, jid, image, caption } = {}) {
             telefono: maskPhone(idSesion.telefono),
             sessionId: idSesion.sessionId,
             destino: tipoDestino(jid),
-            jid,
+            jid: enmascararJid(jid),
             longitudCaption: (caption || "").length,
             bytesImagen: image?.length || 0
         });
 
-        return await socketActivo.sendMessage(jid, { image, caption: caption || "" });
+        return await socketActivo.sendMessage(
+            jid,
+            { image, caption: caption || "" },
+            { messageId: prepararIdSalida(socketActivo) }
+        );
 
     } catch (error) {
 
@@ -215,7 +239,7 @@ async function sendImage({ sock, jid, image, caption } = {}) {
         console.log("📤 [WHATSAPP SEND IMAGE ERROR]", {
             sesion: idSesion.nombre,
             sessionId: idSesion.sessionId,
-            jid,
+            jid: enmascararJid(jid),
             motivo: error.message
         });
 

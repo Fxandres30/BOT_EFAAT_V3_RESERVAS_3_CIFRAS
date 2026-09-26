@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import "./DashboardLayout.css";
 
 import Sidebar from "../Sidebar/Sidebar";
 import Topbar from "../Topbar/Topbar";
+import { useSesion } from "@/hooks/useSesion";
 
 interface Props{
 
@@ -21,6 +23,22 @@ export default function DashboardLayout({
 
     const [sidebarOpen,setSidebarOpen]=useState(false);
 
+    // Guardia de sesión: toda página privada usa este layout. Sin sesión de
+    // Supabase Auth -> /login. Mientras se comprueba no se muestra nada del
+    // área privada.
+    const sesion=useSesion();
+    const router=useRouter();
+
+    useEffect(()=>{
+
+        if(sesion==="sin_sesion"){
+
+            router.replace("/login");
+
+        }
+
+    },[sesion,router]);
+
     function toggleSidebar(){
 
         setSidebarOpen(!sidebarOpen);
@@ -30,6 +48,12 @@ export default function DashboardLayout({
     function closeSidebar(){
 
         setSidebarOpen(false);
+
+    }
+
+    if(sesion!=="con_sesion"){
+
+        return null;
 
     }
 

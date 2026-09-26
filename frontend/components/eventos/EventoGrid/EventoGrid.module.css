@@ -1,10 +1,3 @@
-.stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -18,9 +11,203 @@
   font-size: var(--efaat-text-base);
 }
 
+/* --- Resumen por modalidad --- */
+.resumen {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.bloque {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+  border-left-width: 4px;
+  border-radius: var(--efaat-radius-card);
+  box-shadow: var(--efaat-shadow-sm);
+}
+
+.bloque_dos { border-left-color: var(--efaat-text-secondary); }
+.bloque_tres_pago { border-left-color: var(--efaat-primary); }
+.bloque_tres_gratis { border-left-color: var(--efaat-success); }
+
+.bloqueTitulo {
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-bold);
+  color: var(--efaat-text);
+  letter-spacing: 0.02em;
+}
+
+.bloqueActivos {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--efaat-text-lg);
+  font-weight: var(--efaat-weight-bold);
+  color: var(--efaat-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.bloqueDato {
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+}
+
+.bloqueTipo {
+  font-size: var(--efaat-text-xs);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-text-muted);
+  letter-spacing: 0.04em;
+}
+
+.puntoVivo,
+.puntoInactivo {
+  width: 9px;
+  height: 9px;
+  border-radius: var(--efaat-radius-pill);
+  flex: none;
+}
+
+.puntoVivo { background: var(--efaat-success); box-shadow: 0 0 0 3px var(--efaat-success-soft); }
+.puntoInactivo { background: var(--efaat-text-muted); }
+
+/* --- Secciones Activos / Programados / Resultados --- */
+.seccion {
+  margin-bottom: 16px;
+  border-top: 1px solid var(--efaat-border);
+  padding-top: 12px;
+}
+
+.seccionTitulo,
+.subTitulo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.seccionTitulo::-webkit-details-marker,
+.subTitulo::-webkit-details-marker { display: none; }
+
+.seccionTitulo {
+  font-size: var(--efaat-text-lg);
+  font-weight: var(--efaat-weight-bold);
+  color: var(--efaat-text);
+  margin-bottom: 12px;
+}
+
+.seccionTitulo:focus-visible,
+.subTitulo:focus-visible {
+  outline: none;
+  box-shadow: var(--efaat-focus-ring);
+  border-radius: var(--efaat-radius-control);
+}
+
+.chevron {
+  flex: none;
+  color: var(--efaat-text-muted);
+  transform: rotate(-90deg);
+  transition: transform 0.15s;
+}
+
+details[open] > summary > .chevron { transform: rotate(0deg); }
+
+.contador {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: var(--efaat-radius-pill);
+  background: var(--efaat-surface-muted);
+  border: 1px solid var(--efaat-border);
+  font-size: var(--efaat-text-xs);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-text-secondary);
+}
+
+.subsecciones {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-left: 4px;
+}
+
+.sub {
+  padding-left: 12px;
+  border-left: 3px solid var(--efaat-border);
+}
+
+.sub_dos { border-left-color: var(--efaat-border-strong); }
+.sub_tres_pago { border-left-color: var(--efaat-primary); }
+.sub_tres_gratis { border-left-color: var(--efaat-success); }
+
+.subTitulo {
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-text);
+  margin-bottom: 10px;
+  letter-spacing: 0.02em;
+}
+
+.vacio {
+  margin: 0 0 4px;
+  padding: 12px 14px;
+  border: 1px dashed var(--efaat-border-strong);
+  border-radius: var(--efaat-radius-control);
+  color: var(--efaat-text-secondary);
+  font-size: var(--efaat-text-sm);
+}
+
+/* --- Filtros de resultados --- */
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.filtro,
+.filtroActivo {
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: var(--efaat-radius-control);
+  font: inherit;
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-medium);
+  cursor: pointer;
+}
+
+.filtro {
+  background: var(--efaat-surface);
+  color: var(--efaat-text);
+  border: 1px solid var(--efaat-border-strong);
+}
+
+.filtro:hover { background: var(--efaat-surface-muted); }
+
+.filtroActivo {
+  background: var(--efaat-primary-soft);
+  color: var(--efaat-primary-active);
+  border: 1px solid var(--efaat-primary);
+}
+
+.filtro:focus-visible,
+.filtroActivo:focus-visible {
+  outline: none;
+  box-shadow: var(--efaat-focus-ring);
+}
+
 @media (max-width: 640px) {
-  .stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .resumen {
+    grid-template-columns: 1fr;
     gap: 8px;
   }
 

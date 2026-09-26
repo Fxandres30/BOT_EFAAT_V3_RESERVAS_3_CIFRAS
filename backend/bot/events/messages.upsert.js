@@ -9,6 +9,9 @@ const messageHandler = require("../handlers/messageHandler");
 // apagado, no hace absolutamente nada).
 const { diagnosticarMensajeEntranteOriginal } = require("../funciones/mensajes/diagnosticarMensajeEntranteOriginal");
 
+const { enmascararJid } = require("../utils/enmascararJid");
+const { maskPhone } = require("../../services/baileys/identidadSesion");
+
 const listeners = new Map();
 
 function registerMessages(sock, sessionId) {
@@ -63,7 +66,7 @@ function registerMessages(sock, sessionId) {
                 else if (remoto.endsWith("@newsletter"))
                     tipo = "NEWSLETTER";
 
-                console.log(`📩 [${tipo}] ${remoto} | ${traceId}`);
+                console.log(`📩 [${tipo}] ${enmascararJid(remoto)} | ${traceId}`);
 
                 console.log(`➡️ ANTES messageHandler [${traceId}]`);
 
@@ -111,7 +114,7 @@ function registerMessages(sock, sessionId) {
 
 🤖 BOT ESCUCHANDO
 
-📱 Número : ${context.telefono || "Desconocido"}
+📱 Número : ${maskPhone(context.telefono) || "Desconocido"}
 
 🆔 Sesión : ${sessionId}
 

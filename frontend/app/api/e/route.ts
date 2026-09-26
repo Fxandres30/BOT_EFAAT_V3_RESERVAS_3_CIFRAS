@@ -4,6 +4,12 @@ const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
 
 const MAX_BYTES = 2048;
 
+// Misma lista que backend/analitica/ubicacionAproximada.js.
+const CABECERAS_GEO = [
+    "cf-ipcountry", "cf-region", "cf-region-code", "cf-ipcity",
+    "x-vercel-ip-country", "x-vercel-ip-country-region", "x-vercel-ip-city"
+];
+
 // Ingestión de visitas (lo llama lib/analitica/tracker.ts). Proxy delgado
 // hacia POST /analitica/recolectar del backend, igual que el resto de
 // app/api/*. Solo escribe: NUNCA devuelve datos, como mucho el session_id
@@ -46,6 +52,15 @@ export async function POST(req: Request) {
         return vacio(400);
     }
 
+    // Ubicación aproximada: solo las cabeceras de país/región/ciudad que
+    // añade un CDN (Cloudflare/Vercel). Nunca coordenadas. Sin CDN no hay
+    // ninguna y el backend guarda null.
+    const geo: Record<string, string> = {};
+    for (const nombre of CABECERAS_GEO) {
+        const valor = req.headers.get(nombre);
+        if (valor) geo[nombre] = valor.slice(0, 200);
+    }
+
     try {
 
         const res = await fetch(`${API}/analitica/recolectar`, {
@@ -55,7 +70,8 @@ export async function POST(req: Request) {
                 evento,
                 contexto: {
                     user_agent: (req.headers.get("user-agent") || "").slice(0, 512),
-                    x_forwarded_for: (req.headers.get("x-forwarded-for") || "").slice(0, 1024)
+                    x_forwarded_for: (req.headers.get("x-forwarded-for") || "").slice(0, 1024),
+                    geo
                 }
             }),
             cache: "no-store",

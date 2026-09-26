@@ -180,10 +180,11 @@ async function main() {
 
         const sock = manager.get(id);
 
-        // 1 listener interno de socket.js (debug/log) + 1 de estados.js
-        // (registrarEstados) = 2. Si registrarEstados se hubiera llamado
-        // más de una vez (el bug original), este número sería 3, 4...
-        assert.strictEqual(sock.ev.listenerCount("connection.update"), 2, "debe haber exactamente 2 listeners de connection.update (1 interno de socket.js + 1 de registrarEstados), nunca más");
+        // Solo el listener de estados.js (registrarEstados) = 1. El listener
+        // interno de depuración de socket.js se eliminó (volcaba el QR a los
+        // logs). Si registrarEstados se hubiera llamado más de una vez (el
+        // bug original), este número sería 2, 3...
+        assert.strictEqual(sock.ev.listenerCount("connection.update"), 1, "debe haber exactamente 1 listener de connection.update (registrarEstados), nunca más");
 
     });
 

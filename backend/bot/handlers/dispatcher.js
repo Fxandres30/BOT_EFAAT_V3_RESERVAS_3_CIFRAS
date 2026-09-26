@@ -31,6 +31,11 @@ require("../funciones/pagos/confirmarPagoPorSticker");
 // registrarStickerPago.js).
 const { registrarStickerPago } =
 require("../funciones/pagos/registrarStickerPago");
+// Eco de un mensaje que envió ESTE programa (send.js): se registra, pero
+// nunca vuelve a procesarse como entrada de usuario. Lo escrito a mano
+// desde el teléfono del bot (fromMe, id no registrado) sigue igual.
+const { fueEnviadoPorPrograma } =
+require("../utils/mensajesEnviados");
 
 module.exports = async ({
 
@@ -76,6 +81,9 @@ module.exports = async ({
         ctx.session = session;
         ctx.tipoConexion = tipo;
 
+        const esSalidaDelPrograma =
+            !!message.key.fromMe && fueEnviadoPorPrograma(message.key.id);
+
         if (ctx.chat.esGrupo) {
 
             console.log("3️⃣ Guardando mensaje del grupo");
@@ -103,7 +111,7 @@ module.exports = async ({
 
             console.log("4️⃣ Mensaje guardado");
 
-            if (mensaje) {
+            if (mensaje && !esSalidaDelPrograma) {
 
                 console.log("5️⃣ Clasificando mensaje");
 
@@ -122,6 +130,16 @@ module.exports = async ({
                 console.log("6️⃣ Clasificación terminada");
 
             }
+
+        }
+
+        // Respuesta enviada por el propio programa: ya quedó registrada
+        // arriba; no se clasifica ni entra a stickers/eventos/reservas.
+        if (esSalidaDelPrograma) {
+
+            console.log(`↩️ Mensaje enviado por el programa, solo registrado [${traceId}]`);
+
+            return;
 
         }
 

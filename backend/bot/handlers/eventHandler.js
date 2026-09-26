@@ -5,6 +5,16 @@ const { detectarIntencion } = require("../funciones/consultas/detectarIntencion"
 const { resolverConsulta } = require("../funciones/consultas/resolverConsulta");
 const { responderResultado } = require("../ai/responderResultado");
 const { estaRespuestaHabilitada } = require("../ai/configMensajes");
+const { obtenerContenido } = require("../middleware/normalizarMensaje");
+const { esCuentaIgnorada } = require("../funciones/mensajes/cuentasIgnoradas");
+
+// Imagen, video o documento (con o sin pie de foto), también dentro de
+// envoltorios efímeros / "ver una vez" / documento con pie.
+function esMensajeConArchivo(message) {
+    const contenido = obtenerContenido(message?.message);
+    return !!(contenido?.imageMessage || contenido?.videoMessage || contenido?.documentMessage);
+}
+const { enmascararJid } = require("../utils/enmascararJid");
 
 module.exports = async (ctx) => {
 
@@ -32,15 +42,12 @@ module.exports = async (ctx) => {
 
     }
 
-    console.log("==================================");
-    console.log("👤 USUARIO ACTUAL");
-    console.dir(ctx.usuario, { depth: null });
-    console.log("==================================");
-
-    console.log("==================================");
-    console.log("📱 PARTICIPANT:", ctx.message.key.participant);
-    console.log("🏠 REMOTE JID:", ctx.message.key.remoteJid);
-    console.log("==================================");
+    // Sin datos personales en claro: id interno del usuario y JID enmascarados.
+    console.log("👤 [MENSAJE GRUPO]", {
+        usuarioId: ctx.usuario?.id ?? null,
+        participant: enmascararJid(ctx.message.key.participant),
+        grupo: enmascararJid(ctx.message.key.remoteJid)
+    });
 
     ctx.evento = await detectarEvento(ctx);
 
@@ -78,6 +85,21 @@ module.exports = async (ctx) => {
 
     if (ctx.message.key.fromMe) {
         console.log("⏭️ Mensaje propio del bot (fromMe) — no se procesa como reserva.");
+        return;
+    }
+
+    // Foto / video / documento (p. ej. un comprobante con pie de foto): ya
+    // quedó registrado y pudo anunciar un sorteo (detectarEvento, arriba),
+    // pero su pie de foto NUNCA se interpreta como reserva ni consulta.
+    if (esMensajeConArchivo(ctx.message)) {
+        console.log("📎 Mensaje con archivo — no se evalúa como reserva ni consulta.");
+        return;
+    }
+
+    // Avisos de las cuentas operativas indicadas (decisión D2): no son
+    // pedidos de clientes.
+    if (esCuentaIgnorada({ message: ctx.message, usuario: ctx.usuario })) {
+        console.log("⏭️ Cuenta ignorada para reservas/consultas — mensaje solo registrado.");
         return;
     }
 

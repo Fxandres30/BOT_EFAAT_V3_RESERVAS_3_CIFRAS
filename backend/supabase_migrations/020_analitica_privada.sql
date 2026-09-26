@@ -111,11 +111,16 @@ create table if not exists public.visitor_sessions (
 
     ip_anonymized_at timestamptz,
 
-    -- Reservadas para cabeceras de geolocalización de un CDN de confianza.
-    -- Hoy quedan en null: la infraestructura actual (VPS) no las provee.
+    -- Ubicación APROXIMADA (nivel ciudad) tomada de las cabeceras que añade
+    -- un CDN delante del servidor (Cloudflare / Vercel). Sin CDN -> null.
+    -- Nunca coordenadas ni dirección. Ver backend/analitica/ubicacionAproximada.js.
     country text,
 
     city text,
+
+    region text,
+
+    country_code text,
 
     device_type text not null default 'unknown'
         check (device_type in ('mobile', 'tablet', 'desktop', 'unknown')),
@@ -125,6 +130,10 @@ create table if not exists public.visitor_sessions (
     browser text
 
 );
+
+-- Instalaciones donde visitor_sessions ya existía sin estas columnas.
+alter table public.visitor_sessions add column if not exists region text;
+alter table public.visitor_sessions add column if not exists country_code text;
 
 create index if not exists visitor_sessions_last_activity_idx
     on public.visitor_sessions (last_activity_at desc);
@@ -232,7 +241,18 @@ grant usage, select on sequence public.visitor_events_id_seq to service_role;
 -- Concurrencia (varias pestañas): la fila de la sesión se bloquea con
 -- SELECT ... FOR UPDATE; la creación usa INSERT ... ON CONFLICT DO NOTHING,
 -- así dos pestañas que estrenan la misma sesión a la vez no la duplican.
+--
+-- Ubicación aproximada (p_country, p_region, p_city, p_country_code): solo
+-- se guarda al CREAR la sesión, igual que la IP y el user-agent.
 -- ==========================================================================
+
+-- Versión anterior (sin p_region/p_country_code): se elimina para que no
+-- quede una sobrecarga ambigua al volver a ejecutar esta migración.
+drop function if exists public.analitica_registrar_evento(
+    text, uuid, uuid, text, text, text, inet, text, text, text,
+    integer, integer, text, text, integer, integer, integer
+);
+
 create or replace function public.analitica_registrar_evento(
     p_tipo text,
     p_visitor_id uuid,
@@ -250,7 +270,9 @@ create or replace function public.analitica_registrar_evento(
     p_city text default null,
     p_timeout_segundos integer default 1800,
     p_heartbeat_min_segundos integer default 30,
-    p_dedupe_page_view_segundos integer default 3
+    p_dedupe_page_view_segundos integer default 3,
+    p_region text default null,
+    p_country_code text default null
 )
 returns jsonb
 language plpgsql
@@ -377,13 +399,13 @@ begin
         insert into public.visitor_sessions (
             session_id, visitor_id, started_at, last_activity_at,
             landing_page, current_page, page_views, referrer, user_agent, ip,
-            country, city, device_type, operating_system, browser
+            country, city, region, country_code, device_type, operating_system, browser
         )
         values (
             v_sesion_id, p_visitor_id, v_ahora, v_ahora,
             p_pagina, p_pagina, case when p_tipo = 'page_view' then 1 else 0 end,
             p_referrer, p_user_agent, p_ip,
-            p_country, p_city, v_device, p_operating_system, p_browser
+            p_country, p_city, p_region, p_country_code, v_device, p_operating_system, p_browser
         )
         on conflict (session_id) do nothing;
 
@@ -634,6 +656,22 @@ as $$
             'desktop', (select count(*) from por_visitante where device_type = 'desktop'),
             'unknown', (select count(*) from por_visitante where device_type = 'unknown')
         ),
+        -- Ubicación APROXIMADA: visitantes únicos por ciudad (top 10).
+        'ciudades', coalesce((
+            select jsonb_agg(jsonb_build_object(
+                       'city', c.city, 'region', c.region, 'country', c.country,
+                       'country_code', c.country_code, 'visitantes', c.visitantes
+                   ) order by c.visitantes desc, c.city)
+              from (
+                select city, region, country, country_code, count(distinct visitor_id) as visitantes
+                  from rango
+                 where city is not null
+                 group by city, region, country, country_code
+                 order by visitantes desc, city
+                 limit 10
+              ) c
+        ), '[]'::jsonb),
+        'sin_ubicacion', (select count(distinct visitor_id) from rango where city is null),
         'primera_visita', (select min(first_seen_at) from public.visitors),
         'ultima_visita', (select max(last_activity_at) from public.visitor_sessions)
     );
@@ -661,7 +699,9 @@ as $$
                    'browser', s.browser,
                    'ip', host(s.ip),
                    'country', s.country,
-                   'city', s.city
+                   'city', s.city,
+                   'region', s.region,
+                   'country_code', s.country_code
                ) as fila
           from public.visitor_sessions s
          where s.ended_at is null
@@ -713,7 +753,9 @@ as $$
                            'ip', host(s.ip),
                            'ip_anonimizada', s.ip_anonymized_at is not null,
                            'country', s.country,
-                           'city', s.city
+                           'city', s.city,
+                           'region', s.region,
+                           'country_code', s.country_code
                        ) as fila
                   from rango s
                  order by s.started_at desc
@@ -750,6 +792,8 @@ as $$
             'ip_anonimizada', s.ip_anonymized_at is not null,
             'country', s.country,
             'city', s.city,
+            'region', s.region,
+            'country_code', s.country_code,
             'device_type', s.device_type,
             'operating_system', s.operating_system,
             'browser', s.browser
@@ -787,7 +831,8 @@ $$;
 -- ==========================================================================
 revoke all on function public.analitica_registrar_evento(
     text, uuid, uuid, text, text, text, inet, text, text, text,
-    integer, integer, text, text, integer, integer, integer
+    integer, integer, text, text, integer, integer, integer,
+    text, text
 ) from public, anon, authenticated;
 
 revoke all on function public.analitica_anonimizar_ips(integer) from public, anon, authenticated;
@@ -798,7 +843,8 @@ revoke all on function public.analitica_sesion_detalle(uuid) from public, anon, 
 
 grant execute on function public.analitica_registrar_evento(
     text, uuid, uuid, text, text, text, inet, text, text, text,
-    integer, integer, text, text, integer, integer, integer
+    integer, integer, text, text, integer, integer, integer,
+    text, text
 ) to service_role;
 
 grant execute on function public.analitica_anonimizar_ips(integer) to service_role;

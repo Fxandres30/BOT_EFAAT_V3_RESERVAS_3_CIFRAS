@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { botApiHeaders } from "@/lib/botApi";
 
 const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
 
@@ -9,7 +10,9 @@ export async function GET() {
 
     try {
 
-        const res = await fetch(`${API}/sessions/active/estado-backfill-contactos`);
+        const res = await fetch(`${API}/sessions/active/estado-backfill-contactos`, {
+            headers: botApiHeaders()
+        });
 
         const data = await res.json();
 

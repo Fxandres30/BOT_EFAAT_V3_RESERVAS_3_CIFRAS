@@ -2,14 +2,25 @@
 
 import "./LoginForm.css";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { login } from "@/services/auth/login";
+import { useSesion } from "@/hooks/useSesion";
+
+// Mensajes de Supabase Auth más comunes, en español.
+function mensajeError(mensaje: string) {
+  const m = mensaje.toLowerCase();
+  if (m.includes("email not confirmed")) return "Confirma tu correo antes de iniciar sesión. Revisa tu bandeja de entrada.";
+  if (m.includes("invalid login credentials")) return "Correo o contraseña incorrectos.";
+  return mensaje;
+}
 
 export default function LoginForm() {
 
   const router = useRouter();
+  const sesion = useSesion();
 
   const [email, setEmail] = useState("");
 
@@ -17,11 +28,21 @@ export default function LoginForm() {
 
   const [loading, setLoading] = useState(false);
 
+  const [error, setError] = useState<string | null>(null);
+
+  // Con sesión activa (también al volver del enlace de confirmación de
+  // correo) no se muestra el login: se entra directo al área privada.
+  useEffect(() => {
+    if (sesion === "con_sesion") router.replace("/sesiones");
+  }, [sesion, router]);
+
   async function iniciarSesion() {
+
+    setError(null);
 
     if (!email || !password) {
 
-      alert("Completa todos los campos.");
+      setError("Completa todos los campos.");
 
       return;
 
@@ -38,7 +59,7 @@ export default function LoginForm() {
 
     if (error) {
 
-      alert(error.message);
+      setError(mensajeError(error.message));
 
       return;
 
@@ -47,6 +68,8 @@ export default function LoginForm() {
     router.replace("/sesiones");
 
   }
+
+  if (sesion !== "sin_sesion") return null;
 
   return (
 
@@ -75,6 +98,7 @@ export default function LoginForm() {
           className="login-input"
           type="email"
           placeholder="Correo"
+          autoComplete="email"
           value={email}
           onChange={(e) =>
             setEmail(e.target.value)
@@ -85,11 +109,14 @@ export default function LoginForm() {
           className="login-input"
           type="password"
           placeholder="Contraseña"
+          autoComplete="current-password"
           value={password}
           onChange={(e) =>
             setPassword(e.target.value)
           }
         />
+
+        {error && <p className="login-error" role="alert">{error}</p>}
 
         <button
           className="login-button"
@@ -98,6 +125,10 @@ export default function LoginForm() {
         >
           {loading ? "Ingresando..." : "Iniciar sesión"}
         </button>
+
+        <p className="login-alterno">
+          ¿No tienes cuenta? <Link className="login-link" href="/register">Crear cuenta</Link>
+        </p>
 
       </form>
 

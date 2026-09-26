@@ -54,3 +54,41 @@
 .login-button:hover{
     background:#1d4ed8;
 }
+.login-error{
+    margin:-6px 0 16px;
+    padding:10px 12px;
+    border-radius:10px;
+    background:#fee2e2;
+    color:#b91c1c;
+    font-size:14px;
+}
+
+.login-alterno{
+    margin-top:18px;
+    text-align:center;
+    color:#777;
+    font-size:14px;
+}
+
+.login-link{
+    color:#2563eb;
+    font-weight:600;
+    text-decoration:none;
+}
+
+.login-link:hover{
+    text-decoration:underline;
+}
+
+.login-button:disabled{
+    opacity:.7;
+    cursor:default;
+}
+
+@media (max-width:480px){
+    .login-card{
+        width:100%;
+        margin:0 16px;
+        padding:28px 22px;
+    }
+}

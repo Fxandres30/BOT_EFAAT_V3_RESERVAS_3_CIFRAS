@@ -30,6 +30,8 @@ interface Resumen {
     paginas_vistas: number;
     activos_ahora: number;
     dispositivos: Record<Dispositivo, number>;
+    ciudades: { city: string; region: string | null; country: string | null; country_code: string | null; visitantes: number }[];
+    sin_ubicacion: number;
     primera_visita: string | null;
     ultima_visita: string | null;
 }
@@ -52,6 +54,8 @@ interface SesionFila {
     ip_anonimizada?: boolean;
     country?: string | null;
     city?: string | null;
+    region?: string | null;
+    country_code?: string | null;
 }
 
 interface Detalle {
@@ -115,6 +119,12 @@ function duracion(desde: string, hasta: string) {
 
 function corto(id: string) {
     return id.replace(/-/g, "").slice(0, 4).toUpperCase();
+}
+
+// Ubicación APROXIMADA (según la IP, nivel ciudad). Nunca es una dirección.
+function ubicacionTexto(f: Pick<SesionFila, "city" | "region" | "country">) {
+    const partes = [f.city, f.region, f.country].filter(Boolean);
+    return partes.length ? partes.join(", ") : null;
 }
 
 function dispositivoTexto(f: Pick<SesionFila, "device_type" | "operating_system" | "browser">) {
@@ -317,6 +327,26 @@ function Panel() {
                     {" · "}
                     Última actividad: <strong>{fechaHora(resumen?.ultima_visita)}</strong>
                 </p>
+                {resumen && (
+                    <div className={styles.ciudades}>
+                        <h3 className={styles.subtitulo3}>Ciudades <span className={styles.textoSecundario}>(ubicación aproximada según la IP)</span></h3>
+                        {resumen.ciudades.length === 0 ? (
+                            <p className={styles.textoSecundario}>Sin datos de ubicación en este periodo.</p>
+                        ) : (
+                            <ul className={styles.listaCiudades}>
+                                {resumen.ciudades.map(c => (
+                                    <li key={`${c.city}|${c.region}|${c.country_code}`}>
+                                        <span>{[c.city, c.region, c.country_code].filter(Boolean).join(", ")}</span>
+                                        <span className={styles.cifra}>{c.visitantes}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                        {resumen.sin_ubicacion > 0 && (
+                            <p className={styles.textoSecundario}>Sin ubicación disponible: {resumen.sin_ubicacion} {resumen.sin_ubicacion === 1 ? "visitante" : "visitantes"}</p>
+                        )}
+                    </div>
+                )}
             </section>
 
             <section aria-labelledby="t-activos">
@@ -334,6 +364,7 @@ function Panel() {
                                     <span className={styles.activoNombre}>Visitante {corto(a.visitor_id)}</span>
                                     <span>{dispositivoTexto(a)}</span>
                                     <span className={styles.textoSecundario}>{a.current_page} · IP {a.ip || "no disponible"}</span>
+                                    <span className={styles.textoSecundario}>Ubicación aproximada: {ubicacionTexto(a) || "no disponible"}</span>
                                     <span className={styles.textoSecundario}>Activo {hace(a.last_activity_at, ahora)}</span>
                                 </button>
                             </li>
@@ -358,6 +389,7 @@ function Panel() {
                                 <th>Sistema</th>
                                 <th>Navegador</th>
                                 <th>IP</th>
+                                <th>Ubicación aprox.</th>
                                 <th>Página</th>
                                 <th>Referrer</th>
                                 <th>Última actividad</th>
@@ -382,6 +414,7 @@ function Panel() {
                                     <td>{f.operating_system || "—"}</td>
                                     <td>{f.browser || "—"}</td>
                                     <td className={styles.mono}>{f.ip ? `${f.ip}${f.ip_anonimizada ? " (anon.)" : ""}` : "—"}</td>
+                                    <td>{ubicacionTexto(f) || "—"}</td>
                                     <td>
                                         {f.landing_page}
                                         {f.current_page !== f.landing_page && <span className={styles.textoSecundario}> → {f.current_page}</span>}
@@ -392,7 +425,7 @@ function Panel() {
                                 </tr>
                             ))}
                             {historial && historial.filas.length === 0 && (
-                                <tr><td colSpan={11} className={styles.vacio}>Sin visitas en este periodo.</td></tr>
+                                <tr><td colSpan={12} className={styles.vacio}>Sin visitas en este periodo.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -430,6 +463,12 @@ function Panel() {
                                     <dt>Última actividad</dt><dd>{fechaHora(detalleVisible.sesion.last_activity_at)}</dd>
                                     <dt>Duración aprox.</dt><dd>{duracion(detalleVisible.sesion.started_at, detalleVisible.sesion.last_activity_at)}</dd>
                                     <dt>Estado</dt><dd>{detalleVisible.sesion.end_reason ? `${NOMBRE_FIN[detalleVisible.sesion.end_reason] || detalleVisible.sesion.end_reason} · ${hora(detalleVisible.sesion.ended_at)}` : "Abierta"}</dd>
+                                    <dt>Ubicación aprox.</dt>
+                                    <dd>
+                                        {ubicacionTexto(detalleVisible.sesion)
+                                            ? <>{ubicacionTexto(detalleVisible.sesion)}{detalleVisible.sesion.country_code ? ` (${detalleVisible.sesion.country_code})` : ""}<br /><span className={styles.textoSecundario}>Aproximada según la IP (nivel ciudad). No es una dirección.</span></>
+                                            : "No disponible"}
+                                    </dd>
                                     <dt>IP</dt><dd className={styles.mono}>{detalleVisible.sesion.ip ? `${detalleVisible.sesion.ip}${detalleVisible.sesion.ip_anonimizada ? " (anonimizada)" : ""}` : "No disponible"}</dd>
                                     <dt>Dispositivo</dt><dd>{NOMBRE_DISPOSITIVO[detalleVisible.sesion.device_type]}{detalleVisible.visitante?.screen_width ? ` · ${detalleVisible.visitante.screen_width}×${detalleVisible.visitante.screen_height}` : ""}</dd>
                                     <dt>Sistema</dt><dd>{detalleVisible.sesion.operating_system || "—"}</dd>

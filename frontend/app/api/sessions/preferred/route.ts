@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { botApiHeaders } from "@/lib/botApi";
 
 const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
 
@@ -8,9 +9,9 @@ export async function POST(req: NextRequest) {
 
     const res = await fetch(`${API}/sessions/preferred`, {
       method: "POST",
-      headers: {
+      headers: botApiHeaders({
         "Content-Type": "application/json",
-      },
+      }),
       body: JSON.stringify(body),
     });
 

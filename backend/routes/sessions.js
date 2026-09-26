@@ -53,4 +53,19 @@ router.get("/active/estado-backfill-contactos", estadoBackfillContactos);
 // manager.get()/groupQueue en vez de crear otro sistema de sesiones.
 router.get("/:id/grupos-disponibles", gruposDisponibles);
 
+// Administración de sesiones para paneles externos (BANN apps/api) —
+// aditivo, servidor-a-servidor, detrás del token de servicio (server.js).
+// Reutiliza la tabla `sesiones` y el SessionManager existentes. Van DESPUÉS
+// de las rutas anteriores para no alterar su orden de coincidencia
+// (/active, /status/:id).
+const admin = require("../bot/controllers/sessionsAdminController");
+
+router.get("/", admin.listar);
+router.post("/", admin.crear);
+router.get("/:id/qr", admin.qr);
+router.post("/:id/reconnect", admin.reconectar);
+router.get("/:id", admin.obtener);
+router.patch("/:id", admin.renombrar);
+router.delete("/:id", admin.eliminar);
+
 module.exports = router;

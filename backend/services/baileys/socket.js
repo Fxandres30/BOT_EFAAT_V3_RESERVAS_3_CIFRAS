@@ -8,7 +8,13 @@ const {
 } = require("../../bot/events/groups");
 
 const path = require("path");
+const pino = require("pino");
 const supabase = require("../../lib/supabase");
+
+// Logger interno de Baileys: en "info" (su valor por defecto) vuelca los
+// datos de emparejamiento del dispositivo (devicePairingData) en cada
+// vinculación. "warn" conserva advertencias y errores reales.
+const baileysLogger = pino({ level: process.env.BAILEYS_LOG_LEVEL || "warn" });
 
 const sockets = new Map();
 
@@ -92,38 +98,30 @@ async function crearSocketInterno(sessionId) {
         sessionId
     );
 
-    console.log("📂 AUTH:", authFolder);
-
     const {
         state,
         saveCreds
     } = await useMultiFileAuthState(authFolder);
 
-    console.log("================================");
-    console.log("AUTH");
-    console.log("================================");
-
-    console.log("REGISTERED:", state.creds.registered);
-    console.log("ME:", state.creds.me);
-    console.log("ACCOUNT:", state.creds.account);
-
-    console.log("NOISE:", !!state.creds.noiseKey);
-    console.log("IDENTITY:", !!state.creds.signedIdentityKey);
-    console.log("SIGNED PREKEY:", !!state.creds.signedPreKey);
-
-    console.log("================================");
+    // Solo indicadores booleanos: nunca se imprime creds.me / creds.account
+    // ni ningún material de las credenciales.
+    console.log("🔐 [AUTH]", {
+        sessionId,
+        registrada: !!state.creds.registered,
+        vinculada: !!state.creds.me
+    });
 
     const sock = makeWASocket({
 
-        auth: state
+        auth: state,
+
+        logger: baileysLogger
 
     });
 
     registerGroups(sock);
 
     console.log("✅ SOCKET CREADO");
-
-    console.log("sock.user:", sock.user);
 
     sock.context = {
 
@@ -139,21 +137,19 @@ async function crearSocketInterno(sessionId) {
 
         console.log("💾 CREDS.UPDATE");
 
-        saveCreds(...args);
+        // Nunca dejar una escritura fallida como rechazo no capturado: en
+        // Node >=15 eso termina el proceso entero (todas las sesiones). Puede
+        // ocurrir si auth/<id> se eliminó mientras había una escritura en vuelo.
+        Promise.resolve(saveCreds(...args)).catch(err => {
 
-    });
+            console.error(`❌ [AUTH] error guardando credenciales (${sessionId}):`, err.message);
 
-    sock.ev.on("connection.update", update => {
-
-        console.log("================================");
-        console.log("CONNECTION.UPDATE");
-        console.log("================================");
-
-        console.dir(update, {
-            depth: null
         });
 
     });
+
+    // El detalle de connection.update (incluye el QR de vinculación) ya no
+    // se vuelca completo: estados.js registra un resumen sin datos sensibles.
 
     sock.ev.on("messages.upsert", () => {
 

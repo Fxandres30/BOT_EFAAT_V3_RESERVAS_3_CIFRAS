@@ -13,8 +13,11 @@ import {
     ChevronDown,
 } from "lucide-react";
 
+import Link from "next/link";
+
 import { StatusBadge, type StatusKind } from "@/components/ui/Badge";
 import { formatHora12 } from "@/lib/formatHora";
+import { obtenerTablaConfig } from "@/lib/tablasConfig";
 
 import styles from "./EventoCard.module.css";
 
@@ -164,6 +167,17 @@ export default function EventoCard({ evento }: Props) {
                         ))}
                     </div>
                 </details>
+            )}
+
+            {/* Detalle existente de 2 cifras: la tabla de reservas de su precio. */}
+            {obtenerTablaConfig(Number(String(evento?.valor ?? "").replace(/[^\d]/g, ""))) && (
+                <Link
+                    href={`/tablas/${String(evento.valor).replace(/[^\d]/g, "")}`}
+                    prefetch={false}
+                    className={styles.administrar}
+                >
+                    Administrar
+                </Link>
             )}
 
         </article>

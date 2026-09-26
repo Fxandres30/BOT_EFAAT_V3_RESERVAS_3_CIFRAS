@@ -61,7 +61,30 @@ falsear la IP de su propio registro, igual que su user-agent.
 La IP completa se conserva 30 días; después se reduce a /24 (IPv4) o /48
 (IPv6). Lo hace el backend cada 6 h y, si pg_cron está habilitado, también la base.
 
-## 4. Semántica de los datos
+## 4. Ubicación aproximada
+
+Se guardan `country`, `region`, `city` y `country_code` en `visitor_sessions`,
+**solo** a partir de las cabeceras que añade un CDN delante del servidor. No se
+usan GPS, geolocalización del navegador, servicios externos ni coordenadas.
+
+| Fuente | Cabeceras | Qué da |
+|---|---|---|
+| Cloudflare (proxy activado) | `cf-ipcountry` | código de país, siempre |
+| Cloudflare + *Managed Transforms → Add visitor location headers* | `cf-region`, `cf-region-code`, `cf-ipcity` | región y ciudad |
+| Vercel | `x-vercel-ip-country`, `x-vercel-ip-country-region`, `x-vercel-ip-city` | país, código de región y ciudad |
+
+- **Sin CDN** (infraestructura actual: VPS), no llega ninguna cabecera y los
+  cuatro campos quedan en `NULL`. Nunca se inventan.
+- **Precisión:** son bases de geolocalización por IP. El país suele ser fiable;
+  la ciudad es aproximada. En redes móviles y con algunos operadores en
+  Colombia puede aparecer la ciudad del nodo del operador (por ejemplo, Bogotá
+  o Medellín) en lugar de la real. Con VPN o proxy aparece la ubicación de
+  estos. Por eso el panel lo etiqueta siempre como "aproximada".
+- **ASN o proveedor:** ningún CDN lo da en cabeceras. Requeriría una base
+  GeoIP/ASN local (MaxMind GeoLite2 o DB-IP Lite) o una API externa que
+  recibiría la IP del visitante. **No está instalado.**
+
+## 5. Semántica de los datos
 
 - **Visitante recurrente:** mismo `visitor_id`, un UUID aleatorio guardado en
   el localStorage del navegador (`_efa_v`).
@@ -76,14 +99,14 @@ La IP completa se conserva 30 días; después se reduce a /24 (IPv4) o /48
 - **No se registran:** `/tablas/imprimir` (Puppeteer), navegadores automatizados
   o bots, `/api/*` y el propio panel privado.
 
-## 5. Subdominio (opcional, más adelante)
+## 6. Subdominio (opcional, más adelante)
 
 Solo con nginx, sin tocar código: un `server_name analytics.<dominio>` que haga
 `proxy_pass` al mismo Next, redirija `/` a `/analitica-privada` y pase las mismas
 cabeceras. Como el subdominio es otro origen, allí habrá que iniciar sesión otra
 vez (la sesión de Supabase se guarda por origen).
 
-## 6. Pruebas
+## 7. Pruebas
 
 ```bash
 node backend/tests/analitica/analitica.test.js     # backend (fake de Supabase)

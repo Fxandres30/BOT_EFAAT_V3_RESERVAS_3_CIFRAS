@@ -13,6 +13,7 @@ const config = require("./config");
 const { validarEvento } = require("./validarEvento");
 const { parsearUserAgent } = require("./parsearUserAgent");
 const { resolverIp } = require("./resolverIp");
+const { ubicacionAproximada } = require("./ubicacionAproximada");
 const { permitirEvento } = require("./limiteTasa");
 const { resolverRango } = require("./rangoFechas");
 
@@ -61,7 +62,7 @@ async function exigirAdmin(req, res, next) {
 
 // --------------------------------------------------------------------------
 // Ingestión: POST /analitica/recolectar  (pública: solo escribe, nunca lee)
-//   body: { evento: {t,v,s,p,r,w,h,tc}, contexto: { user_agent, x_forwarded_for } }
+//   body: { evento: {t,v,s,p,r,w,h,tc}, contexto: { user_agent, x_forwarded_for, geo } }
 //   `contexto` lo construye la ruta de Next con las cabeceras de la
 //   petición del navegador; `evento` es lo que envía el tracker.
 // --------------------------------------------------------------------------
@@ -92,6 +93,7 @@ async function recolectar(req, res) {
         }
 
         const ip = resolverIp(contexto.x_forwarded_for);
+        const ubicacion = ubicacionAproximada(contexto.geo);
 
         if (!permitirEvento({ ip, visitorId: evento.visitorId })) {
             return res.status(429).json({ ok: false, motivo: "rate_limit" });
@@ -110,6 +112,10 @@ async function recolectar(req, res) {
             p_browser: dispositivo.browser,
             p_screen_width: evento.ancho,
             p_screen_height: evento.alto,
+            p_country: ubicacion.country,
+            p_region: ubicacion.region,
+            p_city: ubicacion.city,
+            p_country_code: ubicacion.countryCode,
             p_timeout_segundos: config.TIMEOUT_SESION_SEGUNDOS,
             p_heartbeat_min_segundos: config.HEARTBEAT_MIN_SEGUNDOS
         });

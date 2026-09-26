@@ -88,13 +88,15 @@ function evento(db, tipo, visitorId, sessionId, pagina, extra = {}) {
             p_tipo => $1, p_visitor_id => $2, p_session_id => $3, p_pagina => $4,
             p_referrer => $5, p_user_agent => $6, p_ip => $7::inet,
             p_device_type => $8, p_operating_system => $9, p_browser => $10,
-            p_screen_width => $11, p_screen_height => $12
+            p_screen_width => $11, p_screen_height => $12,
+            p_country => $13, p_region => $14, p_city => $15, p_country_code => $16
         ) as r`,
         [
             tipo, visitorId, sessionId, pagina,
             extra.referrer ?? null, extra.userAgent ?? "UA-test", extra.ip ?? null,
             extra.device ?? "desktop", extra.os ?? "Windows", extra.browser ?? "Chrome 140",
-            extra.w ?? 1920, extra.h ?? 1080
+            extra.w ?? 1920, extra.h ?? 1080,
+            extra.geo?.[0] ?? null, extra.geo?.[1] ?? null, extra.geo?.[2] ?? null, extra.geo?.[3] ?? null
         ]
     ).then(r => r.rows[0].r);
 
@@ -425,6 +427,63 @@ async function main() {
         assert.strictEqual(d.visitante.total_sessions, 1);
         const nada = (await uno(db, "select public.analitica_sesion_detalle('00000000-0000-4000-8000-000000000000') r")).r;
         assert.strictEqual(nada, null);
+    });
+
+    await test("23. ubicación aproximada: se guarda al crear la sesión; sin datos queda NULL", async () => {
+        const db = await crearDb();
+        await evento(db, "page_view", V1, S1, "/a", { geo: ["Colombia", "Antioquia", "Medellín", "CO"] });
+        await evento(db, "page_view", V2, S2, "/b");
+        const con = await uno(db, "select country, region, city, country_code from public.visitor_sessions where session_id=$1", [S1]);
+        assert.deepStrictEqual({ ...con }, { country: "Colombia", region: "Antioquia", city: "Medellín", country_code: "CO" });
+        const sin = await uno(db, "select country, region, city, country_code from public.visitor_sessions where session_id=$1", [S2]);
+        assert.deepStrictEqual({ ...sin }, { country: null, region: null, city: null, country_code: null });
+        const d = (await uno(db, "select public.analitica_sesion_detalle($1) r", [S1])).r;
+        assert.strictEqual(d.sesion.region, "Antioquia");
+        assert.strictEqual(d.sesion.country_code, "CO");
+        const a = (await uno(db, "select public.analitica_activos(150) r")).r;
+        assert.ok(a.some(x => x.city === "Medellín" && x.region === "Antioquia"));
+        const h = (await uno(db, "select public.analitica_historial(now() - interval '1 hour', now() + interval '1 minute', 50, 0) r")).r;
+        assert.ok(h.filas.some(x => x.country_code === "CO"));
+    });
+
+    await test("24. resumen por ciudad (visitantes únicos) + sin ubicación", async () => {
+        const db = await crearDb();
+        const MED = ["Colombia", "Antioquia", "Medellín", "CO"];
+        const ids = n => `${n}${n}${n}${n}${n}${n}${n}${n}-0000-4000-8000-00000000000${n}`;
+        for (const [n, geo] of [[1, MED], [2, MED], [3, ["Colombia", "Antioquia", "Bello", "CO"]], [4, null], [5, null]]) {
+            await evento(db, "page_view", ids(n), `aaaaaaaa-aaaa-4aaa-8aaa-00000000000${n}`, "/x", geo ? { geo } : {});
+        }
+        // Mismo visitante en otra sesión de Medellín: no cuenta doble.
+        await evento(db, "page_view", ids(1), "aaaaaaaa-aaaa-4aaa-8aaa-000000000009", "/y", { geo: MED });
+        const r = (await uno(db, "select public.analitica_resumen(now() - interval '1 hour', now() + interval '1 minute') r")).r;
+        assert.deepStrictEqual(r.ciudades.map(c => [c.city, c.visitantes]), [["Medellín", 2], ["Bello", 1]]);
+        assert.strictEqual(r.ciudades[0].region, "Antioquia");
+        assert.strictEqual(r.sin_ubicacion, 2);
+    });
+
+    await test("25. actualiza una base con la versión ANTERIOR de la función (sin sobrecarga ambigua)", async () => {
+        // Estado real de una base con la versión previa: mismas tablas pero
+        // sin region/country_code, y solo la función de 17 parámetros.
+        const db = await crearDb();
+        await db.exec(`
+            alter table public.visitor_sessions drop column region, drop column country_code;
+            drop function public.analitica_registrar_evento(text, uuid, uuid, text, text, text, inet, text, text, text,
+                integer, integer, text, text, integer, integer, integer, text, text);
+            create function public.analitica_registrar_evento(
+                p_tipo text, p_visitor_id uuid, p_session_id uuid, p_pagina text, p_referrer text default null,
+                p_user_agent text default null, p_ip inet default null, p_device_type text default 'unknown',
+                p_operating_system text default null, p_browser text default null, p_screen_width integer default null,
+                p_screen_height integer default null, p_country text default null, p_city text default null,
+                p_timeout_segundos integer default 1800, p_heartbeat_min_segundos integer default 30,
+                p_dedupe_page_view_segundos integer default 3) returns jsonb language sql as $$ select '{"vieja":true}'::jsonb $$;
+        `);
+        await db.exec(fs.readFileSync(MIGRACION, "utf8"));
+        const n = await uno(db, "select count(*)::int n from pg_proc where proname = 'analitica_registrar_evento'");
+        assert.strictEqual(n.n, 1, "una sola versión de la función");
+        const cols = (await db.query("select column_name from information_schema.columns where table_name='visitor_sessions' and column_name in ('region','country_code')")).rows;
+        assert.strictEqual(cols.length, 2, "columnas nuevas añadidas a la tabla existente");
+        const r = await evento(db, "page_view", V1, S1, "/a", { geo: ["Colombia", "Antioquia", "Medellín", "CO"] });
+        assert.strictEqual(r.ok, true);
     });
 
     const fallidas = resultados.filter(r => !r.ok);

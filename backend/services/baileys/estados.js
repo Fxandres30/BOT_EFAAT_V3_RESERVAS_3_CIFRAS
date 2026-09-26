@@ -41,13 +41,20 @@ function registrarEstados(
 
                 }
 
-                console.log("UPDATE:", update);
-
                 const {
                     connection,
                     qr,
                     lastDisconnect
                 } = update;
+
+                // Resumen sin datos sensibles: nunca el QR ni el objeto
+                // completo del update.
+                console.log("[CONNECTION.UPDATE]", {
+                    sessionId,
+                    connection: connection || null,
+                    qrRecibido: !!qr,
+                    statusCode: lastDisconnect?.error?.output?.statusCode ?? null
+                });
 
                 if (qr) {
 
@@ -72,14 +79,13 @@ function registrarEstados(
 
                 if (connection === "close") {
 
-                    // 👇 NUEVO: imprimir TODO el error
-                    console.log("========== LAST DISCONNECT ==========");
-                    console.dir(lastDisconnect, { depth: null });
-                    console.log("=====================================");
-
-                    console.log("========== ERROR ==========");
-                    console.dir(lastDisconnect?.error, { depth: null });
-                    console.log("===========================");
+                    // Solo código y mensaje: el objeto completo puede incluir
+                    // nodos del protocolo con JIDs.
+                    console.log("[LAST DISCONNECT]", {
+                        sessionId,
+                        statusCode: lastDisconnect?.error?.output?.statusCode ?? null,
+                        motivo: lastDisconnect?.error?.message || null
+                    });
 
                     const statusCode =
                         lastDisconnect?.error?.output?.statusCode;

@@ -220,3 +220,28 @@ details[open] .premiosChevron {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* --- Botón Administrar (enlace al detalle existente /tablas/[precio]) --- */
+.administrar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--efaat-border-strong);
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-surface);
+  color: var(--efaat-text);
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  text-decoration: none;
+}
+
+.administrar:hover {
+  background: var(--efaat-surface-muted);
+}
+
+.administrar:focus-visible {
+  outline: none;
+  box-shadow: var(--efaat-focus-ring);
+}

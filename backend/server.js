@@ -1,8 +1,5 @@
 require("dotenv").config();
 
-console.log("URL:", process.env.SUPABASE_URL);
-console.log("KEY:", process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0,20));
-
 const express = require("express");
 const cors = require("cors");
 
@@ -12,6 +9,10 @@ const tablasRoutes = require("./routes/tablas");
 const contactosRoutes = require("./routes/contactos");
 const bloqueadosRoutes = require("./routes/bloqueados");
 const analiticaRoutes = require("./routes/analitica");
+
+// Token compartido servidor-a-servidor para /sessions/* (BANN apps/api y
+// las rutas proxy del panel Next). Ver middleware/tokenServicio.js.
+const { exigirTokenServicio } = require("./middleware/tokenServicio");
 
 const supabase = require("./lib/supabase");
 
@@ -28,7 +29,7 @@ require("./analitica/retencion").iniciarRetencion();
 
 app.use(express.json());
 
-app.use("/sessions", sessionsRoutes);
+app.use("/sessions", exigirTokenServicio, sessionsRoutes);
 app.use("/pagos", pagosRoutes);
 app.use("/tablas", tablasRoutes);
 app.use("/contactos", contactosRoutes);
