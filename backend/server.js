@@ -10,10 +10,6 @@ const contactosRoutes = require("./routes/contactos");
 const bloqueadosRoutes = require("./routes/bloqueados");
 const analiticaRoutes = require("./routes/analitica");
 
-// Token compartido servidor-a-servidor para /sessions/* (BANN apps/api y
-// las rutas proxy del panel Next). Ver middleware/tokenServicio.js.
-const { exigirTokenServicio } = require("./middleware/tokenServicio");
-
 const supabase = require("./lib/supabase");
 
 const manager =
@@ -29,7 +25,7 @@ require("./analitica/retencion").iniciarRetencion();
 
 app.use(express.json());
 
-app.use("/sessions", exigirTokenServicio, sessionsRoutes);
+app.use("/sessions", sessionsRoutes);
 app.use("/pagos", pagosRoutes);
 app.use("/tablas", tablasRoutes);
 app.use("/contactos", contactosRoutes);
