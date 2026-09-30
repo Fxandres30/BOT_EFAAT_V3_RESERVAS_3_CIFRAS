@@ -1,6 +1,12 @@
 const supabase = require("../../../lib/supabase");
 const { obtenerContextInfo } = require("../../utils/obtenerContextInfo");
 
+// Resultado cuando la fila de este mensaje (grupo_id, mensaje_id) ya existe
+// y el índice único (migración 021) rechaza la segunda inserción (23505):
+// otra entrega del MISMO mensaje ya lo reclamó. El dispatcher lo usa para
+// no volver a ejecutar negocio sobre él.
+const MENSAJE_DUPLICADO = Object.freeze({ duplicado: true });
+
 async function guardarMensajeGrupo({
 
     msg,
@@ -286,6 +292,14 @@ async function guardarMensajeGrupo({
 
             .single();
 
+        if (error?.code === "23505") {
+
+            console.log(`⏭️ [MENSAJE] ya existe una fila para este mensaje (grupo_id, mensaje_id) — duplicado [${msg.key.id}]`);
+
+            return MENSAJE_DUPLICADO;
+
+        }
+
         if (error) {
 
             console.error("================================");
@@ -316,6 +330,8 @@ async function guardarMensajeGrupo({
 
 module.exports = {
 
-    guardarMensajeGrupo
+    guardarMensajeGrupo,
+
+    MENSAJE_DUPLICADO
 
 };

@@ -72,6 +72,24 @@ async function restaurarSesiones() {
 
     );
 
+    // Fase 1: la sesión activa guardada en la BD se PIDE antes de crear los
+    // sockets, pero solo se activa cuando su socket llega realmente a open
+    // (manager.evaluarConexion). Antes se activaba aquí mismo con el socket
+    // todavía "connecting", y el listener de negocio quedaba registrado
+    // antes del handshake. Solo si esa sesión está entre las que se van a
+    // restaurar (si no, nunca llegaría a open y bloquearía el failover).
+    const activa = sesiones.find(
+
+        s => s.activa === true
+
+    );
+
+    if (activa) {
+
+        await manager.solicitarActivacion(activa.id, { permitirSinSocket: true });
+
+    }
+
     for (const sesion of sesiones) {
 
         try {
@@ -120,31 +138,6 @@ async function restaurarSesiones() {
 
                 err.message
 
-            );
-
-        }
-
-    }
-
-    // Restaurar la sesión activa guardada en la BD
-    const activa = data.find(
-
-        s => s.activa === true
-
-    );
-
-    if (activa) {
-
-        const ok = manager.setActive(
-
-            activa.id
-
-        );
-
-        if (!ok) {
-
-            console.log(
-                "⚠️ La sesión marcada como activa no está conectada."
             );
 
         }

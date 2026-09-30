@@ -128,9 +128,11 @@ async function setActive(req, res) {
 
         // Selección manual real del usuario desde el panel -> también
         // se marca como sesión preferida (Fase 5.1).
-        const ok = await manager.setActive(sessionId, { preferida: true });
+        // Fase 1: si la sesión todavía está conectando, la anterior deja
+        // de ser la activa ya y esta se activa sola al llegar a open.
+        const resultado = await manager.solicitarActivacion(sessionId, { preferida: true });
 
-        if (!ok) {
+        if (!resultado) {
 
             return res.status(404).json({
                 success: false
@@ -139,7 +141,8 @@ async function setActive(req, res) {
         }
 
         res.json({
-            success: true
+            success: true,
+            pendiente: resultado === "pendiente"
         });
 
     }

@@ -8,6 +8,10 @@ const {
 } = require("./identidadSesion");
 const { registrarEnviado } = require("../../bot/utils/mensajesEnviados");
 
+// Diagnóstico del ciclo de vida (Paso 0) — solo observa, inactivo salvo
+// DEBUG_MESSAGE_LIFECYCLE=true. Ver diagnostico/cicloMensaje.js.
+const cicloMensaje = require("../../diagnostico/cicloMensaje");
+
 // Genera el id del mensaje ANTES de enviarlo y lo marca como "salida del
 // programa", para que su eco en messages.upsert no se procese como entrada
 // de usuario (ver bot/utils/mensajesEnviados.js). Mismo generador que usa
@@ -49,6 +53,8 @@ function resolverSocketEnvio(sock) {
 async function sendMessage({ sock, jid, text, quoted } = {}) {
 
     const socketActivo = resolverSocketEnvio(sock);
+
+    cicloMensaje.accion("sendMessage", socketActivo, jid);
 
     try {
 
@@ -211,6 +217,8 @@ async function sendMessage({ sock, jid, text, quoted } = {}) {
 async function sendImage({ sock, jid, image, caption } = {}) {
 
     const socketActivo = resolverSocketEnvio(sock);
+
+    cicloMensaje.accion("sendImage", socketActivo, jid);
 
     try {
 

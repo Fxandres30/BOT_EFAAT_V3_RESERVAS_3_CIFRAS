@@ -1,5 +1,10 @@
 const manager = require("../services/baileys/manager");
 
+// Fase 1 — regla única de propiedad de sesión (ver propiedadSesion.js):
+// listeners de grupos, cola de IQ de grupo, workerEventos y scheduler
+// solo actúan con el socket vigente, open, de la sesión activa.
+const propiedadSesion = require("../services/baileys/propiedadSesion");
+
 // Utilidades de SOLO LECTURA para el log de sesión activa (Fase de
 // observabilidad). No intervienen en la selección de sesión.
 const {
@@ -167,7 +172,9 @@ function iniciarBot() {
         return;
     }
 
-    console.log("📡 Registrando activeChanged / activeLost");
+    console.log("📡 Registrando activeChanged / activeLost / activeSocketClosed");
+
+    propiedadSesion.configurar(sock => manager.esSocketVigenteActivo(sock));
 
     manager.on("activeChanged", ({ socket, sessionId }) => {
 
@@ -180,6 +187,22 @@ function iniciarBot() {
     manager.on("activeLost", () => {
 
         console.log("⚠️ activeLost recibido");
+
+        detenerBot();
+
+    });
+
+    // Fase 1: el socket activo se cerró (reconexión temporal, restart
+    // requerido, logout...). Se detiene YA todo lo que dependía de él; si
+    // la misma sesión vuelve a open, evaluarConexion re-emite
+    // activeChanged con el socket nuevo y conectar() lo registra de cero.
+    manager.on("activeSocketClosed", ({ sessionId, socket }) => {
+
+        if (socket !== socketActual) {
+            return;
+        }
+
+        console.log("⚠️ activeSocketClosed recibido:", sessionId);
 
         detenerBot();
 

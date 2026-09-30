@@ -1,5 +1,12 @@
 const { workerEventos } = require("../workers/workerEventos");
 
+// Diagnóstico del ciclo de vida (Paso 0) — solo observa.
+const cicloMensaje = require("../../../../diagnostico/cicloMensaje");
+
+// Fase 1 — el worker nunca trabaja con un socket que ya no es el vigente,
+// open, de la sesión activa (ver propiedadSesion.js).
+const propiedadSesion = require("../../../../services/baileys/propiedadSesion");
+
 const intervalos = new Map();
 
 // sessionId cuyo workerEventos sigue en curso ahora mismo. Antes, la cola
@@ -38,7 +45,16 @@ function iniciarWorkerEventos(sock) {
 
         }
 
+        if (!propiedadSesion.puedeActuar(sock)) {
+
+            console.log(`⏭️ Tick de workerEventos (${sessionId}) omitido: su socket ya no es el socket activo/open.`);
+            return;
+
+        }
+
         ejecutando.add(sessionId);
+
+        cicloMensaje.tickWorker("workerEventos", sock);
 
         try {
 

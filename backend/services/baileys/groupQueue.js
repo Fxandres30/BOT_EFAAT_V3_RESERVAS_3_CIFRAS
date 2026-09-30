@@ -33,6 +33,31 @@
 //   GROUP_QUEUE_BACKOFF_MAX_MS  (30000) tope del backoff
 //   GROUP_QUEUE_TIMEOUT_MS      (20000) tope de espera por operación (NUEVO)
 
+// Diagnóstico del ciclo de vida (Paso 0) — solo observa, inactivo salvo
+// DEBUG_MESSAGE_LIFECYCLE=true. Ver diagnostico/cicloMensaje.js.
+const cicloMensaje = require("../../diagnostico/cicloMensaje");
+
+// Fase 1 — propiedad de sesión: una ACCIÓN de grupo (abrir/cerrar,
+// expulsar) solo se ejecuta si, en el momento real de ejecutarse (tras
+// esperar turno en la cola), el socket sigue siendo el vigente, open, de
+// la sesión activa. Si no, se rechaza como un error normal (sin reintento):
+// los llamadores ya tratan el fallo (abrir -> abierto=false y el worker
+// de la sesión activa lo reconcilia; cerrar -> el evento sigue activo y
+// se reintenta en el próximo ciclo con el socket correcto).
+const propiedadSesion = require("./propiedadSesion");
+
+function exigirSocketVigente(sock, desc) {
+
+    if (propiedadSesion.puedeActuar(sock)) return;
+
+    const error = new Error(`SOCKET_NO_VIGENTE: ${desc} cancelado — el socket de ${propiedadSesion.describir(sock)} ya no es el socket activo/open`);
+
+    error.code = "SOCKET_NO_VIGENTE";
+
+    throw error;
+
+}
+
 const cfg = {
     delayMs: () => num(process.env.GROUP_QUEUE_DELAY_MS, 1200),
     maxReintentos: () => num(process.env.GROUP_QUEUE_MAX_RETRIES, 4),
@@ -202,8 +227,14 @@ async function arrancar() {
 
 function groupSettingUpdate(sock, grupoId, ajuste) {
 
+    const ficha = cicloMensaje.accion(`groupSettingUpdate(${ajuste})`, sock, grupoId);
+
     return encolar(
-        () => sock.groupSettingUpdate(grupoId, ajuste),
+        () => {
+            cicloMensaje.accionEjecutada(ficha, sock);
+            exigirSocketVigente(sock, `groupSettingUpdate(${ajuste})`);
+            return sock.groupSettingUpdate(grupoId, ajuste);
+        },
         { desc: `groupSettingUpdate(${ajuste})`, grupoId }
     );
 
@@ -225,8 +256,14 @@ function groupMetadata(sock, grupoId) {
 // dispara el mismo evento group-participants.update).
 function groupParticipantsUpdate(sock, grupoId, participantes, accion) {
 
+    const ficha = cicloMensaje.accion(`groupParticipantsUpdate(${accion})`, sock, grupoId);
+
     return encolar(
-        () => sock.groupParticipantsUpdate(grupoId, participantes, accion),
+        () => {
+            cicloMensaje.accionEjecutada(ficha, sock);
+            exigirSocketVigente(sock, `groupParticipantsUpdate(${accion})`);
+            return sock.groupParticipantsUpdate(grupoId, participantes, accion);
+        },
         { desc: `groupParticipantsUpdate(${accion})`, grupoId }
     );
 

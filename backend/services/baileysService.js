@@ -64,7 +64,8 @@ async function status(sessionId) {
 
         success: true,
 
-        connected: manager.has(sessionId)
+        // Fase 1: conectado = socket realmente open, no solo existente.
+        connected: manager.isConnected(sessionId)
 
     };
 

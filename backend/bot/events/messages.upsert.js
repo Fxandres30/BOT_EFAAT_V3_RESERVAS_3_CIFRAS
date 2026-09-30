@@ -12,6 +12,14 @@ const { diagnosticarMensajeEntranteOriginal } = require("../funciones/mensajes/d
 const { enmascararJid } = require("../utils/enmascararJid");
 const { maskPhone } = require("../../services/baileys/identidadSesion");
 
+// Diagnóstico del ciclo de vida (Paso 0) — solo observa, inactivo salvo
+// DEBUG_MESSAGE_LIFECYCLE=true. Ver diagnostico/cicloMensaje.js.
+const cicloMensaje = require("../../diagnostico/cicloMensaje");
+
+// Compuerta de ingreso — identidad estable, duplicados y mensajes
+// históricos/recuperados, decidido ANTES del negocio. Ver su cabecera.
+const compuertaIngreso = require("../funciones/mensajes/compuertaIngreso");
+
 const listeners = new Map();
 
 function registerMessages(sock, sessionId) {
@@ -20,7 +28,11 @@ function registerMessages(sock, sessionId) {
 
     const context = sock.context || {};
 
-    const listener = async ({ messages, type }) => {
+    // Inicio real de la sesión para el negocio: todo mensaje que ya
+    // existía antes de este momento es pasado (ver compuertaIngreso).
+    const inicioProcesamientoMs = Date.now();
+
+    const listener = async ({ messages, type, requestId }) => {
 
         console.log("================================");
         console.log("📨 MESSAGES.UPSERT");
@@ -53,6 +65,30 @@ function registerMessages(sock, sessionId) {
 
                 const traceId = message.key.id;
 
+                // Mismo mensaje entregado dos veces a este proceso (en vuelo
+                // o ya decidido): se descarta antes de tocar nada.
+                const identidad = compuertaIngreso.identidadMensaje(message);
+
+                if (identidad && !compuertaIngreso.tomarEnMemoria(identidad.clave)) {
+
+                    console.log(`⏭️ [COMPUERTA] mensaje duplicado (ya visto por este proceso), descartado [${traceId}]`);
+
+                    continue;
+
+                }
+
+                const ingreso = compuertaIngreso.clasificarIngreso({
+
+                    message,
+
+                    type,
+
+                    requestId,
+
+                    inicioProcesamientoMs
+
+                });
+
                 const remoto = message.key.remoteJid;
 
                 let tipo = "PRIVADO";
@@ -72,17 +108,33 @@ function registerMessages(sock, sessionId) {
 
                 console.time(`messageHandler-${traceId}`);
 
-                await messageHandler({
+                try {
 
-                    sock,
+                    await cicloMensaje.ejecutarConTraza(
 
-                    session: context,
+                        { sock, message, listener: "messages.upsert (negocio)" },
 
-                    message,
+                        () => messageHandler({
 
-                    tipo
+                            sock,
 
-                });
+                            session: context,
+
+                            message,
+
+                            tipo,
+
+                            ingreso
+
+                        })
+
+                    );
+
+                } finally {
+
+                    if (identidad) compuertaIngreso.liberarEnMemoria(identidad.clave);
+
+                }
 
                 console.timeEnd(`messageHandler-${traceId}`);
 
@@ -108,6 +160,8 @@ function registerMessages(sock, sessionId) {
         sock,
         listener
     });
+
+    cicloMensaje.marcarListenerNegocio(sock, true);
 
     console.log(`
 ═══════════════════════════════════════
@@ -142,6 +196,8 @@ function unregisterMessages(sessionId) {
     );
 
     listeners.delete(sessionId);
+
+    cicloMensaje.marcarListenerNegocio(data.sock, false);
 
 }
 

@@ -11,6 +11,12 @@ const path = require("path");
 const pino = require("pino");
 const supabase = require("../../lib/supabase");
 
+// Diagnóstico del ciclo de vida (Paso 0) — solo observa, inactivo salvo
+// DEBUG_MESSAGE_LIFECYCLE=true. Ver diagnostico/cicloMensaje.js.
+const cicloMensaje = require("../../diagnostico/cicloMensaje");
+
+const cicloSocket = require("./cicloSocket");
+
 // Logger interno de Baileys: en "info" (su valor por defecto) vuelca los
 // datos de emparejamiento del dispositivo (devicePairingData) en cada
 // vinculación. "warn" conserva advertencias y errores reales.
@@ -118,6 +124,14 @@ async function crearSocketInterno(sessionId) {
         logger: baileysLogger
 
     });
+
+    // Ciclo de vida real (Fase 1): entra al Map como "connecting" — estar
+    // en el Map NO significa conectado (ver cicloSocket.js).
+    cicloSocket.registrarSocket(sock);
+
+    // Primero que cualquier otro listener: así el diagnóstico ve también
+    // los mensajes que llegan sin listener de negocio registrado.
+    cicloMensaje.observarSocket(sock, sessionId);
 
     registerGroups(sock);
 

@@ -11,6 +11,10 @@ const registrarEstados = require("./estados");
 const supabase = require("../../lib/supabase");
 const lease = require("./lease");
 
+// Ciclo de vida real de cada instancia de socket (Fase 1): connecting /
+// open / pending_flushed / closed. Estar en el Map NO es estar conectado.
+const cicloSocket = require("./cicloSocket");
+
 const {
     cancelarReintentoPendiente
 } = require("./desconectado");
@@ -51,6 +55,12 @@ class SessionManager extends EventEmitter {
         // del socket viejo/muerto para siempre).
         this.activeSocket = null;
 
+        // Fase 1 — activación diferida: sesión que el usuario (o el
+        // arranque del servidor) pidió como activa mientras su socket
+        // todavía NO estaba open. Se activa en evaluarConexion() cuando esa
+        // sesión llega realmente a open — nunca antes. { sessionId } | null
+        this.activacionPendiente = null;
+
     }
 
     async start(sessionId) {
@@ -83,6 +93,8 @@ if (!sesion) {
 
     console.log(`⚠️ La sesión ${sessionId} ya no existe.`);
 
+    await this._cancelarActivacionPendiente(sessionId, "la sesión ya no existe");
+
     return SESSION_NOT_FOUND;
 
 }
@@ -97,6 +109,8 @@ if (!sesion) {
     if (!resultadoLease.adquirido) {
 
         console.log(`🚫 [SESSION] ${sessionId} no se crea socket: lease ocupado por otra instancia`);
+
+        await this._cancelarActivacionPendiente(sessionId, "lease ocupado por otra instancia");
 
         return LEASE_NO_DISPONIBLE;
 
@@ -123,6 +137,8 @@ if (!sesion) {
         console.log(`⚠️ createSocket() no devolvió un socket para ${sessionId}, liberando lease`);
 
         await lease.soltar(sessionId);
+
+        await this._cancelarActivacionPendiente(sessionId, "no se pudo crear el socket");
 
         return null;
 
@@ -234,6 +250,8 @@ if (!sesion) {
         // más adelante) pueda adquirirlo sin esperar a que expire el TTL.
         await lease.soltar(sessionId);
 
+        await this._cancelarActivacionPendiente(sessionId, "parada manual");
+
         if (this.activeSession === sessionId) {
 
             this.activeSession = null;
@@ -281,9 +299,12 @@ if (!sesion) {
 
     }
 
+    // Fase 1: conectado = el socket VIGENTE de la sesión está realmente
+    // open (o pending_flushed). Un socket que solo existe en el Map
+    // (connecting, esperando QR, reconectando) NO cuenta como conectado.
     isConnected(sessionId) {
 
-        return this.has(sessionId);
+        return this.has(sessionId) && cicloSocket.estaAbierto(this.get(sessionId));
 
     }
 
@@ -301,7 +322,7 @@ if (!sesion) {
 
     getConnectedSessions() {
 
-        return this.getAll();
+        return this.getAll().filter(id => this.isConnected(id));
 
     }
 
@@ -316,11 +337,23 @@ if (!sesion) {
     console.log("Sockets conectados:", this.getAll());
     console.log("================================");
 
-    if (!this.has(sessionId)) {
+    // Fase 1: estar en el Map no basta — el socket debe estar open. Para
+    // pedir la activación de una sesión que todavía está conectando se usa
+    // solicitarActivacion(), que la difiere hasta que llegue a open.
+    if (!this.isConnected(sessionId)) {
 
-        console.log("❌ La sesión no está conectada.");
+        console.log("❌ La sesión no está conectada (socket inexistente o todavía no open).", {
+            sessionId,
+            estadoSocket: cicloSocket.estadoDe(this.get(sessionId))
+        });
 
         return false;
+
+    }
+
+    if (this.activacionPendiente?.sessionId === sessionId) {
+
+        this.activacionPendiente = null;
 
     }
 
@@ -466,15 +499,146 @@ if (!sesion) {
 
     }
 
+    // Fase 1: nunca devuelve un socket que no esté open (p. ej. durante la
+    // reconexión de la sesión activa) — así ningún fallback termina
+    // actuando sobre un socket muerto o todavía conectando.
     getActiveSocket() {
 
-        if (!this.activeSession) {
+        if (!this.activeSession || !this.isConnected(this.activeSession)) {
 
             return null;
 
         }
 
         return this.get(this.activeSession);
+
+    }
+
+    // ============================================================
+    // FASE 1 — propiedad de sesión y ciclo de vida
+    // ============================================================
+
+    // ¿Puede ESTE socket ejecutar acciones de negocio ahora mismo?
+    //   1. pertenece a la sesión activa del BOT,
+    //   2. sigue siendo el socket vigente de esa sesión (no reemplazado),
+    //   3. es el socket que el BOT tiene registrado como activo,
+    //   4. está open.
+    // Regla única, instalada en propiedadSesion.js por bot/index.js.
+    esSocketVigenteActivo(sock) {
+
+        if (!sock) return false;
+
+        const sessionId = sock.context?.sessionId;
+
+        return !!sessionId
+            && sessionId === this.activeSession
+            && this.sockets.get(sessionId) === sock
+            && this.activeSocket === sock
+            && cicloSocket.estaAbierto(sock);
+
+    }
+
+    // Único punto de entrada para PEDIR que una sesión sea la activa
+    // (panel y arranque del servidor). Nunca activa un socket que no esté
+    // open:
+    //   - si ya está open -> setActive() inmediato (corte limpio A -> B vía
+    //     "activeChanged": bot/index.js detiene todo lo de A y registra B);
+    //   - si todavía está conectando -> la sesión anterior deja de ser la
+    //     activa YA (se detienen sus listeners/workers/scheduler vía
+    //     "activeLost") y la activación queda pendiente hasta que la nueva
+    //     llegue a open (evaluarConexion).
+    // Devuelve "activa", "pendiente" o false (sesión sin socket en esta
+    // instancia, salvo permitirSinSocket — usado por el arranque, donde el
+    // socket se crea justo después).
+    async solicitarActivacion(sessionId, { preferida = false, permitirSinSocket = false } = {}) {
+
+        if (this.isConnected(sessionId)) {
+
+            const ok = await this.setActive(sessionId, { preferida });
+
+            return ok ? "activa" : false;
+
+        }
+
+        if (!this.has(sessionId) && !permitirSinSocket) {
+
+            console.log("❌ [SESSION] activación rechazada: la sesión no tiene socket en esta instancia:", sessionId);
+
+            return false;
+
+        }
+
+        if (preferida) {
+            await this._marcarPreferida(sessionId);
+        }
+
+        const anterior = this.activeSession;
+
+        this.activacionPendiente = { sessionId };
+
+        console.log("⏳ [SESSION] activación pendiente hasta que el socket esté open:", {
+            sessionId,
+            estadoSocket: cicloSocket.estadoDe(this.get(sessionId)),
+            sesionAnterior: anterior || "(ninguna)"
+        });
+
+        if (anterior && anterior !== sessionId) {
+
+            // A deja de ser la activa ANTES de que B conecte: sus recursos
+            // de negocio se detienen ya, nada de A pasa a B.
+            this.activeSession = null;
+            this.activeSocket = null;
+
+            console.log("🔌 [SESSION] sesión anterior desactivada por cambio de sesión:", anterior);
+
+            this.emit("activeLost");
+
+        }
+
+        return "pendiente";
+
+    }
+
+    // Cancela la activación pendiente de ESA sesión (no llegó a open y ya no
+    // lo va a hacer: parada manual, desconexión definitiva, lease ajeno,
+    // sesión inexistente). Si el BOT quedó sin sesión activa, se aplica el
+    // mismo failover de siempre entre las sesiones realmente conectadas.
+    async _cancelarActivacionPendiente(sessionId, motivo) {
+
+        if (this.activacionPendiente?.sessionId !== sessionId) return;
+
+        this.activacionPendiente = null;
+
+        console.log("🚫 [SESSION] activación pendiente cancelada:", { sessionId, motivo });
+
+        if (this.activeSession) return;
+
+        const candidata = await this.selectFailoverSession({ excluir: sessionId });
+
+        if (candidata) {
+
+            await this.setActive(candidata);
+
+            return;
+
+        }
+
+        this.emit("activeLost");
+
+    }
+
+    // Lo llama estados.js en CADA connection === "close" (antes de su
+    // guardia de socket obsoleto). Si el socket que se cierra es
+    // exactamente el que usa el BOT, se avisa para detener ya sus
+    // listeners/workers/scheduler — no se toca activeSession: la decisión
+    // de reconectar o hacer failover sigue siendo de desconectado.js.
+    notificarSocketCerrado(sessionId, sock) {
+
+        if (!sock || sock !== this.activeSocket) return;
+
+        console.log("🔌 [SESSION] el socket activo se cerró — se detiene el procesamiento del BOT sobre él:", sessionId);
+
+        this.emit("activeSocketClosed", { sessionId, socket: sock });
 
     }
 
@@ -494,6 +658,52 @@ if (!sesion) {
     async evaluarConexion(sessionId) {
 
         const socketDeEstaConexion = this.get(sessionId);
+
+        // Fase 1: solo un socket realmente open puede ser evaluado para
+        // activarse (conectado.js lo llama 1 s después de "open"; en ese
+        // lapso pudo cerrarse o ser reemplazado).
+        if (!this.isConnected(sessionId)) {
+
+            console.log("[SESSION] evaluarConexion ignorado: el socket ya no está open:", {
+                sessionId,
+                estadoSocket: cicloSocket.estadoDe(socketDeEstaConexion)
+            });
+
+            return;
+
+        }
+
+        // Fase 1: activación diferida (cambio de sesión / arranque).
+        if (this.activacionPendiente) {
+
+            if (this.activacionPendiente.sessionId !== sessionId) {
+
+                console.log("[SESSION] sesión conectada, pero hay una activación pendiente para otra sesión — no se promueve:", {
+                    sesionConectada: sessionId,
+                    pendiente: this.activacionPendiente.sessionId
+                });
+
+                return;
+
+            }
+
+            this.activacionPendiente = null;
+
+            if (this.activeSession !== sessionId) {
+
+                console.log("[SESSION] la sesión pendiente llegó a open -> se activa:", sessionId);
+
+                await this.setActive(sessionId);
+
+                return;
+
+            }
+
+            // Era ya la activa (pidió activarse a sí misma mientras
+            // reconectaba): sigue el camino normal de abajo, que re-emite
+            // activeChanged si el socket cambió.
+
+        }
 
         const activaValida =
             !!this.activeSession && this.isConnected(this.activeSession);
@@ -594,6 +804,8 @@ if (!sesion) {
     // casos de reintento automático de la misma sesión). Si esa sesión era
     // la activa del BOT, dispara el failover; si no lo era, no hace nada.
     async manejarDesconexionActiva(sessionIdCaida) {
+
+        await this._cancelarActivacionPendiente(sessionIdCaida, "desconexión definitiva");
 
         if (this.activeSession !== sessionIdCaida) {
             return;

@@ -16,6 +16,9 @@ function esMensajeConArchivo(message) {
 }
 const { enmascararJid } = require("../utils/enmascararJid");
 
+// Diagnóstico del ciclo de vida (Paso 0) — solo observa.
+const cicloMensaje = require("../../diagnostico/cicloMensaje");
+
 module.exports = async (ctx) => {
 
     if (!ctx.chat.esGrupo) {
@@ -50,6 +53,8 @@ module.exports = async (ctx) => {
     });
 
     ctx.evento = await detectarEvento(ctx);
+
+    cicloMensaje.etapa("detectarEvento", { EVENTO_DETECTADO_EN_ESTE_MENSAJE: !!ctx.evento });
 
     if (!ctx.evento) {
 
@@ -111,6 +116,8 @@ module.exports = async (ctx) => {
 
     console.log("🧭 Intención detectada:", intencion.tipo);
 
+    cicloMensaje.etapa("detectarIntencion", { INTENCION: intencion.tipo });
+
     if (intencion.tipo === "ninguna") {
         return;
     }
@@ -130,6 +137,8 @@ module.exports = async (ctx) => {
         });
 
         ctx.reserva = resultado;
+
+        cicloMensaje.etapa("detectarReserva");
 
         console.log("==================================");
         console.log("📦 Resultado reserva");

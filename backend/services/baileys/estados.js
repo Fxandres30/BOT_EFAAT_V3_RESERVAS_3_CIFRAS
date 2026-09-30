@@ -2,6 +2,12 @@ const guardarQR = require("./qr");
 const conectado = require("./conectado");
 const desconectado = require("./desconectado");
 
+// Diagnóstico del ciclo de vida (Paso 0) — solo observa, inactivo salvo
+// DEBUG_MESSAGE_LIFECYCLE=true. Ver diagnostico/cicloMensaje.js.
+const cicloMensaje = require("../../diagnostico/cicloMensaje");
+
+const cicloSocket = require("./cicloSocket");
+
 function registrarEstados(
     sock,
     sessionId,
@@ -21,6 +27,25 @@ function registrarEstados(
         "connection.update",
 
         async (update) => {
+
+            // Ciclo de vida real de ESTA instancia (Fase 1) — antes de la
+            // guardia de identidad, para que también un socket reemplazado
+            // quede "closed" y nunca vuelva a contar como conectado.
+            cicloSocket.actualizarDesdeUpdate(sock, update);
+
+            // Si el socket que se cierra es el que el BOT está usando, sus
+            // listeners/workers/scheduler se detienen YA — sin esperar a la
+            // reconexión ni al failover (el manager decide; solo avisa si
+            // este socket es exactamente el activo).
+            if (update?.connection === "close") {
+
+                contexto.manager?.notificarSocketCerrado?.(sessionId, sock);
+
+            }
+
+            // Antes de la guardia de identidad: el diagnóstico también debe
+            // ver los eventos de sockets obsoletos. No altera nada.
+            cicloMensaje.observarConexion(sock, update);
 
             try {
 

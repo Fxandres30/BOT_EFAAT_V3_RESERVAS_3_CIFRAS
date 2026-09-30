@@ -52,6 +52,13 @@ const { resolverTexto } = require("../shared/variables/resolverVariables");
 const { sendMessage } = require("../services/baileys/send");
 const executionGuard = require("./executionGuard");
 
+// Diagnóstico del ciclo de vida (Paso 0) — solo observa.
+const cicloMensaje = require("../diagnostico/cicloMensaje");
+
+// Fase 1 — el Scheduler nunca trabaja con un socket que ya no es el
+// vigente, open, de la sesión activa (ver propiedadSesion.js).
+const propiedadSesion = require("../services/baileys/propiedadSesion");
+
 const INTERVALO_MS_DEFECTO = 30000;
 
 const intervalos = new Map(); // sessionId -> intervalId
@@ -89,7 +96,16 @@ function start(sock, { intervaloMs = INTERVALO_MS_DEFECTO } = {}) {
 
         }
 
+        if (!propiedadSesion.puedeActuar(sock)) {
+
+            console.log(`⏭️ [SCHEDULER] tick (${sessionId}) omitido: su socket ya no es el socket activo/open.`);
+            return;
+
+        }
+
         ejecutando.add(sessionId);
+
+        cicloMensaje.tickWorker("scheduler", sock);
 
         try {
 

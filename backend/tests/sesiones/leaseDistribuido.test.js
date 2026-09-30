@@ -390,8 +390,48 @@ async function main() {
         emitirOpen(A);
         await esperarHasta(() => manager.getActiveSession() === idA, { mensaje: "A debería quedar activa" });
 
+        // Fase 1: solo una sesión realmente open es candidata de failover
+        // (antes bastaba con que B existiera en el Map, aún "connecting").
+        emitirOpen(manager.get(idB));
+        await esperarHasta(() => manager.isConnected(idB), { mensaje: "B debería quedar open" });
+
         emitirClose(A, 401); // desconexión definitiva de A
         await esperarHasta(() => manager.getActiveSession() === idB, { mensaje: "debería hacerse failover automático a B (preferida)" });
+
+    });
+
+    // ---------------------------------------------------------------
+    // 14b) Fase 1: sin candidata open NO hay failover a un socket connecting;
+    //      la sesión se activa recién cuando llega a open.
+    // ---------------------------------------------------------------
+    await test("14b. el failover NO elige una sesión que todavía está connecting; se activa al llegar a open", async () => {
+
+        const idA = "sesion-lease-14c";
+        const idB = "sesion-lease-14d";
+        const { manager } = crearEntorno({
+            sesionesIniciales: [
+                sesion(idA, { usuario_id: "user-z" }),
+                sesion(idB, { usuario_id: "user-z", principal: true })
+            ]
+        });
+
+        let activeLost = false;
+        manager.on("activeLost", () => { activeLost = true; });
+
+        await manager.start(idA);
+        await manager.start(idB);
+
+        emitirOpen(manager.get(idA));
+        await esperarHasta(() => manager.getActiveSession() === idA, { mensaje: "A debería quedar activa" });
+
+        emitirClose(manager.get(idA), 401);
+        await esperarHasta(() => activeLost, { mensaje: "sin candidata open debe emitirse activeLost" });
+
+        assert.strictEqual(manager.getActiveSession(), null, "B (connecting) NO debe activarse por failover");
+        assert.strictEqual(manager.getActiveSocket(), null);
+
+        emitirOpen(manager.get(idB));
+        await esperarHasta(() => manager.getActiveSession() === idB, { mensaje: "B debería activarse al llegar a open" });
 
     });
 

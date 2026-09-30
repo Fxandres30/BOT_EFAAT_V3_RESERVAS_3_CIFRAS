@@ -24,6 +24,22 @@ const {
     procesarIngresoParticipante
 } = require("../funciones/bloqueo/bloqueoParticipantesGrupo");
 
+// Fase 1 — propiedad de sesión: todos los sockets registran estos
+// listeners al crearse (socket.js), pero SOLO el socket vigente, open, de
+// la sesión activa puede actuar. Una sesión secundaria o un socket viejo
+// que siga vivo nunca sincroniza, escanea ni expulsa.
+const propiedadSesion = require("../../services/baileys/propiedadSesion");
+
+function puedeActuar(sock, evento, grupoId) {
+
+    if (propiedadSesion.puedeActuar(sock)) return true;
+
+    console.log(`⏭️ [GRUPOS] ${evento} ignorado: el socket de ${propiedadSesion.describir(sock)} no es el socket activo/open — grupo ${grupoId}`);
+
+    return false;
+
+}
+
 // Evita sincronizar varias veces el mismo grupo
 const pendientes = new Map();
 
@@ -40,6 +56,9 @@ function programarSincronizacion(sock, grupoId) {
     const timeout = setTimeout(async () => {
 
         pendientes.delete(grupoId);
+
+        // En estos 3 s la sesión pudo dejar de ser la activa o cerrarse.
+        if (!puedeActuar(sock, "sincronización programada", grupoId)) return;
 
         try {
 
@@ -73,6 +92,8 @@ function registerGroups(sock) {
 
             console.log("📢 groups.update:", grupo.id);
 
+            if (!puedeActuar(sock, "groups.update", grupo.id)) continue;
+
             programarSincronizacion(
 
                 sock,
@@ -88,6 +109,8 @@ function registerGroups(sock) {
     sock.ev.on("group-participants.update", async (data) => {
 
         console.log("👥 group-participants.update:", data.id, "| acción:", data.action);
+
+        if (!puedeActuar(sock, "group-participants.update", data.id)) return;
 
         programarSincronizacion(
 

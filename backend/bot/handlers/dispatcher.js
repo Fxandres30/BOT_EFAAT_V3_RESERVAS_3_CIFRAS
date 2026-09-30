@@ -2,8 +2,14 @@ const obtenerContexto =
 require("../middleware/obtenerContexto");
 
 const {
-    guardarMensajeGrupo
+    guardarMensajeGrupo,
+    MENSAJE_DUPLICADO
 } = require("../funciones/mensajes/guardarMensajeGrupo");
+
+// Compuerta de ingreso: "¿ya procesado?" persistente y corte de mensajes
+// históricos antes del negocio. Ver compuertaIngreso.js.
+const compuertaIngreso =
+require("../funciones/mensajes/compuertaIngreso");
 
 const {
     clasificarMensaje
@@ -37,12 +43,18 @@ require("../funciones/pagos/registrarStickerPago");
 const { fueEnviadoPorPrograma } =
 require("../utils/mensajesEnviados");
 
+// Diagnóstico del ciclo de vida (Paso 0) — solo observa.
+const cicloMensaje = require("../../diagnostico/cicloMensaje");
+
 module.exports = async ({
 
     sock,
     message,
     session,
-    tipo
+    tipo,
+    // Decisión de la compuerta de ingreso (messages.upsert.js). Si no
+    // viene, se trata como mensaje nuevo (comportamiento previo).
+    ingreso
 
 }) => {
 
@@ -58,6 +70,24 @@ module.exports = async ({
         console.log("================================");
 
         console.log("1️⃣ Entró a dispatcher");
+
+        cicloMensaje.etapa("dispatcher");
+
+        // ¿YA PROCESADO? — persistente: si este mensaje (grupo + key.id) ya
+        // tiene fila en mensajes_grupos_sorteos, ya pasó por el bot en esta
+        // u otra sesión, antes o después de un reinicio. Cero acciones y
+        // sin segunda fila de historial.
+        const identidad = compuertaIngreso.identidadMensaje(message);
+
+        if (identidad?.esGrupo && await compuertaIngreso.yaRegistrado(identidad)) {
+
+            console.log(`⏭️ [COMPUERTA] mensaje ya registrado/procesado anteriormente — descartado [${traceId}]`);
+
+            cicloMensaje.etapa("compuerta", { DECISION: "DESCARTADO_YA_PROCESADO" });
+
+            return;
+
+        }
 
         console.time(`obtenerContexto-${traceId}`);
 
@@ -109,9 +139,23 @@ module.exports = async ({
 
             console.timeEnd(`guardarMensajeGrupo-${traceId}`);
 
+            // Otra entrega del mismo mensaje lo reclamó primero (índice
+            // único de la migración 021): ya está en proceso o procesado.
+            if (mensaje === MENSAJE_DUPLICADO) {
+
+                console.log(`⏭️ [COMPUERTA] el mensaje ya fue reclamado por otra entrega — descartado [${traceId}]`);
+
+                cicloMensaje.etapa("compuerta", { DECISION: "DESCARTADO_YA_PROCESADO" });
+
+                return;
+
+            }
+
             console.log("4️⃣ Mensaje guardado");
 
-            if (mensaje && !esSalidaDelPrograma) {
+            // Un mensaje histórico queda en el historial, pero no se
+            // clasifica para ningún worker de negocio.
+            if (mensaje && !esSalidaDelPrograma && !ingreso?.historico) {
 
                 console.log("5️⃣ Clasificando mensaje");
 
@@ -130,6 +174,20 @@ module.exports = async ({
                 console.log("6️⃣ Clasificación terminada");
 
             }
+
+        }
+
+        // ¿HISTÓRICO/RECUPERADO? — ya existía antes de que esta sesión
+        // empezara a procesar (offline, reenvío, timestamp anterior): queda
+        // registrado arriba como historial, pero NO llega a stickers de
+        // pago, eventos, reservas, respuestas ni comandos.
+        if (ingreso?.historico) {
+
+            console.log(`🕰️ [COMPUERTA] mensaje histórico (${ingreso.motivo}) — solo historial, sin acciones [${traceId}]`);
+
+            cicloMensaje.etapa("compuerta", { DECISION: "SOLO_HISTORIAL", MOTIVO: ingreso.motivo });
+
+            return;
 
         }
 
