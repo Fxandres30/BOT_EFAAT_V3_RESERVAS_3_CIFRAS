@@ -1,6 +1,6 @@
 const supabase = require("../../../lib/supabase");
 const { groupMetadata } = require("../../../services/baileys/groupQueue");
-const { crearIdentidadEventoReal } = require("./identidadEventoReal");
+const { crearIdentidadEventoReal, fechaEventoHoy } = require("./identidadEventoReal");
 
 async function guardarEvento({
 
@@ -38,7 +38,8 @@ async function guardarEvento({
 
     const context = sock.context || {};
 
-    const hoy = new Date().toISOString().split("T")[0];
+    // Día operativo de Colombia (no UTC) — ver fechaEventoHoy().
+    const hoy = fechaEventoHoy();
 
     // Identidad del sorteo REAL (independiente del grupo) — mismo sorteo
     // anunciado en varios grupos produce el MISMO valor aquí, lo que

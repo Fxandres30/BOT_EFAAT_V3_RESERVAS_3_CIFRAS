@@ -42,6 +42,40 @@ function crearIdentidadEventoReal({
 
 }
 
+// Fecha del día OPERATIVO (Colombia), formato YYYY-MM-DD — la que
+// guardarEvento() guarda como fecha_evento y entra en esta identidad y en
+// identidadCiclo (automation/eventRules.js). Antes era
+// new Date().toISOString() (UTC): desde las 19:00 de Colombia ya daba el día
+// siguiente, así que el MISMO sorteo publicado antes y después de las 19:00
+// tenía dos identidades distintas.
+function fechaEventoHoy(ahora = new Date()) {
+
+    return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Bogota",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+    }).format(ahora);
+
+}
+
+// ¿La fila existente de eventos_bot y el sorteo recién detectado son el
+// MISMO sorteo real? Misma identidad que ya usa el sistema (tenant +
+// lotería + hora + valor + fecha). Si la fila es previa a la migración 015
+// (sin identidad guardada), se recalcula desde sus propios campos.
+function esMismoSorteo(filaExistente, detectado) {
+
+    if (!filaExistente || !detectado) return false;
+
+    const identidadExistente =
+        filaExistente.identidad_evento_real || crearIdentidadEventoReal(filaExistente);
+
+    return identidadExistente === crearIdentidadEventoReal(detectado);
+
+}
+
 module.exports = {
-    crearIdentidadEventoReal
+    crearIdentidadEventoReal,
+    fechaEventoHoy,
+    esMismoSorteo
 };

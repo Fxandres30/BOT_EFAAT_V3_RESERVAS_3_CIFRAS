@@ -4,6 +4,8 @@ const { consultarEvento } = require("./consultarEvento");
 const { guardarEvento } = require("./guardarEvento");
 const { obtenerConfiguracion } = require("./configEvento");
 const { abrirGrupo } = require("./grupos/abrirGrupo");
+const { esMismoSorteo, fechaEventoHoy } = require("./identidadEventoReal");
+const { consultarDisponibilidad } = require("../consultas/consultarDisponibilidad");
 
 // Fase 3 — único punto de conexión real con el Automation Engine (Fase 2B/
 // 2C, hasta ahora sin conectar). NO decide datos del sorteo — eso lo sigue
@@ -46,6 +48,38 @@ async function marcarAperturaFallida(eventoId) {
     }
 
     return false;
+
+}
+
+// ¿El evento existente ya terminó? "cerrado" = cerrarEvento() ya lo marcó
+// (activo=false / estado "cerrado"); "lleno" = la MISMA consulta de
+// disponibilidad que usa el bot para responder a los clientes
+// (consultarDisponibilidad, aislada por sorteo real) no encuentra ningún
+// número libre. Ante un error o una tabla sin filas no se puede afirmar que
+// esté lleno -> null (se mantiene el comportamiento de siempre).
+// verificarEventoLleno() no se usa: cuenta por evento_id y no ve las
+// reservas hechas en los otros grupos del mismo sorteo real.
+async function estadoTerminado(evento) {
+
+    if (evento.activo === false || evento.estado === "cerrado") {
+        return "cerrado";
+    }
+
+    try {
+
+        const { numerosDisponibles, numerosOcupados } = await consultarDisponibilidad({ evento });
+
+        if (numerosDisponibles.length === 0 && numerosOcupados.length > 0) {
+            return "lleno";
+        }
+
+    } catch (err) {
+
+        console.error("⚠️ No se pudo verificar si el sorteo está lleno (se sigue el flujo normal):", err?.message);
+
+    }
+
+    return null;
 
 }
 
@@ -120,6 +154,38 @@ async function detectarEvento(ctx) {
                 ? `${eventoAnterior.nombre_evento} (${eventoAnterior.hora_fin})`
                 : "No existe"
         );
+
+        // ===============================
+        // RE-ANUNCIO DE UN SORTEO YA LLENO/CERRADO
+        // ===============================
+        // "TABLA LLENA FAMILIA" + el anuncio completo (o cualquier
+        // republicación del mismo anuncio) trae la misma estructura de
+        // sorteo. Si es el MISMO sorteo real que el evento de este grupo y
+        // ese evento ya está cerrado o lleno, no es un sorteo nuevo: no se
+        // reactiva (guardarEvento), no se crea ciclo de automatización y no
+        // se abre el grupo. Un sorteo distinto (otra lotería/hora/valor/
+        // fecha) sigue el flujo de siempre.
+        if (eventoAnterior && esMismoSorteo(eventoAnterior, {
+
+            usuario_id: sock?.context?.usuarioId ?? null,
+            nombre_evento: eventoCompleto.nombre,
+            hora_fin: eventoCompleto.hora,
+            valor: eventoCompleto.valor,
+            fecha_evento: fechaEventoHoy()
+
+        })) {
+
+            const terminado = await estadoTerminado(eventoAnterior);
+
+            if (terminado) {
+
+                console.log(`⏭️ Re-anuncio del mismo sorteo ya ${terminado} (${eventoAnterior.nombre_evento} ${eventoAnterior.hora_fin}) — no se reactiva ni se abre el grupo.`);
+
+                return eventoAnterior;
+
+            }
+
+        }
 
         // ===============================
         // GUARDAR EVENTO
