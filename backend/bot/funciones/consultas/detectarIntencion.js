@@ -12,6 +12,7 @@ const { normalizarTexto } = require("../../utils/normalizarTexto");
 const { validarTextoReserva } = require("../reservas/validarTextoReserva");
 const { extraerNumeros } = require("../reservas/extraerNumeros");
 const {
+    coincideAprox,
     contieneAlguna,
     contieneFrase,
     contieneAlgunaFrase
@@ -213,6 +214,45 @@ const TOMA_RESERVA_FRASES = [...TOMA_FRASES, "me llevo"];
 const VERBOS_CONOCIMIENTO = ["saber", "consultar", "preguntar", "averiguar"];
 
 const DISPONIBILIDAD_PALABRAS = ["disponible", "disponibles", "libre", "libres", "queda", "quedan"];
+
+// AVISO de que NO hay disponibilidad ("sin números disponibles", "no hay
+// números disponibles", "ya no quedan números", "No quedan números
+// disponibles." — este último es el propio mensaje fijo del bot): una
+// negación que gobierna a la palabra de disponibilidad, a no más de 3
+// palabras antes de ella. Es una AFIRMACIÓN, no una pregunta, así que no
+// dispara la consulta de disponibilidad.
+//
+// NO es aviso (sigue siendo pregunta de disponibilidad):
+//   - si el mensaje trae "?" o "¿" ("¿No quedan números?", "¿ya no
+//     quedan?", "¿no hay disponibles?") — se mira el texto ORIGINAL,
+//     normalizarTexto() quita los signos;
+//   - si entre la negación y la palabra de disponibilidad hay una palabra
+//     interrogativa ("no sé cuáles quedan").
+const NEGACIONES_DISPONIBILIDAD = ["sin", "no"];
+const INTERROGATIVAS = ["que", "cual", "cuales", "cuantos", "cuantas", "se", "saber"];
+const VENTANA_NEGACION = 3;
+
+function esAvisoSinDisponibilidad(textoOriginal, tokens) {
+
+    if (/[?¿]/.test(textoOriginal || "")) return false;
+
+    for (let i = 0; i < tokens.length; i++) {
+
+        if (!DISPONIBILIDAD_PALABRAS.some(p => coincideAprox(tokens[i], p))) continue;
+
+        for (let j = i - 1; j >= Math.max(0, i - VENTANA_NEGACION); j--) {
+
+            if (INTERROGATIVAS.includes(tokens[j])) break;
+
+            if (NEGACIONES_DISPONIBILIDAD.includes(tokens[j])) return true;
+
+        }
+
+    }
+
+    return false;
+
+}
 
 const CANTIDAD_PALABRAS = ["cuantos", "cuantas"];
 
@@ -439,6 +479,12 @@ function detectarIntencionUnica(texto = "", cifras = 2) {
     // Las demás intenciones de consulta nunca incluyen un número
     // específico (si lo incluyeran, ya se habría resuelto arriba).
     if (numeros.length === 0) {
+
+        // 1c. Aviso "sin/no hay/ya no quedan números" (afirmación, no
+        // pregunta): no es ninguna consulta — ver esAvisoSinDisponibilidad.
+        if (esAvisoSinDisponibilidad(texto, tokens)) {
+            return { tipo: "ninguna", numeros };
+        }
 
         // 2. Disponibilidad — incluye las formas "puedo reservar/agarrar/
         // escoger/elegir" (sin número = pregunta general, no sobre un

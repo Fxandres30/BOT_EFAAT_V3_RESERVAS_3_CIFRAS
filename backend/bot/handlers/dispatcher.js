@@ -11,6 +11,10 @@ const {
 const compuertaIngreso =
 require("../funciones/mensajes/compuertaIngreso");
 
+// Regla absoluta ❌: se lee en el contenido ORIGINAL (antes de normalizar).
+const { contieneCruz } =
+require("../funciones/mensajes/mensajeConCruz");
+
 const {
     clasificarMensaje
 } = require("../funciones/mensajes/clasificarMensaje");
@@ -89,6 +93,11 @@ module.exports = async ({
 
         }
 
+        // ❌ en el contenido original -> se registra en el historial y no
+        // se procesa ni se responde (ver mensajeConCruz.js). Se lee aquí,
+        // antes de obtenerContexto/normalizarTexto, que eliminan emojis.
+        const conCruz = contieneCruz(message);
+
         console.time(`obtenerContexto-${traceId}`);
 
         const ctx = await obtenerContexto(
@@ -155,7 +164,7 @@ module.exports = async ({
 
             // Un mensaje histórico queda en el historial, pero no se
             // clasifica para ningún worker de negocio.
-            if (mensaje && !esSalidaDelPrograma && !ingreso?.historico) {
+            if (mensaje && !esSalidaDelPrograma && !ingreso?.historico && !conCruz) {
 
                 console.log("5️⃣ Clasificando mensaje");
 
@@ -186,6 +195,18 @@ module.exports = async ({
             console.log(`🕰️ [COMPUERTA] mensaje histórico (${ingreso.motivo}) — solo historial, sin acciones [${traceId}]`);
 
             cicloMensaje.etapa("compuerta", { DECISION: "SOLO_HISTORIAL", MOTIVO: ingreso.motivo });
+
+            return;
+
+        }
+
+        // ❌ — ni stickers de pago, ni eventos, ni reservas, ni consultas,
+        // ni respuestas. Solo quedó registrado arriba (historial).
+        if (conCruz) {
+
+            console.log(`❎ [AVISO ❌] mensaje con ❌ — solo historial, no se procesa ni se responde [${traceId}]`);
+
+            cicloMensaje.etapa("compuerta", { DECISION: "SOLO_HISTORIAL", MOTIVO: "CONTIENE_EMOJI_X" });
 
             return;
 

@@ -13,6 +13,15 @@
 //
 // Se identifican por LID (así llegan en el grupo; no tienen teléfono
 // asociado en `usuarios`). Se compara el LID sin sufijo de dispositivo.
+//
+// CUENTAS PROPIAS (además de la lista fija): las cuentas de WhatsApp de
+// TODAS las sesiones del sistema conectadas en este proceso (activa y
+// secundarias) — su identidad real es sock.user (= creds.me: número y
+// LID). Así una sesión nunca toma por pedido de cliente un mensaje
+// automático o un aviso de otra sesión propia (evita bucles "No quedan
+// números disponibles" entre bots propios). Mismo alcance D2: solo
+// reservas/consultas; anuncios de sorteo, stickers de pago e historial
+// siguen igual. No depende de ser administrador del grupo.
 // ==========================================================================
 
 const LIDS_IGNORADOS = new Set([
@@ -32,19 +41,54 @@ function usuarioDeJid(jid) {
 
 }
 
+// Número y LID (sin sufijo de dispositivo) de cada sesión conectada en este
+// proceso. require perezoso: el manager no se carga si nunca se pregunta.
+function identidadesSesionesPropias() {
+
+    const ids = new Set();
+
+    try {
+
+        const manager = require("../../../services/baileys/manager");
+
+        for (const sock of manager?.sockets?.values?.() || []) {
+
+            for (const jid of [sock?.user?.id, sock?.user?.lid]) {
+
+                const id = usuarioDeJid(jid);
+
+                if (id) ids.add(id);
+
+            }
+
+        }
+
+    } catch (err) {
+
+        console.error("⚠️ [CUENTAS PROPIAS] no se pudieron leer las sesiones conectadas:", err?.message);
+
+    }
+
+    return ids;
+
+}
+
 function esCuentaIgnorada({ message, usuario } = {}) {
 
     const candidatos = [
         message?.key?.participant,
         message?.key?.participantAlt,
-        usuario?.lid ? `${usuario.lid}@lid` : null
+        usuario?.lid ? `${usuario.lid}@lid` : null,
+        usuario?.telefono || null
     ];
+
+    const propias = identidadesSesionesPropias();
 
     return candidatos.some(jid => {
         const id = usuarioDeJid(jid);
-        return !!id && LIDS_IGNORADOS.has(id);
+        return !!id && (LIDS_IGNORADOS.has(id) || propias.has(id));
     });
 
 }
 
-module.exports = { esCuentaIgnorada, LIDS_IGNORADOS };
+module.exports = { esCuentaIgnorada, identidadesSesionesPropias, LIDS_IGNORADOS };

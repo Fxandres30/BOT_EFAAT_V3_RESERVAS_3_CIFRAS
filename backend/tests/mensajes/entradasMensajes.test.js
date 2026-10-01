@@ -156,10 +156,15 @@ async function main() {
         assert.strictEqual(llamadas.detectarEvento, 1);
     });
 
-    await test("3d. NO se ignora a otros administradores/clientes: 'sin números disponibles' de otra cuenta sigue siendo consulta", async () => {
-        const { eventHandler, llamadas } = crearEventHandler();
-        await eventHandler(ctxDe(textoMsg("Sin números disponibles por el momento familia"), "Sin números disponibles por el momento familia"));
-        assert.strictEqual(llamadas.resolverConsulta.length, 1, "comportamiento previo intacto para el resto");
+    await test("3d. NO se ignora a otros administradores/clientes: una pregunta real de otra cuenta sigue siendo consulta; el AVISO 'sin números disponibles' ya no lo es", async () => {
+        let e = crearEventHandler();
+        await e.eventHandler(ctxDe(textoMsg("¿Qué números quedan?"), "¿Qué números quedan?"));
+        assert.strictEqual(e.llamadas.resolverConsulta.length, 1, "la otra cuenta no está ignorada");
+        // Regla de avisos (detectarIntencion.esAvisoSinDisponibilidad): una
+        // afirmación de que no hay disponibilidad no es una consulta.
+        e = crearEventHandler();
+        await e.eventHandler(ctxDe(textoMsg("Sin números disponibles por el momento familia"), "Sin números disponibles por el momento familia"));
+        assert.strictEqual(e.llamadas.resolverConsulta.length, 0, "un aviso no dispara la consulta de disponibilidad");
     });
 
     // ---------------- 4. Flujo normal de 2 cifras ----------------
