@@ -144,8 +144,10 @@ prueba("catálogo: 'disponibilidad_agotada' es un tipo soportado de Consultas, s
 
 prueba("catálogo: la entrada 'disponibilidad' y el resto de tipos quedaron idénticos", () => {
 
-    const sinNuevo = TIPOS_MENSAJE.filter(t => t.id !== TIPO);
-    assert.deepStrictEqual(sinNuevo, tiposHead.TIPOS_MENSAJE);
+    // Se excluye el tipo nuevo en AMBOS lados: así la comparación sigue
+    // siendo válida antes y después de confirmar (commit) este cambio.
+    const sinNuevo = (lista) => lista.filter(t => t.id !== TIPO);
+    assert.deepStrictEqual(sinNuevo(TIPOS_MENSAJE), sinNuevo(tiposHead.TIPOS_MENSAJE));
 
 });
 
