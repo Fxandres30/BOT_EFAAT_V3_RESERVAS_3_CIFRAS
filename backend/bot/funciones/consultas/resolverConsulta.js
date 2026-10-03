@@ -307,6 +307,33 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
 
             let mensaje;
 
+            // AGOTADO: la consulta SÍ trajo la tabla (hay números ocupados/
+            // reservados/pagados) y ninguno está libre. Es un estado válido,
+            // no un error: responderResultado() envía este mensaje tal cual,
+            // sin plantillas de "números disponibles" ni Gemini.
+            //
+            // Ambas listas vacías NO es agotado: es lo que devuelve
+            // consultarDisponibilidad() ante un error de Supabase o un evento
+            // sin tabla (una tabla real siempre trae sus números) — se
+            // mantiene el comportamiento de siempre.
+            const agotado = numerosDisponibles.length === 0 && numerosOcupados.length > 0;
+
+            if (agotado) {
+
+                mensaje = [
+                    "🚫 *NÚMEROS AGOTADOS*",
+                    "",
+                    "Familia, en este momento ya no hay números disponibles para este sorteo. ❤️",
+                    "",
+                    "Todos los numeritos se encuentran ocupados o vendidos.",
+                    "",
+                    "📢 Estén pendientes de nuestros próximos sorteos."
+                ].join("\n");
+
+                return { tipo, numerosDisponibles, numerosOcupados, mensaje, agotado: true };
+
+            }
+
             if (numerosDisponibles.length === 0) {
 
                 mensaje = "No quedan números disponibles.";

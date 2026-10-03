@@ -18,6 +18,13 @@ const { construirVariables, aplicarPlantilla, calcularTipoPresentacion } = requi
 const { obtenerVariablesActivas } = require("../../shared/variables/variablesGlobalesRepo");
 const { normalizarVariableDinamica } = require("../../shared/variables/catalogoVariables");
 
+// ¿La plantilla lista los números disponibles? ({{numeros_disponibles}},
+// con o sin modificador). Solo se usa para excluir esas plantillas cuando
+// el sorteo está agotado.
+function usaListaDeDisponibles(contenido) {
+    return /\{\{\s*numeros_disponibles\b/.test(contenido || "");
+}
+
 async function responderResultado(ctx) {
 
     const resultado = ctx.reserva || ctx.consulta;
@@ -67,38 +74,66 @@ async function responderResultado(ctx) {
     // cualquiera de las tres, el comportamiento es exactamente el mismo que
     // antes de esta fase (obtenerVariablesActivas ya es best-effort: nunca
     // lanza, nunca bloquea el envío del mensaje).
-    const [config, habilitadas, variablesDinamicas] = await Promise.all([
-        obtenerConfigSeleccion(tipoPresentacion, usuarioId),
-        obtenerPlantillasHabilitadas(tipoPresentacion, usuarioId),
-        obtenerVariablesActivas(usuarioId)
-    ]);
+    // AGOTADO (resolverConsulta: 0 disponibles y la tabla sí tiene números
+    // ocupados/reservados/pagados). tipoPresentacion ya es
+    // "disponibilidad_agotada" (calcularTipoPresentacion): se usan SOLO las
+    // plantillas de agotado del usuario, con el mismo selector de siempre
+    // (fijo/aleatorio/rotación) — nunca las de "disponibilidad", escritas
+    // para listar números. Nunca Gemini (podría redactar una lista o decir
+    // que hay números). Sin plantilla válida -> resultado.mensaje (mensaje
+    // fijo de agotado, resolverConsulta.js).
+    const esAgotado = resultado.agotado === true;
 
-    const catalogoExtra = variablesDinamicas
-        .map(normalizarVariableDinamica)
-        .filter(Boolean);
+    // Resguardo: si por cualquier motivo el tipo no fuera el de agotado, no
+    // se pide ninguna plantilla (jamás las de "disponibilidad").
+    const puedeUsarPlantillas = !esAgotado || tipoPresentacion === "disponibilidad_agotada";
 
-    const { plantilla, nuevoIndiceRotacion } = seleccionarPlantilla(config, habilitadas);
+    let config = null;
+    let habilitadas = [];
+    let variablesDinamicas = [];
 
-    if (plantilla?.contenido) {
+    if (puedeUsarPlantillas) {
 
-        const variables = construirVariables(ctx, resultado, catalogoExtra);
+        [config, habilitadas, variablesDinamicas] = await Promise.all([
+            obtenerConfigSeleccion(tipoPresentacion, usuarioId),
+            obtenerPlantillasHabilitadas(tipoPresentacion, usuarioId),
+            obtenerVariablesActivas(usuarioId)
+        ]);
 
-        const resultadoPlantilla = aplicarPlantilla(
-            plantilla.contenido,
-            variables,
-            plantilla.variables || {},
-            catalogoExtra
-        );
+        // Una plantilla de agotado que (por error) lista
+        // {{numeros_disponibles}} enviaría una lista vacía: no participa.
+        if (esAgotado) {
+            habilitadas = (habilitadas || []).filter(p => !usaListaDeDisponibles(p?.contenido));
+        }
 
-        if (resultadoPlantilla) {
+        const catalogoExtra = variablesDinamicas
+            .map(normalizarVariableDinamica)
+            .filter(Boolean);
 
-            texto = resultadoPlantilla;
-            plantillaUtilizada = true;
-            plantillaId = plantilla.id;
+        const { plantilla, nuevoIndiceRotacion } = seleccionarPlantilla(config, habilitadas);
 
-            if (nuevoIndiceRotacion !== null && config?.id) {
+        if (plantilla?.contenido) {
 
-                await actualizarRotacion(config.id, nuevoIndiceRotacion);
+            const variables = construirVariables(ctx, resultado, catalogoExtra);
+
+            const resultadoPlantilla = aplicarPlantilla(
+                plantilla.contenido,
+                variables,
+                plantilla.variables || {},
+                catalogoExtra
+            );
+
+            if (resultadoPlantilla) {
+
+                texto = resultadoPlantilla;
+                plantillaUtilizada = true;
+                plantillaId = plantilla.id;
+
+                if (nuevoIndiceRotacion !== null && config?.id) {
+
+                    await actualizarRotacion(config.id, nuevoIndiceRotacion);
+
+                }
 
             }
 
@@ -106,7 +141,13 @@ async function responderResultado(ctx) {
 
     }
 
-    if (!plantillaUtilizada) {
+    if (esAgotado && !plantillaUtilizada) {
+
+        console.log("[RESPONSE] disponibilidad agotada sin plantilla de agotado válida — mensaje fijo de agotado (sin IA)");
+
+    }
+
+    if (!plantillaUtilizada && !esAgotado) {
 
         try {
 

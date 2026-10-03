@@ -208,6 +208,14 @@ function calcularTipoPresentacion(ctx, resultado) {
             return `consulta_pago_${resultado.estadoPago}`;
         }
 
+        // Mismo criterio para disponibilidad: con 0 libres y la tabla con
+        // números ocupados (resultado.agotado, decidido SOLO por
+        // resolverConsulta.js) se usan las plantillas propias de "agotado",
+        // nunca las de "disponibilidad" (escritas para listar números).
+        if (resultado?.tipo === "disponibilidad" && resultado?.agotado === true) {
+            return "disponibilidad_agotada";
+        }
+
         // Resto de tipos de consulta ya usan el nombre correcto
         // (mis_numeros, mis_reservas, cantidad_reservas, numero_especifico,
         // disponibilidad, info_evento, multiple) — puestos por

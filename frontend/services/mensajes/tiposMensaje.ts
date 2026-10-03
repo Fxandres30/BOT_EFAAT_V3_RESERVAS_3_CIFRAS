@@ -255,6 +255,22 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         },
         soportado: true
     },
+    // Mismo patrón que consulta_pago_<estado>: el backend
+    // (plantillaMensaje.js::calcularTipoPresentacion) usa este tipo en vez
+    // de "disponibilidad" cuando el sorteo no tiene ningún número libre y sí
+    // tiene números ocupados/reservados/pagados. NO lista números: sin
+    // {{numeros_disponibles}} (el backend descarta la plantilla que lo use,
+    // para no enviar una lista vacía).
+    {
+        id: "disponibilidad_agotada",
+        categoria: "Consultas",
+        icono: "🚫",
+        nombre: "Agotado (sin números disponibles)",
+        descripcion: "El cliente pregunta qué números quedan y ya no queda ninguno libre: todos están ocupados, reservados o pagados.",
+        variables: [V.evento, V.fecha, V.hora, V.precio],
+        ejemplo: { evento: "Lotería De Manizales", fecha: "2026-10-02", hora: "22:30", precio: "3000" },
+        soportado: true
+    },
     {
         id: "info_evento",
         categoria: "Consultas",

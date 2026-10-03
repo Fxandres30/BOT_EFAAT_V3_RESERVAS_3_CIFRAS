@@ -362,6 +362,16 @@ const PLANTILLAS_POR_TIPO: Record<string, PlantillaBase[]> = {
         { nombre: "Informativa", estilo: "informativa", contenido: "{{cliente}}, no tienes reservas activas en este momento — no existe ningún saldo pendiente." },
         { nombre: "Directa", estilo: "directa", contenido: "{{cliente}}: no tienes saldo pendiente ni reservas activas." },
         { nombre: "Cercana", estilo: "cercana", contenido: "¡Hola {{cliente}}! 🙌 Por ahora no tienes ninguna reserva activa ni saldo pendiente." }
+    ],
+
+    // 🚫 AGOTADO — el sorteo no tiene ningún número libre (todos ocupados,
+    // reservados o pagados). Nunca listan números: sin
+    // {{numeros_disponibles}} (vacío en este estado — el backend descarta
+    // cualquier plantilla de agotado que lo use).
+    disponibilidad_agotada: [
+        { nombre: "Agotados", estilo: "agotados", contenido: "🚫 *NÚMEROS AGOTADOS*\n\nFamilia, en este momento ya no hay números disponibles para este sorteo. ❤️\n\nTodos los numeritos se encuentran ocupados o vendidos.\n\n📢 Estén pendientes de nuestros próximos sorteos." },
+        { nombre: "Sorteo agotado", estilo: "sorteo_agotado", contenido: "🚫 *SORTEO AGOTADO*\n\nTodos los numeritos ya fueron ocupados.\nEstén pendientes del próximo sorteo. ❤️" },
+        { nombre: "Ya no quedan", estilo: "ya_no_quedan", contenido: "🔒 *YA NO QUEDAN NUMERITOS*\n\nFamilia, {{evento}} ya se llenó. ¡Gracias por participar! ❤️" }
     ]
 
 };
