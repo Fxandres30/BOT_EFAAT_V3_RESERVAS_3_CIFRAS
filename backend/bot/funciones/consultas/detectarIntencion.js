@@ -11,6 +11,7 @@
 const { normalizarTexto } = require("../../utils/normalizarTexto");
 const { validarTextoReserva } = require("../reservas/validarTextoReserva");
 const { extraerNumeros } = require("../reservas/extraerNumeros");
+const { esPedidoDeTabla, quitarPrecios } = require("./pedidoTabla");
 const {
     coincideAprox,
     contieneAlguna,
@@ -385,6 +386,46 @@ function detectarIntencionUnica(texto = "", cifras = 2) {
 
     if (fraseExplicitaPago) {
         return { tipo: "consulta_pago", numeros, ...fraseExplicitaPago };
+    }
+
+    // -0.75. Pedido corto/informal de la tabla ("actualiza", "tabla",
+    // "actualiza x fa", "¿hay números?", "disponibles") -> la MISMA
+    // intención "disponibilidad" de siempre (ver pedidoTabla.js). Va antes
+    // del mínimo de palabras porque muchos de estos pedidos son de una sola
+    // palabra. Nunca aplica con un número concreto (reserva /
+    // numero_especifico siguen igual), con pago/comprobante/resultado, ni
+    // con un conteo en plural ("cuántos números hay" sigue como estaba).
+    const pedidoTabla = esContarPlural ? null : esPedidoDeTabla(texto, tokens, numeros);
+
+    if (pedidoTabla?.esPedido) {
+        return { tipo: "disponibilidad", numeros };
+    }
+
+    // Anuncio de quien publica ("quedó actualizada la tabla", "actualizo
+    // tabla") u orden de no hacerlo ("no actualicen"): no es ninguna
+    // consulta — sin esto, "quedó" caería en la palabra "queda" de abajo.
+    if (pedidoTabla?.regla === "anuncio" || pedidoTabla?.regla === "negacion") {
+        return { tipo: "ninguna", numeros };
+    }
+
+    // "tabla 10k", "la del 10.000", "actualiza la de $5000": los únicos
+    // "números" son el precio de la tabla (extraerNumeros, sin modificar,
+    // lee "10k" como el 10). Sin los precios no queda ningún número y sí un
+    // pedido de tabla -> disponibilidad, nunca una reserva del 10.
+    if (!esContarPlural && numeros.length > 0) {
+
+        const sinPrecios = quitarPrecios(texto);
+
+        if (sinPrecios !== texto && extraerNumeros(sinPrecios, cifras).length === 0) {
+
+            const tokensSinPrecios = normalizarTexto(sinPrecios).split(" ").filter(Boolean);
+
+            if (esPedidoDeTabla(sinPrecios, tokensSinPrecios, []).esPedido) {
+                return { tipo: "disponibilidad", numeros: [] };
+            }
+
+        }
+
     }
 
     if (tokens.length < MINIMO_TOKENS_PARA_CONSULTA) {

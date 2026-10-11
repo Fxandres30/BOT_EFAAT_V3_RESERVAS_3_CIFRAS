@@ -55,6 +55,7 @@ const {
 const { consultarEvento } = require("../eventos/consultarEvento");
 const { actualizarEvento } = require("../reservas/actualizarEvento");
 const { marcarReservasPagadasPorAdmin } = require("./marcarReservasPagadasPorAdmin");
+const { registrarComprasDeFilas } = require("../inactividad/inactividadRepo");
 const { enmascararJid: enmascarar } = require("../../utils/enmascararJid");
 
 // FASE 1 (configuración desde el panel) + corrección arquitectónica
@@ -257,6 +258,18 @@ async function confirmarPagoPorSticker(ctx) {
             // Recalcula reservados/pagados/libres — mecanismo YA existente,
             // no se duplica el cálculo.
             await actualizarEvento(evento);
+
+            // Control de inactividad: esta es una compra CONFIRMADA — reinicia
+            // el contador de 15 días del cliente en el grupo de la reserva.
+            // Best-effort (nunca lanza): el pago ya quedó guardado arriba.
+            await registrarComprasDeFilas({
+
+                usuarioId: evento.usuario_id,
+                filas: resultado.actualizadas,
+                grupoIdPorDefecto: evento.grupo_id,
+                origen: "sticker_admin"
+
+            });
 
         } else if (resultado.estado === "error") {
 

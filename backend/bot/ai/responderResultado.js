@@ -25,12 +25,15 @@ function usaListaDeDisponibles(contenido) {
     return /\{\{\s*numeros_disponibles\b/.test(contenido || "");
 }
 
+// Devuelve true si el mensaje se envió, false si no (sin resultado,
+// tipo desactivado o error de envío). Los llamadores que no lo necesitan
+// pueden ignorarlo.
 async function responderResultado(ctx) {
 
     const resultado = ctx.reserva || ctx.consulta;
 
     if (!resultado || typeof resultado.mensaje !== "string") {
-        return;
+        return false;
     }
 
     // Respuesta fija actual = fallback obligatorio si todo lo demás falla.
@@ -61,7 +64,7 @@ async function responderResultado(ctx) {
 
             console.log("[RESPONSE] tipo de respuesta desactivado, silencio →", tipoPresentacion);
 
-            return;
+            return false;
 
         }
 
@@ -203,11 +206,15 @@ async function responderResultado(ctx) {
 
         console.log("[RESPONSE] envío exitoso →", ctx.chat.remoteJid);
 
+        return true;
+
     }
 
     catch (error) {
 
         console.log("[RESPONSE] envío con error →", error.message);
+
+        return false;
 
     }
 

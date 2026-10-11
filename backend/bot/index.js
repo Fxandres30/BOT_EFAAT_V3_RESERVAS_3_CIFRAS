@@ -41,6 +41,14 @@ const {
 // una sesión = un intervalo, sin crear un segundo scheduler).
 const scheduler = require("../automation/scheduler");
 
+// Control de inactividad (15 días sin compra confirmada). Por defecto en
+// SIMULACIÓN: nunca expulsa sin INACTIVIDAD_MODO=real +
+// INACTIVIDAD_CONFIRMAR_EXPULSIONES=SI (ver configInactividad.js).
+const {
+    iniciarWorkerInactividad,
+    detenerWorkerInactividad
+} = require("./funciones/inactividad/workerInactividad");
+
 // Escáner de identidades: escaneo inicial completo al conectar/reconectar
 // (ver escanerIdentidadesLifecycle.js). Los escaneos incrementales por
 // apertura de grupo se disparan aparte, desde detectarEvento.js /
@@ -101,6 +109,7 @@ function conectar(socket, sessionId) {
         detenerWorkerEventos(anterior);
         detenerEscanerIdentidades(anterior);
         scheduler.stop(anterior);
+        detenerWorkerInactividad(anterior);
 
     }
 
@@ -116,6 +125,8 @@ function conectar(socket, sessionId) {
     iniciarWorkerEventos(socket);
 
     scheduler.start(socket);
+
+    iniciarWorkerInactividad(socket);
 
     console.log("[WORKER] iniciado:", sessionId);
 
@@ -158,6 +169,7 @@ function detenerBot() {
     detenerWorkerEventos(sesionActual);
     detenerEscanerIdentidades(sesionActual);
     scheduler.stop(sesionActual);
+    detenerWorkerInactividad(sesionActual);
 
     console.log("[WORKER] detenido:", sesionActual);
 

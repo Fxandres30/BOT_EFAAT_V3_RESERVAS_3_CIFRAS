@@ -7,6 +7,7 @@ const { responderResultado } = require("../ai/responderResultado");
 const { estaRespuestaHabilitada } = require("../ai/configMensajes");
 const { obtenerContenido } = require("../middleware/normalizarMensaje");
 const { esCuentaIgnorada } = require("../funciones/mensajes/cuentasIgnoradas");
+const controlDisponibilidad = require("../funciones/consultas/controlDisponibilidad");
 
 // Imagen, video o documento (con o sin pie de foto), también dentro de
 // envoltorios efímeros / "ver una vez" / documento con pie.
@@ -218,6 +219,57 @@ module.exports = async (ctx) => {
     if (!habilitada) {
 
         console.log(`🔇 Tipo de respuesta "${intencion.tipo}" desactivado — silencio, sin consultar Supabase.`);
+
+        return;
+
+    }
+
+    // Disponibilidad: una sola respuesta por ráfaga ("tabla", "actualiza",
+    // dos clientes a la vez...) — ver controlDisponibilidad.js. La tabla
+    // siempre se lee fresca de Supabase cuando sí se responde.
+    if (intencion.tipo === "disponibilidad") {
+
+        const turno = {
+            grupoId: ctx.chat.remoteJid,
+            usuarioId: ctx.usuario?.id || null
+        };
+
+        const permiso = controlDisponibilidad.solicitarTurno(turno);
+
+        if (!permiso.permitido) {
+
+            console.log(`⏭️ [DISPONIBILIDAD] pedido omitido (${permiso.motivo}) — la tabla vigente ya se envió o se está enviando.`);
+            cicloMensaje.etapa("disponibilidad", { DECISION: "OMITIDA", MOTIVO: permiso.motivo });
+
+            return;
+
+        }
+
+        let enviado = false;
+
+        try {
+
+            ctx.consulta = await resolverConsulta({
+
+                tipo: intencion.tipo,
+                numeros: intencion.numeros,
+                evento: ctx.evento,
+                usuario: ctx.usuario
+
+            });
+
+            console.log("==================================");
+            console.log("🔎 Resultado consulta:", intencion.tipo);
+            console.dir(ctx.consulta, { depth: null });
+            console.log("==================================");
+
+            enviado = await responderResultado(ctx) === true;
+
+        } finally {
+
+            controlDisponibilidad.finalizarTurno({ ...turno, enviado, token: permiso.token });
+
+        }
 
         return;
 
