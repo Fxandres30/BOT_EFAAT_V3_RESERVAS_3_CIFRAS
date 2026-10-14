@@ -15,6 +15,11 @@ const supabase = require("../../lib/supabase");
 // DEBUG_MESSAGE_LIFECYCLE=true. Ver diagnostico/cicloMensaje.js.
 const cicloMensaje = require("../../diagnostico/cicloMensaje");
 
+// Identity Scanner único — observador PASIVO de identidad (solo JSONL
+// anonimizado), inactivo salvo IDENTITY_SCANNER=true. Ver
+// diagnostico/identityScanner/scanner.js.
+const identityScanner = require("../../diagnostico/identityScanner/scanner");
+
 const cicloSocket = require("./cicloSocket");
 
 // Logger interno de Baileys: en "info" (su valor por defecto) vuelca los
@@ -132,6 +137,7 @@ async function crearSocketInterno(sessionId) {
     // Primero que cualquier otro listener: así el diagnóstico ve también
     // los mensajes que llegan sin listener de negocio registrado.
     cicloMensaje.observarSocket(sock, sessionId);
+    identityScanner.observarSocket(sock, sessionId);
 
     registerGroups(sock);
 

@@ -4,8 +4,12 @@ const { consultarEvento } = require("./consultarEvento");
 const { guardarEvento } = require("./guardarEvento");
 const { obtenerConfiguracion } = require("./configEvento");
 const { abrirGrupo } = require("./grupos/abrirGrupo");
-const { esMismoSorteo, fechaEventoHoy } = require("./identidadEventoReal");
+const { esMismoSorteo, fechaEventoHoy, buscarSorteoVigente } = require("./identidadEventoReal");
 const { consultarDisponibilidad } = require("../consultas/consultarDisponibilidad");
+
+// Sorteos creados y programados desde el panel (backend/sorteos). Solo se
+// consulta para NO reemplazar un sorteo programado que sigue activo.
+const { esEventoDeSorteoProgramado } = require("../../../sorteos/repo");
 
 // Fase 3 — único punto de conexión real con el Automation Engine (Fase 2B/
 // 2C, hasta ahora sin conectar). NO decide datos del sorteo — eso lo sigue
@@ -165,7 +169,28 @@ async function detectarEvento(ctx) {
         // reactiva (guardarEvento), no se crea ciclo de automatización y no
         // se abre el grupo. Un sorteo distinto (otra lotería/hora/valor/
         // fecha) sigue el flujo de siempre.
-        if (eventoAnterior && esMismoSorteo(eventoAnterior, {
+        // Sorteo ACTIVO del que este anuncio es continuación (en este u otro
+        // grupo): identidad estable durante todo su ciclo de vida.
+        let sorteoVigente = null;
+
+        try {
+
+            sorteoVigente = await buscarSorteoVigente({
+                supabase,
+                usuarioId: sock?.context?.usuarioId ?? null,
+                nombre: eventoCompleto.nombre,
+                hora: eventoCompleto.hora,
+                valor: eventoCompleto.valor,
+                grupoId
+            });
+
+        } catch (err) {
+
+            console.error("⚠️ No se pudo buscar el sorteo vigente (se usa la identidad de siempre):", err?.message);
+
+        }
+
+        if (eventoAnterior && (esMismoSorteo(eventoAnterior, {
 
             usuario_id: sock?.context?.usuarioId ?? null,
             nombre_evento: eventoCompleto.nombre,
@@ -173,7 +198,7 @@ async function detectarEvento(ctx) {
             valor: eventoCompleto.valor,
             fecha_evento: fechaEventoHoy()
 
-        })) {
+        }) || (sorteoVigente && eventoAnterior.identidad_evento_real === sorteoVigente.identidad_evento_real))) {
 
             const terminado = await estadoTerminado(eventoAnterior);
 
@@ -188,6 +213,21 @@ async function detectarEvento(ctx) {
         }
 
         // ===============================
+        // SORTEO PROGRAMADO DESDE EL PANEL, ACTIVO
+        // ===============================
+        // El evento activo de este grupo nació de un sorteo programado (con
+        // su configuración, cuentas y mensajes revisados y confirmados por
+        // el administrador). Un anuncio escrito en el grupo nunca lo
+        // reemplaza ni lo reabre: se trata como un re-anuncio.
+        if (eventoAnterior?.activo && await esEventoDeSorteoProgramado(eventoAnterior.id)) {
+
+            console.log(`⏭️ Anuncio detectado en un grupo con un sorteo programado activo (${eventoAnterior.nombre_evento} ${eventoAnterior.hora_fin}) — no se reemplaza.`);
+
+            return eventoAnterior;
+
+        }
+
+        // ===============================
         // GUARDAR EVENTO
         // ===============================
 
@@ -196,7 +236,8 @@ async function detectarEvento(ctx) {
             sock,
             grupoId,
             evento: eventoCompleto,
-            eventoAnterior
+            eventoAnterior,
+            sorteoVigente
 
         });
 

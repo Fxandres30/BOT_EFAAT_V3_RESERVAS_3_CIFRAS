@@ -13,6 +13,7 @@ import {
   ScanLine,
   Puzzle,
   ShieldBan,
+  CalendarClock,
   LogOut,
   type LucideIcon,
 } from "lucide-react";
@@ -45,6 +46,7 @@ const NAV: NavItem[] = [
   { href: "/variables-globales", label: "Variables globales", icon: Puzzle },
   { href: "/contactos", label: "Contactos", icon: Users },
   { href: "/eventos", label: "Eventos", icon: Target },
+  { href: "/sorteos", label: "Sorteos programados", icon: CalendarClock },
   { href: "/automatizacion", label: "Automatización", icon: Bot },
   { href: "/lector-pagos", label: "Lector de pagos", icon: ScanLine },
   { href: "/bloqueados", label: "Bloqueados", icon: ShieldBan },

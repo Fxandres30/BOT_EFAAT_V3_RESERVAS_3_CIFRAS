@@ -1,5 +1,60 @@
 const supabase = require("../../../../lib/supabase");
-const { cerrarGrupo } = require("../grupos/cerrarGrupo");
+const { cerrarGrupoDetallado } = require("../grupos/cerrarGrupo");
+
+// Columna inexistente: la migración 023 (estado de cierre por grupo) todavía
+// no se aplicó. El cierre NUNCA depende de esas columnas: sin ellas se
+// comporta exactamente como antes.
+const COLUMNA_INEXISTENTE = "42703";
+
+// Reintentos: los 3 primeros fallos se reintentan en cada ciclo del worker
+// (30 s); después, con espera creciente hasta 30 min, para no saturar la
+// cola de IQ con un grupo donde el bot no tiene permisos.
+const REINTENTOS_INMEDIATOS = 3;
+const ESPERA_BASE_MS = 30 * 1000;
+const ESPERA_MAXIMA_MS = 30 * 60 * 1000;
+
+function esperaAntesDeReintentar(fila, ahora = Date.now()) {
+
+    const intentos = Number(fila?.cierre_intentos) || 0;
+
+    if (intentos < REINTENTOS_INMEDIATOS || !fila?.cierre_ultimo_intento_en) return 0;
+
+    const espera = Math.min(ESPERA_BASE_MS * 2 ** (intentos - REINTENTOS_INMEDIATOS + 1), ESPERA_MAXIMA_MS);
+    const transcurrido = ahora - new Date(fila.cierre_ultimo_intento_en).getTime();
+
+    return Math.max(0, espera - transcurrido);
+
+}
+
+// Registro best-effort del fallo de cierre de UN grupo. Nunca lanza.
+async function registrarFalloCierre(fila, error) {
+
+    const intentos = (Number(fila.cierre_intentos) || 0) + 1;
+
+    const cambios = {
+        cierre_estado: intentos >= 10 ? "requiere_revision" : "fallido",
+        cierre_intentos: intentos,
+        cierre_ultimo_error: String(error || "WhatsApp no confirmó el cierre").slice(0, 500),
+        cierre_ultimo_intento_en: new Date().toISOString()
+    };
+
+    try {
+
+        const { error: errorUpdate } = await supabase.from("eventos_bot").update(cambios).eq("id", fila.id);
+
+        if (!errorUpdate) {
+            Object.assign(fila, cambios);
+        } else if (errorUpdate.code !== COLUMNA_INEXISTENTE) {
+            console.log("⚠️ No se pudo registrar el fallo de cierre:", errorUpdate.message);
+        }
+
+    } catch (err) {
+
+        console.log("⚠️ No se pudo registrar el fallo de cierre:", err?.message);
+
+    }
+
+}
 
 // ==========================================================================
 // Cierra el GRUPO REAL de WhatsApp de UNA fila de eventos_bot puntual y, si
@@ -28,11 +83,11 @@ async function cerrarFilaDeEvento({ sock, fila, motivo }) {
     // Sigue con activo=true y el worker lo reintenta en el próximo ciclo
     // (cerrarGrupo/groupSettingUpdate es idempotente).
 
-    let grupoCerrado = false;
+    let resultado = { ok: false, error: null };
 
     try {
 
-        grupoCerrado = await cerrarGrupo({
+        resultado = await cerrarGrupoDetallado({
             sock,
             grupoId: fila.grupo_id
         });
@@ -42,13 +97,15 @@ async function cerrarFilaDeEvento({ sock, fila, motivo }) {
         console.log("❌ Error cerrando grupo");
         console.dir(error, { depth: null });
 
-        grupoCerrado = false;
+        resultado = { ok: false, error: error?.message || String(error) };
 
     }
 
-    if (!grupoCerrado) {
+    if (!resultado.ok) {
 
-        console.log(`⏳ Evento ${fila.id}: WhatsApp no confirmó el cierre del grupo — NO se marca cerrado, se reintentará en el próximo ciclo (activo=true).`);
+        console.log(`⏳ Evento ${fila.id}: WhatsApp no confirmó el cierre del grupo — NO se marca cerrado, se reintentará (activo=true). Motivo: ${resultado.error}`);
+
+        await registrarFalloCierre(fila, resultado.error);
 
         return false;
 
@@ -58,17 +115,31 @@ async function cerrarFilaDeEvento({ sock, fila, motivo }) {
     // 2. GRUPO CONFIRMADO CERRADO -> PERSISTIR EL ESTADO
     // ============================================================
 
-    const { error } = await supabase
+    const cierreBase = {
+
+        activo: false,
+        abierto: false,
+        estado: "cerrado",
+        actualizado_en: new Date().toISOString()
+
+    };
+
+    let { error } = await supabase
         .from("eventos_bot")
         .update({
-
-            activo: false,
-            abierto: false,
-            estado: "cerrado",
-            actualizado_en: new Date().toISOString()
-
+            ...cierreBase,
+            cierre_estado: "cerrado",
+            cierre_motivo: String(motivo || "").slice(0, 200),
+            cierre_ultimo_error: null,
+            cierre_ultimo_intento_en: new Date().toISOString(),
+            cerrado_en: new Date().toISOString()
         })
         .eq("id", fila.id);
+
+    // Sin la migración 023: se guarda exactamente lo de siempre.
+    if (error?.code === COLUMNA_INEXISTENTE) {
+        ({ error } = await supabase.from("eventos_bot").update(cierreBase).eq("id", fila.id));
+    }
 
     if (error) {
 
@@ -175,5 +246,7 @@ async function cerrarEvento({
 }
 
 module.exports = {
-    cerrarEvento
+    cerrarEvento,
+    cerrarFilaDeEvento,
+    esperaAntesDeReintentar
 };

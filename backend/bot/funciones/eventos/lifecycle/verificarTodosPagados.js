@@ -1,45 +1,30 @@
-const supabase = require("../../../../lib/supabase");
+const { estadoDelSorteo } = require("../sorteoReal");
 
+// ¿Están pagados TODOS los números únicos del sorteo lógico de `evento`?
+//
+// Antes contaba filas 'pagado' con la misma identidad y las comparaba con
+// cantidad_numeros: un número duplicado podía contarse dos veces, y nada
+// garantizaba que fueran los 100 números distintos del sorteo. Ahora se lee
+// la tabla real UNA vez (sorteoReal.js) y se exige que cada número esperado
+// (00..99) esté pagado por ESTE sorteo. libre, reservado, bloqueado y
+// en_proceso nunca cuentan como pagados.
+//
+// Ante cualquier error de lectura devuelve false: nunca se cierra un sorteo
+// sin poder demostrar que está completo.
 async function verificarTodosPagados(evento) {
 
-    if (!evento)
-        return false;
+    if (!evento) return false;
 
-    // Antes filtraba por evento_id (la fila de eventos_bot de ESTE grupo
-    // específico) — si el mismo sorteo real se anuncia en varios grupos,
-    // cada reserva/pago queda con el evento_id del grupo donde se hizo, así
-    // que este conteo por-grupo nunca veía los pagos hechos a través de los
-    // otros grupos del MISMO sorteo, y "todos pagados" podía no cumplirse
-    // nunca aunque el sorteo real ya estuviera completo. Se filtra por
-    // identidad_evento_real (independiente del grupo, ver
-    // identidadEventoReal.js) para contar los pagos de TODOS los grupos que
-    // comparten el mismo sorteo real. Si el evento todavía no trae esta
-    // identidad (dato histórico previo a esta migración), se mantiene el
-    // comportamiento anterior (por evento_id) para no dejar de funcionar.
-    let query = supabase
-        .from(evento.tabla)
-        .select("*", {
-            count: "exact",
-            head: true
-        })
-        .eq("estado", "pagado");
+    const estado = await estadoDelSorteo(evento);
 
-    query = evento.identidad_evento_real
-        ? query.eq("identidad_evento_real", evento.identidad_evento_real)
-        : query.eq("evento_id", evento.id);
+    if (!estado.ok) {
 
-    const { count, error } = await query;
-
-    if (error) {
-
-        console.log("❌ Error verificando pagos");
-        console.dir(error, { depth: null });
-
+        console.log("❌ Error verificando pagos:", estado.error);
         return false;
 
     }
 
-    return count >= evento.cantidad_numeros;
+    return estado.completo;
 
 }
 

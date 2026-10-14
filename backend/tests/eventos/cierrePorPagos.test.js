@@ -80,7 +80,10 @@ function tabla(estados, identidad = IDENTIDAD) {
         numero: String(i).padStart(2, "0"),
         estado,
         identidad_evento_real: estado === "libre" ? null : identidad,
-        evento_id: "ev-1"
+        evento_id: "ev-1",
+        // reservarNumeros.js siempre escribe el tenant en la fila: la tabla
+        // real del sorteo es la cuadrícula de ESE tenant.
+        usuario_id: "tenant-1"
     }));
 }
 

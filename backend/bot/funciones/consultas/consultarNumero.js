@@ -1,4 +1,5 @@
 const supabase = require("../../../lib/supabase");
+const { soloDelCliente } = require("../reservas/filtroCliente");
 const { reservaPerteneceAUsuario } = require("../usuarios/obtenerUsuarioGlobal");
 
 // READ-ONLY. Determina el estado real de UN número. Solo devuelve estados
@@ -12,11 +13,13 @@ async function consultarNumero({ evento, usuario, numero }) {
         return null;
     }
 
-    const { data, error } = await supabase
-        .from(evento.tabla)
-        .select("numero, estado, usuario_global_id, lid, telefono, contacto")
-        .eq("numero", numero)
-        .maybeSingle();
+    const { data, error } = await soloDelCliente(
+        supabase
+            .from(evento.tabla)
+            .select("numero, estado, usuario_global_id, lid, telefono, contacto")
+            .eq("numero", numero),
+        evento
+    ).maybeSingle();
 
     if (error) {
 

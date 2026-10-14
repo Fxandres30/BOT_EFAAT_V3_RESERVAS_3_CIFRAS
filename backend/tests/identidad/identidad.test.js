@@ -618,8 +618,8 @@ async function main() {
         assert.ok(usuario);
 
         fake.tablas["numeros_evento_reserva_test"] = [
-            { numero: 45, estado: "libre", usuario_global_id: null },
-            { numero: 46, estado: "libre", usuario_global_id: null }
+            { numero: 45, estado: "libre", usuario_global_id: null, usuario_id: "tenant-1" },
+            { numero: 46, estado: "libre", usuario_global_id: null, usuario_id: "tenant-1" }
         ];
 
         const evento = {

@@ -1,4 +1,5 @@
 const supabase = require("../../../lib/supabase");
+const { soloDelCliente } = require("./filtroCliente");
 const { validarFormatoNumero } = require("./extraerNumeros");
 
 async function reservarNumeros({
@@ -116,12 +117,15 @@ async function reservarNumeros({
 
     };
 
-    let { data, error } = await supabase
-        .from(evento.tabla)
-        .update(payload)
-        .in("numero", numeros)
-        .eq("estado", "libre")
-        .select();
+    // Solo números LIBRES de la cuadrícula de ESTE cliente (filtroCliente.js).
+    let { data, error } = await soloDelCliente(
+        supabase
+            .from(evento.tabla)
+            .update(payload)
+            .in("numero", numeros)
+            .eq("estado", "libre"),
+        evento
+    ).select();
 
     // Red de seguridad de despliegue: si la migración 015 (columna
     // identidad_evento_real) todavía no se aplicó en Supabase cuando este
@@ -135,12 +139,14 @@ async function reservarNumeros({
 
         const { identidad_evento_real, ...payloadSinIdentidad } = payload;
 
-        const reintento = await supabase
-            .from(evento.tabla)
-            .update(payloadSinIdentidad)
-            .in("numero", numeros)
-            .eq("estado", "libre")
-            .select();
+        const reintento = await soloDelCliente(
+            supabase
+                .from(evento.tabla)
+                .update(payloadSinIdentidad)
+                .in("numero", numeros)
+                .eq("estado", "libre"),
+            evento
+        ).select();
 
         data = reintento.data;
         error = reintento.error;

@@ -49,6 +49,13 @@ const {
     detenerWorkerInactividad
 } = require("./funciones/inactividad/workerInactividad");
 
+// Sorteos programados desde el panel: publicación, recordatorios, aviso de
+// cierre y vencimientos (backend/sorteos/publicador.js).
+const {
+    iniciarPublicadorSorteos,
+    detenerPublicadorSorteos
+} = require("../sorteos/publicador");
+
 // Escáner de identidades: escaneo inicial completo al conectar/reconectar
 // (ver escanerIdentidadesLifecycle.js). Los escaneos incrementales por
 // apertura de grupo se disparan aparte, desde detectarEvento.js /
@@ -110,6 +117,7 @@ function conectar(socket, sessionId) {
         detenerEscanerIdentidades(anterior);
         scheduler.stop(anterior);
         detenerWorkerInactividad(anterior);
+        detenerPublicadorSorteos(anterior);
 
     }
 
@@ -127,6 +135,8 @@ function conectar(socket, sessionId) {
     scheduler.start(socket);
 
     iniciarWorkerInactividad(socket);
+
+    iniciarPublicadorSorteos(socket);
 
     console.log("[WORKER] iniciado:", sessionId);
 
@@ -170,6 +180,7 @@ function detenerBot() {
     detenerEscanerIdentidades(sesionActual);
     scheduler.stop(sesionActual);
     detenerWorkerInactividad(sesionActual);
+    detenerPublicadorSorteos(sesionActual);
 
     console.log("[WORKER] detenido:", sesionActual);
 

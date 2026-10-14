@@ -53,9 +53,9 @@ const USUARIO = { id: "cliente-1", nombre: "Cliente Uno", telefono: "3000000000"
 function sembrar(fake) {
 
     fake.tablas[TABLA] = [
-        { numero: "05", estado: "libre", usuario_global_id: null },
-        { numero: "25", estado: "libre", usuario_global_id: null },
-        { numero: "99", estado: "libre", usuario_global_id: null }
+        { numero: "05", estado: "libre", usuario_global_id: null, usuario_id: "u1" },
+        { numero: "25", estado: "libre", usuario_global_id: null, usuario_id: "u1" },
+        { numero: "99", estado: "libre", usuario_global_id: null, usuario_id: "u1" }
     ];
 
 }

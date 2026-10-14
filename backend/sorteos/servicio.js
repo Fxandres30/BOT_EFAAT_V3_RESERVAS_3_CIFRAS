@@ -1,0 +1,373 @@
+// ==========================================================================
+// sorteos/servicio.js — casos de uso del panel para sorteos programados,
+// plantillas y cuentas de pago. Cada función recibe el usuarioId del TOKEN.
+//
+// Ciclo de un sorteo:
+//   crear (borrador) -> vista previa -> confirmar (programado; exige la
+//   versión vista) -> el publicador lo publica a su hora -> publicado.
+//   editar: solo antes de publicar en ningún grupo; sube la versión y vuelve
+//   a borrador (hay que revisar la vista previa y confirmar otra vez).
+//   cancelar: nunca deshace lo ya publicado; cancela lo pendiente.
+// ==========================================================================
+
+const repo = require("./repo");
+const { validarSorteo, validarPlantilla, partesBogota } = require("./validar");
+const { mensajePublicacion, mensajeRecordatorio, mensajeAvisoCierre, VARIABLES } = require("./mensajes");
+const { revisarTabla, revisarGrupo } = require("./disponibilidad");
+const { crearIdentidadEventoReal } = require("../bot/funciones/eventos/identidadEventoReal");
+
+const ESTADOS_EDITABLES = ["borrador", "programado"];
+
+// Reloj inyectable (las pruebas fijan la hora; en producción, la real).
+const reloj = { ahora: () => new Date() };
+
+function falla(motivo, extra = {}) {
+    return { ok: false, motivo, ...extra };
+}
+
+function identidadDe(usuarioId, config) {
+    return crearIdentidadEventoReal({
+        usuario_id: usuarioId,
+        nombre_evento: config.nombre,
+        hora_fin: config.hora_fin,
+        valor: config.valor,
+        fecha_evento: partesBogota(new Date(config.publicar_en)).fecha
+    });
+}
+
+// Valida todo lo que depende de datos del cliente: grupos autorizados,
+// cuentas activas propias y plantilla propia.
+async function prepararSorteo(usuarioId, entrada) {
+
+    const v = validarSorteo(entrada, { ahora: reloj.ahora() });
+    const errores = [...v.errores];
+
+    const autorizados = await repo.gruposAutorizados(usuarioId);
+    if (!autorizados.ok) return falla(autorizados.motivo, { error: autorizados.error });
+
+    const porId = new Map(autorizados.data.map(g => [g.grupo_id, g]));
+    const noAutorizados = v.config.grupos.filter(g => !porId.has(g));
+    if (noAutorizados.length) errores.push({ campo: "grupos", mensaje: `Grupos no autorizados: ${noAutorizados.length}.` });
+
+    const cuentas = await repo.cuentasActivasPorId(usuarioId, v.config.cuentas);
+    if (!cuentas.ok) return falla(cuentas.motivo, { error: cuentas.error });
+    if (cuentas.data.length !== v.config.cuentas.length) {
+        errores.push({ campo: "cuentas", mensaje: "Alguna cuenta de pago no existe o está inactiva." });
+    }
+
+    let plantillaId = null;
+    if (entrada.plantilla_id) {
+        const plantilla = await repo.obtenerPlantilla(usuarioId, entrada.plantilla_id);
+        if (!plantilla.ok) errores.push({ campo: "plantilla_id", mensaje: "La plantilla no existe." });
+        else plantillaId = plantilla.data.id;
+    }
+
+    if (errores.length) return falla("validacion", { errores });
+
+    // Las cuentas se COPIAN: editarlas después no altera este sorteo.
+    const cuentasSnapshot = v.config.cuentas
+        .map(id => cuentas.data.find(c => c.id === id))
+        .map(({ id, nombre, tipo, titular, numero, instrucciones }) => ({ id, nombre, tipo, titular, numero, instrucciones }));
+
+    const config = { ...v.config, cantidad_numeros: v.cantidad };
+
+    return {
+        ok: true,
+        fila: {
+            config,
+            cuentas_snapshot: cuentasSnapshot,
+            plantilla_id: plantillaId,
+            tabla: v.tabla,
+            cifras: v.cifras,
+            cantidad_numeros: v.cantidad,
+            publicar_en: config.publicar_en,
+            identidad_evento_real: identidadDe(usuarioId, config)
+        },
+        grupos: v.config.grupos.map(g => porId.get(g))
+    };
+
+}
+
+async function crearSorteo(usuarioId, entrada) {
+
+    const p = await prepararSorteo(usuarioId, entrada);
+    if (!p.ok) return p;
+
+    const creado = await repo.crearSorteo(usuarioId, { ...p.fila, estado: "borrador", version: 1 });
+    if (!creado.ok) return creado;
+
+    const grupos = await repo.reemplazarGrupos(usuarioId, creado.data.id, p.grupos);
+    if (!grupos.ok) return grupos;
+
+    return repo.obtenerSorteo(usuarioId, creado.data.id);
+
+}
+
+async function vistaPrevia(usuarioId, id) {
+
+    const s = await repo.obtenerSorteo(usuarioId, id);
+    if (!s.ok) return s;
+
+    const sorteo = s.data;
+    const fecha = partesBogota(new Date(sorteo.publicar_en)).fecha;
+
+    const publicacion = mensajePublicacion(sorteo.config, sorteo.cuentas_snapshot, { fecha });
+    const recordatorios = (sorteo.config.recordatorios || []).map(r => ({
+        minutos_antes_cierre: r.minutos_antes_cierre,
+        ...mensajeRecordatorio(sorteo.config, r, sorteo.cuentas_snapshot, { fecha })
+    }));
+    const avisoCierre = sorteo.config.mensajes?.aviso_cierre
+        ? mensajeAvisoCierre(sorteo.config, sorteo.cuentas_snapshot, { fecha })
+        : null;
+
+    const bloqueos = [];
+    const avisos = [];
+
+    const desconocidas = new Set([
+        ...publicacion.desconocidas,
+        ...recordatorios.flatMap(r => r.desconocidas),
+        ...(avisoCierre?.desconocidas || [])
+    ]);
+    if (desconocidas.size) avisos.push(`Variables desconocidas que se enviarán tal cual: ${[...desconocidas].map(v => `{{${v}}}`).join(", ")}.`);
+
+    if (!sorteo.cuentas_snapshot?.length) avisos.push("El sorteo no tiene cuentas de pago.");
+    if (sorteo.config.reservas?.liberar_no_pagados) {
+        avisos.push(`Las reservas no pagadas se liberarán automáticamente a los ${sorteo.config.reservas.vencimiento_minutos} minutos. Un cliente que ya transfirió pero cuyo pago no se ha confirmado podría perder su número.`);
+    }
+
+    const tabla = await revisarTabla({
+        usuarioId, tabla: sorteo.tabla, cifras: sorteo.cifras, cantidad: sorteo.cantidad_numeros, identidad: sorteo.identidad_evento_real
+    });
+    bloqueos.push(...tabla.bloqueos);
+    avisos.push(...tabla.avisos);
+
+    const autorizados = await repo.gruposAutorizados(usuarioId);
+    const setAutorizados = new Set((autorizados.data || []).map(g => g.grupo_id));
+
+    const grupos = [];
+    for (const g of sorteo.grupos) {
+        const r = await revisarGrupo({ usuarioId, grupoId: g.grupo_id, identidad: sorteo.identidad_evento_real, autorizados: setAutorizados });
+        grupos.push({ grupo_id: g.grupo_id, nombre: g.grupo_nombre, estado: g.estado, bloqueo: r.bloqueo });
+        if (r.bloqueo) bloqueos.push(`${g.grupo_nombre || g.grupo_id}: ${r.bloqueo}`);
+    }
+
+    return {
+        ok: true,
+        data: {
+            id: sorteo.id,
+            version: sorteo.version,
+            estado: sorteo.estado,
+            publicar_en: sorteo.publicar_en,
+            publicacion: publicacion.texto,
+            recordatorios: recordatorios.map(r => ({ minutos_antes_cierre: r.minutos_antes_cierre, texto: r.texto })),
+            aviso_cierre: avisoCierre?.texto || null,
+            tabla: tabla.resumen,
+            grupos,
+            bloqueos,
+            avisos,
+            variables: VARIABLES,
+            puede_confirmar: sorteo.estado === "borrador" && bloqueos.length === 0
+        }
+    };
+
+}
+
+// Exige confirmación explícita y la MISMA versión que se vio en la vista
+// previa: si alguien editó entretanto, la confirmación no vale.
+async function confirmar(usuarioId, id, { version, confirmacion } = {}) {
+
+    if (confirmacion !== true) return falla("confirmacion_requerida");
+
+    const previa = await vistaPrevia(usuarioId, id);
+    if (!previa.ok) return previa;
+
+    if (previa.data.version !== Number(version)) return falla("version_cambiada", { version_actual: previa.data.version });
+    if (previa.data.estado !== "borrador") return falla("estado_invalido", { estado: previa.data.estado });
+    if (previa.data.bloqueos.length) return falla("bloqueado", { bloqueos: previa.data.bloqueos });
+    if (new Date(previa.data.publicar_en).getTime() <= reloj.ahora().getTime()) return falla("validacion", { errores: [{ campo: "publicar_en", mensaje: "La hora de publicación ya pasó. Edita el sorteo." }] });
+
+    const r = await repo.actualizarSorteoSi(usuarioId, id, { version: Number(version), estados: ["borrador"] }, {
+        estado: "programado",
+        confirmado_en: new Date().toISOString(),
+        confirmado_version: Number(version)
+    });
+
+    if (!r.ok) return r.motivo === "conflicto" ? falla("version_cambiada") : r;
+
+    return repo.obtenerSorteo(usuarioId, id);
+
+}
+
+async function editar(usuarioId, id, entrada = {}) {
+
+    const actual = await repo.obtenerSorteo(usuarioId, id);
+    if (!actual.ok) return actual;
+
+    if (!ESTADOS_EDITABLES.includes(actual.data.estado)) return falla("estado_invalido", { estado: actual.data.estado });
+    if (actual.data.grupos.some(g => !["pendiente", "cancelado"].includes(g.estado))) return falla("ya_publicado");
+    if (Number(entrada.version) !== actual.data.version) return falla("version_cambiada", { version_actual: actual.data.version });
+
+    const p = await prepararSorteo(usuarioId, entrada);
+    if (!p.ok) return p;
+
+    // Vuelve a borrador: la confirmación anterior era de otra versión. El
+    // publicador solo publica estado 'programado' con confirmado_version =
+    // version, así que una tarea "vieja" nunca se ejecuta.
+    const r = await repo.actualizarSorteoSi(usuarioId, id, { version: actual.data.version, estados: ESTADOS_EDITABLES }, {
+        ...p.fila,
+        version: actual.data.version + 1,
+        estado: "borrador",
+        confirmado_en: null,
+        confirmado_version: null
+    });
+
+    if (!r.ok) return r.motivo === "conflicto" ? falla("version_cambiada") : r;
+
+    const grupos = await repo.reemplazarGrupos(usuarioId, id, p.grupos);
+    if (!grupos.ok) return grupos;
+
+    return repo.obtenerSorteo(usuarioId, id);
+
+}
+
+async function cancelar(usuarioId, id) {
+
+    const actual = await repo.obtenerSorteo(usuarioId, id);
+    if (!actual.ok) return actual;
+
+    const { estado } = actual.data;
+
+    if (estado === "cancelado") return actual;
+
+    // Grupos todavía no publicados: se cancelan (el publicador solo toma
+    // 'pendiente'/'fallido', así que ya no se publicarán).
+    for (const g of actual.data.grupos) {
+        if (g.estado === "pendiente" || g.estado === "fallido") {
+            await repo.marcarGrupo(usuarioId, g.id, { estado: "cancelado" });
+        }
+    }
+
+    const publicados = actual.data.grupos.filter(g => g.estado === "publicado").length;
+
+    if (ESTADOS_EDITABLES.includes(estado)) {
+        const r = await repo.actualizarSorteoSi(usuarioId, id, { estados: ESTADOS_EDITABLES }, { estado: "cancelado", cancelado_en: new Date().toISOString() });
+        if (!r.ok && r.motivo !== "conflicto") return r;
+    }
+
+    const final = await repo.obtenerSorteo(usuarioId, id);
+    if (!final.ok) return final;
+
+    return {
+        ok: true,
+        data: final.data,
+        // Lo ya publicado NO se deshace: el sorteo sigue vivo en esos grupos
+        // y se cierra con las reglas normales.
+        aviso: publicados ? `Ya estaba publicado en ${publicados} grupo(s): ahí sigue activo hasta su cierre.` : null
+    };
+
+}
+
+// Reintento MANUAL de un grupo en revisión (p. ej. no se supo si el anuncio
+// llegó): el administrador decide; nunca se reintenta solo.
+async function reintentarGrupo(usuarioId, id, grupoId) {
+
+    const actual = await repo.obtenerSorteo(usuarioId, id);
+    if (!actual.ok) return actual;
+
+    const g = actual.data.grupos.find(x => x.grupo_id === grupoId);
+    if (!g) return falla("no_encontrado");
+    if (g.estado !== "requiere_revision" && g.estado !== "fallido") return falla("estado_invalido", { estado: g.estado });
+    if (actual.data.estado === "cancelado") return falla("estado_invalido", { estado: "cancelado" });
+
+    await repo.marcarGrupo(usuarioId, g.id, {
+        estado: "fallido",
+        ultimo_error: "reintento manual solicitado",
+        intentos: 0,
+        reintentos_manuales: (Number(g.reintentos_manuales) || 0) + 1
+    });
+
+    if (["publicado", "publicado_parcial", "fallido"].includes(actual.data.estado)) {
+        await repo.actualizarSorteoSi(usuarioId, id, { estados: ["publicado", "publicado_parcial", "fallido"] }, { estado: "publicando" });
+    }
+
+    return repo.obtenerSorteo(usuarioId, id);
+
+}
+
+// ----------------------------------------------------------- plantillas ---
+
+async function crearPlantilla(usuarioId, entrada) {
+    const v = validarPlantilla(entrada);
+    if (!v.ok) return falla("validacion", { errores: v.errores });
+    return repo.crearPlantilla(usuarioId, { nombre: v.nombre, config: v.config });
+}
+
+async function actualizarPlantilla(usuarioId, id, entrada) {
+    if (entrada.activa === false && Object.keys(entrada).length === 1) {
+        return repo.actualizarPlantilla(usuarioId, id, { activa: false });
+    }
+    const v = validarPlantilla(entrada);
+    if (!v.ok) return falla("validacion", { errores: v.errores });
+    return repo.actualizarPlantilla(usuarioId, id, { nombre: v.nombre, config: v.config });
+}
+
+// ------------------------------------------------------ cuentas de pago ---
+
+const TIPOS_CUENTA = new Set(["nequi", "daviplata", "bancolombia", "llave", "otro"]);
+
+function validarCuenta(entrada = {}, { parcial = false } = {}) {
+
+    const errores = [];
+    const cuenta = {};
+    const t = (v, max) => String(v ?? "").trim().slice(0, max);
+
+    if (!parcial || entrada.nombre !== undefined) {
+        cuenta.nombre = t(entrada.nombre, 80);
+        if (!cuenta.nombre) errores.push({ campo: "nombre", mensaje: "La cuenta necesita un nombre." });
+    }
+    if (!parcial || entrada.numero !== undefined) {
+        cuenta.numero = t(entrada.numero, 60);
+        if (!cuenta.numero) errores.push({ campo: "numero", mensaje: "Indica el número o llave de la cuenta." });
+    }
+    if (!parcial || entrada.tipo !== undefined) {
+        cuenta.tipo = TIPOS_CUENTA.has(entrada.tipo) ? entrada.tipo : "otro";
+    }
+    if (entrada.titular !== undefined) cuenta.titular = t(entrada.titular, 120) || null;
+    if (entrada.instrucciones !== undefined) cuenta.instrucciones = t(entrada.instrucciones, 500) || null;
+    if (entrada.activa !== undefined) cuenta.activa = entrada.activa === true;
+
+    return { ok: errores.length === 0, errores, cuenta };
+
+}
+
+async function crearCuenta(usuarioId, entrada) {
+    const v = validarCuenta(entrada);
+    if (!v.ok) return falla("validacion", { errores: v.errores });
+    return repo.crearCuenta(usuarioId, v.cuenta);
+}
+
+async function actualizarCuenta(usuarioId, id, entrada) {
+    const v = validarCuenta(entrada, { parcial: true });
+    if (!v.ok) return falla("validacion", { errores: v.errores });
+    if (!Object.keys(v.cuenta).length) return falla("validacion", { errores: [{ campo: "*", mensaje: "Nada que actualizar." }] });
+    return repo.actualizarCuenta(usuarioId, id, v.cuenta);
+}
+
+module.exports = {
+    crearSorteo,
+    vistaPrevia,
+    confirmar,
+    editar,
+    cancelar,
+    reintentarGrupo,
+    listarSorteos: repo.listarSorteos,
+    obtenerSorteo: repo.obtenerSorteo,
+    gruposAutorizados: repo.gruposAutorizados,
+    listarPlantillas: repo.listarPlantillas,
+    crearPlantilla,
+    actualizarPlantilla,
+    listarCuentas: repo.listarCuentas,
+    crearCuenta,
+    actualizarCuenta,
+    _reloj: reloj
+};

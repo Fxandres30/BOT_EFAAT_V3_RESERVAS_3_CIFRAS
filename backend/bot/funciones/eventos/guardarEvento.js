@@ -7,7 +7,11 @@ async function guardarEvento({
     sock,
     grupoId,
     evento,
-    eventoAnterior
+    eventoAnterior,
+    // Sorteo activo del que este anuncio es continuación (ver
+    // identidadEventoReal.js::buscarSorteoVigente): conserva su identidad y
+    // su fecha para no partir sus reservas/pagos en dos sorteos.
+    sorteoVigente = null
 
 }) {
 
@@ -38,14 +42,15 @@ async function guardarEvento({
 
     const context = sock.context || {};
 
-    // Día operativo de Colombia (no UTC) — ver fechaEventoHoy().
-    const hoy = fechaEventoHoy();
+    // Día operativo de Colombia (no UTC) — ver fechaEventoHoy(). Un sorteo
+    // que continúa conserva la fecha con la que nació.
+    const hoy = sorteoVigente?.fecha_evento || fechaEventoHoy();
 
     // Identidad del sorteo REAL (independiente del grupo) — mismo sorteo
     // anunciado en varios grupos produce el MISMO valor aquí, lo que
     // permite compartir/aislar correctamente la tabla física de reservas
     // entre esos grupos. Ver identidadEventoReal.js.
-    const identidadEventoReal = crearIdentidadEventoReal({
+    const identidadEventoReal = sorteoVigente?.identidad_evento_real || crearIdentidadEventoReal({
 
         usuario_id: context.usuarioId ?? null,
         nombre_evento: evento.nombre,

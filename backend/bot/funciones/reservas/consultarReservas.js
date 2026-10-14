@@ -1,11 +1,15 @@
 const supabase = require("../../../lib/supabase");
+const { soloDelCliente } = require("./filtroCliente");
 
 async function consultarReservas(evento, numeros) {
 
-    let query = supabase
-        .from(evento.tabla)
-        .select("*")
-        .in("numero", numeros);
+    let query = soloDelCliente(
+        supabase
+            .from(evento.tabla)
+            .select("*")
+            .in("numero", numeros),
+        evento
+    );
 
     // Aísla del mismo sorteo real (independiente del grupo) frente a otros
     // eventos/tenants que compartan la misma tabla física por rango de

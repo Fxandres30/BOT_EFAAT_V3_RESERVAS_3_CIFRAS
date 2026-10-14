@@ -1,4 +1,5 @@
 const supabase = require("../../../lib/supabase");
+const { soloDelCliente } = require("../reservas/filtroCliente");
 
 // READ-ONLY. Busca por usuario_global_id (el identificador de dueño que
 // reservarNumeros.js ya escribe en cada reserva) Y, como respaldo, por
@@ -34,12 +35,14 @@ async function obtenerFilasDelUsuario({ evento, usuario }) {
         condiciones.push(`contacto.eq.${usuario.telefono}`);
     }
 
-    let { data, error } = await supabase
-        .from(evento.tabla)
-        .select("numero, estado, usuario_global_id, lid, telefono, contacto, identidad_evento_real")
-        .or(condiciones.join(","))
-        .neq("estado", "libre")
-        .order("numero", { ascending: true });
+    let { data, error } = await soloDelCliente(
+        supabase
+            .from(evento.tabla)
+            .select("numero, estado, usuario_global_id, lid, telefono, contacto, identidad_evento_real")
+            .or(condiciones.join(","))
+            .neq("estado", "libre"),
+        evento
+    ).order("numero", { ascending: true });
 
     // Red de seguridad de despliegue: si la migración 015 (columna
     // identidad_evento_real) todavía no se aplicó en Supabase, Postgres
@@ -49,12 +52,14 @@ async function obtenerFilasDelUsuario({ evento, usuario }) {
 
         console.warn("⚠ La columna identidad_evento_real todavía no existe en Supabase (falta aplicar supabase_migrations/015_identidad_evento_real.sql) — consultando sin ella por ahora.");
 
-        const reintento = await supabase
-            .from(evento.tabla)
-            .select("numero, estado, usuario_global_id, lid, telefono, contacto")
-            .or(condiciones.join(","))
-            .neq("estado", "libre")
-            .order("numero", { ascending: true });
+        const reintento = await soloDelCliente(
+            supabase
+                .from(evento.tabla)
+                .select("numero, estado, usuario_global_id, lid, telefono, contacto")
+                .or(condiciones.join(","))
+                .neq("estado", "libre"),
+            evento
+        ).order("numero", { ascending: true });
 
         data = reintento.data;
         error = reintento.error;

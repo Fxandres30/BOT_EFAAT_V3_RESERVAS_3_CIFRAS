@@ -29,6 +29,7 @@ const RUTA_CONSULTAR_MIS_NUMEROS = path.resolve(__dirname, "../../bot/funciones/
 const RUTA_OBTENER_USUARIO_GLOBAL = path.resolve(__dirname, "../../bot/funciones/usuarios/obtenerUsuarioGlobal.js");
 const RUTA_MARCAR_PAGADAS = path.resolve(__dirname, "../../bot/funciones/pagos/marcarReservasPagadasPorAdmin.js");
 const RUTA_CERRAR_EVENTO = path.resolve(__dirname, "../../bot/funciones/eventos/lifecycle/cerrarEvento.js");
+const RUTA_SORTEO_REAL = path.resolve(__dirname, "../../bot/funciones/eventos/sorteoReal.js");
 const { crearIdentidadCiclo } = require("../../automation/eventRules");
 
 function cargarModulos() {
@@ -52,7 +53,8 @@ function cargarModulos() {
         RUTA_CONSULTAR_MIS_NUMEROS,
         RUTA_OBTENER_USUARIO_GLOBAL,
         RUTA_MARCAR_PAGADAS,
-        RUTA_CERRAR_EVENTO
+        RUTA_CERRAR_EVENTO,
+        RUTA_SORTEO_REAL
     ]) {
         delete require.cache[ruta];
     }
@@ -168,7 +170,7 @@ async function main() {
 
         const { fake, reservarNumeros } = cargarModulos();
 
-        fake.tablas.tabla_test = [{ numero: 25, estado: "libre" }];
+        fake.tablas.tabla_test = [{ numero: 25, estado: "libre", usuario_id: "tenant-A" }];
 
         const evento = crearEvento({ identidad_evento_real: "hash-evento-1" });
 
@@ -184,8 +186,8 @@ async function main() {
         const { fake, reservarNumeros, consultarDisponibilidad } = cargarModulos();
 
         fake.tablas.tabla_test = [
-            { numero: 25, estado: "libre" },
-            { numero: 26, estado: "libre" }
+            { numero: 25, estado: "libre", usuario_id: "tenant-A" },
+            { numero: 26, estado: "libre", usuario_id: "tenant-A" }
         ];
 
         const eventoGrupoA = crearEvento({ id: "evento-A", grupo_id: "grupoA@g.us", identidad_evento_real: "hash-evento-1" });
@@ -204,15 +206,20 @@ async function main() {
 
         const { fake, verificarTodosPagados } = cargarModulos();
 
-        fake.tablas.tabla_test = [
-            { numero: 1, estado: "pagado", evento_id: "evento-B", identidad_evento_real: "hash-evento-1" }
-        ];
+        // Una sola tabla 00-99 (cuadrícula del tenant); los pagos se hicieron
+        // desde los grupos A, B y C del MISMO sorteo real.
+        const grupos = ["evento-A", "evento-B", "evento-C"];
+        fake.tablas.tabla_test = Array.from({ length: 100 }, (_, i) => ({
+            numero: String(i).padStart(2, "0"), estado: "pagado", usuario_id: "tenant-A",
+            evento_id: grupos[i % 3], identidad_evento_real: "hash-evento-1"
+        }));
 
-        const eventoGrupoA = crearEvento({ id: "evento-A", grupo_id: "grupoA@g.us", identidad_evento_real: "hash-evento-1", cantidad_numeros: 1 });
+        const eventoGrupoA = crearEvento({ id: "evento-A", grupo_id: "grupoA@g.us", identidad_evento_real: "hash-evento-1", cifras: 2 });
 
-        const todosPagados = await verificarTodosPagados(eventoGrupoA);
+        assert.strictEqual(await verificarTodosPagados(eventoGrupoA), true, "los pagos hechos desde OTROS grupos del mismo sorteo real cuentan para Grupo A");
 
-        assert.strictEqual(todosPagados, true, "el pago hecho bajo evento_id de OTRO grupo del mismo sorteo real debe contar para Grupo A");
+        fake.tablas.tabla_test[57].estado = "reservado";
+        assert.strictEqual(await verificarTodosPagados(eventoGrupoA), false, "99/100 pagados no es completo");
 
     });
 
@@ -225,8 +232,8 @@ async function main() {
         const { fake, reservarNumeros, consultarDisponibilidad } = cargarModulos();
 
         fake.tablas.tabla_test = [
-            { numero: 25, estado: "libre" },
-            { numero: 26, estado: "libre" }
+            { numero: 25, estado: "libre", usuario_id: "tenant-A" },
+            { numero: 26, estado: "libre", usuario_id: "tenant-A" }
         ];
 
         const eventoAjeno = crearEvento({ id: "evento-ajeno", grupo_id: "grupo-otro@g.us", identidad_evento_real: "hash-evento-AJENO" });
@@ -241,15 +248,14 @@ async function main() {
 
     });
 
-    await test("8. actualizarEvento(): reservados/pagados se aíslan por evento real; libres sigue siendo el conteo físico global", async () => {
+    await test("8. actualizarEvento(): reservados/pagados/libres son los del SORTEO (su tabla real), no un conteo físico global", async () => {
 
         const { fake, reservarNumeros, actualizarEvento } = cargarModulos();
 
-        fake.tablas.tabla_test = [
-            { numero: 1, estado: "libre" },
-            { numero: 2, estado: "libre" },
-            { numero: 3, estado: "libre" }
-        ];
+        // Cuadrícula 00-99 del tenant, toda libre.
+        fake.tablas.tabla_test = Array.from({ length: 100 }, (_, i) => ({
+            numero: String(i).padStart(2, "0"), estado: "libre", usuario_id: "tenant-A"
+        }));
 
         fake.tablas.eventos_bot = [
             { id: "evento-mio", reservados: 0, pagados: 0, pendientes: 0, libres: 0 },
@@ -259,15 +265,16 @@ async function main() {
         const eventoAjeno = crearEvento({ id: "evento-ajeno", identidad_evento_real: "hash-AJENO" });
         const miEvento = crearEvento({ id: "evento-mio", identidad_evento_real: "hash-MIO" });
 
-        await reservarNumeros({ evento: eventoAjeno, numeros: [1], usuario: { id: "u-ajeno" } });
-        await reservarNumeros({ evento: miEvento, numeros: [2], usuario: { id: "u-mio" } });
+        await reservarNumeros({ evento: eventoAjeno, numeros: ["01"], usuario: { id: "u-ajeno" } });
+        await reservarNumeros({ evento: miEvento, numeros: ["02"], usuario: { id: "u-mio" } });
 
         await actualizarEvento(miEvento);
 
         const filaMia = fake.tablas.eventos_bot.find(e => e.id === "evento-mio");
 
         assert.strictEqual(filaMia.reservados, 1, "solo debe contar la reserva de MI evento, no la del ajeno");
-        assert.strictEqual(filaMia.libres, 1, "libres es un conteo físico global: quedó exactamente 1 número (el 3) sin reclamar por nadie");
+        assert.strictEqual(filaMia.pagados, 0);
+        assert.strictEqual(filaMia.libres, 98, "libres = números de MI sorteo aún libres: 100 - el mío reservado - el ocupado por otro sorteo");
 
     });
 
@@ -278,8 +285,8 @@ async function main() {
         const usuario = await obtenerUsuarioGlobal({ lid: "cliente@lid" });
 
         fake.tablas.tabla_test = [
-            { numero: 10, estado: "libre" },
-            { numero: 20, estado: "libre" }
+            { numero: 10, estado: "libre", usuario_id: "tenant-A" },
+            { numero: 20, estado: "libre", usuario_id: "tenant-A" }
         ];
 
         const eventoViejo = crearEvento({ id: "evento-viejo", identidad_evento_real: "hash-viejo" });
@@ -303,8 +310,8 @@ async function main() {
         const { fake, reservarNumeros, consultarDisponibilidad } = cargarModulos();
 
         fake.tablas.tabla_test = [
-            { numero: 1, estado: "libre" },
-            { numero: 2, estado: "libre" }
+            { numero: 1, estado: "libre", usuario_id: "tenant-A" },
+            { numero: 2, estado: "libre", usuario_id: "tenant-A" }
         ];
 
         const eventoSinIdentidad = crearEvento({ id: "evento-legacy" }); // sin identidad_evento_real
@@ -327,7 +334,7 @@ async function main() {
 
         const { fake, reservarNumeros } = cargarModulos();
 
-        fake.tablas.tabla_test = [{ numero: 25, estado: "libre" }];
+        fake.tablas.tabla_test = [{ numero: 25, estado: "libre", usuario_id: "tenant-A" }];
 
         const eventoGrupoA = crearEvento({ id: "evento-A", grupo_id: "grupoA@g.us", identidad_evento_real: "hash-evento-1" });
         const eventoGrupoB = crearEvento({ id: "evento-B", grupo_id: "grupoB@g.us", identidad_evento_real: "hash-evento-1" });
@@ -357,7 +364,7 @@ async function main() {
 
         const cliente = await obtenerUsuarioGlobal({ lid: "cliente-compartido@lid" });
 
-        fake.tablas.tabla_test = [{ numero: 30, estado: "libre" }];
+        fake.tablas.tabla_test = [{ numero: 30, estado: "libre", usuario_id: "tenant-X" }];
 
         const eventoGrupoA = crearEvento({ id: "evento-A", usuario_id: "tenant-X", grupo_id: "grupoA@g.us", identidad_evento_real: "hash-compartido" });
         const eventoGrupoB = crearEvento({ id: "evento-B", usuario_id: "tenant-X", grupo_id: "grupoB@g.us", identidad_evento_real: "hash-compartido" });
@@ -386,7 +393,7 @@ async function main() {
 
         const { fake, reservarNumeros } = cargarModulos();
 
-        fake.tablas.tabla_test = [{ numero: 40, estado: "libre" }];
+        fake.tablas.tabla_test = [{ numero: 40, estado: "libre", usuario_id: "tenant-A" }];
 
         fake.forzarProximoError(
             "tabla_test",
@@ -408,8 +415,8 @@ async function main() {
         const { fake, actualizarEvento } = cargarModulos();
 
         fake.tablas.tabla_test = [
-            { numero: 1, estado: "reservado" },
-            { numero: 2, estado: "libre" }
+            { numero: "00", estado: "reservado", usuario_id: "tenant-A", evento_id: "evento-mio" },
+            { numero: "01", estado: "libre", usuario_id: "tenant-A" }
         ];
 
         fake.tablas.eventos_bot = [{ id: "evento-mio", reservados: 0, pagados: 0, pendientes: 0, libres: 0 }];
@@ -420,7 +427,7 @@ async function main() {
             { code: "42703", message: 'column "identidad_evento_real" of relation "tabla_test" does not exist' }
         );
 
-        const evento = crearEvento({ id: "evento-mio", identidad_evento_real: "hash-futuro" });
+        const evento = crearEvento({ id: "evento-mio", identidad_evento_real: "hash-futuro", cifras: 2, cantidad_numeros: 2 });
 
         const ok = await actualizarEvento(evento);
 

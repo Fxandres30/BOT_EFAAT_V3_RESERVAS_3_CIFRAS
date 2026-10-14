@@ -74,8 +74,59 @@ function esMismoSorteo(filaExistente, detectado) {
 
 }
 
+// Valor comparable ("$5.000", 5000, "5000" -> "5000").
+function valorComparable(valor) {
+    const digitos = String(valor ?? "").replace(/[^\d]/g, "");
+    return digitos ? String(Number(digitos)) : "";
+}
+
+// ==========================================================================
+// Identidad ESTABLE durante el ciclo de vida del sorteo.
+//
+// buscarSorteoVigente() devuelve la identidad de un sorteo del MISMO tenant
+// con la MISMA lotería, hora y valor que sigue ACTIVO (en este grupo o en
+// otro), para que un re-anuncio lo continúe en vez de crear otra identidad
+// y dejar sus reservas/pagos repartidos en dos "sorteos".
+//
+// Solo se adopta si el sorteo vigente es del mismo día operativo o no tiene
+// hora de cierre (el único caso en que un sorteo sigue activo de un día a
+// otro sin que falle nada). Un sorteo de un día anterior que sigue activo
+// CON hora de cierre es un cierre fallido, no una continuación: adoptarlo
+// mezclaría dos ediciones del mismo sorteo, así que no se adopta.
+// Diferencias de lotería/hora/valor nunca se fusionan.
+// ==========================================================================
+async function buscarSorteoVigente({ supabase, usuarioId, nombre, hora, valor, grupoId, hoy = fechaEventoHoy() }) {
+
+    if (!supabase || !usuarioId || !nombre || !hora) return null;
+
+    const { data, error } = await supabase
+        .from("eventos_bot")
+        .select("id, grupo_id, identidad_evento_real, fecha_evento, hora_cierre, creado_en, valor")
+        .eq("usuario_id", usuarioId)
+        .eq("activo", true)
+        .eq("nombre_evento", nombre)
+        .eq("hora_fin", hora);
+
+    if (error || !data?.length) return null;
+
+    const candidatos = data
+        .filter(f => f.identidad_evento_real && valorComparable(f.valor) === valorComparable(valor))
+        .filter(f => String(f.fecha_evento) === hoy || !f.hora_cierre);
+
+    if (!candidatos.length) return null;
+
+    // Preferencia: la fila de este mismo grupo; si no, la más antigua.
+    const propia = candidatos.find(f => f.grupo_id === grupoId);
+    const elegida = propia || [...candidatos].sort((a, b) => String(a.creado_en).localeCompare(String(b.creado_en)))[0];
+
+    return { identidad_evento_real: elegida.identidad_evento_real, fecha_evento: elegida.fecha_evento };
+
+}
+
 module.exports = {
     crearIdentidadEventoReal,
     fechaEventoHoy,
-    esMismoSorteo
+    esMismoSorteo,
+    valorComparable,
+    buscarSorteoVigente
 };

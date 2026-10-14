@@ -1,4 +1,5 @@
 const supabase = require("../../../lib/supabase");
+const { soloDelCliente } = require("../reservas/filtroCliente");
 
 // READ-ONLY. Devuelve la estructura real completa (sin truncar ni inventar
 // límites): números disponibles y ocupados, siempre separados. Aísla del
@@ -13,10 +14,13 @@ async function consultarDisponibilidad({ evento }) {
         return { numerosDisponibles: [], numerosOcupados: [] };
     }
 
-    let query = supabase
-        .from(evento.tabla)
-        .select("numero, estado")
-        .order("numero", { ascending: true });
+    let query = soloDelCliente(
+        supabase
+            .from(evento.tabla)
+            .select("numero, estado")
+            .order("numero", { ascending: true }),
+        evento
+    );
 
     if (evento.identidad_evento_real) {
         query = query.or(

@@ -9,6 +9,9 @@ const tablasRoutes = require("./routes/tablas");
 const contactosRoutes = require("./routes/contactos");
 const bloqueadosRoutes = require("./routes/bloqueados");
 const analiticaRoutes = require("./routes/analitica");
+// Sorteos programados, plantillas y cuentas de pago (panel multiusuario):
+// exigen token de servicio + sesión real del usuario.
+const sorteosRoutes = require("./routes/sorteos");
 
 const supabase = require("./lib/supabase");
 
@@ -30,6 +33,7 @@ app.use("/pagos", pagosRoutes);
 app.use("/tablas", tablasRoutes);
 app.use("/contactos", contactosRoutes);
 app.use("/bloqueados", bloqueadosRoutes);
+app.use("/sorteos", sorteosRoutes);
 
 app.listen(4000, async () => {
 

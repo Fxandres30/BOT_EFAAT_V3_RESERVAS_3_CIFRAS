@@ -1,5 +1,6 @@
 const supabase = require("../../../../lib/supabase");
-const { procesarEvento } = require("../lifecycle/procesarEvento");
+const { procesarSorteo } = require("../lifecycle/procesarSorteo");
+const { claveSorteo } = require("../sorteoReal");
 const { abrirGrupo } = require("../grupos/abrirGrupo");
 
 // Escaneo incremental de identidades: mismo disparador que detectarEvento.js
@@ -31,6 +32,12 @@ async function workerEventos(sock) {
 
         }
 
+        // Aislamiento por cliente: este socket solo actúa sobre los sorteos
+        // de SU tenant. Un evento sin usuario_id (dato antiguo) o un socket
+        // sin tenant conservan el comportamiento de siempre.
+        const tenant = sock?.context?.usuarioId || null;
+        const delTenant = eventos.filter(e => !tenant || !e.usuario_id || e.usuario_id === tenant);
+
         // ============================================================
         // RECONCILIACIÓN DE APERTURA
         // ============================================================
@@ -41,7 +48,7 @@ async function workerEventos(sock) {
         // eventos que ya deberían estar cerrándose. Usa la MISMA cola de
         // IQ y el MISMO worker: no añade timers ni listeners.
 
-        for (const evento of eventos) {
+        for (const evento of delTenant) {
 
             if (evento.abierto === false && !verificarHoraCierre(evento)) {
 
@@ -106,19 +113,29 @@ async function workerEventos(sock) {
 
         }
 
-        // Procesar eventos sin imprimir logs cada minuto
-        for (const evento of eventos) {
+        // CIERRE — UNA evaluación por SORTEO lógico (no por grupo): las filas
+        // de eventos_bot que comparten tenant + identidad_evento_real son el
+        // mismo sorteo con una sola tabla de números. Ver procesarSorteo.js.
+        const sorteos = new Map();
+
+        for (const evento of delTenant) {
+            const clave = claveSorteo(evento);
+            if (!sorteos.has(clave)) sorteos.set(clave, []);
+            sorteos.get(clave).push(evento);
+        }
+
+        for (const [clave, filas] of sorteos) {
 
             try {
 
-                await procesarEvento({
+                await procesarSorteo({
                     sock,
-                    evento
+                    filas
                 });
 
             } catch (error) {
 
-                console.error(`❌ Error procesando evento ${evento.id}`);
+                console.error(`❌ Error procesando sorteo ${clave}`);
                 console.error(error);
 
             }
