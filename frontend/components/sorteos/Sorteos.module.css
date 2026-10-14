@@ -161,6 +161,15 @@
     color: var(--efaat-warning);
 }
 
+.alertaInfo {
+    background: var(--efaat-primary-soft);
+    color: var(--efaat-text);
+}
+
+.alerta p {
+    margin: 4px 0;
+}
+
 .alerta ul {
     margin: 4px 0 0;
     padding-left: 18px;

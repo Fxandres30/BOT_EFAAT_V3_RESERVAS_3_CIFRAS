@@ -3,13 +3,7 @@
 // /eventos, con un navegador real (Chrome vía puppeteer), el panel Next real
 // (next dev) y la API real del backend (routes/sorteos.js + sorteos/*).
 //
-// ENTORNO AISLADO: no toca Supabase ni WhatsApp.
-//   - Backend: rutas /sorteos reales sobre el Supabase FALSO en memoria de
-//     tests/sorteos/fakeSupabaseSorteos.js. No arranca el bot, ni Baileys,
-//     ni el publicador: nada se envía.
-//   - Panel: NEXT_PUBLIC_SUPABASE_URL apunta a un servidor local falso
-//     (responde [] a /rest/v1 y un usuario de prueba a /auth/v1/user). La
-//     sesión se inyecta en localStorage.
+// ENTORNO AISLADO (tests/e2e/entornoPanel.js): no toca Supabase ni WhatsApp.
 //
 //     node backend/tests/e2e/crearSorteoManual.e2e.js
 //
@@ -18,33 +12,15 @@
 
 const assert = require("assert");
 const path = require("path");
-const http = require("http");
-const { spawn } = require("child_process");
+const {
+    PANEL, tablas: t, peticionesSupabase, registrarUsuario, arrancarEntorno,
+    rellenar, rellenarAria, marcar, pulsar, botonHabilitado, esperarTexto, textoPagina, captura, mananaColombia, crearPasos
+} = require("./entornoPanel");
 
-const RAIZ = path.resolve(__dirname, "../..");
-const FRONTEND = path.resolve(RAIZ, "../frontend");
-const r = (p) => path.join(RAIZ, p);
-
-const PUERTO_BACKEND = 4100;
-const PUERTO_SUPABASE = 54399;
-const PUERTO_PANEL = 3100;
-const PANEL = `http://127.0.0.1:${PUERTO_PANEL}`;
-const TOKEN_SERVICIO = "e2e-token-servicio";
 const TOKEN_USUARIO = "e2e-token-usuario";
 const A = "aaaaaaaa-0000-4000-8000-00000000000a";
 
-process.env.SESSIONS_API_TOKEN = TOKEN_SERVICIO;
-
-// ---------------------------------------------------------- base falsa ---
-const { crearFake } = require("../sorteos/fakeSupabaseSorteos");
-const fake = crearFake();
-
-require.cache[r("lib/supabase.js")] = {
-    id: r("lib/supabase.js"), filename: r("lib/supabase.js"), loaded: true,
-    exports: { from: (t) => fake.client.from(t), auth: { getUser: (t) => fake.client.auth.getUser(t) } }
-};
-
-const t = fake.tablas;
+registrarUsuario(TOKEN_USUARIO, A, "e2e@prueba.local");
 t.grupos_autorizados = [
     { usuario_id: A, grupo_id: "g1@g.us", activo: true },
     { usuario_id: A, grupo_id: "g2@g.us", activo: true }
@@ -55,162 +31,17 @@ t.eventos_bot = [];   // ningún anuncio detectado: el flujo no depende del dete
 for (const tabla of ["reservas_dos_cifras", "5k_15k_reservas_2_cifras"]) {
     t[tabla] = Array.from({ length: 100 }, (_, i) => ({ numero: String(i).padStart(2, "0"), estado: "libre", usuario_id: A }));
 }
-fake.tokens[TOKEN_USUARIO] = A;
 
-// ---------------------------------------------------- servidores falsos ---
-const express = require("express");
-
-function arrancarBackend() {
-    const app = express();
-    app.use(express.json());
-    app.use("/sorteos", require(r("routes/sorteos.js")));
-    return new Promise(res => { const s = app.listen(PUERTO_BACKEND, "127.0.0.1", () => res(s)); });
-}
-
-const peticionesSupabase = [];
-
-function arrancarSupabaseFalso() {
-    const s = http.createServer((req, res) => {
-        peticionesSupabase.push(`${req.method} ${req.url.split("?")[0]}`);
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Access-Control-Allow-Headers", "*");
-        res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
-        res.setHeader("Content-Type", "application/json");
-        if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
-        if (req.url.startsWith("/auth/v1/user")) return res.end(JSON.stringify(usuarioPrueba()));
-        if (req.url.startsWith("/rest/v1/")) return res.end("[]");
-        res.end("{}");
-    });
-    return new Promise(res => s.listen(PUERTO_SUPABASE, "127.0.0.1", () => res(s)));
-}
-
-function usuarioPrueba() {
-    return { id: A, aud: "authenticated", role: "authenticated", email: "e2e@prueba.local", app_metadata: {}, user_metadata: {}, created_at: "2026-01-01T00:00:00Z" };
-}
-
-function arrancarPanel() {
-    const args = ["next", "dev", "-p", String(PUERTO_PANEL), "-H", "127.0.0.1"];
-    const [cmd, argv] = process.platform === "win32" ? ["cmd.exe", ["/c", "npx", ...args]] : ["npx", args];
-    const hijo = spawn(cmd, argv, {
-        cwd: FRONTEND,
-        env: {
-            ...process.env,
-            NEXT_PUBLIC_SUPABASE_URL: `http://127.0.0.1:${PUERTO_SUPABASE}`,
-            NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-e2e",
-            BOT_API_URL: `http://127.0.0.1:${PUERTO_BACKEND}`,
-            BOT_API_TOKEN: TOKEN_SERVICIO,
-            NEXT_TELEMETRY_DISABLED: "1"
-        }
-    });
-    let salida = "";
-    hijo.stdout.on("data", d => { salida += d; });
-    hijo.stderr.on("data", d => { salida += d; });
-    return {
-        hijo,
-        salida: () => salida,
-        listo: new Promise((res, rej) => {
-            const limite = setTimeout(() => rej(new Error("next dev no arrancó:\n" + salida)), 180000);
-            const mirar = setInterval(() => {
-                if (/Ready|ready in|Local:/i.test(salida)) { clearInterval(mirar); clearTimeout(limite); res(); }
-            }, 300);
-        })
-    };
-}
-
-// ------------------------------------------------------------ navegador ---
-async function rellenar(page, etiqueta, valor) {
-    const ok = await page.evaluate((etiqueta, valor) => {
-        const label = [...document.querySelectorAll("label")].find(l => l.textContent.trim().startsWith(etiqueta) && l.htmlFor);
-        const el = label && document.getElementById(label.htmlFor);
-        if (!el) return false;
-        const proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : el.tagName === "SELECT" ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
-        Object.getOwnPropertyDescriptor(proto, "value").set.call(el, valor);
-        el.dispatchEvent(new Event(el.tagName === "SELECT" ? "change" : "input", { bubbles: true }));
-        return true;
-    }, etiqueta, valor);
-    assert.ok(ok, `campo no encontrado: ${etiqueta}`);
-}
-
-async function rellenarAria(page, aria, valor) {
-    const ok = await page.evaluate((aria, valor) => {
-        const el = document.querySelector(`[aria-label="${aria}"]`);
-        if (!el) return false;
-        const proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-        Object.getOwnPropertyDescriptor(proto, "value").set.call(el, valor);
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-        return true;
-    }, aria, valor);
-    assert.ok(ok, `campo no encontrado: ${aria}`);
-}
-
-async function marcar(page, textoEtiqueta) {
-    const ok = await page.evaluate((texto) => {
-        const label = [...document.querySelectorAll("label")].find(l => l.textContent.trim().startsWith(texto));
-        const input = label && label.querySelector("input");
-        if (!input) return false;
-        input.click();
-        return true;
-    }, textoEtiqueta);
-    assert.ok(ok, `casilla no encontrada: ${textoEtiqueta}`);
-}
-
-async function pulsar(page, texto) {
-    await page.waitForFunction((texto) => [...document.querySelectorAll("button")].some(b => b.textContent.trim() === texto && !b.disabled), { timeout: 60000 }, texto);
-    await page.evaluate((texto) => [...document.querySelectorAll("button")].find(b => b.textContent.trim() === texto && !b.disabled).click(), texto);
-}
-
-const botonHabilitado = (page, texto) => page.evaluate((texto) => {
-    const b = [...document.querySelectorAll("button")].find(x => x.textContent.trim() === texto);
-    return b ? !b.disabled : null;
-}, texto);
-
-const esperarTexto = (page, texto, timeout = 60000) =>
-    page.waitForFunction((texto) => document.body.innerText.includes(texto), { timeout }, texto);
-
-const textoPagina = (page) => page.evaluate(() => document.body.innerText);
-
-const captura = (page, nombre) => process.env.E2E_CAPTURAS
-    ? page.screenshot({ path: path.join(process.env.E2E_CAPTURAS, `${nombre}.png`) })
-    : null;
-
-// Mañana a las 08:00 (hora de Colombia), formato datetime-local.
-function mananaColombia() {
-    const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-    const d = new Date(`${hoy}T12:00:00Z`);
-    d.setUTCDate(d.getUTCDate() + 1);
-    return `${d.toISOString().slice(0, 10)}T08:00`;
-}
-
-// ------------------------------------------------------------- escenario ---
-const pasos = [];
-const paso = (n) => { pasos.push(n); console.log(`✅ ${n}`); };
+const { paso, terminar } = crearPasos();
 
 async function main() {
 
-    const backend = await arrancarBackend();
-    const supabaseFalso = await arrancarSupabaseFalso();
-    const panel = arrancarPanel();
-    let browser;
+    const entorno = await arrancarEntorno();
 
     try {
 
-        await panel.listo;
-
-        const puppeteer = require("puppeteer");
-        browser = await puppeteer.launch({ headless: true });
-        const page = await browser.newPage();
-        page.setDefaultTimeout(120000);
-        page.on("dialog", d => d.accept());   // window.confirm de «Cancelar»
-
-        const erroresConsola = [];
-        page.on("pageerror", e => erroresConsola.push(e.message));
-
-        await page.evaluateOnNewDocument((sesion) => {
-            localStorage.setItem("sb-127-auth-token", JSON.stringify(sesion));
-        }, {
-            access_token: TOKEN_USUARIO, refresh_token: "r-e2e", token_type: "bearer",
-            expires_in: 3600 * 24, expires_at: Math.floor(Date.now() / 1000) + 3600 * 24, user: usuarioPrueba()
-        });
+        const page = await entorno.nuevaPagina(TOKEN_USUARIO);
+        const erroresConsola = page.erroresJs;
 
         // 1. /eventos -> botón «Crear sorteo» abre el modal correcto.
         await page.goto(`${PANEL}/eventos`, { waitUntil: "domcontentloaded" });
@@ -363,20 +194,9 @@ ${vista}`);
         paso("aislado: sin Supabase real; el panel solo usa la API /sorteos; sin errores de JS");
 
     } finally {
-        if (browser) await browser.close();
-        if (process.platform === "win32") spawn("taskkill", ["/pid", String(panel.hijo.pid), "/T", "/F"]);
-        else panel.hijo.kill("SIGTERM");
-        backend.close();
-        supabaseFalso.close();
+        await entorno.cerrar();
     }
 
 }
 
-main().then(() => {
-    console.log(`\n============================\nTOTAL: ${pasos.length}  ✅ PASA: ${pasos.length}  ❌ FALLA: 0\n============================`);
-    setTimeout(() => process.exit(0), 1500);
-}).catch((e) => {
-    console.log(`❌ ${e.stack || e}`);
-    console.log(`\n============================\nPASOS OK: ${pasos.length}  ❌ FALLA en el siguiente\n============================`);
-    setTimeout(() => process.exit(1), 1500);
-});
+terminar(main());

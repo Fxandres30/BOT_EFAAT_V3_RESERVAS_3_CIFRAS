@@ -13,6 +13,8 @@ export interface Recordatorio { minutos_antes_cierre: number; texto: string }
 export interface ConfigSorteo {
     modalidad: string;
     nombre: string;
+    /** Lotería del calendario (opcional: un nombre personalizado no la lleva). */
+    loteria_id?: string | null;
     hora_fin: string;
     hora_cierre: string | null;
     valor: number;
@@ -79,12 +81,48 @@ export interface CuentaPago {
 
 export interface Plantilla { id: string; nombre: string; config: ConfigSorteo }
 export interface GrupoAutorizado { grupo_id: string; nombre: string | null }
+/** registrados = filas del cliente en grupos_autorizados; autorizados = las activas. */
+export interface ResumenGrupos { registrados: number; autorizados: number }
+
+export type CategoriaLoteria = "chance" | "tradicional";
+export type ReglaFestivo = "sin_regla" | "no_se_juega" | "hora_habitual" | "hora_especial";
+
+export interface Loteria {
+    id: string;
+    nombre: string;
+    modalidad: string;
+    etiqueta: string;
+    categoria: CategoriaLoteria;
+    /** 1 = lunes … 7 = domingo. Vacío = sin configurar. */
+    dias: number[];
+    hora: string | null;
+    horas_por_dia: Record<string, string>;
+    regla_festivo: ReglaFestivo;
+    hora_festivo: string | null;
+    notas: string | null;
+    activo: boolean;
+}
+
+export type LoteriaEntrada = Omit<Loteria, "id" | "etiqueta">;
+
+export interface HorarioLoteria {
+    loteria: string;
+    fecha: string;
+    dia_semana: number;
+    dia_nombre: string;
+    festivo: string | null;
+    juega: boolean | null;
+    hora: string | null;
+    hora_del_dia: string | null;
+    origen: string | null;
+    avisos: string[];
+}
 
 export interface ErrorCampo { campo: string; mensaje: string }
 
 export type Respuesta<T> =
-    | { ok: true; data: T; aviso?: string }
-    | { ok: false; motivo: string; errores?: ErrorCampo[]; bloqueos?: string[]; error?: string };
+    | { ok: true; data: T; aviso?: string; meta?: ResumenGrupos }
+    | { ok: false; motivo: string; errores?: ErrorCampo[]; bloqueos?: string[]; error?: string; migracion?: string; status?: number };
 
 const MENSAJES: Record<string, string> = {
     sin_sesion: "Tu sesión expiró. Vuelve a iniciar sesión.",
@@ -102,7 +140,8 @@ const MENSAJES: Record<string, string> = {
     validacion: "Revisa los campos marcados."
 };
 
-export function describirError(r: { motivo: string; error?: string }): string {
+export function describirError(r: { motivo: string; error?: string; migracion?: string }): string {
+    if (r.motivo === "migracion_pendiente" && r.migracion) return `Falta aplicar la migración ${r.migracion} en la base de datos.`;
     return MENSAJES[r.motivo] || r.error || "No se pudo completar la operación.";
 }
 
@@ -125,10 +164,10 @@ async function llamar<T>(metodo: "GET" | "POST" | "PUT" | "PATCH", ruta: string,
         const json = await res.json().catch(() => null);
 
         if (!json || typeof json.ok !== "boolean") {
-            return { ok: false, motivo: json?.code || "respuesta_invalida", error: json?.error };
+            return { ok: false, motivo: json?.code || "respuesta_invalida", error: json?.error, status: res.status };
         }
 
-        return json as Respuesta<T>;
+        return (json.ok ? json : { ...json, status: res.status }) as Respuesta<T>;
 
     } catch {
 
@@ -153,5 +192,9 @@ export const apiSorteos = {
     actualizarPlantilla: (id: string, cambios: { nombre?: string; config?: ConfigSorteo; activa?: boolean }) => llamar<Plantilla>("PATCH", `/plantillas/${id}`, cambios),
     cuentas: () => llamar<CuentaPago[]>("GET", "/cuentas"),
     crearCuenta: (cuenta: Omit<CuentaPago, "id">) => llamar<CuentaPago>("POST", "/cuentas", cuenta),
-    actualizarCuenta: (id: string, cambios: Partial<Omit<CuentaPago, "id">>) => llamar<CuentaPago>("PATCH", `/cuentas/${id}`, cambios)
+    actualizarCuenta: (id: string, cambios: Partial<Omit<CuentaPago, "id">>) => llamar<CuentaPago>("PATCH", `/cuentas/${id}`, cambios),
+    loterias: () => llamar<Loteria[]>("GET", "/loterias"),
+    crearLoteria: (loteria: LoteriaEntrada) => llamar<Loteria>("POST", "/loterias", loteria),
+    actualizarLoteria: (id: string, cambios: Partial<LoteriaEntrada>) => llamar<Loteria>("PATCH", `/loterias/${id}`, cambios),
+    horarioLoteria: (id: string, fecha: string) => llamar<HorarioLoteria>("GET", `/loterias/${id}/horario?fecha=${encodeURIComponent(fecha)}`)
 };

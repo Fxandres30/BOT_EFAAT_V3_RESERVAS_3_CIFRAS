@@ -59,13 +59,14 @@ Cada paso es una transacción independiente. Si uno falla, se revierte entero y 
 
 ## 2. Migraciones 🔐
 
-Estado real (14/10): **023 y 024 ya están aplicadas**. Solo queda **022**.
+Estado real (14/10): **023 y 024 ya están aplicadas**. Quedan **022** y **025**.
 
 | Orden | Archivo | Estado | Qué hacer |
 |---|---|---|---|
 | — | `023_estado_cierre_por_grupo.sql` | Aplicada | Solo verificar con la consulta del archivo. No hace falta reaplicarla (si se hace, es idempotente). |
 | — | `024_sorteos_programados.sql` | Aplicada (anon recibe 401 en sus 4 tablas) | Verificar políticas con la consulta del archivo. |
 | 1 | `022_control_inactividad_miembros.sql` | **Pendiente** | Control de 15 días (en simulación) + trigger de compras en las 2 tablas de reservas. Verificación: `docs/inactividad/022_verificacion.sql`. Vuelta atrás: bloque `REVERSIÓN` (primero quitar los triggers). |
+| 2 | `025_calendario_loterias.sql` | **Pendiente** | Calendario de loterías (tabla nueva `loterias_catalogo`, RLS por propietario). Sin ella el panel funciona: el formulario acepta un nombre escrito a mano y el calendario muestra «Falta aplicar la migración 025». Verificación y reversión: al final del archivo. Prueba SQL: `calendarioLoterias.test.js`. |
 
 La 022 es independiente de las Partes A/B/C. Su trigger es `SECURITY DEFINER` y atrapa sus propios errores, así que nunca bloquea un pago. Puede aplicarse antes o después de ellas, pero **en otra ventana**: así, si algo falla, sabrás cuál fue.
 

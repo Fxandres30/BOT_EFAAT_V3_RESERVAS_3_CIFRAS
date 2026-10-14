@@ -11,6 +11,7 @@
 // ==========================================================================
 
 const repo = require("./repo");
+const loterias = require("./loterias");
 const { validarSorteo, validarPlantilla, partesBogota } = require("./validar");
 const { mensajePublicacion, mensajeRecordatorio, mensajeAvisoCierre, VARIABLES } = require("./mensajes");
 const { revisarTabla, revisarGrupo } = require("./disponibilidad");
@@ -48,6 +49,12 @@ async function prepararSorteo(usuarioId, entrada) {
     const porId = new Map(autorizados.data.map(g => [g.grupo_id, g]));
     const noAutorizados = v.config.grupos.filter(g => !porId.has(g));
     if (noAutorizados.length) errores.push({ campo: "grupos", mensaje: `Grupos no autorizados: ${noAutorizados.length}.` });
+
+    if (v.config.loteria_id) {
+        const loteria = await loterias.obtener(usuarioId, v.config.loteria_id);
+        if (!loteria.ok && loteria.motivo !== "no_encontrado") return falla(loteria.motivo, { error: loteria.error, migracion: loteria.migracion });
+        if (!loteria.ok) errores.push({ campo: "loteria_id", mensaje: "La lotería no existe en tu calendario." });
+    }
 
     const cuentas = await repo.cuentasActivasPorId(usuarioId, v.config.cuentas);
     if (!cuentas.ok) return falla(cuentas.motivo, { error: cuentas.error });
@@ -195,6 +202,17 @@ async function confirmar(usuarioId, id, { version, confirmacion } = {}) {
     if (!r.ok) return r.motivo === "conflicto" ? falla("version_cambiada") : r;
 
     return repo.obtenerSorteo(usuarioId, id);
+
+}
+
+// Grupos para el formulario + resumen para explicar una lista vacía.
+async function gruposParaFormulario(usuarioId) {
+
+    const [autorizados, resumen] = await Promise.all([repo.gruposAutorizados(usuarioId), repo.resumenGrupos(usuarioId)]);
+    if (!autorizados.ok) return autorizados;
+    if (!resumen.ok) return resumen;
+
+    return { ok: true, data: autorizados.data, meta: resumen.data };
 
 }
 
@@ -363,6 +381,8 @@ module.exports = {
     listarSorteos: repo.listarSorteos,
     obtenerSorteo: repo.obtenerSorteo,
     gruposAutorizados: repo.gruposAutorizados,
+    gruposParaFormulario,
+    loterias,
     listarPlantillas: repo.listarPlantillas,
     crearPlantilla,
     actualizarPlantilla,

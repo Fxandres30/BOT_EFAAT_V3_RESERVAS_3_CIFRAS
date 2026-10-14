@@ -48,6 +48,23 @@ async function gruposAutorizados(usuarioId) {
 
 }
 
+// Resumen para el formulario: cuántos grupos tiene registrados este cliente
+// (activos o no) en grupos_autorizados. Distingue "no hay grupos" de "hay
+// grupos pero ninguno autorizado".
+async function resumenGrupos(usuarioId) {
+
+    const { data, error } = await supabase
+        .from("grupos_autorizados")
+        .select("grupo_id, activo")
+        .eq("usuario_id", usuarioId);
+
+    if (error) return resultado(null, error);
+
+    const filas = data || [];
+    return { ok: true, data: { registrados: filas.length, autorizados: filas.filter(f => f.activo).length } };
+
+}
+
 // ------------------------------------------------------ cuentas de pago ---
 
 const COLUMNAS_CUENTA = "id, nombre, tipo, titular, numero, instrucciones, activa, creado_en, actualizado_en";
@@ -255,6 +272,7 @@ async function esEventoDeSorteoProgramado(eventoBotId) {
 
 module.exports = {
     gruposAutorizados,
+    resumenGrupos,
     listarCuentas,
     cuentasActivasPorId,
     crearCuenta,

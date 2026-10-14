@@ -22,16 +22,20 @@ function destino(metodo: Metodo, ruta: string[]): string | null {
 
     if (ruta.length === 1) {
         if (a === "grupos") return metodo === "GET" ? "/grupos" : null;
-        if (a === "plantillas" || a === "cuentas") return metodo === "GET" || metodo === "POST" ? `/${a}` : null;
+        if (a === "plantillas" || a === "cuentas" || a === "loterias") return metodo === "GET" || metodo === "POST" ? `/${a}` : null;
         if (UUID.test(a)) return metodo === "GET" || metodo === "PUT" ? `/${a}` : null;
         return null;
     }
 
     if (ruta.length === 2) {
-        if ((a === "plantillas" || a === "cuentas") && UUID.test(b)) return metodo === "PATCH" ? `/${a}/${b}` : null;
+        if ((a === "plantillas" || a === "cuentas" || a === "loterias") && UUID.test(b)) return metodo === "PATCH" ? `/${a}/${b}` : null;
         if (UUID.test(a) && b === "vista-previa") return metodo === "GET" ? `/${a}/vista-previa` : null;
         if (UUID.test(a) && (b === "confirmar" || b === "cancelar")) return metodo === "POST" ? `/${a}/${b}` : null;
         return null;
+    }
+
+    if (ruta.length === 3 && a === "loterias" && UUID.test(b) && c === "horario") {
+        return metodo === "GET" ? `/loterias/${b}/horario` : null;
     }
 
     if (ruta.length === 3 && UUID.test(a) && b === "grupos" && c === "reintentar") {
@@ -61,7 +65,11 @@ async function reenviar(metodo: Metodo, req: Request, params: Promise<{ ruta?: s
 
     try {
 
-        const res = await fetch(`${API}/sorteos${camino}`, {
+        // Único parámetro de consulta reenviado: la fecha del horario.
+        const fecha = new URL(req.url).searchParams.get("fecha");
+        const consulta = camino.endsWith("/horario") && fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? `?fecha=${fecha}` : "";
+
+        const res = await fetch(`${API}/sorteos${camino}${consulta}`, {
             method: metodo,
             headers: botApiHeaders({ Authorization: autorizacion, "Content-Type": "application/json" }),
             body: cuerpo,

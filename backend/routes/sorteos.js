@@ -31,7 +31,7 @@ const ESTADO_HTTP = {
 
 function responder(res, r, exito = 200) {
 
-    if (r?.ok) return res.status(exito).json({ ok: true, data: r.data, ...(r.aviso ? { aviso: r.aviso } : {}) });
+    if (r?.ok) return res.status(exito).json({ ok: true, data: r.data, ...(r.aviso ? { aviso: r.aviso } : {}), ...(r.meta ? { meta: r.meta } : {}) });
 
     const { ok, ...detalle } = r || {};
     // Nunca se reenvía al navegador un mensaje interno de base de datos.
@@ -65,7 +65,14 @@ function seguro(handler) {
 }
 
 // --------------------------------------------------- grupos y catálogos ---
-router.get("/grupos", seguro(async (req, res) => responder(res, await servicio.gruposAutorizados(req.usuarioId))));
+router.get("/grupos", seguro(async (req, res) => responder(res, await servicio.gruposParaFormulario(req.usuarioId))));
+
+// ------------------------------------------- calendario de loterías (025) ---
+// Antes que "/:id": "loterias" no es un UUID, pero así queda explícito.
+router.get("/loterias", seguro(async (req, res) => responder(res, await servicio.loterias.listar(req.usuarioId))));
+router.post("/loterias", seguro(async (req, res) => responder(res, await servicio.loterias.crear(req.usuarioId, req.body || {}), 201)));
+router.patch("/loterias/:id", conId(async (req, res) => responder(res, await servicio.loterias.actualizar(req.usuarioId, req.params.id, req.body || {}))));
+router.get("/loterias/:id/horario", conId(async (req, res) => responder(res, await servicio.loterias.horario(req.usuarioId, req.params.id, String(req.query.fecha || "")))));
 
 // ----------------------------------------------------------- plantillas ---
 router.get("/plantillas", seguro(async (req, res) => responder(res, await servicio.listarPlantillas(req.usuarioId))));

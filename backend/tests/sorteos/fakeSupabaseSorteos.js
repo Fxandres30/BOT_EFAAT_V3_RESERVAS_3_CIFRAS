@@ -7,14 +7,16 @@ let secuencia = 0;
 const UNICAS = {
     automation_actions: [["clave_idempotencia"]],
     sorteos_programados_grupos: [["sorteo_id", "grupo_id"]],
-    plantillas_sorteo: [["usuario_id", "nombre"]]
+    plantillas_sorteo: [["usuario_id", "nombre"]],
+    loterias_catalogo: [["usuario_id", "nombre", "modalidad"]]
 };
 
 const DEFECTOS = {
     automation_actions: () => ({ estado: "en_progreso", ejecutado_en: new Date().toISOString(), detalle: {} }),
     sorteos_programados_grupos: () => ({ estado: "pendiente", intentos: 0, reintentos_manuales: 0 }),
     cuentas_pago: () => ({ activa: true, tipo: "otro" }),
-    plantillas_sorteo: () => ({ activa: true })
+    plantillas_sorteo: () => ({ activa: true }),
+    loterias_catalogo: () => ({ modalidad: "", categoria: "chance", dias: [], hora: null, horas_por_dia: {}, regla_festivo: "sin_regla", hora_festivo: null, notas: null, activo: true })
 };
 
 function crearFake() {
@@ -33,7 +35,12 @@ function crearFake() {
         const q = { op: "select", payload: null, filtros: [], orden: null, limite: null, unico: null, devolver: false };
 
         const b = {
-            select() { if (q.op !== "select") q.devolver = true; return b; },
+            select(_columnas, opciones) {
+                if (q.op !== "select") q.devolver = true;
+                if (opciones?.count) q.contar = true;
+                if (opciones?.head) q.cabecera = true;
+                return b;
+            },
             insert(x) { q.op = "insert"; q.payload = x; return b; },
             update(x) { q.op = "update"; q.payload = x; return b; },
             delete() { q.op = "delete"; return b; },
@@ -113,6 +120,8 @@ function crearFake() {
             if (q.limite != null) res = res.slice(0, q.limite);
 
             const copia = res.map(f => ({ ...f }));
+
+            if (q.contar) return { data: q.cabecera ? null : copia, count: copia.length, error: null };
 
             if (q.op === "update" && !q.devolver) return { data: null, error: null };
             if (q.unico === "single") return copia.length === 1 ? { data: copia[0], error: null } : { data: null, error: { code: "PGRST116", message: "0 o varias filas" } };

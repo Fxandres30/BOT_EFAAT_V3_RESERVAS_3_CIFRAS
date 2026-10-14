@@ -1,0 +1,131 @@
+.page {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.seccion {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.seccionTitulo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0 0;
+    font-size: var(--efaat-text-lg);
+    color: var(--efaat-text);
+}
+
+.contador {
+    font-size: var(--efaat-text-sm);
+    color: var(--efaat-text-secondary);
+}
+
+.lista {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+}
+
+.tarjeta {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.cabecera {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.nombre {
+    margin: 0;
+    font-size: var(--efaat-text-md);
+    color: var(--efaat-text);
+}
+
+.meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: var(--efaat-text-sm);
+    color: var(--efaat-text-secondary);
+}
+
+.notas {
+    margin: 0;
+    font-size: var(--efaat-text-sm);
+    color: var(--efaat-text-secondary);
+    white-space: pre-wrap;
+}
+
+.ayuda {
+    margin: 0;
+    font-size: var(--efaat-text-sm);
+    color: var(--efaat-text-secondary);
+}
+
+.alerta {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: var(--efaat-text-sm);
+}
+
+.alertaError {
+    background: var(--efaat-error-soft);
+    color: var(--efaat-error);
+}
+
+.alertaAviso {
+    background: var(--efaat-warning-soft);
+    color: var(--efaat-warning);
+}
+
+.formulario {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.fila {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+}
+
+.dias {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--efaat-border);
+    border-radius: 8px;
+}
+
+.dias legend {
+    padding: 0 4px;
+    font-size: var(--efaat-text-sm);
+    font-weight: 600;
+    color: var(--efaat-text);
+}
+
+.check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--efaat-text-sm);
+    color: var(--efaat-text);
+}
+
+.error {
+    flex-basis: 100%;
+    font-size: var(--efaat-text-sm);
+    color: var(--efaat-error);
+}

@@ -13,6 +13,7 @@ const { calcularCierre } = require("../bot/funciones/eventos/extractor/calcularC
 
 const ZONA = "America/Bogota";
 const HORA = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LIMITES = {
     nombre: 80,
     premios: 20,
@@ -69,6 +70,11 @@ function validarSorteo(entrada = {}, { ahora = new Date() } = {}) {
 
     const nombre = texto(entrada.nombre, LIMITES.nombre);
     if (!nombre) error("nombre", "Indica la lotería o el nombre del sorteo.");
+
+    // Lotería del calendario (migración 025), opcional: un nombre
+    // personalizado no la lleva. Que sea del usuario lo comprueba el servicio.
+    const loteriaId = entrada.loteria_id ? String(entrada.loteria_id) : null;
+    if (loteriaId && !UUID.test(loteriaId)) error("loteria_id", "Lotería inválida.");
 
     const horaFin = texto(entrada.hora_fin, 5);
     if (!HORA.test(horaFin)) error("hora_fin", "Hora del sorteo inválida (formato HH:MM, 24 h).");
@@ -145,6 +151,7 @@ function validarSorteo(entrada = {}, { ahora = new Date() } = {}) {
     const config = {
         modalidad,
         nombre,
+        loteria_id: loteriaId,
         hora_fin: horaFin,
         hora_cierre: horaCierre || null,
         valor,

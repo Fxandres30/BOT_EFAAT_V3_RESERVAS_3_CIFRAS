@@ -14,6 +14,7 @@ import {
   Puzzle,
   ShieldBan,
   CalendarClock,
+  CalendarDays,
   LogOut,
   type LucideIcon,
 } from "lucide-react";
@@ -47,6 +48,7 @@ const NAV: NavItem[] = [
   { href: "/contactos", label: "Contactos", icon: Users },
   { href: "/eventos", label: "Eventos", icon: Target },
   { href: "/sorteos", label: "Sorteos programados", icon: CalendarClock },
+  { href: "/loterias", label: "Calendario de loterías", icon: CalendarDays },
   { href: "/automatizacion", label: "Automatización", icon: Bot },
   { href: "/lector-pagos", label: "Lector de pagos", icon: ScanLine },
   { href: "/bloqueados", label: "Bloqueados", icon: ShieldBan },

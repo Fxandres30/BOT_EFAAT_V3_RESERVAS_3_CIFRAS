@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Plus, Trash2 } from "lucide-react";
 
 import { Modal, Button, Input, Select, Textarea, IconButton } from "@/components/ui";
+import { supabase } from "@/lib/supabase";
 import {
     apiSorteos,
     describirError,
@@ -11,7 +13,10 @@ import {
     type CuentaPago,
     type ErrorCampo,
     type GrupoAutorizado,
+    type HorarioLoteria,
+    type Loteria,
     type Plantilla,
+    type ResumenGrupos,
     type Sorteo
 } from "@/services/sorteos/apiSorteos";
 import { colombiaDesdeIso, isoDesdeColombia } from "./fechas";
@@ -31,6 +36,7 @@ const VACIO = {
     plantillaId: "",
     modalidad: "dos_cifras",
     nombre: "",
+    loteriaId: "",
     horaFin: "",
     horaCierre: "",
     valor: "",
@@ -48,11 +54,31 @@ const VACIO = {
 
 type Form = typeof VACIO;
 
+type EstadoGrupos =
+    | { tipo: "cargando" }
+    | { tipo: "ok"; resumen: ResumenGrupos | null }
+    | { tipo: "error"; mensaje: string };
+
+// Un fallo de la API nunca se presenta como «no tienes grupos».
+function mensajeErrorGrupos(r: { motivo: string; error?: string; status?: number; migracion?: string }): string {
+    if (r.motivo === "sin_sesion" || r.motivo === "sesion_invalida" || r.status === 401) {
+        return "El servidor rechazó tu sesión (401): no se pudo comprobar qué grupos son tuyos. Cierra sesión y vuelve a entrar.";
+    }
+    if (r.motivo === "TOKEN_SERVICIO_NO_CONFIGURADO" || r.status === 503) {
+        return "El servidor no tiene configurado el token de servicio (SESSIONS_API_TOKEN del bot = BOT_API_TOKEN del panel). Los grupos no se pudieron consultar.";
+    }
+    if (r.motivo === "backend_no_disponible" || r.status === 502) {
+        return "El servidor del bot no responde: los grupos no se pudieron consultar.";
+    }
+    return `No se pudieron cargar los grupos: ${describirError(r)}${r.status ? ` (HTTP ${r.status})` : ""}.`;
+}
+
 function desdeConfig(config: ConfigSorteo, extra: Partial<Form> = {}): Form {
     return {
         ...VACIO,
         modalidad: config.modalidad || "dos_cifras",
         nombre: config.nombre || "",
+        loteriaId: config.loteria_id || "",
         horaFin: config.hora_fin || "",
         horaCierre: config.hora_cierre || "",
         valor: config.valor ? String(config.valor) : "",
@@ -75,6 +101,7 @@ function aConfig(f: Form): ConfigSorteo {
     return {
         modalidad: f.modalidad,
         nombre: f.nombre,
+        loteria_id: f.loteriaId || null,
         hora_fin: f.horaFin,
         hora_cierre: f.horaCierre || null,
         valor: Number(f.valor) || 0,
@@ -94,26 +121,94 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado }: 
     // vez que se abre, así no hay que "reiniciar" estado dentro de un efecto.
     const [form, setForm] = useState<Form>(() => (sorteo ? desdeConfig(sorteo.config, { plantillaId: sorteo.plantilla_id || "" }) : VACIO));
     const [grupos, setGrupos] = useState<GrupoAutorizado[]>([]);
+    const [estadoGrupos, setEstadoGrupos] = useState<EstadoGrupos>({ tipo: "cargando" });
+    const [cuentaSesion, setCuentaSesion] = useState<string | null>(null);
     const [cuentas, setCuentas] = useState<CuentaPago[]>([]);
     const [plantillas, setPlantillas] = useState<Plantilla[]>([]);
+    const [loterias, setLoterias] = useState<Loteria[]>([]);
+    const [avisoLoterias, setAvisoLoterias] = useState<string | null>(null);
+    const [horario, setHorario] = useState<HorarioLoteria | null>(null);
+    const horaSugerida = useRef<string | null>(null);
     const [errores, setErrores] = useState<ErrorCampo[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [guardando, setGuardando] = useState(false);
+
+    // Grupos: cada causa de una lista vacía se explica por separado (antes
+    // cualquier fallo de la API acababa en «No tienes grupos autorizados»).
+    const cargarGrupos = useCallback(async () => {
+        const g = await apiSorteos.grupos();
+        if (g.ok) {
+            setGrupos(g.data);
+            setEstadoGrupos({ tipo: "ok", resumen: g.meta || null });
+        } else {
+            setGrupos([]);
+            setEstadoGrupos({ tipo: "error", mensaje: mensajeErrorGrupos(g) });
+        }
+    }, []);
 
     useEffect(() => {
 
         if (!open) return;
 
         async function cargarCatalogos() {
-            const [g, c, p] = await Promise.all([apiSorteos.grupos(), apiSorteos.cuentas(), apiSorteos.plantillas()]);
-            if (g.ok) setGrupos(g.data); else setError(describirError(g));
+            const [c, p, l, s] = await Promise.all([apiSorteos.cuentas(), apiSorteos.plantillas(), apiSorteos.loterias(), supabase.auth.getSession()]);
             if (c.ok) setCuentas(c.data.filter(x => x.activa !== false));
             if (p.ok) setPlantillas(p.data);
+            if (l.ok) setLoterias(l.data.filter(x => x.activo));
+            else setAvisoLoterias(`No se pudo cargar el calendario de loterías (${describirError(l)}). Puedes escribir el nombre a mano.`);
+            setCuentaSesion(s.data.session?.user?.email || null);
         }
 
-        cargarCatalogos();
+        async function cargarTodo() {
+            await Promise.all([cargarGrupos(), cargarCatalogos()]);
+        }
 
-    }, [open]);
+        cargarTodo();
+
+    }, [open, cargarGrupos]);
+
+    // Horario habitual de la lotería elegida para la FECHA de publicación
+    // (el sorteo se juega ese mismo día). Solo sugiere: nunca programa nada.
+    const fechaSorteo = form.publicarEn ? form.publicarEn.slice(0, 10) : "";
+
+    useEffect(() => {
+
+        if (!open || !form.loteriaId || !fechaSorteo) return;
+
+        let vigente = true;
+
+        apiSorteos.horarioLoteria(form.loteriaId, fechaSorteo).then(r => {
+            if (!vigente) return;
+            if (!r.ok) {
+                setHorario(null);
+                return;
+            }
+            setHorario(r.data);
+            const sugerida = r.data.hora;
+            // Rellena la hora solo si está vacía o si seguía siendo la sugerencia
+            // anterior: un cambio manual del usuario nunca se pisa.
+            const anterior = horaSugerida.current;
+            setForm(prev => (sugerida && (!prev.horaFin || prev.horaFin === anterior) ? { ...prev, horaFin: sugerida } : prev));
+            horaSugerida.current = sugerida;
+        });
+
+        return () => { vigente = false; };
+
+    }, [open, form.loteriaId, fechaSorteo]);
+
+    const reintentarGrupos = () => {
+        setEstadoGrupos({ tipo: "cargando" });
+        cargarGrupos();
+    };
+
+    const elegirLoteria = (texto: string) => {
+        const buscado = texto.trim().toLocaleLowerCase("es");
+        const encontrada = loterias.find(l => l.etiqueta.toLocaleLowerCase("es") === buscado);
+        if (!encontrada) setHorario(null);
+        setForm(prev => ({ ...prev, nombre: texto, loteriaId: encontrada?.id || "" }));
+    };
+
+    const horarioVisible = form.loteriaId && fechaSorteo ? horario : null;
 
     const errorDe = useMemo(() => (campo: string) => errores.filter(e => e.campo === campo || e.campo.startsWith(`${campo}[`)).map(e => e.mensaje).join(" ") || undefined, [errores]);
 
@@ -196,8 +291,50 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado }: 
                         <option value="tres_cifras_pago" disabled>3 cifras de pago (no disponible)</option>
                         <option value="tres_cifras_gratis" disabled>3 cifras gratis (no disponible)</option>
                     </Select>
-                    <Input label="Lotería o nombre del sorteo" value={form.nombre} onChange={e => cambiar("nombre", e.target.value)} error={errorDe("nombre")} maxLength={80} />
+                    <Input
+                        label="Lotería o nombre del sorteo"
+                        list="loterias-calendario"
+                        autoComplete="off"
+                        value={form.nombre}
+                        onChange={e => elegirLoteria(e.target.value)}
+                        error={errorDe("nombre") || errorDe("loteria_id")}
+                        maxLength={80}
+                        placeholder="Busca en el calendario o escribe un nombre"
+                        hint={form.loteriaId
+                            ? "Del calendario de loterías."
+                            : form.nombre.trim() ? "Nombre personalizado (no está en el calendario)." : undefined}
+                    />
+                    <datalist id="loterias-calendario">
+                        {loterias.map(l => <option key={l.id} value={l.etiqueta}>{l.categoria === "tradicional" ? "Tradicional" : "Chance"}</option>)}
+                    </datalist>
                 </div>
+                {avisoLoterias && <p className={`${styles.alerta} ${styles.alertaAviso}`}>{avisoLoterias}</p>}
+
+                <Input label="Fecha y hora de publicación (hora de Colombia)" type="datetime-local" value={form.publicarEn} onChange={e => cambiar("publicarEn", e.target.value)} error={errorDe("publicar_en")} hint="El sorteo se juega ese mismo día." />
+
+                {form.loteriaId && !fechaSorteo && (
+                    <p className={styles.ayuda}>Elige la fecha de publicación para ver el horario habitual de esa lotería ese día.</p>
+                )}
+
+                {horarioVisible && (
+                    <div className={`${styles.alerta} ${horarioVisible.avisos.length ? styles.alertaAviso : styles.alertaInfo}`} role="status" aria-label="Horario de la lotería">
+                        <strong>
+                            {horarioVisible.loteria} · {horarioVisible.dia_nombre} {horarioVisible.fecha.split("-").reverse().join("/")}
+                            {horarioVisible.festivo ? ` · festivo (${horarioVisible.festivo})` : ""}
+                        </strong>
+                        <p>
+                            {horarioVisible.hora
+                                ? <>Horario habitual: <b>{horarioVisible.hora}</b>{form.horaFin && form.horaFin !== horarioVisible.hora ? <> · usas {form.horaFin} (cambio manual)</> : null}</>
+                                : horarioVisible.hora_del_dia
+                                    ? <>Sin hora sugerida. Hora habitual de los {horarioVisible.dia_nombre}: {horarioVisible.hora_del_dia}.</>
+                                    : "Sin hora sugerida: escribe la hora del sorteo."}
+                        </p>
+                        {horarioVisible.avisos.length > 0 && <ul>{horarioVisible.avisos.map((a, i) => <li key={i}>{a}</li>)}</ul>}
+                        {horarioVisible.hora && form.horaFin !== horarioVisible.hora && (
+                            <Button size="sm" variant="secondary" onClick={() => cambiar("horaFin", horarioVisible.hora || "")}>Usar {horarioVisible.hora}</Button>
+                        )}
+                    </div>
+                )}
 
                 <div className={styles.fila}>
                     <Input label="Hora del sorteo" type="time" value={form.horaFin} onChange={e => cambiar("horaFin", e.target.value)} error={errorDe("hora_fin")} />
@@ -221,9 +358,28 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado }: 
                 <section className={styles.seccion}>
                     <h3 className={styles.seccionTitulo}>Grupos donde se publica</h3>
                     {errorDe("grupos") && <span className={styles.error}>{errorDe("grupos")}</span>}
-                    {grupos.length === 0
-                        ? <p className={styles.ayuda}>No tienes grupos autorizados. Autorízalos en Automatización → Grupos.</p>
-                        : <div className={styles.checks}>{grupos.map(g => (
+                    {estadoGrupos.tipo === "cargando" && <p className={styles.ayuda}>Cargando tus grupos…</p>}
+                    {estadoGrupos.tipo === "error" && (
+                        <div className={`${styles.alerta} ${styles.alertaError}`} role="alert">
+                            <p>{estadoGrupos.mensaje}</p>
+                            <Button size="sm" variant="secondary" onClick={reintentarGrupos}>Reintentar</Button>
+                        </div>
+                    )}
+                    {estadoGrupos.tipo === "ok" && grupos.length === 0 && (
+                        <p className={`${styles.alerta} ${styles.alertaAviso}`}>
+                            {estadoGrupos.resumen && estadoGrupos.resumen.registrados > 0
+                                ? <>Tienes {estadoGrupos.resumen.registrados} grupo(s) registrados, pero ninguno autorizado (activo). Actívalos en <Link href="/automatizacion/grupos">Automatización → Grupos</Link>.</>
+                                : <>No hay grupos registrados para la cuenta {cuentaSesion ? <b>{cuentaSesion}</b> : "con la que iniciaste sesión"}. Si los configuraste con otra cuenta, inicia sesión con esa cuenta; si no, regístralos en <Link href="/automatizacion/grupos">Automatización → Grupos</Link>.</>}
+                        </p>
+                    )}
+                    {form.grupos.some(id => estadoGrupos.tipo === "ok" && !grupos.some(g => g.grupo_id === id)) && (
+                        <p className={`${styles.alerta} ${styles.alertaAviso}`}>
+                            Este sorteo tiene {form.grupos.filter(id => !grupos.some(g => g.grupo_id === id)).length} grupo(s) que ya no están autorizados: quítalos o vuelve a autorizarlos antes de guardar.
+                            {" "}<Button size="sm" variant="ghost" onClick={() => cambiar("grupos", form.grupos.filter(id => grupos.some(g => g.grupo_id === id)))}>Quitar</Button>
+                        </p>
+                    )}
+                    {grupos.length > 0 && <p className={styles.ayuda}>Seleccionados: {form.grupos.filter(id => grupos.some(g => g.grupo_id === id)).length} de {grupos.length}. El mismo sorteo se publica en todos.</p>}
+                    {grupos.length > 0 && <div className={styles.checks}>{grupos.map(g => (
                             <label key={g.grupo_id} className={styles.check}>
                                 <input type="checkbox" checked={form.grupos.includes(g.grupo_id)} onChange={() => alternar("grupos", g.grupo_id)} />
                                 {g.nombre || g.grupo_id}
@@ -247,7 +403,6 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado }: 
 
                 <section className={styles.seccion}>
                     <h3 className={styles.seccionTitulo}>Publicación</h3>
-                    <Input label="Fecha y hora de publicación (hora de Colombia)" type="datetime-local" value={form.publicarEn} onChange={e => cambiar("publicarEn", e.target.value)} error={errorDe("publicar_en")} />
                     <Textarea label="Mensaje de publicación" optional rows={8} value={form.mensajePublicacion} onChange={e => cambiar("mensajePublicacion", e.target.value)} error={errorDe("mensajes")}
                         hint="Vacío = plantilla por defecto. Variables: {{nombre}} {{hora}} {{hora_cierre}} {{valor}} {{premios}} {{cuentas}} {{cantidad}} {{fecha}}" />
                     <Textarea label="Aviso al cerrar" optional rows={3} value={form.avisoCierre} onChange={e => cambiar("avisoCierre", e.target.value)} hint="Se envía una vez cuando el sorteo se cierra. Vacío = no se envía." />
