@@ -169,6 +169,10 @@ const esperarTexto = (page, texto, timeout = 60000) =>
 
 const textoPagina = (page) => page.evaluate(() => document.body.innerText);
 
+const captura = (page, nombre) => process.env.E2E_CAPTURAS
+    ? page.screenshot({ path: path.join(process.env.E2E_CAPTURAS, `${nombre}.png`) })
+    : null;
+
 // Mañana a las 08:00 (hora de Colombia), formato datetime-local.
 function mananaColombia() {
     const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -217,10 +221,36 @@ async function main() {
         assert.ok(textoModal.includes("2 CIFRAS — PAGO"));
         paso("/eventos: «Crear sorteo» abre el modal de modalidad, sin el mensaje antiguo");
 
+        // 1b. «Configurar sorteo» VISIBLE dentro de la pantalla (no solo en el
+        // DOM), en escritorio y en móvil, junto a «Cerrar» en el pie del modal.
+        for (const [nombre, ancho, alto] of [["escritorio", 1366, 768], ["movil", 390, 844]]) {
+            await page.setViewport({ width: ancho, height: alto });
+            await new Promise(res => setTimeout(res, 400));
+            const caja = await page.evaluate(() => {
+                const b = [...document.querySelectorAll("button")].find(x => x.textContent.trim() === "Configurar sorteo");
+                if (!b) return null;
+                const r = b.getBoundingClientRect();
+                const s = getComputedStyle(b);
+                const pie = b.parentElement;
+                return {
+                    dentro: r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth && r.width > 0 && r.height > 0,
+                    visible: s.visibility !== "hidden" && s.display !== "none" && Number(s.opacity) > 0,
+                    junto: [...pie.querySelectorAll("button")].some(x => x.textContent.trim() === "Cerrar")
+                };
+            });
+            assert.ok(caja, `«Configurar sorteo» no existe (${nombre})`);
+            assert.ok(caja.dentro && caja.visible, `«Configurar sorteo» no se ve en pantalla (${nombre}): ${JSON.stringify(caja)}`);
+            assert.ok(caja.junto, "«Configurar sorteo» va en el pie, junto a «Cerrar»");
+            if (process.env.E2E_CAPTURAS) await page.screenshot({ path: path.join(process.env.E2E_CAPTURAS, `modal_${nombre}.png`) });
+        }
+        await page.setViewport({ width: 1366, height: 768 });
+        paso("«Configurar sorteo» visible en el pie del modal (1366×768 y 390×844), junto a «Cerrar»");
+
         // 2. 3 cifras deshabilitadas de verdad.
         await marcar(page, "3 CIFRAS — PAGO");
         await esperarTexto(page, "Todavía no disponible");
         assert.strictEqual(await botonHabilitado(page, "Configurar sorteo"), false);
+        await captura(page, "modal_3cifras_deshabilitado");
         await marcar(page, "3 CIFRAS — GRATIS");
         assert.strictEqual(await botonHabilitado(page, "Configurar sorteo"), false);
         await marcar(page, "2 CIFRAS — PAGO");
@@ -234,6 +264,7 @@ async function main() {
         await esperarTexto(page, "Nequi Prueba");
         const opciones = await page.evaluate(() => [...document.querySelectorAll("option")].map(o => ({ v: o.value, d: o.disabled })));
         assert.ok(opciones.some(o => o.v === "tres_cifras_pago" && o.d) && opciones.some(o => o.v === "tres_cifras_gratis" && o.d), "3 cifras deshabilitadas en el formulario");
+        await captura(page, "formulario_abierto");
         paso("el botón abre el formulario de creación manual (grupos y cuentas desde el backend)");
 
         const publicarEn = mananaColombia();
@@ -274,6 +305,7 @@ ${vista}`);
         }
         assert.ok(!/\{\{/.test(vista.split("Anuncio que se publicará")[1] || ""), "sin variables sin resolver");
         assert.strictEqual(await botonHabilitado(page, "Confirmar y programar"), false, "no se confirma sin marcar la revisión");
+        await captura(page, "vista_previa");
         paso("vista previa con los datos guardados (anuncio, premios, cuenta, grupos, recordatorio, aviso)");
 
         // 5. Recargar -> el borrador persiste y aparece en «Sorteos programados».
