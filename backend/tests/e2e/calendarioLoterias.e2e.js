@@ -47,6 +47,14 @@ const FESTIVO = "2026-11-02";   // Todos los Santos (lunes trasladado)
 
 const { paso, terminar } = crearPasos();
 
+// Nada técnico en pantalla para el cliente.
+const TECNICO = /token|SESSIONS_|BOT_API|API|proxy|variable de entorno|HTTP d|50[23]|401|migraci[oó]n|backend|Supabase|lease|listener/i;
+async function sinTextoTecnico(page, donde) {
+    const texto = await textoPagina(page);
+    const m = texto.match(TECNICO);
+    assert.ok(!m, `texto técnico visible en ${donde}: «${m && m[0]}»`);
+}
+
 const cajaHorario = (page) => page.evaluate(() => document.querySelector('[aria-label="Horario de la lotería"]')?.innerText || "");
 
 async function main() {
@@ -198,9 +206,10 @@ async function main() {
         // API caída para los grupos -> error explícito + Reintentar.
         fake.control.fallarTabla = "grupos_autorizados";
         await pulsar(a, "Nuevo sorteo");
-        await esperarTexto(a, "No se pudieron cargar los grupos");
+        await esperarTexto(a, "No pudimos cargar tus grupos de WhatsApp. Inténtalo de nuevo.");
+        await sinTextoTecnico(a, "error de grupos");
         let texto = await textoPagina(a);
-        assert.ok(!/No tienes grupos autorizados/.test(texto) && !/No hay grupos registrados/.test(texto), "un fallo no se disfraza de lista vacía");
+        assert.ok(!/No tienes grupos autorizados/.test(texto) && !/Todavía no hay grupos/.test(texto), "un fallo no se disfraza de lista vacía");
         await captura(a, "grupos_error_api");
         fake.control.fallarTabla = null;
         await pulsar(a, "Reintentar");
@@ -213,18 +222,22 @@ async function main() {
         paginas.push(c);
         await c.goto(`${PANEL}/sorteos`, { waitUntil: "domcontentloaded" });
         await pulsar(c, "Nuevo sorteo");
-        await esperarTexto(c, "No hay grupos registrados para la cuenta");
+        await esperarTexto(c, "Todavía no hay grupos de WhatsApp habilitados para");
+        await esperarTexto(c, "Todavía no tienes cuentas de pago. Crea una en");
+        assert.ok(await c.evaluate(() => [...document.querySelectorAll("a")].some(a => a.getAttribute("href") === "/sorteos" && a.closest("section"))), "enlace para crear la cuenta");
+        await sinTextoTecnico(c, "formulario sin grupos ni cuentas");
         texto = await textoPagina(c);
         assert.ok(texto.includes("sin-grupos@prueba.local"), "dice con qué cuenta se inició sesión");
         assert.ok(!texto.includes("Grupo Uno A") && !texto.includes("Grupo Ajeno B"));
         await captura(c, "grupos_usuario_sin_grupos");
-        paso("Usuario sin grupos: «No hay grupos registrados para la cuenta sin-grupos@…» (no el mensaje genérico)");
+        paso("Usuario sin grupos ni cuentas: explicación sencilla con enlaces (grupos y cuenta de pago), sin texto técnico");
 
         const d = await entorno.nuevaPagina("tok-d");
         paginas.push(d);
         await d.goto(`${PANEL}/sorteos`, { waitUntil: "domcontentloaded" });
         await pulsar(d, "Nuevo sorteo");
-        await esperarTexto(d, "Tienes 1 grupo(s) registrados, pero ninguno autorizado");
+        await esperarTexto(d, "Tus 1 grupo(s) de WhatsApp están desactivados para el bot");
+        await sinTextoTecnico(d, "grupos desactivados");
         paso("Usuario con grupos registrados pero inactivos: lo dice explícitamente");
 
         const b = await entorno.nuevaPagina("tok-b");
@@ -239,6 +252,22 @@ async function main() {
         await esperarTexto(b, "Sinuano Día");
         assert.ok(!(await textoPagina(b)).includes("Hora habitual: 14:30"), "el calendario de A no se mezcla con el de B");
         paso("Otro usuario con grupos: ve solo los suyos y su propio calendario");
+
+        // Calendario sin la tabla (025 sin aplicar): mensaje sencillo.
+        const real = fake.client.from;
+        fake.client.from = (tabla) => tabla === "loterias_catalogo"
+            ? { select: () => ({ eq: async () => ({ data: null, count: null, error: { code: "42P01", message: "relation does not exist" } }) }) }
+            : real(tabla);
+        await a.goto(`${PANEL}/loterias`, { waitUntil: "domcontentloaded" });
+        await esperarTexto(a, "Esta función todavía no está disponible");
+        await sinTextoTecnico(a, "calendario sin migración");
+        await a.goto(`${PANEL}/sorteos`, { waitUntil: "domcontentloaded" });
+        await pulsar(a, "Nuevo sorteo");
+        await esperarTexto(a, "No pudimos cargar el calendario de loterías. Puedes escribir el nombre de la lotería a mano.");
+        await sinTextoTecnico(a, "formulario sin calendario");
+        await pulsar(a, "Cancelar");
+        fake.client.from = real;
+        paso("Calendario no disponible: mensajes sencillos y se puede escribir la lotería a mano");
 
         // ------------------------------------------------- cierre ---
         assert.strictEqual(t.eventos_bot.length, 0, "ningún evento creado ni publicado");

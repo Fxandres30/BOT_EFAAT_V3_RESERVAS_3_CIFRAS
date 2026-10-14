@@ -12,7 +12,7 @@ export const ESTADO_SALUD: Record<EstadoSalud, { kind: StatusKind; label: string
   conectando: { kind: "pending", label: "Conectando" },
   degradada: { kind: "warning", label: "Degradada" },
   desconectada: { kind: "offline", label: "Desconectada" },
-  conflicto_lease: { kind: "warning", label: "Conflicto de lease" },
+  conflicto_lease: { kind: "warning", label: "Atendida en otro equipo" },
 };
 
 function hace(iso: string | null): string {
@@ -59,19 +59,19 @@ export default function SaludSesion({ salud }: Props) {
         {salud.ultimoError && (
           <>
             <dt>Último error</dt>
-            <dd title={salud.ultimoError.mensaje}>{hace(salud.ultimoError.en)}</dd>
+            <dd>{hace(salud.ultimoError.en)}</dd>
           </>
         )}
         {salud.recuperaciones[0] && (
           <>
             <dt>Recuperación auto.</dt>
-            <dd title={salud.recuperaciones[0].causa}>{hace(salud.recuperaciones[0].en)}</dd>
+            <dd>{hace(salud.recuperaciones[0].en)}</dd>
           </>
         )}
         {salud.lease && !salud.lease.propio && salud.lease.vigente && (
           <>
             <dt>Atendida por</dt>
-            <dd>otra instancia ({salud.lease.ubicacion || "?"})</dd>
+            <dd>otro equipo de EFAAT</dd>
           </>
         )}
       </dl>

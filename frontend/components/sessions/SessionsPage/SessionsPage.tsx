@@ -62,9 +62,8 @@ export default function SessionsPage() {
 
       {usuarioId && errorSalud && (
         <p className={styles.avisoSalud} role="status">
-          No se pudo leer el estado real del bot ({errorSalud}). Se muestra el
-          estado guardado en la base, que puede no reflejar si el bot está
-          procesando mensajes.
+          No pudimos consultar el estado del bot en este momento. Se muestra el
+          último estado guardado; inténtalo de nuevo en unos minutos.
         </p>
       )}
 

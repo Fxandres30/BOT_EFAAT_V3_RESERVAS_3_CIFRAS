@@ -108,11 +108,11 @@ function evaluar({ sessionId, sock, abierto, activa, lease = null, leasePropio =
     if (!sock) {
 
         if (leaseVigente && !leasePropio) {
-            return { ...base, estado: "conflicto_lease", causas: ["La sesión está abierta en otra instancia del bot (otro proceso o servidor)."], accion: "Si no hay otra instancia en uso, espera unos segundos: este servidor la tomará cuando venza su lease." };
+            return { ...base, estado: "conflicto_lease", causas: ["Esta sesión la está atendiendo otro equipo de EFAAT."], accion: "Si no la estás usando en otro equipo, espera un minuto: se reasigna sola." };
         }
 
         if (estadoSupabase === "conectado") {
-            causas.push("En la base de datos figura como conectada, pero ningún proceso del bot la está atendiendo.");
+            causas.push("Figura como conectada, pero el bot no la está atendiendo en este momento.");
             return { ...base, estado: "desconectada", causas, accion: "El bot reintentará automáticamente; si no vuelve en 1 minuto, pulsa Reconectar." };
         }
 
@@ -128,10 +128,10 @@ function evaluar({ sessionId, sock, abierto, activa, lease = null, leasePropio =
 
     const escuchando = !!r.listenerSocket && r.listenerSocket === sock;
 
-    if (!escuchando) causas.push("Conectada pero SIN listener de mensajes: el bot no está leyendo los grupos.");
-    if (workerDetenido(r, ahora)) causas.push("El worker de eventos (apertura/cierre de grupos) no completa ciclos.");
-    if ((r.errores || 0) >= UMBRAL_ERRORES) causas.push(`${r.errores} errores seguidos al procesar mensajes. Último: ${r.ultimoError?.mensaje || "—"}`);
-    if ((estadoLeasePropio?.erroresSeguidos || 0) >= UMBRAL_LEASE) causas.push(`No se puede renovar el lease en Supabase (${estadoLeasePropio.erroresSeguidos} intentos). Último: ${estadoLeasePropio.ultimoError || "—"}`);
+    if (!escuchando) causas.push("Conectada, pero el bot no está leyendo los mensajes de los grupos.");
+    if (workerDetenido(r, ahora)) causas.push("La apertura y el cierre automático de los grupos no están avanzando.");
+    if ((r.errores || 0) >= UMBRAL_ERRORES) causas.push(`Hubo ${r.errores} errores seguidos al procesar mensajes.`);
+    if ((estadoLeasePropio?.erroresSeguidos || 0) >= UMBRAL_LEASE) causas.push("El bot tiene problemas para mantener esta sesión asignada a este equipo.");
 
     if (causas.length) {
         return { ...base, estado: "degradada", escuchando, causas, accion: "El bot intenta recuperarse solo. Si el estado no mejora en 2 minutos, pulsa Reconectar." };

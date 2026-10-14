@@ -134,16 +134,23 @@ const MENSAJES: Record<string, string> = {
     bloqueado: "Hay bloqueos que impiden programarlo.",
     confirmacion_requerida: "Debes confirmar que revisaste la vista previa.",
     nombre_duplicado: "Ya existe una plantilla con ese nombre.",
-    migracion_pendiente: "Falta aplicar la migración 024 en la base de datos.",
-    backend_no_disponible: "El servidor del bot no responde.",
-    TOKEN_SERVICIO_NO_CONFIGURADO: "El servidor no tiene configurado el token de servicio.",
+    migracion_pendiente: "Esta función todavía no está disponible. Inténtalo más tarde.",
     validacion: "Revisa los campos marcados."
 };
 
-export function describirError(r: { motivo: string; error?: string; migracion?: string }): string {
-    if (r.motivo === "migracion_pendiente" && r.migracion) return `Falta aplicar la migración ${r.migracion} en la base de datos.`;
-    return MENSAJES[r.motivo] || r.error || "No se pudo completar la operación.";
+// Lo que ve el cliente cuando falla algo interno (servidor, configuración,
+// base de datos): nunca detalles técnicos. Esos van a la consola.
+export const ERROR_GENERICO = "No pudimos completar la operación. Inténtalo de nuevo en unos minutos.";
+
+export function describirError(r: { motivo: string; error?: string; migracion?: string; status?: number }): string {
+    const conocido = MENSAJES[r.motivo];
+    if (!conocido || r.motivo === "migracion_pendiente") {
+        console.warn("[EFAAT] error interno:", { motivo: r.motivo, status: r.status, migracion: r.migracion, error: r.error });
+    }
+    return conocido || ERROR_GENERICO;
 }
+
+export const esSesionCaducada = (r: { motivo: string }) => r.motivo === "sin_sesion" || r.motivo === "sesion_invalida";
 
 async function llamar<T>(metodo: "GET" | "POST" | "PUT" | "PATCH", ruta: string, cuerpo?: unknown): Promise<Respuesta<T>> {
 

@@ -15,6 +15,9 @@
 // ==========================================================================
 
 const assert = require("assert");
+const fs = require("fs");
+const os = require("os");
+const tokenServicio = require("../../middleware/tokenServicio");
 const path = require("path");
 const http = require("http");
 
@@ -200,10 +203,35 @@ prueba("rutas de administración (BANN): solo token de servicio; sin él -> 401"
     assert.strictEqual((await pedir("GET", "/sessions/", {})).status, 200);
 });
 
+prueba("SESSIONS_API_TOKEN ausente en el backend pero BOT_API_TOKEN en el panel del MISMO servidor: se usa ese; otro token -> 401; nunca abierto", async () => {
+    const token = process.env.SESSIONS_API_TOKEN;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "panel-con-token-"));
+    fs.writeFileSync(path.join(dir, ".env.local"), "NEXT_PUBLIC_X=1\nBOT_API_TOKEN=token-del-panel\n");
+    tokenServicio._configurarPrueba({ dir });
+    delete process.env.SESSIONS_API_TOKEN;
+    try {
+        const salud = (tokenServicioEnviado) => new Promise((resolve, reject) => {
+            const req = http.request(base + "/sessions/salud", { method: "GET", headers: { "x-service-token": tokenServicioEnviado, Authorization: "Bearer jwt-A" } }, res => {
+                res.resume(); res.on("end", () => resolve(res.statusCode));
+            });
+            req.on("error", reject); req.end();
+        });
+        assert.strictEqual(await salud("token-del-panel"), 200, "el panel funciona sin configurar nada más");
+        assert.strictEqual(await salud("otro-token"), 401, "otro token -> 401");
+        assert.strictEqual((await pedir("GET", "/sessions/salud", { jwt: "jwt-A", servicio: false })).status, 401, "sin token -> 401");
+        assert.strictEqual((await pedir("GET", "/sessions/salud", { servicio: false })).status, 401, "sin token ni usuario -> 401");
+    } finally {
+        process.env.SESSIONS_API_TOKEN = token;
+        tokenServicio._configurarPrueba();
+    }
+});
+
 // Producción 2026-10-14: backend desplegado SIN SESSIONS_API_TOKEN.
-prueba("SIN SESSIONS_API_TOKEN en el backend: 503 en /sessions/salud, /active, /connect y /sorteos/loterias, sin ejecutar nada; con él, vuelven a funcionar", async () => {
+prueba("SIN token en ningún lado (backend ni panel): 503 en /sessions/salud, /active, /connect y /sorteos/loterias, sin ejecutar nada; con él, vuelven a funcionar", async () => {
     const token = process.env.SESSIONS_API_TOKEN;
     const n = llamadas.length;
+    const vacio = fs.mkdtempSync(path.join(os.tmpdir(), "panel-sin-token-"));
+    tokenServicio._configurarPrueba({ dir: vacio });
     delete process.env.SESSIONS_API_TOKEN;
     try {
         const pedidos = [
@@ -218,6 +246,7 @@ prueba("SIN SESSIONS_API_TOKEN en el backend: 503 en /sessions/salud, /active, /
         assert.strictEqual(llamadas.length, n, "falla cerrado: no se ejecutó nada");
     } finally {
         process.env.SESSIONS_API_TOKEN = token;
+        tokenServicio._configurarPrueba();
     }
     assert.strictEqual((await pedir("GET", "/sessions/salud", { jwt: "jwt-A" })).status, 200);
     assert.strictEqual((await pedir("GET", "/sessions/active", { jwt: "jwt-A" })).status, 200);

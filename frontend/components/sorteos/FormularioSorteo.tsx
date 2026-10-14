@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase";
 import {
     apiSorteos,
     describirError,
+    esSesionCaducada,
     type ConfigSorteo,
     type CuentaPago,
     type ErrorCampo,
@@ -59,18 +60,12 @@ type EstadoGrupos =
     | { tipo: "ok"; resumen: ResumenGrupos | null }
     | { tipo: "error"; mensaje: string };
 
-// Un fallo de la API nunca se presenta como «no tienes grupos».
+// Un fallo nunca se presenta como «no tienes grupos». El detalle técnico
+// queda en la consola (describirError), nunca en la pantalla del cliente.
 function mensajeErrorGrupos(r: { motivo: string; error?: string; status?: number; migracion?: string }): string {
-    if (r.motivo === "sin_sesion" || r.motivo === "sesion_invalida" || r.status === 401) {
-        return "El servidor rechazó tu sesión (401): no se pudo comprobar qué grupos son tuyos. Cierra sesión y vuelve a entrar.";
-    }
-    if (r.motivo === "TOKEN_SERVICIO_NO_CONFIGURADO" || r.status === 503) {
-        return "El servidor no tiene configurado el token de servicio (SESSIONS_API_TOKEN del bot = BOT_API_TOKEN del panel). Los grupos no se pudieron consultar.";
-    }
-    if (r.motivo === "backend_no_disponible" || r.status === 502) {
-        return "El servidor del bot no responde: los grupos no se pudieron consultar.";
-    }
-    return `No se pudieron cargar los grupos: ${describirError(r)}${r.status ? ` (HTTP ${r.status})` : ""}.`;
+    if (esSesionCaducada(r)) return "Tu sesión expiró. Vuelve a iniciar sesión para ver tus grupos.";
+    describirError(r);
+    return "No pudimos cargar tus grupos de WhatsApp. Inténtalo de nuevo.";
 }
 
 function desdeConfig(config: ConfigSorteo, extra: Partial<Form> = {}): Form {
@@ -124,6 +119,7 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado }: 
     const [estadoGrupos, setEstadoGrupos] = useState<EstadoGrupos>({ tipo: "cargando" });
     const [cuentaSesion, setCuentaSesion] = useState<string | null>(null);
     const [cuentas, setCuentas] = useState<CuentaPago[]>([]);
+    const [errorCuentas, setErrorCuentas] = useState(false);
     const [plantillas, setPlantillas] = useState<Plantilla[]>([]);
     const [loterias, setLoterias] = useState<Loteria[]>([]);
     const [avisoLoterias, setAvisoLoterias] = useState<string | null>(null);
@@ -153,9 +149,10 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado }: 
         async function cargarCatalogos() {
             const [c, p, l, s] = await Promise.all([apiSorteos.cuentas(), apiSorteos.plantillas(), apiSorteos.loterias(), supabase.auth.getSession()]);
             if (c.ok) setCuentas(c.data.filter(x => x.activa !== false));
+            else { describirError(c); setErrorCuentas(true); }
             if (p.ok) setPlantillas(p.data);
             if (l.ok) setLoterias(l.data.filter(x => x.activo));
-            else setAvisoLoterias(`No se pudo cargar el calendario de loterías (${describirError(l)}). Puedes escribir el nombre a mano.`);
+            else { describirError(l); setAvisoLoterias("No pudimos cargar el calendario de loterías. Puedes escribir el nombre de la lotería a mano."); }
             setCuentaSesion(s.data.session?.user?.email || null);
         }
 
@@ -368,8 +365,8 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado }: 
                     {estadoGrupos.tipo === "ok" && grupos.length === 0 && (
                         <p className={`${styles.alerta} ${styles.alertaAviso}`}>
                             {estadoGrupos.resumen && estadoGrupos.resumen.registrados > 0
-                                ? <>Tienes {estadoGrupos.resumen.registrados} grupo(s) registrados, pero ninguno autorizado (activo). Actívalos en <Link href="/automatizacion/grupos">Automatización → Grupos</Link>.</>
-                                : <>No hay grupos registrados para la cuenta {cuentaSesion ? <b>{cuentaSesion}</b> : "con la que iniciaste sesión"}. Si los configuraste con otra cuenta, inicia sesión con esa cuenta; si no, regístralos en <Link href="/automatizacion/grupos">Automatización → Grupos</Link>.</>}
+                                ? <>Tus {estadoGrupos.resumen.registrados} grupo(s) de WhatsApp están desactivados para el bot. Actívalos en <Link href="/automatizacion/grupos">Automatización → Grupos</Link> y aparecerán aquí.</>
+                                : <>Todavía no hay grupos de WhatsApp habilitados para {cuentaSesion ? <b>{cuentaSesion}</b> : "tu cuenta"}. Habilítalos una vez en <Link href="/automatizacion/grupos">Automatización → Grupos</Link> y aparecerán aquí. Si los habilitaste con otra cuenta, inicia sesión con ella.</>}
                         </p>
                     )}
                     {form.grupos.some(id => estadoGrupos.tipo === "ok" && !grupos.some(g => g.grupo_id === id)) && (
@@ -391,7 +388,9 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado }: 
                     <h3 className={styles.seccionTitulo}>Cuentas de pago</h3>
                     {errorDe("cuentas") && <span className={styles.error}>{errorDe("cuentas")}</span>}
                     {cuentas.length === 0
-                        ? <p className={styles.ayuda}>No tienes cuentas activas. Créalas en la pestaña Cuentas de pago.</p>
+                        ? <p className={styles.ayuda}>{errorCuentas
+                            ? "No pudimos cargar tus cuentas de pago. Cierra y vuelve a abrir el formulario."
+                            : <>Todavía no tienes cuentas de pago. Crea una en <Link href="/sorteos">Sorteos programados</Link> → pestaña «Cuentas de pago» (nombre y número de la cuenta) y vuelve a crear el sorteo.</>}</p>
                         : <div className={styles.checks}>{cuentas.map(c => (
                             <label key={c.id} className={styles.check}>
                                 <input type="checkbox" checked={form.cuentas.includes(c.id)} onChange={() => alternar("cuentas", c.id)} />

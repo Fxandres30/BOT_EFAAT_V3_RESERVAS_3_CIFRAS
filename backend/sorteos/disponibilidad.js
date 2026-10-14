@@ -27,7 +27,8 @@ async function revisarTabla({ usuarioId, tabla, cifras, cantidad, identidad }) {
         .eq("usuario_id", usuarioId);
 
     if (error) {
-        bloqueos.push(`No se pudo leer la tabla de números (${error.message}).`);
+        console.error("❌ [SORTEOS] no se pudo leer la tabla de números:", error.message);
+        bloqueos.push("No pudimos revisar la tabla de números en este momento. Inténtalo de nuevo en unos minutos.");
         return { bloqueos, avisos, resumen: null };
     }
 
@@ -73,7 +74,10 @@ async function revisarGrupo({ usuarioId, grupoId, identidad, autorizados }) {
         .eq("grupo_id", grupoId)
         .maybeSingle();
 
-    if (error) return { bloqueo: `No se pudo revisar el grupo (${error.message}).`, avisos: [] };
+    if (error) {
+        console.error("❌ [SORTEOS] no se pudo revisar el grupo:", error.message);
+        return { bloqueo: "No pudimos revisar este grupo en este momento. Inténtalo de nuevo en unos minutos.", avisos: [] };
+    }
 
     if (data?.activo && data.identidad_evento_real !== identidad) {
         return {

@@ -26,6 +26,8 @@ export default function useSaludSesiones(habilitado: boolean) {
             if (!vivo) return;
 
             if (!r.ok) {
+                // El motivo técnico va a la consola (administrador), no a la pantalla.
+                console.warn("[salud sesiones] no disponible:", r.motivo);
                 setError(r.motivo);
                 return;
             }

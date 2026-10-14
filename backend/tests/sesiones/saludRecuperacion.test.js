@@ -113,7 +113,7 @@ prueba("A2 socket activo open SIN listener sobre ese socket = degradada", () => 
     salud.marcarListener("S1", { id: "viejo" });
     const r = salud.evaluar(args);
     assert.strictEqual(r.estado, "degradada");
-    assert.ok(r.causas.some(c => /SIN listener/.test(c)));
+    assert.ok(r.causas.some(c => /no está leyendo los mensajes/.test(c)));
     assert.ok(r.accion);
 });
 
@@ -165,7 +165,7 @@ prueba("A8 sin socket local y lease vigente de OTRA instancia = conflicto_lease"
 prueba("A9 sin socket y la base dice 'conectado' = desconectada con causa y acción", () => {
     const r = salud.evaluar({ sessionId: "S1", sock: null, estadoSupabase: "conectado" });
     assert.strictEqual(r.estado, "desconectada");
-    assert.ok(/ningún proceso/.test(r.causas[0]));
+    assert.ok(/no la está atendiendo/.test(r.causas[0]));
     assert.ok(r.accion);
 });
 

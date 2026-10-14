@@ -55,9 +55,10 @@ const backend = process.env.SESSIONS_API_TOKEN || envBackend?.SESSIONS_API_TOKEN
 const panel = envPanel?.BOT_API_TOKEN;
 
 console.log("Resultado:");
-if (!backend) console.log("  ❌ El backend no tiene SESSIONS_API_TOKEN: /sessions, /sorteos, /contactos, /bloqueados y /tablas/compartir responden 503.");
-else if (!panel) console.log("  ⚠️  No se pudo leer BOT_API_TOKEN del panel: compruébalo en el entorno del proceso del panel.");
-else if (backend === panel) console.log("  ✅ Coinciden.");
-else console.log("  ❌ NO coinciden: el panel recibirá 401.");
+if (backend && panel && backend !== panel) console.log("  ❌ NO coinciden: el backend rechazará al panel (401). Usa el mismo valor en los dos.");
+else if (backend && panel) console.log("  ✅ Coinciden.");
+else if (backend) console.log("  ✅ Backend configurado. Si el panel corre en este servidor y no tiene BOT_API_TOKEN, usará el de backend/.env.");
+else if (panel) console.log("  ✅ El backend usará el BOT_API_TOKEN del panel de este servidor (recomendado: copiarlo también a backend/.env).");
+else console.log("  ❌ No hay token en ningún lado: /sessions, /sorteos, /contactos, /bloqueados y /tablas/compartir responden 503. Ver docs/activacion/TOKEN_SERVICIO.md.");
 
-process.exit(backend && (!panel || backend === panel) ? 0 : 1);
+process.exit((backend || panel) && !(backend && panel && backend !== panel) ? 0 : 1);
