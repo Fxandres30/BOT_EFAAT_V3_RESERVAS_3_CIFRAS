@@ -14,8 +14,12 @@ const {
 
 const {
     registerMessages,
-    unregisterMessages
+    unregisterMessages,
+    socketConListener
 } = require("./events/messages.upsert");
+
+// Señal de salud real para el panel y vigilante de recuperación.
+const salud = require("../services/baileys/salud");
 
 // FASE 2 (IdentitySync) — escaneo EN VIVO de identidades sobre cada
 // mensaje, en un listener TOTALMENTE INDEPENDIENTE del de arriba (ver
@@ -68,6 +72,10 @@ const {
 let socketActual = null;
 let sesionActual = null;
 let iniciado = false;
+let vigilante = null;
+let sospechasSeguidas = 0;
+
+const VIGILANTE_MS = 30000;
 
 // Único punto donde el BOT cambia de sesión: siempre a través de
 // manager "activeChanged" (Fase 5.1). Nunca se llama directamente
@@ -189,6 +197,77 @@ function detenerBot() {
 
 }
 
+// ─────────────────────────────────────────────────────────────
+// VIGILANTE — recuperación automática segura.
+//
+// Síntoma real en producción: la sesión activa figura "conectada" pero el
+// bot deja de leer mensajes hasta reconectar a mano. Causa: el socket
+// activo cambia (o vuelve a open) sin que el listener/worker se registren
+// sobre él. Cada 30 s se comprueba que el socket VIGENTE, open, de la
+// sesión activa sea el que tiene el listener de negocio. Si dos revisiones
+// seguidas lo encuentran desalineado, se vuelve a ejecutar conectar() sobre
+// ESE socket: quita los listeners viejos antes de poner los nuevos (nunca
+// duplica), no abre sockets, no toca credenciales ni el lease, y no hace
+// nada si no hay un socket activo open (la reconexión es del manager).
+// ─────────────────────────────────────────────────────────────
+function revisarSalud() {
+
+    const sessionId = manager.getActiveSession();
+    const socket = manager.getActiveSocket();
+
+    if (!socket || !sessionId || !manager.esSocketVigenteActivo(socket)) {
+        sospechasSeguidas = 0;
+        return null;
+    }
+
+    const alineado = sesionActual === sessionId
+        && socketActual === socket
+        && socketConListener(sessionId) === socket;
+
+    if (alineado) {
+        sospechasSeguidas = 0;
+        return null;
+    }
+
+    sospechasSeguidas++;
+
+    // La primera vez puede ser una transición en curso (activeChanged a
+    // punto de llegar): se espera a la siguiente revisión.
+    if (sospechasSeguidas < 2) return "sospecha";
+
+    sospechasSeguidas = 0;
+
+    const causa = socketConListener(sessionId) !== socket
+        ? "socket activo sin listener de mensajes"
+        : "el bot apuntaba a otro socket";
+
+    console.log("🩺 [SALUD] recuperación automática:", { sessionId, causa });
+
+    salud.marcarRecuperacion(sessionId, causa);
+
+    // Fuerza el re-registro completo aunque conectar() crea que ya está
+    // escuchando este mismo socket.
+    if (socketActual === socket) socketActual = null;
+
+    conectar(socket, sessionId);
+
+    return "recuperado";
+
+}
+
+function iniciarVigilante() {
+
+    if (vigilante) return;
+
+    vigilante = setInterval(() => {
+        try { revisarSalud(); }
+        catch (err) { console.error("❌ [SALUD] vigilante:", err?.message); }
+    }, VIGILANTE_MS);
+
+    vigilante.unref?.();
+
+}
+
 function iniciarBot() {
 
     if (iniciado) {
@@ -233,6 +312,8 @@ function iniciarBot() {
 
     iniciado = true;
 
+    iniciarVigilante();
+
     // Por si al momento de suscribirse ya existía una sesión activa
     // (orden de arranque del servidor).
     const socket = manager.getActiveSocket();
@@ -249,3 +330,7 @@ function iniciarBot() {
 }
 
 module.exports = iniciarBot;
+
+// Para pruebas y para la ruta de salud.
+module.exports.revisarSalud = revisarSalud;
+module.exports.estadoBot = () => ({ sesionActual, socketActual });

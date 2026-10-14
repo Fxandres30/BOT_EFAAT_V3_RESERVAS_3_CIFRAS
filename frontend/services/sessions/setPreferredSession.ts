@@ -1,5 +1,7 @@
+import { fetchConSesion } from "@/lib/fetchConSesion";
+
 export async function setPreferredSession(sessionId: string) {
-    const res = await fetch("/api/sessions/preferred", {
+    const res = await fetchConSesion("/api/sessions/preferred", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",

@@ -1,3 +1,5 @@
+import { fetchConSesion } from "@/lib/fetchConSesion";
+
 // "idle" = sin escaneo activo/terminado | "scanning" = leyendo Baileys |
 // "syncing" = escribiendo en Supabase | "error" = el último escaneo falló |
 // "sin_sesion" = no hay sesión activa conectada. Mismo vocabulario que
@@ -45,7 +47,7 @@ export interface ResultadoBackfillContactos {
 // función lo devuelve igual (success:true), nunca lo convierte en un throw.
 export async function backfillContactos(): Promise<ResultadoBackfillContactos> {
 
-    const res = await fetch("/api/sessions/backfill-contactos", { method: "POST" });
+    const res = await fetchConSesion("/api/sessions/backfill-contactos", { method: "POST" });
 
     return await res.json();
 
@@ -61,7 +63,7 @@ export interface ResultadoEstadoBackfill {
 // escaneo (a diferencia de backfillContactos()).
 export async function obtenerEstadoBackfillContactos(): Promise<ResultadoEstadoBackfill> {
 
-    const res = await fetch("/api/sessions/estado-backfill-contactos");
+    const res = await fetchConSesion("/api/sessions/estado-backfill-contactos");
 
     return await res.json();
 

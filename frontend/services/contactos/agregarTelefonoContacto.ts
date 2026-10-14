@@ -1,3 +1,5 @@
+import { fetchConSesion } from "@/lib/fetchConSesion";
+
 // Proxy hacia POST /api/contactos/telefono -> backend
 // POST /contactos/:id/telefono. Botón "Agregar teléfono" del panel.
 export interface ResultadoAgregarTelefono {
@@ -12,7 +14,7 @@ export async function agregarTelefonoContacto(
     telefono: string
 ): Promise<ResultadoAgregarTelefono> {
 
-    const res = await fetch("/api/contactos/telefono", {
+    const res = await fetchConSesion("/api/contactos/telefono", {
 
         method: "POST",
 

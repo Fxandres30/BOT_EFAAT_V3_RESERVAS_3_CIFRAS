@@ -62,8 +62,11 @@ const ENTORNO = `
     insert into public.reservas_dos_cifras (numero, estado, usuario_id) values ('05', 'libre', '${A}');
 `;
 
+const abiertas = [];
+
 async function crearDb({ conPropuesta = true } = {}) {
     const db = new PGlite();
+    abiertas.push(db);
     await db.exec(ENTORNO);
     if (conPropuesta) await db.exec(PROPUESTA);
     return db;
@@ -126,6 +129,19 @@ prueba("el bot (service_role) no se ve afectado", async () => {
     assert.strictEqual((await como(db, "service_role", null, `update public.eventos_bot set activo = false returning id`)).length, 2);
 });
 
+prueba("guardia: con una política abierta previa (using true) aborta y NO aplica nada", async () => {
+    const db = await crearDb({ conPropuesta: false });
+    await db.exec(`alter table public.sesiones enable row level security;
+        create policy "todos leen" on public.sesiones for select using (true);`);
+    let error = null;
+    try { await db.exec(PROPUESTA); } catch (e) { error = e; }
+    assert.ok(error && /Parte A abortada.*todos leen/.test(error.message), "debe abortar nombrando la política");
+    await db.exec("rollback;");
+    assert.strictEqual((await como(db, "anon", null, `select * from public."5k_15k_reservas_2_cifras"`)).length, 2, "nada aplicado");
+    const rls = (await db.query(`select relrowsecurity from pg_class where relname = '5k_15k_reservas_2_cifras'`)).rows[0];
+    assert.strictEqual(rls.relrowsecurity, false);
+});
+
 prueba("idempotente: aplicarla dos veces no falla", async () => {
     const db = await crearDb();
     await db.exec(PROPUESTA);
@@ -138,5 +154,10 @@ prueba("idempotente: aplicarla dos veces no falla", async () => {
         catch (e) { falla++; console.log(`❌ ${n}`); console.log(String(e && e.stack || e)); }
     }
     console.log(`\n============================\nTOTAL: ${ok + falla}  ✅ PASA: ${ok}  ❌ FALLA: ${falla}\n============================`);
+    // Cerrar cada PGlite (WASM) antes de process.exit. Una regresión anterior
+    // registró salida 127 tras imprimir 7/7 (no reproducible en 14 corridas):
+    // las aserciones pasaban y el código salía del apagado del proceso con
+    // instancias abiertas. Cerrarlas deja el apagado limpio.
+    await Promise.allSettled(abiertas.map(db => db.close()));
     process.exit(falla ? 1 : 0);
 })();

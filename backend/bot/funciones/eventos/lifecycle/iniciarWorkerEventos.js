@@ -15,7 +15,18 @@ const intervalos = new Map();
 // mismo setInterval podía arrancar un SEGUNDO workerEventos en paralelo
 // para la misma sesión. Misma frecuencia, mismo timer, sin listeners
 // nuevos — solo se omite el tick si el anterior no ha terminado.
-const ejecutando = new Set();
+// sessionId → { desde, ciclo } del tick en curso.
+const ejecutando = new Map();
+
+// Señal de salud para el panel (services/baileys/salud.js).
+const salud = require("../../../../services/baileys/salud");
+
+// Un tick que no termina en este tiempo (promesa colgada en red) bloquearía
+// el worker para siempre en silencio. Pasado el tope se libera la guarda y
+// el siguiente disparo vuelve a trabajar; las acciones del worker (abrir y
+// cerrar grupos, contadores) comprueban el estado antes de actuar.
+const TICK_COLGADO_MS = 5 * 60 * 1000;
+let siguienteCiclo = 0;
 
 function iniciarWorkerEventos(sock) {
 
@@ -36,12 +47,23 @@ function iniciarWorkerEventos(sock) {
 
     console.log(`🕒 Worker de eventos iniciado: ${sessionId}`);
 
+    salud.marcarTickWorker(sessionId, "arranque");
+
     const intervalo = setInterval(async () => {
 
-        if (ejecutando.has(sessionId)) {
+        const enCurso = ejecutando.get(sessionId);
+
+        if (enCurso && Date.now() - enCurso.desde < TICK_COLGADO_MS) {
 
             console.log(`⏭️ Tick de workerEventos (${sessionId}) omitido: el anterior aún está en curso.`);
             return;
+
+        }
+
+        if (enCurso) {
+
+            console.log(`⚠️ Tick de workerEventos (${sessionId}) colgado más de ${TICK_COLGADO_MS / 60000} min: se libera la guarda.`);
+            salud.marcarRecuperacion(sessionId, "tick del worker de eventos colgado: guarda liberada");
 
         }
 
@@ -52,9 +74,13 @@ function iniciarWorkerEventos(sock) {
 
         }
 
-        ejecutando.add(sessionId);
+        const ciclo = ++siguienteCiclo;
+
+        ejecutando.set(sessionId, { desde: Date.now(), ciclo });
 
         cicloMensaje.tickWorker("workerEventos", sock);
+
+        salud.marcarTickWorker(sessionId, "inicio");
 
         try {
 
@@ -67,7 +93,11 @@ function iniciarWorkerEventos(sock) {
 
         } finally {
 
-            ejecutando.delete(sessionId);
+            // Solo libera SU guarda: un tick colgado que termina tarde no
+            // borra la del tick que lo reemplazó.
+            if (ejecutando.get(sessionId)?.ciclo === ciclo) ejecutando.delete(sessionId);
+
+            salud.marcarTickWorker(sessionId, "fin");
 
         }
 
@@ -84,6 +114,8 @@ function detenerWorkerEventos(sessionId) {
     clearInterval(intervalos.get(sessionId));
     intervalos.delete(sessionId);
     ejecutando.delete(sessionId);
+
+    salud.marcarTickWorker(sessionId, "detenido");
 
     console.log(`🛑 Worker detenido: ${sessionId}`);
 

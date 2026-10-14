@@ -151,36 +151,102 @@ async function release(sessionId, ownerId = OWNER_ID) {
 
 }
 
+// Estado del lease propio de cada sesión (para salud y diagnóstico).
+const estadoLeases = new Map(); // sessionId -> { ultimoRenovadoEn, erroresSeguidos, ultimoError }
+
+function estadoLease(sessionId) {
+    return estadoLeases.get(sessionId) || null;
+}
+
+// ¿El owner_id es de un proceso de ESTA máquina (mismo prefijo
+// UBICACION:hostname)? Distingue "mi proceso anterior antes del reinicio de
+// PM2" de "otra instancia en otra máquina".
+function esDeEstaMaquina(ownerId) {
+    if (!ownerId) return false;
+    const prefijo = OWNER_ID.split(":").slice(0, 2).join(":");
+    return String(ownerId).split(":").slice(0, 2).join(":") === prefijo;
+}
+
+// Sesiones cuyo lease mantiene ESTE proceso (apagado ordenado).
+function sesionesConLeasePropio() {
+    return [...heartbeats.keys()];
+}
+
 // Arranca el heartbeat periódico para sessionId. onOwnershipPerdido(sessionId)
-// se invoca (y el heartbeat se detiene) en cuanto una renovación falla —
-// ya sea porque otro owner tomó el lease, o porque el TTL venció antes de
-// que este heartbeat llegara a tiempo.
+// se invoca (y el heartbeat se detiene) SOLO cuando hay certeza de que OTRA
+// instancia es la dueña del lease.
+//
+// CORRECCIÓN (sesiones que "se mueren" con un solo servidor): antes, UN solo
+// fallo de la RPC (corte de red, Supabase lento) se trataba como "otra
+// instancia tomó el lease": se cerraba el socket local y nadie reintentaba,
+// así que el bot quedaba sordo hasta reconectar a mano. Ahora:
+//   - error de la RPC: se reintenta en el siguiente ciclo; el socket sigue;
+//   - no renovado (TTL vencido o error prolongado): se intenta READQUIRIR.
+//     Si nadie más lo tiene, se recupera sin tocar el socket; solo si OTRA
+//     instancia es la dueña se declara la pérdida (comportamiento previo).
 function iniciarHeartbeat(sessionId, { ownerId = OWNER_ID, ttlSegundos = TTL_SEGUNDOS, intervaloMs = HEARTBEAT_MS, onOwnershipPerdido } = {}) {
 
     detenerHeartbeat(sessionId);
 
+    estadoLeases.set(sessionId, { ultimoRenovadoEn: Date.now(), erroresSeguidos: 0, ultimoError: null });
+
+    const declararPerdido = async () => {
+        detenerHeartbeat(sessionId);
+        if (!onOwnershipPerdido) return;
+        try {
+            await onOwnershipPerdido(sessionId);
+        } catch (err) {
+            console.error(`❌ [LEASE] error manejando pérdida de ownership de ${sessionId}:`, err.message);
+        }
+    };
+
+    let enCurso = false;
+
     const id = setInterval(async () => {
 
-        const resultado = await heartbeat(sessionId, ownerId, ttlSegundos);
+        if (enCurso) return;
+        enCurso = true;
 
-        if (!resultado.renovado) {
+        try {
 
-            detenerHeartbeat(sessionId);
+            const estado = estadoLeases.get(sessionId) || { ultimoRenovadoEn: Date.now(), erroresSeguidos: 0 };
+            const resultado = await heartbeat(sessionId, ownerId, ttlSegundos);
 
-            if (onOwnershipPerdido) {
-
-                try {
-
-                    await onOwnershipPerdido(sessionId);
-
-                } catch (err) {
-
-                    console.error(`❌ [LEASE] error manejando pérdida de ownership de ${sessionId}:`, err.message);
-
-                }
-
+            if (resultado.renovado) {
+                estadoLeases.set(sessionId, { ultimoRenovadoEn: Date.now(), erroresSeguidos: 0, ultimoError: null });
+                return;
             }
 
+            // Error transitorio y el lease todavía no pudo vencer: esperar.
+            const vencido = Date.now() - estado.ultimoRenovadoEn >= ttlSegundos * 1000;
+
+            if (resultado.error && !vencido) {
+                estadoLeases.set(sessionId, { ...estado, erroresSeguidos: (estado.erroresSeguidos || 0) + 1, ultimoError: resultado.error.message || String(resultado.error) });
+                console.warn(`⚠️ [LEASE] heartbeat con error transitorio ${sessionId} (${estado.erroresSeguidos + 1} seguidos) — se mantiene el socket y se reintenta.`);
+                return;
+            }
+
+            // No renovado: ¿lo tiene OTRA instancia o simplemente venció?
+            const readq = await acquire(sessionId, ownerId, ttlSegundos);
+
+            if (readq.adquirido) {
+                estadoLeases.set(sessionId, { ultimoRenovadoEn: Date.now(), erroresSeguidos: 0, ultimoError: null });
+                console.log(`🔁 [LEASE] lease recuperado sin cerrar el socket: ${sessionId}`);
+                return;
+            }
+
+            if (readq.error || !readq.ownerId) {
+                // Sin certeza (Supabase sigue fallando o no devolvió fila):
+                // no se cierra nada.
+                estadoLeases.set(sessionId, { ...estado, erroresSeguidos: (estado.erroresSeguidos || 0) + 1, ultimoError: readq.error ? (readq.error.message || String(readq.error)) : "la RPC de adquisición no devolvió fila" });
+                return;
+            }
+
+            // Otra instancia es la dueña: comportamiento de siempre.
+            await declararPerdido();
+
+        } finally {
+            enCurso = false;
         }
 
     }, intervaloMs);
@@ -199,6 +265,8 @@ function detenerHeartbeat(sessionId) {
         heartbeats.delete(sessionId);
 
     }
+
+    estadoLeases.delete(sessionId);
 
 }
 
@@ -221,5 +289,8 @@ module.exports = {
     release,
     soltar,
     iniciarHeartbeat,
-    detenerHeartbeat
+    detenerHeartbeat,
+    estadoLease,
+    sesionesConLeasePropio,
+    esDeEstaMaquina
 };

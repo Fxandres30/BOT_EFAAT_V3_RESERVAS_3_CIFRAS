@@ -20,6 +20,9 @@ const cicloMensaje = require("../../diagnostico/cicloMensaje");
 // históricos/recuperados, decidido ANTES del negocio. Ver su cabecera.
 const compuertaIngreso = require("../funciones/mensajes/compuertaIngreso");
 
+// Señal de salud real para el panel (/sessions/salud). Solo memoria.
+const salud = require("../../services/baileys/salud");
+
 const listeners = new Map();
 
 function registerMessages(sock, sessionId) {
@@ -64,6 +67,8 @@ function registerMessages(sock, sessionId) {
                 }
 
                 const traceId = message.key.id;
+
+                salud.marcarMensajeRecibido(sessionId);
 
                 // Mismo mensaje entregado dos veces a este proceso (en vuelo
                 // o ya decidido): se descarta antes de tocar nada.
@@ -140,9 +145,13 @@ function registerMessages(sock, sessionId) {
 
                 console.log(`✅ DESPUÉS messageHandler [${traceId}]`);
 
+                salud.marcarProcesado(sessionId);
+
             }
 
             catch (err) {
+
+                salud.marcarErrorProceso(sessionId, err);
 
                 console.error(`❌ Error procesando mensaje [${message.key.id}]`);
 
@@ -162,6 +171,8 @@ function registerMessages(sock, sessionId) {
     });
 
     cicloMensaje.marcarListenerNegocio(sock, true);
+
+    salud.marcarListener(sessionId, sock);
 
     console.log(`
 ═══════════════════════════════════════
@@ -199,12 +210,23 @@ function unregisterMessages(sessionId) {
 
     cicloMensaje.marcarListenerNegocio(data.sock, false);
 
+    salud.marcarListener(sessionId, null);
+
+}
+
+// Socket sobre el que está registrado el listener de negocio (o null).
+function socketConListener(sessionId) {
+
+    return listeners.get(sessionId)?.sock || null;
+
 }
 
 module.exports = {
 
     registerMessages,
 
-    unregisterMessages
+    unregisterMessages,
+
+    socketConListener
 
 };

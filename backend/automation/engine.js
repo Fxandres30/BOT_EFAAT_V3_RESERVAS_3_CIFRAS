@@ -375,6 +375,20 @@ function construirVariablesDesdeEvento(evento) {
         variables.premio = evento.premios[0].premio;
     }
 
+    // CORRECCIÓN (errores "variables sin resolver: loteria, fecha"): el
+    // catálogo global de variables (shared/variables/catalogoVariables.js)
+    // ofrece {evento}/{loteria} (alias del nombre del evento: no existe otra
+    // fuente para "lotería"), {fecha} y {hora}, pero este motor no los
+    // conocía y bloqueaba el envío. Mismos datos reales que usa el bot
+    // (bot/ai/contextBuilder.js); si el evento no los tiene, la variable
+    // sigue faltando y el mensaje NO se envía (nunca se inventa). La hora
+    // ya existe aquí como {hora_cierre}.
+    if (evento.nombre_evento != null) {
+        variables.evento = evento.nombre_evento;
+        variables.loteria = evento.nombre_evento;
+    }
+    if (evento.fecha_evento != null) variables.fecha = evento.fecha_evento;
+
     return variables;
 
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { botApiHeaders } from "@/lib/botApi";
+import { botApiHeadersDe } from "@/lib/botApi";
 
 const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
 
@@ -11,7 +11,7 @@ export async function POST(req: Request) {
 
         method: "POST",
 
-        headers: botApiHeaders({
+        headers: botApiHeadersDe(req, {
 
             "Content-Type": "application/json"
 

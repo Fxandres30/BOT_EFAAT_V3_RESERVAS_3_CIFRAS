@@ -1,4 +1,5 @@
 import type { Contacto } from "@/components/contactos/types";
+import { fetchConSesion } from "@/lib/fetchConSesion";
 
 export interface ResultadoContactos {
     contactos: Contacto[];
@@ -12,7 +13,7 @@ export interface ResultadoContactos {
 // backend directo desde el navegador).
 export async function obtenerContactos(usuarioId: string): Promise<ResultadoContactos> {
 
-    const res = await fetch(`/api/contactos?usuarioId=${encodeURIComponent(usuarioId)}`);
+    const res = await fetchConSesion(`/api/contactos?usuarioId=${encodeURIComponent(usuarioId)}`);
 
     const data = await res.json();
 

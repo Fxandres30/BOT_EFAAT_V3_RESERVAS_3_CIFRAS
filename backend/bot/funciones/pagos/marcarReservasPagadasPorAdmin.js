@@ -81,6 +81,15 @@ function calcularCamposIdentidadARellenar(filasExistentes, usuario) {
 
 }
 
+// 23502 = not_null_violation de Postgres, sobre compradores_semanales.whatsapp.
+function esErrorTriggerCompradoresSinWhatsapp(error) {
+
+    const texto = `${error?.message || ""} ${error?.details || ""}`;
+
+    return error?.code === "23502" && /compradores_semanales/i.test(texto) && /whatsapp/i.test(texto);
+
+}
+
 async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) {
 
     if (!evento?.tabla || !evento?.id || !usuario?.id) {
@@ -212,6 +221,20 @@ async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) 
 
     if (errorUpdate) {
 
+        // Causa conocida (producción 2026-10): el trigger heredado que copia
+        // el pago a compradores_semanales exige whatsapp NOT NULL. Un cliente
+        // identificado solo por LID no tiene teléfono: Postgres rechaza el
+        // UPDATE entero y el pago NO queda guardado. No se inventa ningún
+        // teléfono; se deja el motivo exacto para el log y el diagnóstico
+        // (arreglo del trigger: docs/activacion/compradores_semanales_whatsapp.md).
+        if (esErrorTriggerCompradoresSinWhatsapp(errorUpdate)) {
+
+            console.error("❌ [PAGO-STICKER] Pago NO guardado: el cliente no tiene teléfono (solo LID) y el trigger de compradores_semanales exige whatsapp. Requiere corregir ese trigger en la base; la reserva sigue 'reservado'.");
+
+            return { estado: "error", motivo: "compradores_semanales_sin_whatsapp", actualizadas: [] };
+
+        }
+
         console.error("❌ [PAGO-STICKER] Error marcando pagado:", errorUpdate.message);
 
         return { estado: "error", actualizadas: [] };
@@ -266,4 +289,4 @@ async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) 
 
 }
 
-module.exports = { marcarReservasPagadasPorAdmin };
+module.exports = { marcarReservasPagadasPorAdmin, esErrorTriggerCompradoresSinWhatsapp };

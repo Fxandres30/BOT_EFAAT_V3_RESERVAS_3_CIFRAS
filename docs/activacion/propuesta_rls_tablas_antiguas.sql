@@ -27,7 +27,10 @@
 -- en las 4 tablas que usa el panel + nada para anon. Probada en Postgres
 -- real en memoria: backend/tests/sorteos/propuestaRls.test.js.
 --
--- PARTE B (NO incluida): compradores_semanales. Un TRIGGER heredado la
+-- PARTE B (archivo aparte: parte_b_compradores_semanales.sql) y PARTE C
+-- (parte_c_tablas_legado.sql, otras ~20 tablas heredadas que anon lee).
+--
+-- Antecedente de la Parte B: compradores_semanales. Un TRIGGER heredado la
 -- escribe al pasar una reserva a 'pagado' (ver migración 016) y
 -- probablemente se ejecuta con el rol de quien paga (el panel = authenticated).
 -- Quitarle permisos o activar RLS sin conocer ese trigger podría hacer
@@ -61,6 +64,31 @@
 -- ==========================================================================
 
 begin;
+
+-- -------------------------------------------- guardia: políticas ajenas ---
+-- Las políticas permisivas se combinan con OR: una política abierta que ya
+-- exista anularía las de abajo. Si hay CUALQUIER política distinta de las de
+-- esta propuesta, se aborta la transacción entera (no se aplica nada) y se
+-- muestra cuáles son, para revisarlas y añadir su DROP POLICY aquí.
+do $$
+declare
+    ajenas text;
+begin
+    select string_agg(format('%s."%s" (%s, roles %s, using %s)', tablename, policyname, cmd, array_to_string(roles, ','), coalesce(qual, '-')), '; ')
+      into ajenas
+    from pg_policies
+    where schemaname = 'public'
+      and tablename in ('reservas_dos_cifras', '5k_15k_reservas_2_cifras', 'eventos_bot', 'sesiones')
+      and policyname not in (
+          'panel lee sus reservas', 'panel crea su tabla', 'panel modifica sus reservas',
+          'panel lee sus eventos',
+          'panel lee sus sesiones', 'panel crea sus sesiones', 'panel modifica sus sesiones', 'panel borra sus sesiones'
+      );
+
+    if ajenas is not null then
+        raise exception 'Parte A abortada: hay políticas RLS no previstas: %', ajenas;
+    end if;
+end $$;
 
 -- ------------------------------------------------- reservas (2 tablas) ---
 do $$
@@ -111,10 +139,21 @@ commit;
 -- sesión del cliente, el panel debe seguir mostrando Tablas, Eventos y
 -- Sesiones igual que antes.
 --
--- VUELTA ATRÁS (si el panel deja de mostrar datos):
+-- VUELTA ATRÁS (si el panel deja de mostrar datos). Una sola transacción:
+--   begin;
 --   alter table public.reservas_dos_cifras disable row level security;
 --   alter table public."5k_15k_reservas_2_cifras" disable row level security;
 --   alter table public.eventos_bot disable row level security;
 --   alter table public.sesiones disable row level security;
---   -- y restaurar los grants de anon que tenían (guardados antes).
+--   -- Restaurar los privilegios de anon EXACTOS guardados antes con:
+--   --   select table_name, string_agg(privilege_type, ', ' order by privilege_type)
+--   --   from information_schema.role_table_grants
+--   --   where table_schema = 'public' and grantee = 'anon'
+--   --     and table_name in ('eventos_bot','reservas_dos_cifras','5k_15k_reservas_2_cifras','sesiones')
+--   --   group by 1;
+--   -- (el valor por defecto de Supabase es ALL):
+--   grant all on table public.reservas_dos_cifras, public."5k_15k_reservas_2_cifras",
+--                      public.eventos_bot, public.sesiones to anon;
+--   commit;
+-- Las políticas creadas pueden quedarse: con RLS desactivado no tienen efecto.
 -- ==========================================================================

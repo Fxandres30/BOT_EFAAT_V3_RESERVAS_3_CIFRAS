@@ -1,4 +1,5 @@
 import type { PerfilContacto } from "@/components/contactos/types";
+import { fetchConSesion } from "@/lib/fetchConSesion";
 
 // Proxy hacia GET /api/contactos/perfil -> backend GET /contactos/:id.
 export async function obtenerPerfilContacto(
@@ -6,7 +7,7 @@ export async function obtenerPerfilContacto(
     usuarioId: string
 ): Promise<PerfilContacto | null> {
 
-    const res = await fetch(
+    const res = await fetchConSesion(
         `/api/contactos/perfil?id=${encodeURIComponent(contactoId)}&usuarioId=${encodeURIComponent(usuarioId)}`
     );
 

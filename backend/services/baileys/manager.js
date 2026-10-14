@@ -112,6 +112,22 @@ if (!sesion) {
 
         await this._cancelarActivacionPendiente(sessionId, "lease ocupado por otra instancia");
 
+        // CORRECCIÓN: antes no se reintentaba NUNCA. Tras un reinicio de PM2
+        // el lease del proceso anterior sigue vigente unos segundos (TTL), así
+        // que la sesión quedaba sin socket hasta reconectar a mano. Ahora se
+        // vuelve a intentar cuando el lease vence. Si otra instancia viva lo
+        // sigue renovando, el reintento vuelve a fallar sin crear ningún socket
+        // (espera en reserva, nunca un socket duplicado).
+        // Solo cuando el lease es de un proceso anterior de ESTA MISMA
+        // máquina (reinicio de PM2): el de otra máquina (LOCAL <-> VPS) nunca
+        // se toma solo — eso sigue requiriendo Conectar desde el panel.
+        if (!resultadoLease.error && lease.esDeEstaMaquina(resultadoLease.ownerId)) {
+            this._programarReintentoLease(sessionId, resultadoLease.leaseUntil);
+        } else if (resultadoLease.error) {
+            // Sin respuesta de Supabase no se sabe de quién es: reintentar.
+            this._programarReintentoLease(sessionId, null);
+        }
+
         return LEASE_NO_DISPONIBLE;
 
     }
@@ -231,9 +247,69 @@ if (!sesion) {
 
     }
 
+    // Reintento de adquisición del lease (ver start()). Uno por sesión.
+    _programarReintentoLease(sessionId, leaseUntil) {
+
+        if (!this._reintentosLease) this._reintentosLease = new Map();
+        if (this._reintentosLease.has(sessionId)) return;
+
+        const vence = leaseUntil ? new Date(leaseUntil).getTime() : Date.now();
+        const espera = Math.min(Math.max(vence - Date.now(), 0) + 2000 + Math.floor(Math.random() * 1000), 60000);
+
+        console.log(`⏳ [SESSION] ${sessionId}: se reintentará adquirir el lease en ${Math.round(espera / 1000)} s`);
+
+        const temporizador = setTimeout(async () => {
+
+            this._reintentosLease.delete(sessionId);
+
+            if (this.has(sessionId)) return;
+
+            try {
+
+                // Solo si la sesión SIGUE debiendo estar conectada (mismo
+                // criterio que restaurarSesiones en server.js). Una sesión
+                // desconectada a propósito nunca se levanta sola.
+                const { data } = await supabase.from("sesiones").select("estado, activa").eq("id", sessionId).maybeSingle();
+
+                if (!data || data.estado !== "conectado") return;
+
+                // Era la activa: se vuelve a pedir su activación (start() la
+                // canceló al no poder adquirir el lease); se activa al llegar
+                // a open, nunca antes.
+                if (data.activa === true && !this.activeSession) {
+                    await this.solicitarActivacion(sessionId, { permitirSinSocket: true });
+                }
+
+                await this.start(sessionId);
+
+            } catch (err) {
+
+                console.error(`❌ [SESSION] reintento de lease falló para ${sessionId}:`, err?.message);
+                this._programarReintentoLease(sessionId, null);
+
+            }
+
+        }, espera);
+
+        if (typeof temporizador.unref === "function") temporizador.unref();
+
+        this._reintentosLease.set(sessionId, temporizador);
+
+    }
+
+    _cancelarReintentoLease(sessionId) {
+        const t = this._reintentosLease?.get(sessionId);
+        if (t) {
+            clearTimeout(t);
+            this._reintentosLease.delete(sessionId);
+        }
+    }
+
     async stop(sessionId) {
 
         console.log("🔴 Deteniendo sesión:", sessionId);
+
+        this._cancelarReintentoLease(sessionId);
 
         // Parada manual explícita: si había un reintento de reconexión
         // temporal pendiente (desconectado.js) para esta sesión, se

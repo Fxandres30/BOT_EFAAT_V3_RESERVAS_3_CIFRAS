@@ -18,6 +18,13 @@ const supabase = require("./lib/supabase");
 const manager =
 require("./services/baileys/manager");
 
+// Al detener el proceso (PM2), suelta los leases de las sesiones de este
+// proceso para que el siguiente arranque las restaure sin esperar el TTL.
+require("./services/baileys/apagadoOrdenado").instalarApagadoOrdenado({
+    manager,
+    lease: require("./services/baileys/lease")
+});
+
 const app = express();
 
 app.use(cors());

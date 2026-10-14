@@ -1,3 +1,5 @@
+import { fetchConSesion } from "@/lib/fetchConSesion";
+
 export interface ResultadoCompartir {
     enviado: boolean;
     motivo?: string;
@@ -8,7 +10,7 @@ export interface ResultadoCompartir {
 // nunca una implementación paralela.
 export async function compartirTabla(precio: number, usuarioId: string): Promise<ResultadoCompartir> {
 
-    const res = await fetch("/api/tablas/compartir", {
+    const res = await fetchConSesion("/api/tablas/compartir", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ precio, usuarioId })

@@ -6,6 +6,7 @@ import { Plus, Smartphone } from "lucide-react";
 import { getUser } from "@/services/auth/getUser";
 import { createSession } from "@/services/sessions/createSession";
 import useSessions from "@/hooks/useSessions";
+import useSaludSesiones from "@/hooks/useSaludSesiones";
 
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -32,6 +33,7 @@ export default function SessionsPage() {
   }, []);
 
   const { sessions, load } = useSessions(usuarioId);
+  const { salud, error: errorSalud } = useSaludSesiones(!!usuarioId);
 
   async function agregarSesion() {
     if (!usuarioId) {
@@ -57,6 +59,14 @@ export default function SessionsPage() {
           </Button>
         }
       />
+
+      {usuarioId && errorSalud && (
+        <p className={styles.avisoSalud} role="status">
+          No se pudo leer el estado real del bot ({errorSalud}). Se muestra el
+          estado guardado en la base, que puede no reflejar si el bot está
+          procesando mensajes.
+        </p>
+      )}
 
       {!usuarioId ? (
         <div className={styles.grid}>
@@ -86,6 +96,7 @@ export default function SessionsPage() {
               estado={session.estado}
               principal={session.principal}
               activa={session.activa}
+              salud={salud[session.id] || null}
               onRefresh={load}
             />
           ))}

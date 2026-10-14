@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
-import { botApiHeaders } from "@/lib/botApi";
+import { botApiHeadersDe } from "@/lib/botApi";
 
 const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
 
 // Proxy delgado hacia GET /sessions/active/estado-backfill-contactos del
 // backend — solo lectura, para hacer polling del progreso del escaneo sin
 // volver a dispararlo.
-export async function GET() {
+export async function GET(req: Request) {
 
     try {
 
         const res = await fetch(`${API}/sessions/active/estado-backfill-contactos`, {
-            headers: botApiHeaders()
+            headers: botApiHeadersDe(req)
         });
 
         const data = await res.json();

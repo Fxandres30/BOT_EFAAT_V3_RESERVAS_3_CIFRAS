@@ -1,5 +1,7 @@
+import { fetchConSesion } from "@/lib/fetchConSesion";
+
 export async function setActiveSession(sessionId: string) {
-    const res = await fetch("/api/sessions/active", {
+    const res = await fetchConSesion("/api/sessions/active", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",

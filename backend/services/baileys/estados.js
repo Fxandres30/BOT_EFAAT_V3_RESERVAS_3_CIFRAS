@@ -8,6 +8,9 @@ const cicloMensaje = require("../../diagnostico/cicloMensaje");
 
 const cicloSocket = require("./cicloSocket");
 
+// Señal de salud real para el panel (solo memoria).
+const salud = require("./salud");
+
 function registrarEstados(
     sock,
     sessionId,
@@ -94,6 +97,8 @@ function registrarEstados(
 
                 if (connection === "open") {
 
+                    salud.marcarConexion(sessionId, "open");
+
                     await conectado(
                         sessionId,
                         sock,
@@ -114,6 +119,8 @@ function registrarEstados(
 
                     const statusCode =
                         lastDisconnect?.error?.output?.statusCode;
+
+                    salud.marcarConexion(sessionId, "close");
 
                     await desconectado(
                         sessionId,

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { botApiHeadersDe } from "@/lib/botApi";
 
 const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
 
@@ -14,7 +15,7 @@ export async function GET(req: Request) {
         return NextResponse.json({ success: false, error: "Falta usuarioId." }, { status: 400 });
     }
 
-    const res = await fetch(`${API}/bloqueados?usuarioId=${encodeURIComponent(usuarioId)}`);
+    const res = await fetch(`${API}/bloqueados?usuarioId=${encodeURIComponent(usuarioId)}`, { headers: botApiHeadersDe(req) });
     const data = await res.json();
 
     return NextResponse.json(data, { status: res.status });
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
 
         const res = await fetch(`${API}/bloqueados`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: botApiHeadersDe(req, { "Content-Type": "application/json" }),
             body: JSON.stringify(body)
         });
 

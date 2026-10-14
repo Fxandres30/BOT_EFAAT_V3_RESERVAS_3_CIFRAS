@@ -1,6 +1,8 @@
+import { fetchConSesion } from "@/lib/fetchConSesion";
+
 export async function disconnectSession(sessionId: string) {
 
-    const res = await fetch("/api/sessions/disconnect", {
+    const res = await fetchConSesion("/api/sessions/disconnect", {
 
         method: "POST",
 

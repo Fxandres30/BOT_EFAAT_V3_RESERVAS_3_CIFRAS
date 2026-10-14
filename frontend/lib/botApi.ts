@@ -11,3 +11,15 @@ export function botApiHeaders(extra: Record<string, string> = {}): Record<string
     return token ? { ...extra, "x-service-token": token } : { ...extra };
 
 }
+
+// Igual que botApiHeaders, y además reenvía el "Authorization: Bearer" de la
+// sesión de Supabase del navegador: el backend saca de ahí al usuario y
+// comprueba que los datos pedidos sean suyos (nunca de un usuarioId enviado
+// por el navegador).
+export function botApiHeadersDe(req: Request, extra: Record<string, string> = {}): Record<string, string> {
+
+    const autorizacion = req.headers.get("authorization");
+
+    return botApiHeaders(autorizacion ? { ...extra, Authorization: autorizacion } : extra);
+
+}

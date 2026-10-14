@@ -1,0 +1,50 @@
+.salud {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--efaat-border);
+  background: var(--efaat-surface-muted);
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+}
+
+.alerta {
+  border-color: var(--efaat-warning);
+  background: var(--efaat-warning-soft);
+}
+
+.grave {
+  border-color: var(--efaat-error);
+  background: var(--efaat-error-soft);
+}
+
+.causas {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--efaat-text);
+}
+
+.accion {
+  margin: 0;
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-text);
+}
+
+.tiempos {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  margin: 0;
+}
+
+.tiempos dt {
+  color: var(--efaat-text-muted);
+}
+
+.tiempos dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

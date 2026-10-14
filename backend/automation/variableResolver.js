@@ -10,14 +10,19 @@
 // enviarMensajeApertura, y Master Spec — "no inventar datos del sorteo").
 // ==========================================================================
 
-const PATRON_VARIABLE = /\{([a-zA-Z0-9_]+)\}/g;
+// Acepta {nombre} y también {{nombre}} (el formato del resto del panel):
+// antes "{{loteria}}" se leía como "{loteria}" y dejaba llaves sueltas en
+// el mensaje del grupo.
+const PATRON_VARIABLE = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}|\{([a-zA-Z0-9_]+)\}/g;
 
 // resolverVariables(texto, datos) -> { texto, completo, faltantes }
 function resolverVariables(texto, datos = {}) {
 
     const faltantes = [];
 
-    const resultado = String(texto ?? "").replace(PATRON_VARIABLE, (coincidenciaCompleta, nombreVariable) => {
+    const resultado = String(texto ?? "").replace(PATRON_VARIABLE, (coincidenciaCompleta, dobles, simples) => {
+
+        const nombreVariable = dobles || simples;
 
         const tieneValor =
             Object.prototype.hasOwnProperty.call(datos, nombreVariable) &&

@@ -11,6 +11,12 @@
 
 const router = require("express").Router();
 
+// SEGURIDAD (2026-10): el usuario sale del token de Supabase validado por
+// exigirUsuario (req.usuarioId), NUNCA del usuarioId que manda el navegador
+// (antes cualquiera podía pedir los datos de otro cliente cambiando ese
+// parámetro). Un usuarioId del cliente, si llega, se ignora.
+const { exigirUsuario } = require("../middleware/autenticacionUsuario");
+
 const {
     crearBloqueo,
     desbloquear,
@@ -19,6 +25,7 @@ const {
 } = require("../bot/funciones/bloqueo/bloqueadosRepo");
 
 const manager = require("../services/baileys/manager");
+const { perteneceAlUsuario } = require("../middleware/autorizacionSesiones");
 
 // Bloqueo NATIVO de WhatsApp (sock.updateBlockStatus) — best-effort, NUNCA
 // del que depende el bloqueo real: el bloqueo EFAAT (tabla "bloqueados" +
@@ -35,7 +42,7 @@ function construirJidNativo({ telefono, lid, jid }) {
 
 }
 
-async function aplicarBloqueoNativo(bloqueado, accion) {
+async function aplicarBloqueoNativo(bloqueado, accion, usuarioId) {
 
     try {
 
@@ -44,6 +51,10 @@ async function aplicarBloqueoNativo(bloqueado, accion) {
 
         const sock = manager.getActiveSocket();
         if (!sock || typeof sock.updateBlockStatus !== "function") return;
+
+        // Solo con el WhatsApp del MISMO cliente: la sesión activa del
+        // proceso puede ser de otro cliente y no debe bloquear por él.
+        if (!(await perteneceAlUsuario(manager.getActiveSession(), usuarioId))) return;
 
         await sock.updateBlockStatus(jidNativo, accion);
 
@@ -67,15 +78,11 @@ function statusParaMotivo(motivo) {
 
 // GET /bloqueados?usuarioId=... — lista completa (activos e históricos)
 // para el panel "Bloqueados".
-router.get("/", async (req, res) => {
+router.get("/", exigirUsuario, async (req, res) => {
 
     try {
 
-        const { usuarioId } = req.query;
-
-        if (!usuarioId) {
-            return res.status(400).json({ success: false, error: "Falta usuarioId." });
-        }
+        const usuarioId = req.usuarioId;
 
         const resultado = await listarBloqueados(usuarioId);
 
@@ -96,15 +103,12 @@ router.get("/", async (req, res) => {
 
 // GET /bloqueados/contacto?usuarioId=...&telefono=...&lid=... — para el
 // badge "🚫 CONTACTO BLOQUEADO" del detalle de contacto.
-router.get("/contacto", async (req, res) => {
+router.get("/contacto", exigirUsuario, async (req, res) => {
 
     try {
 
-        const { usuarioId, telefono, lid } = req.query;
-
-        if (!usuarioId) {
-            return res.status(400).json({ success: false, error: "Falta usuarioId." });
-        }
+        const usuarioId = req.usuarioId;
+        const { telefono, lid } = req.query;
 
         const resultado = await obtenerBloqueoDeContacto(usuarioId, { telefono: telefono || null, lid: lid || null });
 
@@ -126,15 +130,12 @@ router.get("/contacto", async (req, res) => {
 // POST /bloqueados — "🚫 BLOQUEAR CONTACTO". Body: { usuarioId, telefono?,
 // lid?, jid?, nombre?, motivo?, bloqueadoPor? } — al menos uno de
 // telefono/lid/jid.
-router.post("/", async (req, res) => {
+router.post("/", exigirUsuario, async (req, res) => {
 
     try {
 
-        const { usuarioId, telefono, lid, jid, nombre, motivo, bloqueadoPor } = req.body || {};
-
-        if (!usuarioId) {
-            return res.status(400).json({ ok: false, motivo: "falta_usuario_id" });
-        }
+        const usuarioId = req.usuarioId;
+        const { telefono, lid, jid, nombre, motivo, bloqueadoPor } = req.body || {};
 
         const resultado = await crearBloqueo({ usuarioId, telefono, lid, jid, nombre, motivo, bloqueadoPor });
 
@@ -142,7 +143,7 @@ router.post("/", async (req, res) => {
             return res.status(statusParaMotivo(resultado.motivo)).json(resultado);
         }
 
-        await aplicarBloqueoNativo(resultado.bloqueado, "block");
+        await aplicarBloqueoNativo(resultado.bloqueado, "block", usuarioId);
 
         res.json(resultado);
 
@@ -157,16 +158,12 @@ router.post("/", async (req, res) => {
 
 // POST /bloqueados/:id/desbloquear — "🔓 DESBLOQUEAR CONTACTO". Body:
 // { usuarioId }.
-router.post("/:id/desbloquear", async (req, res) => {
+router.post("/:id/desbloquear", exigirUsuario, async (req, res) => {
 
     try {
 
         const { id } = req.params;
-        const { usuarioId } = req.body || {};
-
-        if (!usuarioId) {
-            return res.status(400).json({ ok: false, motivo: "falta_usuario_id" });
-        }
+        const usuarioId = req.usuarioId;
 
         const resultado = await desbloquear(id, usuarioId);
 
@@ -174,7 +171,7 @@ router.post("/:id/desbloquear", async (req, res) => {
             return res.status(statusParaMotivo(resultado.motivo)).json(resultado);
         }
 
-        await aplicarBloqueoNativo(resultado.bloqueado, "unblock");
+        await aplicarBloqueoNativo(resultado.bloqueado, "unblock", usuarioId);
 
         res.json(resultado);
 

@@ -7,6 +7,12 @@
 
 const router = require("express").Router();
 
+// SEGURIDAD (2026-10): el usuario sale del token de Supabase validado por
+// exigirUsuario (req.usuarioId), NUNCA del usuarioId que manda el navegador
+// (antes cualquiera podía pedir los datos de otro cliente cambiando ese
+// parámetro). Un usuarioId del cliente, si llega, se ignora.
+const { exigirUsuario } = require("../middleware/autenticacionUsuario");
+
 const supabase = require("../lib/supabase");
 const { obtenerConfiguracion } = require("../bot/funciones/eventos/configEvento");
 const tablaEventoRepo = require("../automation/repo/tablaEvento");
@@ -78,11 +84,12 @@ router.get("/imprimir-datos", async (req, res) => {
 // POST /tablas/compartir — { precio, usuarioId } — botón manual del panel.
 // Resuelve el evento REAL activo de esa tabla para ese usuario y ejecuta
 // exactamente la misma función que usa la automatización (Scheduler).
-router.post("/compartir", async (req, res) => {
+router.post("/compartir", exigirUsuario, async (req, res) => {
 
     try {
 
-        const { precio, usuarioId } = req.body || {};
+        const usuarioId = req.usuarioId;
+        const { precio } = req.body || {};
 
         if (!precio || !usuarioId) {
             return res.status(400).json({ enviado: false, motivo: "faltan_parametros" });

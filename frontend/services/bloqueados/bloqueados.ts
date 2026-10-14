@@ -1,4 +1,5 @@
 import type { Bloqueado } from "@/components/bloqueados/types";
+import { fetchConSesion } from "@/lib/fetchConSesion";
 
 // Fase "Bloqueo automático de WhatsApp" — YA funcional. Reemplaza la
 // versión anterior (solo lectura directa a Supabase, tabla garantizada en
@@ -9,7 +10,7 @@ import type { Bloqueado } from "@/components/bloqueados/types";
 // Proxy hacia GET /api/bloqueados -> backend GET /bloqueados.
 export async function listarBloqueados(usuarioId: string): Promise<Bloqueado[]> {
 
-    const res = await fetch(`/api/bloqueados?usuarioId=${encodeURIComponent(usuarioId)}`);
+    const res = await fetchConSesion(`/api/bloqueados?usuarioId=${encodeURIComponent(usuarioId)}`);
     const data = await res.json();
 
     if (!res.ok || !data.success) {
@@ -41,7 +42,7 @@ export interface ResultadoBloqueo {
 // POST /bloqueados.
 export async function crearBloqueo(payload: CrearBloqueoPayload): Promise<ResultadoBloqueo> {
 
-    const res = await fetch("/api/bloqueados", {
+    const res = await fetchConSesion("/api/bloqueados", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -55,7 +56,7 @@ export async function crearBloqueo(payload: CrearBloqueoPayload): Promise<Result
 // -> backend POST /bloqueados/:id/desbloquear.
 export async function desbloquear(id: string, usuarioId: string): Promise<ResultadoBloqueo> {
 
-    const res = await fetch("/api/bloqueados/desbloquear", {
+    const res = await fetchConSesion("/api/bloqueados/desbloquear", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, usuarioId })
@@ -76,7 +77,7 @@ export async function obtenerBloqueoDeContacto(
     if (telefono) params.set("telefono", telefono);
     if (lid) params.set("lid", lid);
 
-    const res = await fetch(`/api/bloqueados/contacto?${params.toString()}`);
+    const res = await fetchConSesion(`/api/bloqueados/contacto?${params.toString()}`);
     const data = await res.json();
 
     if (!res.ok || !data.success) return null;

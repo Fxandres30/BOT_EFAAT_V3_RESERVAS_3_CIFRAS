@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { botApiHeadersDe } from "@/lib/botApi";
 
 const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
 
@@ -15,7 +16,8 @@ export async function GET(req: Request) {
     }
 
     const res = await fetch(
-        `${API}/contactos/${encodeURIComponent(id)}?usuarioId=${encodeURIComponent(usuarioId)}`
+        `${API}/contactos/${encodeURIComponent(id)}?usuarioId=${encodeURIComponent(usuarioId)}`,
+        { headers: botApiHeadersDe(req) }
     );
 
     const data = await res.json();

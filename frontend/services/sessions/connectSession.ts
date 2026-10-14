@@ -1,6 +1,8 @@
+import { fetchConSesion } from "@/lib/fetchConSesion";
+
 export async function connectSession(sessionId: string) {
 
-    const res = await fetch(
+    const res = await fetchConSesion(
 
         "/api/sessions/connect",
 

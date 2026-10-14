@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { botApiHeaders } from "@/lib/botApi";
+import { botApiHeadersDe } from "@/lib/botApi";
 
 export async function POST(req: Request) {
     try {
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
 
         const res = await fetch(`${BOT_API_URL}/sessions/connect`, {
             method: "POST",
-            headers: botApiHeaders({
+            headers: botApiHeadersDe(req, {
                 "Content-Type": "application/json"
             }),
             body: JSON.stringify({

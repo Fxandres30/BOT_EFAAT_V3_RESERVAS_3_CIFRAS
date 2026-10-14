@@ -1,4 +1,5 @@
 import { getSessions } from "@/services/sessions/getSessions";
+import { fetchConSesion } from "@/lib/fetchConSesion";
 
 // Grupos REALES de WhatsApp — Fase 4D, corregido tras auditoría (grupos
 // fantasma/ausentes en /automatizacion/grupos).
@@ -53,7 +54,7 @@ export async function obtenerGruposDisponibles(usuarioId: string): Promise<Sesio
 
             try {
 
-                const res = await fetch(`/api/sessions/grupos-disponibles?id=${encodeURIComponent(sesion.id)}`);
+                const res = await fetchConSesion(`/api/sessions/grupos-disponibles?id=${encodeURIComponent(sesion.id)}`);
                 const data = await res.json();
 
                 if (!data.success) {

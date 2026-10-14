@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { botApiHeadersDe } from "@/lib/botApi";
 
 const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
 
@@ -16,7 +17,7 @@ export async function GET(req: Request) {
         return NextResponse.json({ success: false, error: "Falta el parámetro usuarioId." }, { status: 400 });
     }
 
-    const res = await fetch(`${API}/contactos?usuarioId=${encodeURIComponent(usuarioId)}`);
+    const res = await fetch(`${API}/contactos?usuarioId=${encodeURIComponent(usuarioId)}`, { headers: botApiHeadersDe(req) });
 
     const data = await res.json();
 

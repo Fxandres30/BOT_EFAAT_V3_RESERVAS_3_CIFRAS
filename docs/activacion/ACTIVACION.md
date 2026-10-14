@@ -12,10 +12,13 @@ Resultados de la auditoría de solo lectura. Los identificadores completos no se
   from public.eventos_bot;
   ```
   **No despliegues ni apliques nada con sorteos activos.**
-- **`reservas_dos_cifras`** conservaba datos de un sorteo ya cerrado (68 pagados y 17 reservados) más 1 reserva con otra identidad.
-  - Ninguna fila de `eventos_bot` apunta ya a ese sorteo: las reservas quedaron huérfanas.
-  - El próximo sorteo de ≤ $2.000 solo tendría 14 números libres, y el panel de sorteos programados lo bloquearía.
-  - Requiere que **decidas** si reinicias esa tabla desde el panel (🔐).
+- **Reservas de sorteos ya cerrados** (revisado el 14/10 a las 13:40):
+  - `reservas_dos_cifras` ya está limpia: todas sus filas reservadas o pagadas son del sorteo activo.
+  - `5k_15k_reservas_2_cifras` tiene **6** filas reservadas de sorteos ya jugados (Antioqueñita 14/10 y Cruz Roja 13/10).
+  - **3 de ellas se pagaron hoy y algo externo al código las devolvió a «reservado».**
+  - Detalle, investigación y propuesta (archivar sin borrar): `reservas_otro_sorteo.md` (🔐).
+- **Migraciones:** **023 y 024 ya están aplicadas en producción** (existen las columnas `cierre_*` y las 4 tablas de sorteos programados, vacías). **022 no** (sus tablas no existen).
+- **Exposición anon:** además de las 5 tablas conocidas, anon lee **~20 tablas heredadas** con datos personales (`parte_c_tablas_legado.sql`).
 - **Clientes:** 2 con sesiones (uno con todos los datos y otro con 1 sesión desconectada y sin datos).
   - Ninguna fila tiene `usuario_id` nulo.
   - Cada tabla física tiene exactamente una cuadrícula completa (100 números únicos) del cliente principal.
@@ -28,26 +31,43 @@ Resultados de la auditoría de solo lectura. Los identificadores completos no se
 
 ## 1. Seguridad urgente (independiente del resto) 🔐
 
-1. Ejecuta las consultas de solo lectura del encabezado de `propuesta_rls_tablas_antiguas.sql`: `usuario_id` nulos (deben ser 0) y políticas actuales.
-2. Si hay políticas permisivas abiertas, añádelas al bloque como `drop policy`.
-3. Aplica la **Parte A** (una sola transacción).
-4. Comprobación posterior:
-   - con la clave anon y sin sesión, las 4 tablas deben responder 0 filas o permiso denegado;
+Cada paso es una transacción independiente. Si uno falla, se revierte entero y **no** sigues con el siguiente.
+
+| Orden | Archivo / bloque | Qué hace | Riesgo |
+|---|---|---|---|
+| 1 | `propuesta_rls_tablas_antiguas.sql` (Parte A) | RLS «solo lo propio» en reservas ×2, `eventos_bot`, `sesiones`; anon sin acceso | Si existe una política no prevista, **aborta sola** y la nombra. Si una app externa escribe con anon en reservas, deja de poder hacerlo (ver `reservas_otro_sorteo.md`) |
+| 2 | `parte_b_compradores_semanales.sql` → **B1** | Pagos de clientes solo LID se guardan; no se suman a `compradores_semanales` | Mínimo: solo omite inserciones que hoy fallan |
+| 3 | `parte_b_compradores_semanales.sql` → **B2** | La función heredada pasa a `SECURITY DEFINER`; anon y authenticated pierden `compradores_semanales` | Aborta sola si no hay exactamente 1 función heredada o su dueño no tiene permisos |
+| 4 | `parte_c_tablas_legado.sql` → C1 (y C2 opcional) | anon pierde ~24 tablas heredadas y 4 RPC heredadas | Rompe cualquier app **externa** que las use con la clave anon |
+
+1. Ejecuta las consultas `ANTES` de cada archivo (solo lectura) y **guarda su resultado**: es la vuelta atrás exacta.
+2. Aplica en el orden de la tabla.
+3. Comprobación posterior:
+   - con la clave anon y sin sesión, las tablas afectadas deben responder 0 filas o permiso denegado;
    - con tu sesión, **Tablas**, **Eventos** y **Sesiones** deben verse igual que antes;
-   - un pago desde el panel debe seguir funcionando.
-5. Vuelta atrás: el bloque `VUELTA ATRÁS` del mismo archivo.
-6. **Parte B** (`compradores_semanales`): no aplicar hasta revisar la definición del trigger (consulta incluida en el archivo).
-7. **Rutas proxy del panel sin autenticación** (`/api/sessions/*`, `/api/contactos*`, `/api/bloqueados*`, `/api/tablas/compartir`): requieren un cambio de código que **no está hecho**. Ver «Decisiones» en el informe.
+   - un pago desde el panel (número de prueba) y uno por sticker deben seguir funcionando.
+4. Vuelta atrás: el bloque `VUELTA ATRÁS` de cada archivo, en orden inverso (C → B2 → B1 → A).
+5. Pruebas en Postgres real en memoria: `propuestaRls.test.js` (8/8) y `parteBCompradores.test.js` (10/10).
+6. **Rutas del panel sin autenticación** (`/sessions/*`, `/contactos`, `/bloqueados`, `/tablas/compartir`): **corregido en el código local** (sin desplegar).
+   - El backend exige el token de servicio y la sesión de Supabase del usuario.
+   - Cada sesión de WhatsApp solo la maneja su dueño.
+   - El `usuarioId` del navegador se ignora.
+   - Las rutas de administración BANN (`GET/POST /sessions`, `/sessions/:id`, `/qr`, `/reconnect`) exigen solo el token de servicio.
+   - Prueba: `backend/tests/seguridad/rutasMultiusuario.test.js` (15/15).
+   - **Consecuencia al desplegar:** backend y panel deben desplegarse **juntos** y con `SESSIONS_API_TOKEN` = `BOT_API_TOKEN` (sección 3). Si no, el panel recibe 401/503 en Sesiones, Contactos, Bloqueados y Compartir tabla.
+   - Las llamadas manuales por terminal a `/sessions/active/escaner-identidades` o `/diagnostico-telefonos-lid` ahora necesitan el token de servicio **y** un `Authorization: Bearer` de un usuario dueño de la sesión activa.
 
-## 2. Migraciones (en este orden) 🔐
+## 2. Migraciones 🔐
 
-Compatibilidad verificada con el esquema real: ninguna de sus tablas o columnas existe todavía, y todas sus dependencias sí (`eventos_bot`, `usuarios`, `grupos`, `grupos_autorizados`, `automation_actions`, `reservas_actividad`).
+Estado real (14/10): **023 y 024 ya están aplicadas**. Solo queda **022**.
 
-| Orden | Archivo | Qué hace | Verificación posterior | Vuelta atrás |
-|---|---|---|---|---|
-| 1 | `022_control_inactividad_miembros.sql` | Control de 15 días (en simulación) + trigger de compras en las 2 tablas de reservas | `docs/inactividad/022_verificacion.sql` | Bloque `REVERSIÓN` (primero quitar los triggers) |
-| 2 | `023_estado_cierre_por_grupo.sql` | 6 columnas opcionales de cierre en `eventos_bot` | Consulta de verificación del archivo | Bloque de reversión del archivo |
-| 3 | `024_sorteos_programados.sql` | Cuentas, plantillas, sorteos programados y su estado por grupo, con RLS | Consulta de verificación del archivo | `drop table` del archivo (no toca eventos ni reservas) |
+| Orden | Archivo | Estado | Qué hacer |
+|---|---|---|---|
+| — | `023_estado_cierre_por_grupo.sql` | Aplicada | Solo verificar con la consulta del archivo. No hace falta reaplicarla (si se hace, es idempotente). |
+| — | `024_sorteos_programados.sql` | Aplicada (anon recibe 401 en sus 4 tablas) | Verificar políticas con la consulta del archivo. |
+| 1 | `022_control_inactividad_miembros.sql` | **Pendiente** | Control de 15 días (en simulación) + trigger de compras en las 2 tablas de reservas. Verificación: `docs/inactividad/022_verificacion.sql`. Vuelta atrás: bloque `REVERSIÓN` (primero quitar los triggers). |
+
+La 022 es independiente de las Partes A/B/C. Su trigger es `SECURITY DEFINER` y atrapa sus propios errores, así que nunca bloquea un pago. Puede aplicarse antes o después de ellas, pero **en otra ventana**: así, si algo falla, sabrás cuál fue.
 
 Las tres son idempotentes y no modifican datos existentes. Están probadas en Postgres real en memoria:
 - `migracion022.test.js`: 15/15;
@@ -59,10 +79,10 @@ Si una falla a mitad de camino, la transacción del SQL Editor se revierte enter
 
 | Dónde | Variable | Para qué | Si falta |
 |---|---|---|---|
-| backend | `SESSIONS_API_TOKEN` | Token entre el panel y el backend (rutas `/sorteos`) | `/sorteos/*` responde **503** (falla cerrado) |
+| backend | `SESSIONS_API_TOKEN` | Token entre el panel y el backend (`/sorteos`, `/sessions`, `/contactos`, `/bloqueados`, `/tablas/compartir`) | Esas rutas responden **503** (falla cerrado): el panel no puede manejar sesiones |
 | backend | `INACTIVIDAD_MODO=simulacion` | Control de 15 días sin expulsar | Por defecto ya es simulación |
 | backend | (NO definir) `INACTIVIDAD_CONFIRMAR_EXPULSIONES` | — | — |
-| panel | `BOT_API_TOKEN` (= `SESSIONS_API_TOKEN`) | Lo envían los proxies | Las rutas `/sorteos` responden 401 |
+| panel | `BOT_API_TOKEN` (= `SESSIONS_API_TOKEN`) | Lo envían los proxies | Esas mismas rutas responden 401 |
 | panel | `BOT_API_URL` | Dirección del backend | Se usa `http://127.0.0.1:4000` |
 
 En local existen las tres primeras; **en el servidor no lo he podido comprobar**. Verifícalo así, sin mostrar valores:
@@ -84,8 +104,14 @@ pm2 env <APP> | grep -c SESSIONS_API_TOKEN        # si PM2 la inyecta
 
 ## 5. Comprobaciones posteriores
 
+- **Sesiones:** en `/sesiones`, cada tarjeta muestra el estado real: Saludable · escuchando, Conectada a WhatsApp (en espera), Conectando, Degradada (con causa y acción), Desconectada o Conflicto de lease. También muestra la hora de conexión, la del último mensaje y la del último procesado OK.
+  - Prueba controlada (en una ventana sin sorteos): `pm2 restart <APP>`. La sesión debe volver sola a «Saludable» en ≤ 30 s, sin pulsar Reconectar.
+  - Logs esperados: `🛑 [APAGADO] SIGINT: soltando 1 lease(s)` y, al arrancar, `🟢 [LEASE] adquirido`.
+- **Mensajes automáticos:** las plantillas con `{loteria}`, `{evento}` o `{fecha}` (o `{{...}}`) ya no se bloquean por «variables sin resolver».
+- **Pagos de clientes solo LID:** fallan hasta aplicar **B1** (`parte_b_compradores_semanales.sql`). El log ya lo dice explícitamente («Pago NO guardado: … solo LID»). Tras B1, el siguiente pago de un cliente solo LID debe quedar `pagado`.
+
 - **Cierre:** en el siguiente sorteo, los 3 grupos deben mostrar los **mismos** contadores (antes eran distintos: 27/30/32 pagados en el sorteo de hoy). Al pagar el último número, los grupos se cierran en ≤ 30 s. Con la migración 023, cada grupo muestra `cierre_estado = 'cerrado'`.
-- **Panel → Sorteos programados:** la página carga; crea un borrador de prueba en un grupo de pruebas, revisa la vista previa y **cancélalo** sin confirmarlo.
+- **Panel → Eventos → Crear sorteo** (o **Sorteos programados → Nuevo sorteo**): crea un borrador de prueba en un grupo de pruebas, revisa la vista previa y **cancélalo** sin confirmarlo.
 - **Inactividad:** sigue el runbook `docs/inactividad/RUNBOOK_022.md`.
 
 ## Vuelta atrás general

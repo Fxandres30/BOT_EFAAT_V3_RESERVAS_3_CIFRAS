@@ -8,12 +8,15 @@ import { Badge, StatusBadge, type StatusKind } from "@/components/ui/Badge";
 
 import SessionMenu from "../SessionMenu/SessionMenu";
 import SessionModals from "./components/SessionModals/SessionModals";
+import SaludSesion, { ESTADO_SALUD } from "./components/SaludSesion/SaludSesion";
 
 import { useSession } from "./hooks/useSession";
 
 import { setActiveSession } from "@/services/sessions/setActiveSession";
 import { setPreferredSession } from "@/services/sessions/setPreferredSession";
 import { connectSession, isSessionNotFound } from "@/services/sessions/connectSession";
+
+import type { SaludSesion as Salud } from "@/services/sessions/saludSesiones";
 
 import styles from "./SessionCard.module.css";
 
@@ -24,6 +27,8 @@ interface Props {
   estado: string;
   principal: boolean;
   activa: boolean;
+  /** Estado real del bot (GET /sessions/salud); null si no se pudo leer. */
+  salud?: Salud | null;
   onRefresh?: () => void;
 }
 
@@ -34,6 +39,7 @@ export default function SessionCard({
   estado,
   principal,
   activa,
+  salud = null,
   onRefresh,
 }: Props) {
   const {
@@ -53,7 +59,11 @@ export default function SessionCard({
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const status: { kind: StatusKind; label: string } = conectado
+  // Con señal de salud, el estado mostrado es el REAL del bot; sin ella
+  // (backend no disponible), el guardado en la base, como antes.
+  const status: { kind: StatusKind; label: string } = salud
+    ? ESTADO_SALUD[salud.estado]
+    : conectado
     ? { kind: "online", label: "Conectada" }
     : esperandoQR
     ? { kind: "pending", label: "QR pendiente" }
@@ -116,14 +126,21 @@ export default function SessionCard({
         </div>
 
         <div className={styles.flags}>
-          {activa && (
+          {activa && (!salud || salud.estado === "saludable") && (
             <Badge tone="primary" dot>
               Bot activo
+            </Badge>
+          )}
+          {activa && salud && salud.estado !== "saludable" && (
+            <Badge tone="error" dot>
+              Activa · no está procesando
             </Badge>
           )}
           {principal && <Badge tone="warning">Preferida</Badge>}
           {!activa && !principal && <Badge tone="neutral">En espera</Badge>}
         </div>
+
+        {salud && <SaludSesion salud={salud} />}
 
         <div className={styles.idRow} title={id}>
           <span className={styles.idLabel}>ID</span>

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { botApiHeadersDe } from "@/lib/botApi";
 
 const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
 
@@ -20,7 +21,7 @@ export async function GET(req: Request) {
     if (telefono) params.set("telefono", telefono);
     if (lid) params.set("lid", lid);
 
-    const res = await fetch(`${API}/bloqueados/contacto?${params.toString()}`);
+    const res = await fetch(`${API}/bloqueados/contacto?${params.toString()}`, { headers: botApiHeadersDe(req) });
     const data = await res.json();
 
     return NextResponse.json(data, { status: res.status });

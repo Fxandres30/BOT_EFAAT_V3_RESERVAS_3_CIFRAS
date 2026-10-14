@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { botApiHeaders } from "@/lib/botApi";
+import { botApiHeadersDe } from "@/lib/botApi";
 
 const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
 
@@ -7,13 +7,13 @@ const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
 // — mismo patrón que app/api/sessions/connect/route.ts. Dispara el escaneo
 // completo real (Identity Scanner + import) sobre la sesión activa AHORA,
 // en vez de esperar al escaneo periódico de 6h.
-export async function POST() {
+export async function POST(req: Request) {
 
     try {
 
         const res = await fetch(`${API}/sessions/active/backfill-contactos`, {
             method: "POST",
-            headers: botApiHeaders()
+            headers: botApiHeadersDe(req)
         });
 
         const text = await res.text();

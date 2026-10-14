@@ -9,3 +9,13 @@
     grid-template-columns: 1fr;
   }
 }
+
+.avisoSalud {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--efaat-warning);
+  border-radius: 8px;
+  background: var(--efaat-warning-soft);
+  color: var(--efaat-text);
+  font-size: var(--efaat-text-sm);
+}

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { botApiHeaders } from "@/lib/botApi";
+import { botApiHeadersDe } from "@/lib/botApi";
 
 const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
 
@@ -20,7 +20,7 @@ export async function GET(req: Request) {
     }
 
     const res = await fetch(`${API}/sessions/${encodeURIComponent(id)}/grupos-disponibles`, {
-        headers: botApiHeaders()
+        headers: botApiHeadersDe(req)
     });
 
     const data = await res.json();

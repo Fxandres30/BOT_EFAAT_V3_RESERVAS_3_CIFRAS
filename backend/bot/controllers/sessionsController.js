@@ -164,6 +164,8 @@ async function getActive(req, res) {
         .from("sesiones")
         .select("*")
         .eq("activa", true)
+        // Solo la fila del propio usuario (nunca la sesión de otro cliente).
+        .eq("usuario_id", req.usuarioId)
         .maybeSingle();
 
     res.json(data);

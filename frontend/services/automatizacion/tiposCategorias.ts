@@ -50,6 +50,8 @@ export function nombreCategoria(categoria: string | null): string {
 // ninguna otra. Mostradas como ayuda debajo del editor de mensajes.
 export const VARIABLES_PERMITIDAS = [
     { variable: "{nombre_evento}", descripcion: "Nombre del sorteo" },
+    { variable: "{loteria}", descripcion: "Lotería (mismo dato que el nombre del sorteo)" },
+    { variable: "{fecha}", descripcion: "Fecha del sorteo" },
     { variable: "{valor}", descripcion: "Valor del número" },
     { variable: "{hora_cierre}", descripcion: "Hora de cierre" },
     { variable: "{premio}", descripcion: "Primer premio del evento" },
