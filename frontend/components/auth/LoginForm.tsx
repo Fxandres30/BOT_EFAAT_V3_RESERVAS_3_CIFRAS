@@ -127,7 +127,7 @@ export default function LoginForm() {
         </button>
 
         <p className="login-alterno">
-          ¿Aun no tienes cuenta? <Link className="login-link" href="/register">Crear cuenta</Link>
+          ¿No tienes cuenta? <Link className="login-link" href="/register">Crear cuenta</Link>
         </p>
 
       </form>
