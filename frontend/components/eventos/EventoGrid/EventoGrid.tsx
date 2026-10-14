@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { ChevronDown } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -151,6 +152,12 @@ export default function EventoGrid() {
                     Programados <span className={styles.contador}>{programados.length}</span>
                 </summary>
                 <PorModalidad items={programados} palabra="programado" vacio="Sin sorteos programados" />
+                {/* Los sorteos creados con «Crear sorteo» viven en /sorteos hasta
+                    que se publican; solo entonces aparecen aquí como activos. */}
+                <p className={styles.vacio}>
+                    Los sorteos creados desde el panel (borradores y programados) están en{" "}
+                    <Link href="/sorteos">Sorteos programados</Link>.
+                </p>
             </details>
 
             <details className={styles.seccion} open>
