@@ -112,6 +112,7 @@ app.use("/sessions", require("../../routes/sessions"));
 app.use("/contactos", require("../../routes/contactos"));
 app.use("/bloqueados", require("../../routes/bloqueados"));
 app.use("/tablas", require("../../routes/tablas"));
+app.use("/sorteos", require("../../routes/sorteos"));
 
 let base;
 
@@ -197,6 +198,34 @@ prueba("rutas de administración (BANN): solo token de servicio; sin él -> 401"
     assert.strictEqual((await pedir("GET", "/sessions/", { servicio: false })).status, 401);
     assert.strictEqual((await pedir("DELETE", `/sessions/${SES_A}`, { servicio: false })).status, 401);
     assert.strictEqual((await pedir("GET", "/sessions/", {})).status, 200);
+});
+
+// Producción 2026-10-14: backend desplegado SIN SESSIONS_API_TOKEN.
+prueba("SIN SESSIONS_API_TOKEN en el backend: 503 en /sessions/salud, /active, /connect y /sorteos/loterias, sin ejecutar nada; con él, vuelven a funcionar", async () => {
+    const token = process.env.SESSIONS_API_TOKEN;
+    const n = llamadas.length;
+    delete process.env.SESSIONS_API_TOKEN;
+    try {
+        const pedidos = [
+            ["GET", "/sessions/salud"], ["GET", "/sessions/active"], ["POST", "/sessions/connect", { sessionId: SES_A }],
+            ["POST", "/sessions/active", { sessionId: SES_A }], ["GET", "/sorteos/loterias"], ["GET", "/sorteos/grupos"], ["GET", "/sessions/"]
+        ];
+        for (const [metodo, camino, cuerpo] of pedidos) {
+            const r = await pedir(metodo, camino, { jwt: "jwt-A", servicio: false, cuerpo });
+            assert.strictEqual(r.status, 503, `${metodo} ${camino}`);
+            assert.strictEqual(r.json.code, "TOKEN_SERVICIO_NO_CONFIGURADO");
+        }
+        assert.strictEqual(llamadas.length, n, "falla cerrado: no se ejecutó nada");
+    } finally {
+        process.env.SESSIONS_API_TOKEN = token;
+    }
+    assert.strictEqual((await pedir("GET", "/sessions/salud", { jwt: "jwt-A" })).status, 200);
+    assert.strictEqual((await pedir("GET", "/sessions/active", { jwt: "jwt-A" })).status, 200);
+    assert.strictEqual((await pedir("POST", "/sessions/active", { jwt: "jwt-A", cuerpo: { sessionId: SES_A } })).status, 200, "seleccionar sesión propia");
+    assert.strictEqual((await pedir("POST", "/sessions/connect", { jwt: "jwt-A", cuerpo: { sessionId: SES_A } })).status, 200, "conectar sesión propia");
+    const lot = await pedir("GET", "/sorteos/loterias", { jwt: "jwt-A" });
+    assert.ok(lot.status !== 503 && lot.status !== 401, `/sorteos/loterias pasa la autenticación (${lot.status})`);
+    assert.strictEqual((await pedir("GET", "/sorteos/loterias", { servicio: false, jwt: "jwt-A" })).status, 401, "sin el token del panel sigue cerrado");
 });
 
 prueba("GET /sessions/salud devuelve SOLO las sesiones del usuario, sin datos internos del lease", async () => {

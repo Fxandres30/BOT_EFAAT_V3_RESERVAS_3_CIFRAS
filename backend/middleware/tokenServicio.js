@@ -27,7 +27,12 @@ function exigirTokenServicio(req, res, next) {
 
     if (!esperado) {
 
-        console.error("❌ [AUTH SERVICIO] SESSIONS_API_TOKEN no está configurado: /sessions/* queda bloqueado.");
+        // Afecta a TODAS las rutas que usan este middleware (/sessions,
+        // /sorteos, /contactos, /bloqueados, /tablas/compartir). Solución:
+        // definir SESSIONS_API_TOKEN en el entorno del backend con el mismo
+        // valor que BOT_API_TOKEN del panel (comprobar sin mostrarlo:
+        // node scripts/verificarTokenServicio.js).
+        console.error(`❌ [AUTH SERVICIO] SESSIONS_API_TOKEN no está configurado en el backend: ${req.method} ${req.originalUrl} responde 503. Defínelo (= BOT_API_TOKEN del panel) y reinicia con --update-env.`);
 
         return res.status(503).json({
             success: false,
