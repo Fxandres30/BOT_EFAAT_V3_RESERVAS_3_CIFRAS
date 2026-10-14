@@ -9,6 +9,9 @@ const { actualizarEvento } = require("./actualizarEvento");
 // No decide ni cambia nada de negocio — únicamente da forma al texto de
 // "mensaje" que ya se construía aquí.
 const { formatearListaNumeros } = require("../../ai/gramatica");
+// Reacción ✅/❌ sobre el mensaje del cliente (se añade a la respuesta, no la
+// cambia). Ver reaccionReserva.js.
+const { decidirReaccion } = require("./reaccionReserva");
 
 async function detectarReserva({
 
@@ -86,7 +89,9 @@ async function detectarReserva({
             mensaje:
 `❌ Los números solicitados ya están ocupados.
 
-🔒 Ocupados: ${formatearListaNumeros(resultado.ocupadosPorOtros.map(n => n.numero))}`
+🔒 Ocupados: ${formatearListaNumeros(resultado.ocupadosPorOtros.map(n => n.numero))}`,
+
+            reaccion: decidirReaccion({ solicitados: numeros, resultado })
 
         };
 
@@ -153,7 +158,9 @@ async function detectarReserva({
 
         mensaje,
 
-        usuario
+        usuario,
+
+        reaccion: decidirReaccion({ solicitados: numeros, resultado, reservados: reserva.map(r => r.numero) })
 
     };
 

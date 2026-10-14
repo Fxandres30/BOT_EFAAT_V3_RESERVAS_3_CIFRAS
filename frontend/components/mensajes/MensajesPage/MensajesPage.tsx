@@ -32,6 +32,12 @@ import styles from "./MensajesPage.module.css";
 
 const CATEGORIAS: TipoMensaje["categoria"][] = ["Reservas", "Consultas", "Automatización", "Futuro"];
 
+// Interruptor de las reacciones ✅/❌ que el bot pone en el mensaje del
+// cliente al reservar. Se guarda como un tipo más en
+// configuracion_seleccion_mensajes (columna «habilitada»); el backend lo lee
+// en bot/funciones/reservas/reaccionReserva.js. Sin fila = activado.
+const TIPO_REACCIONES = "reacciones_reserva";
+
 export default function MensajesPage() {
 
     const [usuarioId, setUsuarioId] = useState<string | null>(null);
@@ -58,6 +64,8 @@ export default function MensajesPage() {
     // plantillas y del modo de selección. Un tipo sin entrada aquí todavía
     // se trata como habilitado (mismo DEFAULT SEGURO del backend).
     const [estadosHabilitados, setEstadosHabilitados] = useState<Record<string, boolean>>({});
+    const [estadosCargados, setEstadosCargados] = useState(false);
+    const [errorReacciones, setErrorReacciones] = useState<string | null>(null);
 
     function estaHabilitado(tipoId: string) {
         return estadosHabilitados[tipoId] ?? true;
@@ -79,6 +87,10 @@ export default function MensajesPage() {
 
         if (error) {
             setEstadosHabilitados((prev) => ({ ...prev, [tipoId]: actual }));
+            console.warn("[mensajes] no se pudo guardar el interruptor:", tipoId, error.message);
+            if (tipoId === TIPO_REACCIONES) setErrorReacciones("No pudimos guardar el cambio. Inténtalo de nuevo.");
+        } else if (tipoId === TIPO_REACCIONES) {
+            setErrorReacciones(null);
         }
 
     }
@@ -185,6 +197,8 @@ export default function MensajesPage() {
                 setEstadosHabilitados(mapa);
 
             }
+
+            setEstadosCargados(true);
 
         }
 
@@ -328,6 +342,34 @@ export default function MensajesPage() {
                     <span>{errorInicializacion}</span>
                 </div>
             )}
+
+
+            {usuarioId && (() => {
+                const activadas = estaHabilitado(TIPO_REACCIONES);
+                return (
+                    <section className={styles.reacciones} aria-labelledby="titulo-reacciones">
+                        <div className={styles.reaccionesTexto}>
+                            <h2 id="titulo-reacciones" className={styles.reaccionesTitulo}>Reacciones automáticas ✅/❌</h2>
+                            <p className={styles.reaccionesAyuda}>
+                                El bot reacciona al mensaje del cliente: ✅ si le reservó todos los números que pidió y ❌ si todos estaban ocupados. Los mensajes de respuesta no cambian. Los cambios se aplican en menos de un minuto.
+                            </p>
+                            {errorReacciones && <p className={styles.reaccionesError} role="alert">{errorReacciones}</p>}
+                        </div>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={activadas}
+                            aria-labelledby="titulo-reacciones"
+                            disabled={!estadosCargados}
+                            className={styles.reaccionesBoton}
+                            onClick={() => alternarTipoHabilitado(TIPO_REACCIONES)}
+                        >
+                            <span className={`${styles.switch} ${activadas ? styles.switchOn : ""}`} aria-hidden="true" />
+                            <span>{activadas ? "Activado" : "Desactivado"}</span>
+                        </button>
+                    </section>
+                );
+            })()}
 
             <div className={styles.layout}>
 

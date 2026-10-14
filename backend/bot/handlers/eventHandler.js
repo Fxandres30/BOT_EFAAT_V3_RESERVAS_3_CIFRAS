@@ -1,5 +1,6 @@
 const { detectarEvento } = require("../funciones/eventos/detectarEvento");
 const { detectarReserva } = require("../funciones/reservas/detectarReserva");
+const { reaccionarAlMensaje } = require("../funciones/reservas/reaccionReserva");
 const { consultarEvento } = require("../funciones/eventos/consultarEvento");
 const { detectarIntencion } = require("../funciones/consultas/detectarIntencion");
 const { resolverConsulta } = require("../funciones/consultas/resolverConsulta");
@@ -146,7 +147,14 @@ module.exports = async (ctx) => {
         console.dir(resultado, { depth: null });
         console.log("==================================");
 
-        await responderResultado(ctx);
+        const respondido = await responderResultado(ctx);
+
+        // ✅/❌ sobre el mensaje del cliente, DESPUÉS de la respuesta de
+        // siempre y solo si esa respuesta salió (si el tipo está desactivado
+        // el bot sigue en silencio). Nunca lanza.
+        if (respondido && resultado?.reaccion) {
+            await reaccionarAlMensaje({ ctx, emoji: resultado.reaccion });
+        }
 
         return;
 

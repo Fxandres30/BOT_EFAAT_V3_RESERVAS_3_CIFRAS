@@ -45,6 +45,65 @@ const usuarioAuth = ({ id, email }) => ({ id, aud: "authenticated", role: "authe
 
 const peticionesSupabase = [];
 
+// Tablas que el navegador lee/escribe DE VERDAD (en fake.tablas, la misma
+// base en memoria que usa el backend). El resto responde [] como siempre.
+const tablasRest = new Set();
+const servirTablas = (nombres) => nombres.forEach(n => tablasRest.add(n));
+
+// Subconjunto mínimo de PostgREST: filtros eq./is.null, conteo (HEAD +
+// Prefer count), objeto único (Accept vnd.pgrst.object), insert/upsert
+// (on_conflict) y update.
+function restEnMemoria(req, res, cuerpo) {
+    const url = new URL(req.url, "http://x");
+    const tabla = decodeURIComponent(url.pathname.replace("/rest/v1/", ""));
+    const filas = fake.tablas[tabla] || (fake.tablas[tabla] = []);
+    const reservados = new Set(["select", "order", "limit", "offset", "on_conflict", "columns"]);
+    const filtros = [...url.searchParams].filter(([k]) => !reservados.has(k)).map(([col, expr]) => {
+        const [op, ...resto] = expr.split(".");
+        const val = resto.join(".");
+        if (op === "eq") return f => String(f[col]) === val;
+        if (op === "is" && val === "null") return f => f[col] == null;
+        return () => true;
+    });
+    const coinciden = () => filas.filter(f => filtros.every(fn => fn(f)));
+    const objeto = /vnd\.pgrst\.object/.test(req.headers.accept || "");
+    const prefer = req.headers.prefer || "";
+    const responder = (lista) => {
+        if (/count=/.test(prefer)) res.setHeader("Content-Range", `${lista.length ? `0-${lista.length - 1}` : "*"}/${lista.length}`);
+        if (req.method === "HEAD") { res.writeHead(200); return res.end(); }
+        if (objeto) {
+            if (lista.length !== 1) { res.writeHead(406); return res.end(JSON.stringify({ code: "PGRST116", message: "JSON object requested, multiple (or no) rows returned", details: `${lista.length} rows`, hint: null })); }
+            return res.end(JSON.stringify(lista[0]));
+        }
+        res.end(JSON.stringify(lista));
+    };
+    if (req.method === "GET" || req.method === "HEAD") return responder(coinciden());
+    const datos = cuerpo ? JSON.parse(cuerpo) : {};
+    if (req.method === "POST") {
+        const conflicto = (url.searchParams.get("on_conflict") || "").split(",").filter(Boolean);
+        const resultado = [];
+        for (const fila of Array.isArray(datos) ? datos : [datos]) {
+            const existente = conflicto.length ? filas.find(f => conflicto.every(c => f[c] === fila[c])) : null;
+            if (existente) { Object.assign(existente, fila); resultado.push(existente); continue; }
+            const nueva = { id: `rest-${tabla}-${filas.length + 1}`, ...fila };
+            filas.push(nueva);
+            resultado.push(nueva);
+        }
+        return responder(resultado);
+    }
+    if (req.method === "PATCH") {
+        const lista = coinciden();
+        lista.forEach(f => Object.assign(f, datos));
+        return responder(lista);
+    }
+    if (req.method === "DELETE") {
+        const borrar = new Set(coinciden());
+        fake.tablas[tabla] = filas.filter(f => !borrar.has(f));
+        return responder([...borrar]);
+    }
+    res.end("[]");
+}
+
 function arrancarBackend() {
     const express = require("express");
     const app = express();
@@ -58,7 +117,8 @@ function arrancarSupabaseFalso() {
         peticionesSupabase.push(`${req.method} ${req.url.split("?")[0]}`);
         res.setHeader("Access-Control-Allow-Origin", "*");
         res.setHeader("Access-Control-Allow-Headers", "*");
-        res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
+        res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,POST,PATCH,PUT,DELETE,OPTIONS");
+        res.setHeader("Access-Control-Expose-Headers", "Content-Range");
         res.setHeader("Content-Type", "application/json");
         if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
         if (req.url.startsWith("/auth/v1/user")) {
@@ -67,7 +127,14 @@ function arrancarSupabaseFalso() {
             if (!u) { res.writeHead(401); return res.end("{}"); }
             return res.end(JSON.stringify(usuarioAuth(u)));
         }
-        if (req.url.startsWith("/rest/v1/")) return res.end("[]");
+        if (req.url.startsWith("/rest/v1/")) {
+            const tabla = decodeURIComponent(new URL(req.url, "http://x").pathname.replace("/rest/v1/", ""));
+            if (!tablasRest.has(tabla)) return res.end("[]");
+            let cuerpo = "";
+            req.on("data", c => { cuerpo += c; });
+            req.on("end", () => restEnMemoria(req, res, cuerpo));
+            return;
+        }
         res.end("{}");
     });
     return new Promise(res => s.listen(PUERTO_SUPABASE, "127.0.0.1", () => res(s)));
@@ -248,6 +315,7 @@ module.exports = {
     fake,
     tablas: fake.tablas,
     peticionesSupabase,
+    servirTablas,
     registrarUsuario,
     arrancarEntorno,
     rellenar,

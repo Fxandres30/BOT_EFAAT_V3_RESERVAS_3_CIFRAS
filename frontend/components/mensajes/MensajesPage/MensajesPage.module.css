@@ -274,3 +274,69 @@
     white-space: nowrap;
   }
 }
+
+/* ---- Reacciones automáticas ✅/❌ ---- */
+.reacciones {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 16px 0 0;
+  padding: 14px 16px;
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-surface);
+}
+
+.reaccionesTexto {
+  min-width: 0;
+}
+
+.reaccionesTitulo {
+  margin: 0;
+  font-size: var(--efaat-text-md);
+  color: var(--efaat-text);
+}
+
+.reaccionesAyuda {
+  margin: 4px 0 0;
+  font-size: var(--efaat-text-sm);
+  color: var(--efaat-text-secondary);
+}
+
+.reaccionesError {
+  margin: 6px 0 0;
+  font-size: var(--efaat-text-sm);
+  color: var(--efaat-error);
+}
+
+.reaccionesBoton {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--efaat-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--efaat-text);
+  font-size: var(--efaat-text-sm);
+  cursor: pointer;
+}
+
+.reaccionesBoton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.reaccionesBoton:focus-visible {
+  outline: 2px solid var(--efaat-primary);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .reacciones {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

@@ -257,9 +257,27 @@ async function sendImage({ sock, jid, image, caption } = {}) {
 
 }
 
+// Reacción (emoji) sobre un mensaje existente: mismo socket que la respuesta
+// y mismo marcado de "salida del programa" que sendMessage, para que su eco
+// en messages.upsert nunca se procese como entrada de un usuario.
+async function sendReaction({ sock, jid, key, emoji } = {}) {
+
+    const socketActivo = resolverSocketEnvio(sock);
+
+    cicloMensaje.accion("sendReaction", socketActivo, jid);
+
+    const messageId = prepararIdSalida(socketActivo);
+
+    console.log("📤 [WHATSAPP REACT]", { jid: enmascararJid(jid), emoji, mensaje: key?.id || null });
+
+    return socketActivo.sendMessage(jid, { react: { text: emoji, key } }, { messageId });
+
+}
+
 module.exports = {
 
     sendMessage,
-    sendImage
+    sendImage,
+    sendReaction
 
 };
