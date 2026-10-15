@@ -19,6 +19,8 @@ import { StatusBadge, type StatusKind } from "@/components/ui/Badge";
 import { formatHora12 } from "@/lib/formatHora";
 import { obtenerTablaConfig } from "@/lib/tablasConfig";
 
+import GruposAsociados from "../GruposAsociados/GruposAsociados";
+
 import styles from "./EventoCard.module.css";
 
 interface Props {
@@ -65,7 +67,9 @@ export default function EventoCard({ evento }: Props) {
             </div>
 
             <div className={styles.meta}>
-                {(evento?.grupo_nombre || evento?.grupo_id) && (
+                {Array.isArray(evento?.grupos) ? (
+                    <GruposAsociados grupos={evento.grupos} />
+                ) : (evento?.grupo_nombre || evento?.grupo_id) && (
                     <span className={styles.metaItem}>
                         <Users size={12} />
                         {evento.grupo_nombre || evento.grupo_id}

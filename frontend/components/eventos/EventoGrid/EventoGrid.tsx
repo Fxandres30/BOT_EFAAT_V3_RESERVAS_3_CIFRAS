@@ -10,6 +10,7 @@ import EventoCard from "../EventoCard/EventoCard";
 import EventoTresCifrasCard from "../EventoTresCifrasCard/EventoTresCifrasCard";
 import ResultadoCard from "../ResultadoCard/ResultadoCard";
 import { obtenerEventos } from "@/services/eventos/obtenerEventos";
+import { agruparEventos, type EventoCompartido } from "../agruparEventos";
 
 import type { Evento } from "../types";
 import { MODALIDADES, faseDe, modalidadDe, type Fase, type Modalidad } from "../modalidad";
@@ -25,7 +26,7 @@ const FILTROS: { id: FiltroResultados; texto: string }[] = [
 ];
 
 interface EventoClasificado {
-    evento: Evento;
+    evento: EventoCompartido;
     modalidad: Modalidad;
     fase: Fase;
 }
@@ -52,7 +53,7 @@ function PorModalidad({ items, palabra, vacio }: { items: EventoClasificado[]; p
                             <p className={styles.vacio}>{vacio}</p>
                         ) : (
                             <div className={styles.grid}>
-                                {lista.map((i) => <Tarjeta key={i.evento.id} item={i} />)}
+                                {lista.map((i) => <Tarjeta key={i.evento.clave} item={i} />)}
                             </div>
                         )}
                     </details>
@@ -106,7 +107,8 @@ export default function EventoGrid() {
         );
     }
 
-    const items: EventoClasificado[] = eventos.map((evento) => ({
+    // Una tarjeta por sorteo real: sus filas (una por grupo) se agrupan.
+    const items: EventoClasificado[] = agruparEventos(eventos).map((evento) => ({
         evento,
         modalidad: modalidadDe(evento),
         fase: faseDe(evento)
@@ -184,7 +186,7 @@ export default function EventoGrid() {
                     </p>
                 ) : (
                     <div className={styles.grid}>
-                        {resultados.map((i) => <ResultadoCard key={i.evento.id} evento={i.evento} modalidad={i.modalidad} />)}
+                        {resultados.map((i) => <ResultadoCard key={i.evento.clave} evento={i.evento} modalidad={i.modalidad} />)}
                     </div>
                 )}
             </details>

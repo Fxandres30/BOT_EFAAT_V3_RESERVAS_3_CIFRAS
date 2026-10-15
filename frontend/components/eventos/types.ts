@@ -12,6 +12,8 @@ export interface Evento {
 
     grupo_nombre?: string | null;
 
+    identidad_evento_real?: string | null;
+
     nombre_evento?: string;
 
     estado?: string;

@@ -1,7 +1,7 @@
 const supabase = require("../../../../lib/supabase");
 const { procesarSorteo } = require("../lifecycle/procesarSorteo");
 const { claveSorteo } = require("../sorteoReal");
-const { abrirGrupo } = require("../grupos/abrirGrupo");
+const { reconciliarAperturaGrupo } = require("../grupos/reconciliarApertura");
 
 // Escaneo incremental de identidades: mismo disparador que detectarEvento.js
 // (solo tras confirmar apertura), aplicado aquí a la ruta de reconciliación.
@@ -42,72 +42,88 @@ async function workerEventos(sock) {
         // RECONCILIACIÓN DE APERTURA
         // ============================================================
         // Eventos activos cuyo grupo quedó SIN abrir en WhatsApp
-        // (abierto=false, por rate-overlimit al detectar el evento).
-        // Reintento idempotente (groupSettingUpdate("not_announcement")
-        // sobre un grupo ya abierto es un no-op correcto). No aplica a
-        // eventos que ya deberían estar cerrándose. Usa la MISMA cola de
-        // IQ y el MISMO worker: no añade timers ni listeners.
+        // (abierto=false). No aplica a eventos que ya deberían estar
+        // cerrándose. Usa la MISMA cola de IQ y el MISMO worker.
+        //
+        // Se trabaja POR GRUPO, no por fila: un sorteo publicado en varios
+        // grupos tiene una fila por grupo, y dos filas del mismo grupo
+        // comparten una sola apertura. reconciliarAperturaGrupo decide si
+        // intentar (espera por grupo ante rechazos de permisos, estado real
+        // con groupMetadata) — ver grupos/reconciliarApertura.js.
+
+        const pendientesPorGrupo = new Map();
 
         for (const evento of delTenant) {
 
             if (evento.abierto === false && !verificarHoraCierre(evento)) {
 
-                try {
+                if (!pendientesPorGrupo.has(evento.grupo_id)) pendientesPorGrupo.set(evento.grupo_id, []);
+                pendientesPorGrupo.get(evento.grupo_id).push(evento);
 
-                    const abierto = await abrirGrupo({
-                        sock,
-                        grupoId: evento.grupo_id
-                    });
+            }
 
-                    if (abierto) {
+        }
 
-                        // Mientras se esperaba turno en la cola (espaciado
-                        // + posible backoff) pudo haberse cruzado la hora
-                        // de cierre. Si ya se cruzó, NO marcar abierto=true:
-                        // el bucle de cierre de abajo (sin cambios) lo va a
-                        // cerrar de inmediato de todas formas. Evita
-                        // "abrir y cerrar en el mismo tick" y un log
-                        // confuso. NO cambia la lógica de cierre ni
-                        // verificarHoraCierre — solo evita una escritura
-                        // innecesaria.
-                        if (verificarHoraCierre(evento)) {
+        for (const [grupoId, filasGrupo] of pendientesPorGrupo) {
 
-                            console.log(`⏭️ Evento ${evento.id}: se abrió en WhatsApp pero ya venció mientras esperaba turno en la cola — lo procesa el cierre normal.`);
+            try {
 
-                        } else {
+                const { resultado } = await reconciliarAperturaGrupo({ sock, grupoId });
 
-                            await supabase
-                                .from("eventos_bot")
-                                .update({ abierto: true })
-                                .eq("id", evento.id);
+                if (resultado !== "abierto" && resultado !== "ya_abierto") continue;
 
-                            evento.abierto = true;
+                let sincronizadas = 0;
 
-                            console.log(`🔓 Reconciliado: grupo del evento ${evento.id} abierto en WhatsApp`);
+                for (const evento of filasGrupo) {
 
-                            // Escaneo incremental de ESE grupo — solo tras
-                            // confirmar la apertura. No bloqueante.
-                            const sessionIdParaEscaner = sock?.context?.sessionId || null;
+                    // Mientras se esperaba turno en la cola (espaciado
+                    // + posible backoff) pudo haberse cruzado la hora
+                    // de cierre. Si ya se cruzó, NO marcar abierto=true:
+                    // el bucle de cierre de abajo (sin cambios) lo va a
+                    // cerrar de inmediato de todas formas.
+                    if (verificarHoraCierre(evento)) {
 
-                            if (sessionIdParaEscaner) {
-
-                                escanearGrupo(sessionIdParaEscaner, sock, evento.grupo_id).catch(err => {
-
-                                    console.error(`❌ [ESCÁNER IDENTIDADES] error tras reconciliar apertura del grupo ${evento.grupo_id}:`, err?.message);
-
-                                });
-
-                            }
-
-                        }
+                        console.log(`⏭️ Evento ${evento.id}: el grupo está abierto en WhatsApp pero el evento ya venció mientras esperaba turno en la cola — lo procesa el cierre normal.`);
+                        continue;
 
                     }
 
-                } catch (e) {
+                    const { error: errorUpdate } = await supabase
+                        .from("eventos_bot")
+                        .update({ abierto: true })
+                        .eq("id", evento.id);
 
-                    console.error(`❌ Reintento de apertura del evento ${evento.id}:`, e?.message);
+                    if (errorUpdate) {
+
+                        console.error(`❌ No se pudo registrar abierto=true del evento ${evento.id} (se reintentará):`, errorUpdate.message);
+                        continue;
+
+                    }
+
+                    evento.abierto = true;
+                    sincronizadas++;
+
+                    console.log(`🔓 Reconciliado: grupo del evento ${evento.id} abierto en WhatsApp`);
 
                 }
+
+                // Escaneo incremental de ESE grupo (una vez por grupo) —
+                // solo tras confirmar la apertura. No bloqueante.
+                const sessionIdParaEscaner = sock?.context?.sessionId || null;
+
+                if (sincronizadas > 0 && sessionIdParaEscaner) {
+
+                    escanearGrupo(sessionIdParaEscaner, sock, grupoId).catch(err => {
+
+                        console.error(`❌ [ESCÁNER IDENTIDADES] error tras reconciliar apertura del grupo ${grupoId}:`, err?.message);
+
+                    });
+
+                }
+
+            } catch (e) {
+
+                console.error(`❌ Reintento de apertura de los eventos ${filasGrupo.map(f => f.id).join(", ")}:`, e?.message);
 
             }
 

@@ -7,6 +7,8 @@ import { obtenerTablaConfig } from "@/lib/tablasConfig";
 
 import type { Evento } from "../types";
 import type { Modalidad } from "../modalidad";
+import type { EventoCompartido } from "../agruparEventos";
+import GruposAsociados from "../GruposAsociados/GruposAsociados";
 
 import styles from "./EventoTresCifrasCard.module.css";
 
@@ -68,7 +70,9 @@ export default function EventoTresCifrasCard({ evento, modalidad }: Props) {
                 {!gratis && (
                     <span><Lock size={12} /> Cierra <strong>{evento.hora_cierre ? formatHora12(evento.hora_cierre) : "—"}</strong></span>
                 )}
-                {evento.grupo_nombre && (
+                {"grupos" in evento ? (
+                    <GruposAsociados grupos={(evento as EventoCompartido).grupos} />
+                ) : evento.grupo_nombre && (
                     <span><Users size={12} /> {evento.grupo_nombre}</span>
                 )}
             </div>

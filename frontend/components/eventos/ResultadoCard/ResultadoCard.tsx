@@ -4,6 +4,8 @@ import { formatHora12 } from "@/lib/formatHora";
 
 import type { Evento } from "../types";
 import { infoModalidad, type Modalidad } from "../modalidad";
+import type { EventoCompartido } from "../agruparEventos";
+import GruposAsociados from "../GruposAsociados/GruposAsociados";
 
 import styles from "./ResultadoCard.module.css";
 
@@ -37,6 +39,8 @@ export default function ResultadoCard({ evento, modalidad }: Props) {
             <p className={styles.fecha}>
                 {fecha(evento.fecha_evento)} · {evento.hora_fin ? formatHora12(evento.hora_fin) : "—"}
             </p>
+
+            {"grupos" in evento && <GruposAsociados grupos={(evento as EventoCompartido).grupos} />}
 
             <div className={styles.ganador}>
                 <Trophy size={18} aria-hidden="true" />

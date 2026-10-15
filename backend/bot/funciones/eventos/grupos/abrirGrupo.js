@@ -1,18 +1,16 @@
 const { groupSettingUpdate } = require("../../../../services/baileys/groupQueue");
 
-async function abrirGrupo({
-
-    sock,
-    grupoId
-
-}) {
+// Permite el envío de mensajes a todos ("not_announcement"). Devuelve
+// { ok, error } con el error ORIGINAL para que el llamador pueda distinguir
+// el motivo (permisos, conexión, rate-overlimit). Mismo criterio que
+// cerrarGrupoDetallado.
+async function abrirGrupoDetallado({ sock, grupoId }) {
 
     try {
 
         // Pasa por la cola central de operaciones IQ de grupo:
         // concurrencia 1 + espaciado + reintento con backoff ante
-        // rate-overlimit. Si finalmente falla, lanza -> catch -> false
-        // (mismo contrato que antes).
+        // rate-overlimit. Si finalmente falla, lanza -> catch.
         await groupSettingUpdate(
             sock,
             grupoId,
@@ -21,19 +19,34 @@ async function abrirGrupo({
 
         console.log("🟢 Grupo abierto");
 
-        return true;
+        return { ok: true, error: null };
 
     } catch (error) {
 
         console.error("❌ Error abriendo grupo");
         console.dir(error, { depth: null });
 
-        return false;
+        return { ok: false, error };
 
     }
 
 }
 
+// Contrato de siempre: true si WhatsApp confirmó, false si no.
+async function abrirGrupo({
+
+    sock,
+    grupoId
+
+}) {
+
+    const { ok } = await abrirGrupoDetallado({ sock, grupoId });
+
+    return ok;
+
+}
+
 module.exports = {
-    abrirGrupo
+    abrirGrupo,
+    abrirGrupoDetallado
 };
