@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 
 import { login } from "@/services/auth/login";
 import { useSesion } from "@/hooks/useSesion";
+import { CampoContrasena } from "./CampoContrasena";
 
 // Mensajes de Supabase Auth más comunes, en español.
 function mensajeError(mensaje: string) {
@@ -98,6 +99,7 @@ export default function LoginForm() {
           className="login-input"
           type="email"
           placeholder="Correo"
+          aria-label="Correo"
           autoComplete="email"
           value={email}
           onChange={(e) =>
@@ -105,15 +107,12 @@ export default function LoginForm() {
           }
         />
 
-        <input
-          className="login-input"
-          type="password"
+        <CampoContrasena
+          etiqueta="Contraseña"
           placeholder="Contraseña"
           autoComplete="current-password"
           value={password}
-          onChange={(e) =>
-            setPassword(e.target.value)
-          }
+          onChange={setPassword}
         />
 
         {error && <p className="login-error" role="alert">{error}</p>}

@@ -1,6 +1,7 @@
 .login-container{
     width:100%;
-    height:100vh;
+    min-height:100vh;
+    padding:24px 0;
     display:flex;
     justify-content:center;
     align-items:center;
@@ -92,3 +93,109 @@
         padding:28px 22px;
     }
 }
+
+/* Contraseña con botón mostrar/ocultar */
+.login-password{
+    position:relative;
+    margin-bottom:18px;
+}
+
+.login-password .login-input{
+    margin-bottom:0;
+    padding-right:52px;
+}
+
+.login-ojo{
+    position:absolute;
+    top:50%;
+    right:6px;
+    transform:translateY(-50%);
+    width:40px;
+    height:40px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border:none;
+    border-radius:8px;
+    background:transparent;
+    color:#555;
+    cursor:pointer;
+}
+
+.login-ojo:hover{
+    background:#f1f5f9;
+}
+
+.login-ojo:focus-visible{
+    outline:2px solid #2563eb;
+    outline-offset:1px;
+}
+
+.login-input[aria-invalid="true"]{
+    border-color:#b91c1c;
+}
+
+/* Indicador de seguridad */
+.login-medidor{
+    margin:-8px 0 18px;
+    font-size:14px;
+}
+
+.login-medidor-barra{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:6px;
+    margin-bottom:6px;
+}
+
+.login-medidor-barra span{
+    height:6px;
+    border-radius:3px;
+    background:#e5e7eb;
+}
+
+.login-medidor.nivel-0{ --nivel:#b91c1c; }
+.login-medidor.nivel-1{ --nivel:#c2410c; }
+.login-medidor.nivel-2{ --nivel:#a16207; }
+.login-medidor.nivel-3{ --nivel:#15803d; }
+
+.login-medidor-barra span.lleno{
+    background:var(--nivel);
+}
+
+.login-medidor-texto{
+    margin:0 0 4px;
+    color:#374151;
+}
+
+.login-medidor-texto strong{
+    color:var(--nivel);
+}
+
+.login-medidor-nota{
+    color:#6b7280;
+    font-size:12px;
+}
+
+.login-medidor-sugerencias{
+    margin:0;
+    padding-left:18px;
+    color:#4b5563;
+    list-style:disc;
+}
+
+/* Coincidencia de contraseñas */
+.login-coincide{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    margin:-10px 0 16px;
+    font-size:14px;
+}
+
+.login-coincide:empty{
+    margin:0;
+}
+
+.login-coincide.ok{ color:#15803d; }
+.login-coincide.mal{ color:#b91c1c; }

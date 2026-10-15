@@ -3,11 +3,13 @@
 import "./LoginForm.css";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { register } from "@/services/auth/register";
 import { useSesion } from "@/hooks/useSesion";
+import { evaluarContrasena, LONGITUD_MINIMA } from "@/lib/auth/seguridadContrasena";
+import { CampoContrasena, MedidorSeguridad, AvisoCoincidencia } from "./CampoContrasena";
 
 // Crear cuenta: nombre + correo + contraseña con Supabase Auth. La cuenta
 // queda pendiente hasta confirmar el correo; después se inicia sesión en
@@ -20,10 +22,16 @@ export default function RegisterForm() {
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmacion, setConfirmacion] = useState("");
 
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendienteConfirmar, setPendienteConfirmar] = useState(false);
+
+  // Se evalúa en el navegador en cada pulsación; la contraseña no sale de aquí
+  // salvo en el registro con Supabase Auth.
+  const evaluacion = useMemo(() => evaluarContrasena(password, [nombre, email]), [password, nombre, email]);
+  const coinciden = confirmacion ? confirmacion === password : null;
 
   useEffect(() => {
     if (sesion === "con_sesion") router.replace("/sesiones");
@@ -33,13 +41,23 @@ export default function RegisterForm() {
 
     setError(null);
 
-    if (!nombre.trim() || !email.trim() || !password) {
+    if (!nombre.trim() || !email.trim() || !password || !confirmacion) {
       setError("Completa todos los campos.");
       return;
     }
 
-    if (password.length < 6) {
-      setError("La contraseña debe tener al menos 6 caracteres.");
+    if (password.length < LONGITUD_MINIMA) {
+      setError(`La contraseña debe tener al menos ${LONGITUD_MINIMA} caracteres.`);
+      return;
+    }
+
+    if (!evaluacion.cumpleMinimo) {
+      setError("La contraseña es demasiado fácil de adivinar. Sigue las recomendaciones.");
+      return;
+    }
+
+    if (password !== confirmacion) {
+      setError("Las contraseñas no coinciden.");
       return;
     }
 
@@ -107,6 +125,7 @@ export default function RegisterForm() {
           className="login-input"
           type="text"
           placeholder="Nombre"
+          aria-label="Nombre"
           autoComplete="name"
           value={nombre}
           onChange={(e) => setNombre(e.target.value)}
@@ -116,19 +135,35 @@ export default function RegisterForm() {
           className="login-input"
           type="email"
           placeholder="Correo"
+          aria-label="Correo"
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
 
-        <input
-          className="login-input"
-          type="password"
-          placeholder="Contraseña (mínimo 6 caracteres)"
+        <CampoContrasena
+          etiqueta="Contraseña"
+          placeholder={`Contraseña (mínimo ${LONGITUD_MINIMA} caracteres)`}
           autoComplete="new-password"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={(v) => { setPassword(v); setError(null); }}
+          describedBy={password ? "registro-seguridad" : undefined}
+          invalido={!!password && !evaluacion.cumpleMinimo}
         />
+
+        {password && <MedidorSeguridad id="registro-seguridad" evaluacion={evaluacion} />}
+
+        <CampoContrasena
+          etiqueta="Confirmar contraseña"
+          placeholder="Confirmar contraseña"
+          autoComplete="new-password"
+          value={confirmacion}
+          onChange={(v) => { setConfirmacion(v); setError(null); }}
+          describedBy="registro-coincide"
+          invalido={coinciden === false}
+        />
+
+        <AvisoCoincidencia id="registro-coincide" coinciden={coinciden} />
 
         {error && <p className="login-error" role="alert">{error}</p>}
 
