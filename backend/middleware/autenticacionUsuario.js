@@ -31,6 +31,7 @@ async function autenticarUsuario(req, res, next) {
     const token = extraerBearer(req);
 
     if (!token) {
+        console.warn(`⚠️ [AUTH USUARIO] ${req.method} ${req.originalUrl} → 401: petición sin sesión de usuario.`);
         return res.status(401).json({ ok: false, motivo: "sin_sesion", error: "Falta la sesión del usuario." });
     }
 
@@ -39,6 +40,7 @@ async function autenticarUsuario(req, res, next) {
         const { data, error } = await supabase.auth.getUser(token);
 
         if (error || !data?.user?.id) {
+            console.warn(`⚠️ [AUTH USUARIO] ${req.method} ${req.originalUrl} → 401: sesión rechazada por Supabase Auth.`);
             return res.status(401).json({ ok: false, motivo: "sesion_invalida", error: "La sesión no es válida o expiró." });
         }
 

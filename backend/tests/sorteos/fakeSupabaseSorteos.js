@@ -8,7 +8,10 @@ const UNICAS = {
     automation_actions: [["clave_idempotencia"]],
     sorteos_programados_grupos: [["sorteo_id", "grupo_id"]],
     plantillas_sorteo: [["usuario_id", "nombre"]],
-    loterias_catalogo: [["usuario_id", "nombre", "modalidad"]]
+    // Índice parcial (026): se ignora si alguna columna es null.
+    loterias_catalogo: [["usuario_id", "nombre", "modalidad"], ["usuario_id", "origen_global_id"]],
+    loterias_catalogo_ofrecidas: [["usuario_id", "global_id"]],
+    loterias_catalogo_global: [["clave"]]
 };
 
 const DEFECTOS = {
@@ -23,7 +26,7 @@ function crearFake() {
 
     const tablas = {};
     const tokens = {};
-    const control = { fallarTabla: null, llamadas: [] };
+    const control = { fallarTabla: null, llamadas: [], tablasInexistentes: new Set() };
 
     function comparar(a, b) {
         if (a == null || b == null) return a == null ? (b == null ? 0 : -1) : 1;
@@ -42,6 +45,13 @@ function crearFake() {
                 return b;
             },
             insert(x) { q.op = "insert"; q.payload = x; return b; },
+            // upsert(filas, { onConflict: "a,b", ignoreDuplicates }) como supabase-js.
+            upsert(x, opciones = {}) {
+                q.op = "upsert"; q.payload = x;
+                q.conflicto = String(opciones.onConflict || "").split(",").filter(Boolean);
+                q.ignorar = !!opciones.ignoreDuplicates;
+                return b;
+            },
             update(x) { q.op = "update"; q.payload = x; return b; },
             delete() { q.op = "delete"; return b; },
             eq(c, v) { q.filtros.push(f => f[c] === v); return b; },
@@ -75,8 +85,23 @@ function crearFake() {
             control.llamadas.push({ tabla, op: q.op });
 
             if (control.fallarTabla === tabla) return { data: null, error: { message: `fallo simulado en ${tabla}` } };
+            if (control.tablasInexistentes?.has(tabla)) return { data: null, error: { code: "42P01", message: `relation "public.${tabla}" does not exist` } };
 
             const filas = tablas[tabla] || (tablas[tabla] = []);
+
+            if (q.op === "upsert") {
+                const resultado = [];
+                const aInsertar = [];
+                for (const fila of Array.isArray(q.payload) ? q.payload : [q.payload]) {
+                    const existente = q.conflicto.length && !q.conflicto.some(c => fila[c] == null)
+                        ? filas.find(f => q.conflicto.every(c => f[c] === fila[c]))
+                        : null;
+                    if (existente) { if (!q.ignorar) { Object.assign(existente, fila); resultado.push(existente); } continue; }
+                    aInsertar.push(fila);
+                }
+                if (aInsertar.length) { q.op = "insert"; q.payload = aInsertar; }
+                else return { data: q.devolver ? resultado.map(f => ({ ...f })) : null, error: null };
+            }
 
             if (q.op === "insert") {
 
@@ -90,6 +115,7 @@ function crearFake() {
 
                 for (const n of nuevas) {
                     for (const cols of UNICAS[tabla] || []) {
+                        if (cols.some(c => n[c] == null)) continue;
                         if ([...filas, ...nuevas.filter(x => x !== n)].some(f => cols.every(c => f[c] === n[c]))) {
                             return { data: null, error: { code: "23505", message: "duplicate key value" } };
                         }
@@ -107,7 +133,7 @@ function crearFake() {
 
             if (q.op === "delete") {
                 tablas[tabla] = filas.filter(f => !res.includes(f));
-                return { data: null, error: null };
+                return { data: q.devolver ? res.map(f => ({ ...f })) : null, error: null };
             }
 
             if (q.op === "update") res.forEach(f => Object.assign(f, q.payload));

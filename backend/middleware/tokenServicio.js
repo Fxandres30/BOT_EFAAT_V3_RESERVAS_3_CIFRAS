@@ -91,6 +91,9 @@ function exigirTokenServicio(req, res, next) {
 
     if (!valido) {
 
+        // Nunca se loguea el token: solo si llegó o no.
+        console.warn(`⚠️ [AUTH SERVICIO] ${req.method} ${req.originalUrl} → 401: token de servicio ${recibido ? "distinto al del backend" : "ausente"}.`);
+
         return res.status(401).json({
             success: false,
             code: "NO_AUTORIZADO",

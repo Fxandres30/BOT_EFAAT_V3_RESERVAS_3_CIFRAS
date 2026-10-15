@@ -37,6 +37,9 @@ t.grupos = [
 ];
 t.cuentas_pago = [{ id: "cuenta-a", usuario_id: A, nombre: "Nequi A", tipo: "nequi", numero: "3000000001", activa: true }];
 t.eventos_bot = [];
+// Catálogo global tal como lo carga la migración 026 (leído del propio SQL).
+t.loterias_catalogo_global = require("../sorteos/catalogo026").catalogoGlobalDe026();
+
 t["5k_15k_reservas_2_cifras"] = Array.from({ length: 100 }, (_, i) => ({ numero: String(i).padStart(2, "0"), estado: "libre", usuario_id: A }));
 
 // Fechas fijas futuras (2026): jueves, viernes, domingo y festivo.
@@ -70,13 +73,17 @@ async function main() {
         await a.goto(`${PANEL}/loterias`, { waitUntil: "domcontentloaded" });
         await esperarTexto(a, "Calendario de loterías");
         await esperarTexto(a, "Sorteos tradicionales");
-        await esperarTexto(a, "Horario pendiente");
+        await esperarTexto(a, "Lotería de Manizales");
         const textoCal = await textoPagina(a);
-        for (const nombre of ["Antioqueñita Día", "Antioqueñita Tarde", "Dorado Mañana", "Samán de la Suerte", "Pijao de Oro", "Super Astro Sol", "La Culona Noche", "Paisa Lotto", "SuperMillonaria"]) {
+        for (const nombre of ["Antioqueñita Día", "Antioqueñita Tarde", "Dorado Mañana", "Samán de la Suerte", "Pijao de Oro", "Super Astro Sol", "La Culona Noche", "Paisa Lotto", "SuperMillonaria", "Lotería de Bogotá", "Extra de Colombia Mensual"]) {
             assert.ok(textoCal.includes(nombre), `falta ${nombre}`);
         }
-        assert.ok(t.loterias_catalogo.filter(f => f.usuario_id === A).every(f => f.hora === null), "sin horarios inventados");
-        paso("Calendario: chances y tradicionales, catálogo inicial sin horarios inventados («Horario pendiente»)");
+        assert.strictEqual(t.loterias_catalogo.filter(f => f.usuario_id === A).length, 42);
+        assert.ok(!textoCal.includes("Horario pendiente"), "todas con horario del listado");
+        const tarjetaPijao = await a.evaluate(() => [...document.querySelectorAll("h3")].find(h => h.textContent.trim() === "Pijao de Oro").closest("div").parentElement.innerText);
+        for (const dato of ["Hora habitual: 14:00", "Sábado: 21:00", "Domingo: 22:00", "(20:00)"]) assert.ok(tarjetaPijao.includes(dato), `Pijao de Oro: falta «${dato}»\n${tarjetaPijao}`);
+        await captura(a, "calendario_catalogo");
+        paso("Calendario: 27 chances + 15 tradicionales con los horarios del listado (p. ej. Pijao de Oro: 14:00, sábado 21:00, domingo 22:00, festivos 20:00)");
 
         await a.evaluate(() => {
             const el = document.querySelector('[aria-label="Buscar lotería"]');
@@ -88,14 +95,15 @@ async function main() {
         assert.deepStrictEqual(tarjetas.sort(), ["Sinuano Día", "Sinuano Noche"]);
         paso("Búsqueda por nombre: «sinu» → Sinuano Día y Sinuano Noche");
 
-        // Editar Sinuano Día: lunes a sábado, 14:30, festivos sin regla.
+        // Editar Sinuano Día (del listado: L–S 14:30, domingo y festivos 13:00):
+        // el cliente quita el domingo y deja los festivos sin regla.
         await a.evaluate(() => {
             const card = [...document.querySelectorAll("h3")].find(h => h.textContent.trim() === "Sinuano Día").closest("div").parentElement;
             [...card.querySelectorAll("button")].find(b => b.textContent.trim() === "Editar").click();
         });
         await esperarTexto(a, "Editar Sinuano Día");
-        for (const dia of ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]) await marcar(a, dia);
-        await rellenar(a, "Hora habitual", "14:30");
+        await marcar(a, "Domingo");
+        await rellenar(a, "Festivos", "sin_regla");
         await rellenar(a, "Condiciones y notas", "Lunes a sábado. Domingos y festivos: confirmar.");
         await pulsar(a, "Guardar");
         await a.waitForFunction(() => !document.body.innerText.includes("Editar Sinuano Día"));
@@ -103,8 +111,28 @@ async function main() {
         const sinuano = t.loterias_catalogo.find(f => f.usuario_id === A && f.nombre === "Sinuano" && f.modalidad === "Día");
         assert.deepStrictEqual([...sinuano.dias].sort(), [1, 2, 3, 4, 5, 6]);
         assert.strictEqual(sinuano.hora, "14:30");
+        assert.deepStrictEqual([sinuano.regla_festivo, sinuano.horas_por_dia], ["sin_regla", {}], "personalización guardada");
         await captura(a, "calendario_editado");
-        paso("Editar horario en el calendario: Sinuano Día L–S 14:30 guardado en el backend");
+        paso("Personalizar: Sinuano Día sin domingo y festivos sin regla, guardado solo en el calendario de A");
+
+        // Eliminar «Dorado Mañana» del calendario de A: persiste y no vuelve.
+        await a.evaluate(() => {
+            const el = document.querySelector('[aria-label="Buscar lotería"]');
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, "dorado");
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        await a.waitForFunction(() => [...document.querySelectorAll("h3")].some(h => h.textContent.trim() === "Dorado Mañana"));
+        await a.evaluate(() => {
+            const card = [...document.querySelectorAll("h3")].find(h => h.textContent.trim() === "Dorado Mañana").closest("div").parentElement;
+            [...card.querySelectorAll("button")].find(b => b.textContent.trim() === "Eliminar").click();
+        });
+        await a.waitForFunction(() => ![...document.querySelectorAll("h3")].some(h => h.textContent.trim() === "Dorado Mañana"));
+        assert.ok(!t.loterias_catalogo.some(f => f.usuario_id === A && f.nombre === "Dorado" && f.modalidad === "Mañana"), "borrada en la base");
+        await a.reload({ waitUntil: "domcontentloaded" });
+        await esperarTexto(a, "Sinuano Día");
+        assert.ok(!(await textoPagina(a)).includes("Dorado Mañana"), "tras recargar no reaparece");
+        assert.strictEqual(t.loterias_catalogo_global.length, 42, "el catálogo global no cambia");
+        paso("Eliminar «Dorado Mañana» de su calendario: se borra, no reaparece al recargar y el catálogo global queda igual");
 
         // ---------------------------------------- B. formulario + horario ---
         await a.goto(`${PANEL}/sorteos`, { waitUntil: "domcontentloaded" });
@@ -112,7 +140,7 @@ async function main() {
         await esperarTexto(a, "Grupo Uno A");
         await a.waitForFunction(() => document.querySelectorAll("#loterias-calendario option").length > 0, { timeout: 30000 });
         const opciones = await a.evaluate(() => [...document.querySelectorAll("#loterias-calendario option")].map(o => o.value));
-        assert.ok(opciones.includes("Sinuano Día") && opciones.length >= 27, `el buscador ofrece el calendario: ${JSON.stringify(opciones)}`);
+        assert.ok(opciones.includes("Sinuano Día") && !opciones.includes("Dorado Mañana") && opciones.length === 41, `el buscador ofrece el calendario: ${JSON.stringify(opciones)}`);
         await rellenar(a, "Lotería o nombre del sorteo", "Sinuano Día");
         await esperarTexto(a, "Del calendario de loterías.");
         await rellenar(a, "Fecha y hora de publicación", `${JUEVES}T08:00`);
@@ -250,14 +278,13 @@ async function main() {
         await pulsar(b, "Cancelar");
         await b.goto(`${PANEL}/loterias`, { waitUntil: "domcontentloaded" });
         await esperarTexto(b, "Sinuano Día");
-        assert.ok(!(await textoPagina(b)).includes("Hora habitual: 14:30"), "el calendario de A no se mezcla con el de B");
-        paso("Otro usuario con grupos: ve solo los suyos y su propio calendario");
+        const sinuanoB = t.loterias_catalogo.find(f => f.usuario_id === B && f.nombre === "Sinuano" && f.modalidad === "Día");
+        assert.ok(sinuanoB.dias.includes(7) && sinuanoB.regla_festivo === "hora_especial", "B conserva el horario del listado (la edición de A no le llega)");
+        assert.ok((await textoPagina(b)).includes("Dorado Mañana"), "B conserva lo que A eliminó");
+        paso("Otro usuario con grupos: ve solo los suyos y su propio calendario (incluido lo que A eliminó)");
 
         // Calendario sin la tabla (025 sin aplicar): mensaje sencillo.
-        const real = fake.client.from;
-        fake.client.from = (tabla) => tabla === "loterias_catalogo"
-            ? { select: () => ({ eq: async () => ({ data: null, count: null, error: { code: "42P01", message: "relation does not exist" } }) }) }
-            : real(tabla);
+        fake.control.tablasInexistentes = new Set(["loterias_catalogo"]);
         await a.goto(`${PANEL}/loterias`, { waitUntil: "domcontentloaded" });
         await esperarTexto(a, "Esta función todavía no está disponible");
         await sinTextoTecnico(a, "calendario sin migración");
@@ -266,8 +293,41 @@ async function main() {
         await esperarTexto(a, "No pudimos cargar el calendario de loterías. Puedes escribir el nombre de la lotería a mano.");
         await sinTextoTecnico(a, "formulario sin calendario");
         await pulsar(a, "Cancelar");
-        fake.client.from = real;
+        fake.control.tablasInexistentes = new Set();
         paso("Calendario no disponible: mensajes sencillos y se puede escribir la lotería a mano");
+
+        // Error de carga: la pantalla muestra un mensaje sencillo y la consola
+        // del navegador dice la CATEGORÍA real del fallo.
+        const consola = [];
+        a.on("console", async (m) => {
+            try { consola.push((await Promise.all(m.args().map(x => x.jsonValue()))).map(v => typeof v === "string" ? v : JSON.stringify(v)).join(" ")); } catch { /* página recargada */ }
+        });
+        const tokenServicio = require("../../middleware/tokenServicio");
+        const token = process.env.SESSIONS_API_TOKEN;
+        delete process.env.SESSIONS_API_TOKEN;
+        tokenServicio._configurarPrueba({ dir: require("os").tmpdir() + "/sin-panel-" + Date.now() });
+        await a.goto(`${PANEL}/loterias`, { waitUntil: "domcontentloaded" });
+        await esperarTexto(a, "No pudimos completar la operación");
+        await a.waitForFunction(() => true);
+        for (let i = 0; i < 30 && !consola.some(c => /configuración: el backend no tiene token de servicio/.test(c)); i++) await new Promise(res => setTimeout(res, 200));
+        process.env.SESSIONS_API_TOKEN = token;
+        tokenServicio._configurarPrueba();
+        assert.ok(consola.some(c => /configuración: el backend no tiene token de servicio/.test(c)), consola.join("\n"));
+        await sinTextoTecnico(a, "error de carga del calendario");
+
+        await a.setRequestInterception(true);
+        const interceptar = (req) => req.url().includes("/api/sorteos/loterias")
+            ? req.respond({ status: 404, contentType: "text/html", body: "<html>Cannot GET</html>" })
+            : req.continue();
+        a.on("request", interceptar);
+        consola.length = 0;
+        await a.goto(`${PANEL}/loterias`, { waitUntil: "domcontentloaded" });
+        await esperarTexto(a, "No pudimos completar la operación");
+        for (let i = 0; i < 30 && !consola.some(c => /ruta inexistente/.test(c)); i++) await new Promise(res => setTimeout(res, 200));
+        a.off("request", interceptar);
+        await a.setRequestInterception(false);
+        assert.ok(consola.some(c => /ruta inexistente/.test(c)), consola.join("\n"));
+        paso("Error de carga: mensaje sencillo en pantalla; la consola distingue «configuración» (sin token) y «ruta inexistente» (404 no JSON)");
 
         // ------------------------------------------------- cierre ---
         assert.strictEqual(t.eventos_bot.length, 0, "ningún evento creado ni publicado");

@@ -249,6 +249,53 @@ async function buscarPorCampo(campo, valor) {
 //   { conflicto: true,  usuario: null }        → colisión o error de lectura
 //   { conflicto: false, usuario: {...} | null } → resuelto (o no encontrado)
 // ==========================================================================
+// ==========================================================================
+// Asociación LID <-> teléfono que mantiene Baileys 7 (store interno
+// signalRepository.lidMapping, alimentado por el servidor de WhatsApp:
+// evento lid-mapping.update, participantAlt, usync). Es evidencia FIABLE de
+// que un LID y un teléfono son la misma persona. Se usa SOLO para encontrar
+// a la persona ya existente (evita crear un duplicado cuando llega el
+// identificador alternativo); NUNCA se escribe en "usuarios" por esta vía.
+//   getPNForLID: solo datos locales del dispositivo.
+//   getLIDForPN: si no lo tiene, pregunta al servidor -> con tiempo límite.
+// ==========================================================================
+const LIMITE_BAILEYS_MS = 3000;
+
+function conLimite(promesa, ms) {
+    let temporizador;
+    const limite = new Promise(resolve => { temporizador = setTimeout(() => resolve(null), ms); });
+    return Promise.race([promesa, limite]).finally(() => clearTimeout(temporizador));
+}
+
+async function asociacionBaileys({ sock, lid, telefono }) {
+
+    const store = sock?.signalRepository?.lidMapping;
+
+    if (!store || (lid && telefono) || (!lid && !telefono)) return { lid: null, telefono: null };
+
+    try {
+
+        if (lid && typeof store.getPNForLID === "function") {
+            const pn = await conLimite(store.getPNForLID(lid), LIMITE_BAILEYS_MS);
+            return { lid: null, telefono: pn ? normalizarIdentificadoresDesdeJid(String(pn)).telefono : null };
+        }
+
+        if (telefono && typeof store.getLIDForPN === "function") {
+            const lidJid = await conLimite(store.getLIDForPN(`57${telefono}@s.whatsapp.net`), LIMITE_BAILEYS_MS);
+            const usuarioLid = lidJid ? String(lidJid).split("@")[0].split(":")[0] : null;
+            return { lid: usuarioLid ? `${usuarioLid}@lid` : null, telefono: null };
+        }
+
+    } catch (error) {
+
+        console.warn("⚠ [IDENTIDAD] asociación de Baileys no disponible:", error?.message || error);
+
+    }
+
+    return { lid: null, telefono: null };
+
+}
+
 async function resolverIdentidadExistente({ lid, telefono }) {
 
     let porLid = null;
@@ -295,7 +342,7 @@ async function resolverIdentidadExistente({ lid, telefono }) {
 
         });
 
-        return { conflicto: true, usuario: null };
+        return { conflicto: true, usuario: null, porLid, porTelefono };
 
     }
 
@@ -317,7 +364,14 @@ async function obtenerUsuarioGlobal({
     // pasarlos; si faltan, esta función se comporta exactamente igual que
     // antes de que existiera contactos_tenant.
     usuarioIdTenant = null,
-    origenContacto = null
+    origenContacto = null,
+
+    // Socket de Baileys (opcional): permite usar su asociación LID <-> teléfono.
+    sock = null,
+
+    // false: solo RESOLVER a una persona existente (p. ej. el cliente citado
+    // en un sticker de pago); nunca crear una nueva.
+    crear = true
 
 }) {
 
@@ -379,7 +433,31 @@ async function obtenerUsuarioGlobal({
     // conflicto provoca INSERT.
     // ==========================================
 
-    const resolucion = await resolverIdentidadExistente({ lid, telefono });
+    // Identificadores que trajo el MENSAJE (los únicos que se escriben más
+    // abajo) y, aparte, los que aporta la asociación de Baileys (solo para
+    // buscar a la persona ya existente).
+    const asociado = await asociacionBaileys({ sock, lid, telefono });
+    const usaAsociacion = !!(asociado.lid || asociado.telefono);
+
+    let resolucion = await resolverIdentidadExistente({
+        lid: lid || asociado.lid,
+        telefono: telefono || asociado.telefono
+    });
+
+    // Un conflicto causado SOLO por la asociación de Baileys (p. ej. su
+    // teléfono ya está en OTRA fila) no debe dejar sin atender a quien
+    // antes sí se encontraba: se vuelve a resolver solo con lo que trajo el
+    // mensaje, y queda registrado para revisión. No se une nada.
+    if (resolucion.conflicto && usaAsociacion) {
+
+        module.exports.registrarContingenciaIdentidad("ASOCIACION_BAILEYS_EN_CONFLICTO", {
+            usuarioIdPorLid: resolucion.porLid?.id || null,
+            usuarioIdPorTelefono: resolucion.porTelefono?.id || null
+        });
+
+        resolucion = await resolverIdentidadExistente({ lid, telefono });
+
+    }
 
     if (resolucion.conflicto) {
 
@@ -464,6 +542,12 @@ async function obtenerUsuarioGlobal({
     // Crear usuario (no existe ni por LID ni por teléfono)
     // ==========================================
 
+    if (!crear) {
+
+        return null;
+
+    }
+
     const { data: nuevo, error } = await supabase
         .from("usuarios")
         .insert({
@@ -533,28 +617,40 @@ async function obtenerUsuarioGlobal({
 //     coincidentes no aparecía como del usuario.
 //
 // Esta función es el único lugar que decide "pertenece", reutilizado por
-// los tres. Prioridad: usuario_global_id (si la fila ya lo tiene) primero;
-// lid y teléfono/contacto como respaldo para filas antiguas que no lo
-// tengan. NUNCA se usa reserva.usuario_id: esa columna es el tenant dueño
-// del bot (evento.usuario_id en reservarNumeros.js), no el comprador — usarla
-// aquí mezclaría dos identidades distintas.
+// validarReservas.js, consultarNumero.js y consultarMisNumeros.js (y con
+// este, cantidad, estados y consulta de pagos).
+//
+// REGLA (auditoría identidad 2026-10-14 — fuga real: reservas 65/86 con el
+// teléfono de OTRA persona aparecían como suyas):
+//   1. Fila CON usuario_global_id: es del usuario SOLO si ese id es el suyo.
+//      Nunca por teléfono, contacto ni nombre (que una fila puede llevar
+//      por error o por una edición externa).
+//   2. Fila antigua SIN usuario_global_id: por un identificador del propio
+//      usuario (los de su perfil: el LID que WhatsApp le asigna o el
+//      teléfono asociado, incluido uno añadido a mano en el panel):
+//        - si la fila tiene LID, decide el LID (un teléfono distinto en esa
+//          fila no prueba nada);
+//        - si no tiene LID, por teléfono/contacto.
+//   3. Si no se puede demostrar, NO es suya.
+// NUNCA se usa reserva.usuario_id: esa columna es el tenant dueño del bot
+// (evento.usuario_id en reservarNumeros.js), no el comprador.
+function usuarioDeLid(lid) {
+    return lid ? String(lid).split("@")[0].split(":")[0] : null;
+}
+
 function reservaPerteneceAUsuario(fila, usuario) {
 
-    if (!fila || !usuario) return false;
+    if (!fila || !usuario?.id) return false;
 
-    if (fila.usuario_global_id && fila.usuario_global_id === usuario.id) {
-        return true;
+    if (fila.usuario_global_id) {
+        return fila.usuario_global_id === usuario.id;
     }
 
-    if (usuario.lid && fila.lid && fila.lid === usuario.lid) {
-        return true;
+    if (fila.lid) {
+        return !!usuario.lid && usuarioDeLid(fila.lid) === usuarioDeLid(usuario.lid);
     }
 
-    if (usuario.telefono && (fila.telefono === usuario.telefono || fila.contacto === usuario.telefono)) {
-        return true;
-    }
-
-    return false;
+    return !!usuario.telefono && (fila.telefono === usuario.telefono || fila.contacto === usuario.telefono);
 
 }
 

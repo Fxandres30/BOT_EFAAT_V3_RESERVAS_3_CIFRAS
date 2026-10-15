@@ -208,7 +208,14 @@ async function confirmarPagoPorSticker(ctx) {
         const usuarioCitado = await obtenerUsuarioGlobal({
 
             jid: datosSticker.quotedParticipant,
-            nombre: null
+            nombre: null,
+            // Si el mensaje citado llega con el identificador alternativo
+            // (teléfono en vez de LID o al revés), la asociación de Baileys
+            // encuentra al mismo cliente que reservó.
+            sock: ctx.sock || null,
+            // El cliente citado ya debe existir (reservó antes): nunca se
+            // crea una persona nueva desde un sticker de pago.
+            crear: false
 
         });
 

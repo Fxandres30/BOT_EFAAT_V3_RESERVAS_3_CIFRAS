@@ -34,9 +34,13 @@ const A = "aaaaaaaa-0000-4000-8000-00000000000a";
 const B = "bbbbbbbb-0000-4000-8000-00000000000b";
 const C = "cccccccc-0000-4000-8000-00000000000c";
 
+// Catálogo global tal como lo carga la migración 026 (se lee del propio SQL).
+const { SQL_026, catalogoGlobalDe026 } = require("./catalogo026");
+
 function escenario() {
     fake = crearFake();
     const t = fake.tablas;
+    t.loterias_catalogo_global = catalogoGlobalDe026();
     t.grupos_autorizados = [
         { usuario_id: A, grupo_id: "g1@g.us", activo: true },
         { usuario_id: A, grupo_id: "g2@g.us", activo: true },
@@ -119,13 +123,18 @@ prueba("horario: festivo según la regla (sin regla avisa; no se juega; habitual
 });
 
 // --------------------------------------------------------------- catálogo ---
-prueba("catálogo: se siembra UNA vez por cliente, solo nombres, sin horarios inventados", async () => {
+prueba("catálogo: el cliente recibe el catálogo global completo (27 chances + 15 tradicionales) con los horarios del listado", async () => {
     escenario();
     const l1 = await loterias.listar(A);
     assert.ok(l1.ok);
-    assert.strictEqual(l1.data.length, loterias.CATALOGO_INICIAL.length);
-    assert.ok(l1.data.every(l => l.hora === null && l.dias.length === 0 && l.regla_festivo === "sin_regla"));
-    for (const nombre of ["Antioqueñita Día", "Antioqueñita Tarde", "Dorado Noche", "Samán de la Suerte", "Pijao de Oro", "Super Astro Luna", "La Culona Noche", "Paisa Lotto", "SuperMillonaria"]) {
+    assert.strictEqual(l1.data.length, 42);
+    for (const g of fake.tablas.loterias_catalogo_global) {
+        const c = l1.data.find(l => l.nombre === g.nombre && l.modalidad === g.modalidad);
+        assert.ok(c, g.clave);
+        assert.deepStrictEqual([c.categoria, c.dias, c.hora, c.horas_por_dia, c.regla_festivo, c.hora_festivo, c.notas],
+            [g.categoria, g.dias, g.hora, g.horas_por_dia, g.regla_festivo, g.hora_festivo, g.notas], g.clave);
+    }
+    for (const nombre of ["Antioqueñita Día", "Antioqueñita Tarde", "Dorado Noche", "Samán de la Suerte", "Pijao de Oro", "Super Astro Luna", "La Culona Noche", "Paisa Lotto", "SuperMillonaria", "Lotería de Manizales", "Extra de Colombia Mensual"]) {
         assert.ok(l1.data.some(l => l.etiqueta === nombre), nombre);
     }
     const l2 = await loterias.listar(A);
@@ -140,7 +149,7 @@ prueba("catálogo: editar horario y reglas; validaciones; nombre duplicado", asy
     assert.ok(e.ok, JSON.stringify(e));
     assert.deepStrictEqual(e.data.dias, [1, 2, 3, 4, 5, 6]);
     assert.strictEqual(e.data.hora, "14:30");
-    assert.strictEqual((await loterias.actualizar(A, sinuano.id, { regla_festivo: "hora_especial" })).motivo, "validacion");
+    assert.strictEqual((await loterias.actualizar(A, sinuano.id, { regla_festivo: "hora_especial", hora_festivo: null })).motivo, "validacion");
     assert.strictEqual((await loterias.actualizar(A, sinuano.id, { hora: "25:00" })).motivo, "validacion");
     assert.strictEqual((await loterias.actualizar(A, sinuano.id, { dias: [0, 8] })).motivo, "validacion");
     assert.strictEqual((await loterias.crear(A, { nombre: "Sinuano", modalidad: "Día" })).motivo, "nombre_duplicado");
@@ -159,7 +168,7 @@ prueba("catálogo: aislamiento — B no ve, edita ni consulta horarios del catá
     assert.ok(!deB.data.some(l => l.id === deA.id));
     assert.strictEqual((await loterias.actualizar(B, deA.id, { hora: "10:00" })).motivo, "no_encontrado");
     assert.strictEqual((await loterias.horario(B, deA.id, "2026-10-15")).motivo, "no_encontrado");
-    assert.strictEqual((await loterias.obtener(A, deA.id)).data.hora, null, "A intacto");
+    assert.strictEqual((await loterias.obtener(A, deA.id)).data.hora, deA.hora, "A intacto");
 });
 
 prueba("catálogo: tabla inexistente (025 sin aplicar) -> migracion_pendiente 025", async () => {
@@ -255,6 +264,221 @@ prueba("HTTP: /loterias, /loterias/:id/horario y /grupos (meta); 401 sin sesión
 });
 
 // ------------------------------------------------------- SQL real (025) ---
+// ------------------------------------- catálogo global + calendario propio ---
+prueba("global: la 026 carga 42 entradas únicas; el calendario del cliente se copia UNA vez con su origen", async () => {
+    escenario();
+    assert.strictEqual(fake.tablas.loterias_catalogo_global.length, 42);
+    assert.strictEqual(fake.tablas.loterias_catalogo_global.filter(g => g.categoria === "chance").length, 27);
+    assert.strictEqual(fake.tablas.loterias_catalogo_global.filter(g => g.categoria === "tradicional").length, 15);
+    assert.strictEqual(new Set(fake.tablas.loterias_catalogo_global.map(g => g.clave)).size, 42);
+    const l1 = await loterias.listar(A);
+    assert.strictEqual(l1.data.length, 42);
+    assert.ok(fake.tablas.loterias_catalogo.filter(f => f.usuario_id === A).every(f => f.origen_global_id), "cada copia sabe de qué entrada global salió");
+    await loterias.listar(A);
+    await Promise.all([loterias.listar(A), loterias.listar(A), loterias.listar(A)]);
+    assert.strictEqual(fake.tablas.loterias_catalogo.filter(f => f.usuario_id === A).length, 42, "sin duplicados, ni en paralelo");
+    assert.strictEqual(fake.tablas.loterias_catalogo_ofrecidas.filter(m => m.usuario_id === A).length, 42, "cada entrada ofrecida una vez");
+});
+
+prueba("global: horarios por día del catálogo global se copian tal cual", async () => {
+    escenario();
+    Object.assign(fake.tablas.loterias_catalogo_global.find(g => g.clave === "sinuano|día"), { dias: [1, 2, 3, 4, 5, 6, 7], hora: "14:30", horas_por_dia: { 7: "13:00" }, regla_festivo: "hora_especial", hora_festivo: "13:00" });
+    const sin = (await loterias.listar(A)).data.find(l => l.etiqueta === "Sinuano Día");
+    assert.deepStrictEqual([sin.dias, sin.hora, sin.horas_por_dia, sin.regla_festivo, sin.hora_festivo], [[1, 2, 3, 4, 5, 6, 7], "14:30", { 7: "13:00" }, "hora_especial", "13:00"]);
+});
+
+prueba("propio: agregar, editar (con horas por día) y eliminar; persiste al volver a cargar; lo borrado no vuelve", async () => {
+    escenario();
+    const lista = (await loterias.listar(A)).data;
+    const nueva = await loterias.crear(A, { nombre: "Lotería de Prueba", categoria: "tradicional", dias: [5], hora: "22:40" });
+    assert.ok(nueva.ok);
+    const sin = lista.find(l => l.etiqueta === "Sinuano Noche");
+    assert.ok((await loterias.actualizar(A, sin.id, { dias: [1, 2, 3, 4, 5, 6, 7], hora: "22:30", horas_por_dia: { 7: "21:00" } })).ok);
+    const dorado = lista.find(l => l.etiqueta === "Dorado Mañana");
+    assert.ok((await loterias.eliminar(A, dorado.id)).ok);
+    const recarga = (await loterias.listar(A)).data;
+    assert.strictEqual(recarga.length, 42, "42 - 1 eliminada + 1 nueva");
+    assert.ok(recarga.some(l => l.etiqueta === "Lotería de Prueba"));
+    assert.ok(!recarga.some(l => l.etiqueta === "Dorado Mañana"), "la eliminada no reaparece");
+    assert.deepStrictEqual(recarga.find(l => l.id === sin.id).horas_por_dia, { 7: "21:00" });
+    for (const l of recarga) await loterias.eliminar(A, l.id);
+    assert.strictEqual((await loterias.listar(A)).data.length, 0, "aunque borre todo, no se vuelve a copiar");
+});
+
+prueba("aislamiento: los cambios de A no tocan el calendario de B ni el catálogo global; B no puede borrar ni editar lo de A", async () => {
+    escenario();
+    const deA = (await loterias.listar(A)).data;
+    const globalAntes = JSON.stringify(fake.tablas.loterias_catalogo_global);
+    await loterias.actualizar(A, deA[0].id, { hora: "10:00" });
+    await loterias.eliminar(A, deA[1].id);
+    const deB = (await loterias.listar(B)).data;
+    assert.strictEqual(deB.length, 42);
+    const deBIgual = deB.find(l => l.etiqueta === deA[0].etiqueta);
+    assert.strictEqual(deBIgual.hora, deA[0].hora, "la edición de A no llega a B");
+    assert.ok(deB.some(l => l.etiqueta === deA[1].etiqueta), "lo que A eliminó sigue en el calendario de B");
+    assert.strictEqual(JSON.stringify(fake.tablas.loterias_catalogo_global), globalAntes, "el global no cambia");
+    assert.strictEqual((await loterias.eliminar(B, deA[0].id)).motivo, "no_encontrado");
+    assert.strictEqual((await loterias.actualizar(B, deA[0].id, { hora: "11:00" })).motivo, "no_encontrado");
+    assert.strictEqual((await loterias.obtener(A, deA[0].id)).data.hora, "10:00");
+});
+
+prueba("sin la migración 026: se comporta como antes (catálogo inicial del código)", async () => {
+    escenario();
+    fake.control.tablasInexistentes = new Set(["loterias_calendario_inicializado", "loterias_catalogo_global"]);
+    const l = await loterias.listar(A);
+    assert.ok(l.ok);
+    assert.strictEqual(l.data.length, loterias.CATALOGO_INICIAL.length);
+});
+
+prueba("errores reales: se registran en el log del servidor (código y mensaje de la base) y al panel solo llega el motivo", async () => {
+    escenario();
+    fake.control.fallarTabla = "loterias_catalogo";
+    const registros = [];
+    const original = console.error;
+    console.error = (...a) => registros.push(a.join(" "));
+    let resultado;
+    try { resultado = await loterias.crear(A, { nombre: "X" }); } finally { console.error = original; }
+    assert.strictEqual(resultado.motivo, "error_supabase");
+    assert.ok(registros.some(x => /\[LOTERIAS\] error_supabase/.test(x)), registros.join("|"));
+});
+
+prueba("HTTP: DELETE /loterias/:id borra la propia; la de otro cliente → 404", async () => {
+    escenario();
+    const app = express();
+    app.use(express.json());
+    delete require.cache[r("routes/sorteos.js")];
+    app.use("/sorteos", require(r("routes/sorteos.js")));
+    const server = http.createServer(app);
+    await new Promise(res => server.listen(0, "127.0.0.1", res));
+    const base = `http://127.0.0.1:${server.address().port}/sorteos`;
+    const h = (jwt) => ({ "content-type": "application/json", "x-service-token": "token-servicio-pruebas", authorization: `Bearer ${jwt}` });
+    try {
+        const deA = (await (await fetch(`${base}/loterias`, { headers: h("jwt-A") })).json()).data;
+        assert.strictEqual((await fetch(`${base}/loterias/${deA[0].id}`, { method: "DELETE", headers: h("jwt-B") })).status, 404);
+        assert.strictEqual((await fetch(`${base}/loterias/${deA[0].id}`, { method: "DELETE", headers: h("jwt-A") })).status, 200);
+        assert.strictEqual((await (await fetch(`${base}/loterias`, { headers: h("jwt-A") })).json()).data.length, 41);
+    } finally {
+        server.close();
+    }
+});
+
+// ------------------------------------------ horarios reales del listado ---
+prueba("horarios del listado: día habitual, sábado/domingo distintos y festivos según la regla", async () => {
+    escenario();
+    const lista = (await loterias.listar(A)).data;
+    const id = (etiqueta) => lista.find(l => l.etiqueta === etiqueta).id;
+    const h = async (etiqueta, fecha) => (await loterias.horario(A, id(etiqueta), fecha)).data;
+    // 2026-10-19 lunes, 2026-10-23 viernes, 2026-10-24 sábado, 2026-10-18 domingo, 2026-11-02 lunes festivo.
+    assert.strictEqual((await h("Antioqueñita Día", "2026-10-19")).hora, "10:00");
+    assert.strictEqual((await h("Antioqueñita Día", "2026-10-18")).hora, "12:00", "domingo");
+    assert.strictEqual((await h("Antioqueñita Día", "2026-11-02")).hora, "12:00", "festivo");
+    assert.strictEqual((await h("Pijao de Oro", "2026-10-23")).hora, "14:00");
+    assert.strictEqual((await h("Pijao de Oro", "2026-10-24")).hora, "21:00", "sábado");
+    assert.strictEqual((await h("Pijao de Oro", "2026-10-18")).hora, "22:00", "domingo");
+    assert.strictEqual((await h("Pijao de Oro", "2026-11-02")).hora, "20:00", "festivo");
+    assert.strictEqual((await h("Chontico Noche", "2026-10-24")).hora, "22:00");
+    assert.strictEqual((await h("Dorado Noche", "2026-10-24")).hora, "22:15");
+    assert.strictEqual((await h("Dorado Noche", "2026-10-23")).juega, false, "viernes no se juega");
+    assert.strictEqual((await h("Antioqueñita Tarde", "2026-11-02")).hora, "16:00", "festivo a la hora habitual");
+    assert.strictEqual((await h("La Culona Día", "2026-11-02")).hora, "14:30", "incluso feriados");
+    const doradoFestivo = await h("Dorado Mañana", "2026-11-02");
+    assert.strictEqual(doradoFestivo.hora, null, "el listado no dice nada de festivos: no se inventa");
+    assert.ok(doradoFestivo.avisos.some(a => /no tiene una regla para festivos/.test(a)));
+    assert.strictEqual((await h("Dorado Mañana", "2026-10-18")).juega, false, "domingo no se juega");
+    assert.strictEqual((await h("Lotería Cruz Roja", "2026-10-20")).hora, "22:30");
+    assert.strictEqual((await h("Lotería Cruz Roja", "2026-10-21")).juega, false);
+});
+
+// ------------------------------------- sincronización con el catálogo global ---
+const nuevaGlobal = (clave, nombre, modalidad = "", extra = {}) => ({
+    id: `00000000-0000-4000-9000-9${String(clave.length).padStart(11, "0")}`, clave, nombre, modalidad, categoria: "chance",
+    dias: [1, 2, 3], hora: "11:00", horas_por_dia: {}, regla_festivo: "sin_regla", hora_festivo: null, notas: "nueva", activo: true, ...extra
+});
+
+prueba("sincronización: una entrada global NUEVA llega una sola vez a un calendario ya inicializado", async () => {
+    escenario();
+    await loterias.listar(A);
+    fake.tablas.loterias_catalogo_global.push(nuevaGlobal("lotería nueva|", "Lotería Nueva"));
+    const l = (await loterias.listar(A)).data;
+    assert.strictEqual(l.length, 43);
+    assert.ok(l.some(x => x.etiqueta === "Lotería Nueva"));
+    await loterias.listar(A);
+    await Promise.all([loterias.listar(A), loterias.listar(A)]);
+    assert.strictEqual(fake.tablas.loterias_catalogo.filter(f => f.usuario_id === A).length, 43, "sin duplicados");
+});
+
+prueba("sincronización: NO sobrescribe lo editado aunque el global cambie, ni recupera lo eliminado", async () => {
+    escenario();
+    const lista = (await loterias.listar(A)).data;
+    const sinuano = lista.find(l => l.etiqueta === "Sinuano Día");
+    const dorado = lista.find(l => l.etiqueta === "Dorado Mañana");
+    await loterias.actualizar(A, sinuano.id, { hora: "15:15" });
+    await loterias.eliminar(A, dorado.id);
+    Object.assign(fake.tablas.loterias_catalogo_global.find(g => g.clave === "sinuano|día"), { hora: "09:00" });
+    fake.tablas.loterias_catalogo_global.push(nuevaGlobal("otra|", "Otra"));
+    const l = (await loterias.listar(A)).data;
+    assert.strictEqual(l.find(x => x.id === sinuano.id).hora, "15:15", "su edición se conserva");
+    assert.ok(!l.some(x => x.etiqueta === "Dorado Mañana"), "lo eliminado no vuelve");
+    assert.ok(l.some(x => x.etiqueta === "Otra"), "lo nuevo sí llega");
+});
+
+prueba("sincronización: si el cliente ya tiene una propia con el mismo nombre, no se duplica (solo se marca)", async () => {
+    escenario();
+    await loterias.listar(A);
+    await loterias.crear(A, { nombre: "Lotería Propia", dias: [2], hora: "20:00" });
+    fake.tablas.loterias_catalogo_global.push(nuevaGlobal("lotería propia|", "Lotería Propia", "", { hora: "21:00" }));
+    const l = (await loterias.listar(A)).data.filter(x => x.etiqueta === "Lotería Propia");
+    assert.strictEqual(l.length, 1);
+    assert.strictEqual(l[0].hora, "20:00", "se queda la suya");
+    assert.ok(fake.tablas.loterias_catalogo_ofrecidas.some(o => o.usuario_id === A && o.global_id === fake.tablas.loterias_catalogo_global.at(-1).id));
+});
+
+prueba("sincronización: una entrada global INACTIVA no se ofrece; las copias existentes no se tocan", async () => {
+    escenario();
+    fake.tablas.loterias_catalogo_global.find(g => g.clave === "paisa lotto|").activo = false;
+    const l = (await loterias.listar(A)).data;
+    assert.ok(!l.some(x => x.etiqueta === "Paisa Lotto"));
+    assert.strictEqual(l.length, 41);
+});
+
+// ------------------------------------------------ error de carga (API) ---
+prueba("error de carga: cada causa llega distinguible al panel (autenticación, configuración, base de datos)", async () => {
+    escenario();
+    const app = express();
+    app.use(express.json());
+    delete require.cache[r("routes/sorteos.js")];
+    app.use("/sorteos", require(r("routes/sorteos.js")));
+    const server = http.createServer(app);
+    await new Promise(res => server.listen(0, "127.0.0.1", res));
+    const base = `http://127.0.0.1:${server.address().port}/sorteos/loterias`;
+    const pedir = (headers) => fetch(base, { headers }).then(async x => ({ status: x.status, json: await x.json().catch(() => null) }));
+    const original = console.error;
+    console.error = () => {};
+    try {
+        const sinServicio = await pedir({ authorization: "Bearer jwt-A" });
+        assert.deepStrictEqual([sinServicio.status, sinServicio.json.code], [401, "NO_AUTORIZADO"]);
+        const sesionMala = await pedir({ "x-service-token": "token-servicio-pruebas", authorization: "Bearer jwt-falso" });
+        assert.deepStrictEqual([sesionMala.status, sesionMala.json.motivo], [401, "sesion_invalida"]);
+        const token = process.env.SESSIONS_API_TOKEN;
+        delete process.env.SESSIONS_API_TOKEN;
+        require(r("middleware/tokenServicio.js"))._configurarPrueba({ dir: require("os").tmpdir() + "/sin-panel-" + Date.now() });
+        const sinToken = await pedir({ authorization: "Bearer jwt-A" });
+        process.env.SESSIONS_API_TOKEN = token;
+        require(r("middleware/tokenServicio.js"))._configurarPrueba();
+        assert.deepStrictEqual([sinToken.status, sinToken.json.code], [503, "TOKEN_SERVICIO_NO_CONFIGURADO"]);
+        fake.control.fallarTabla = "loterias_catalogo_global";
+        const baseDatos = await pedir({ "x-service-token": "token-servicio-pruebas", authorization: "Bearer jwt-A" });
+        fake.control.fallarTabla = null;
+        assert.deepStrictEqual([baseDatos.status, baseDatos.json.motivo], [500, "error_supabase"]);
+        assert.ok(!("error" in baseDatos.json), "el mensaje interno de la base no llega al panel");
+        const ruta = await fetch(base.replace("/loterias", "/no-existe-xyz"), { headers: { "x-service-token": "token-servicio-pruebas", authorization: "Bearer jwt-A" } });
+        assert.strictEqual(ruta.status, 404);
+    } finally {
+        console.error = original;
+        server.close();
+    }
+});
+
 prueba("migración 025 en Postgres real (PGlite): idempotente, restricciones y RLS por propietario", async () => {
     let PGlite;
     try { ({ PGlite } = require(process.env.PGLITE_MODULE || "@electric-sql/pglite")); } catch { console.log("   ⏭️  PGlite no disponible: parte SQL omitida"); return; }
@@ -272,6 +496,11 @@ prueba("migración 025 en Postgres real (PGlite): idempotente, restricciones y R
             insert into auth.users values ('${A}'), ('${B}');`);
         await db.exec(sql);
         await db.exec(sql);
+        await db.exec(SQL_026);
+        await db.exec(SQL_026);
+        assert.strictEqual(Number((await db.query("select count(*)::int n from public.loterias_catalogo_global")).rows[0].n), 42, "026 idempotente: 42 entradas");
+        const pijao = (await db.query("select dias, hora::text, horas_por_dia, regla_festivo, hora_festivo::text from public.loterias_catalogo_global where clave = 'pijao de oro|'")).rows[0];
+        assert.deepStrictEqual([pijao.dias, pijao.hora, pijao.horas_por_dia, pijao.regla_festivo, pijao.hora_festivo], [[1, 2, 3, 4, 5, 6, 7], "14:00:00", { 6: "21:00", 7: "22:00" }, "hora_especial", "20:00:00"]);
         await db.exec(`insert into public.loterias_catalogo (usuario_id, nombre, modalidad, dias, hora) values ('${A}', 'Sinuano', 'Día', '{1,2,3}', '14:30'), ('${B}', 'Chontico', 'Noche', '{}', null);`);
         let error = null;
         try { await db.exec(`insert into public.loterias_catalogo (usuario_id, nombre, dias) values ('${A}', 'Mala', '{8}')`); } catch (e) { error = e; }
@@ -288,6 +517,28 @@ prueba("migración 025 en Postgres real (PGlite): idempotente, restricciones y R
         try { await como("anon", null, "select * from public.loterias_catalogo"); } catch (e) { error = e; }
         assert.ok(error && /permission denied/.test(error.message), "anon sin acceso");
         assert.strictEqual((await como("service_role", null, "select * from public.loterias_catalogo")).length, 2);
+        // 026: el global lo leen los clientes, no lo modifican; la marca es solo del backend.
+        assert.strictEqual((await como("authenticated", A, "select * from public.loterias_catalogo_global")).length, 42);
+        for (const sqlProhibido of [
+            "insert into public.loterias_catalogo_global (clave, nombre) values ('x|', 'X')",
+            "update public.loterias_catalogo_global set hora = '10:00'",
+            "delete from public.loterias_catalogo_global",
+            "select * from public.loterias_catalogo_ofrecidas"
+        ]) {
+            error = null;
+            try { await como("authenticated", A, sqlProhibido); } catch (e) { error = e; }
+            assert.ok(error && /permission denied/.test(error.message), `debe rechazarse: ${sqlProhibido}`);
+        }
+        error = null;
+        try { await como("anon", null, "select * from public.loterias_catalogo_global"); } catch (e) { error = e; }
+        assert.ok(error && /permission denied/.test(error.message), "anon no lee el catálogo global");
+        // Una copia por entrada global y cliente; un cliente solo borra lo suyo.
+        const g = (await db.query("select id from public.loterias_catalogo_global limit 1")).rows[0].id;
+        await db.exec(`insert into public.loterias_catalogo (usuario_id, nombre, origen_global_id) values ('${A}', 'Copia', '${g}')`);
+        error = null;
+        try { await db.exec(`insert into public.loterias_catalogo (usuario_id, nombre, origen_global_id) values ('${A}', 'Copia 2', '${g}')`); } catch (e) { error = e; }
+        assert.ok(error, "segunda copia de la misma entrada global rechazada");
+        assert.strictEqual((await como("authenticated", B, "delete from public.loterias_catalogo where usuario_id <> auth.uid() returning id")).length, 0);
     } finally {
         await db.close();
     }

@@ -10,9 +10,29 @@ const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
 // envía ni decide ningún usuarioId. Rutas fuera de la lista blanca -> 404.
 
 const CABECERAS = { "Cache-Control": "no-store" };
+const BOT_API_HOST = (() => { try { return new URL(API).host; } catch { return "BOT_API_URL inválida"; } })();
+
+// Registro (servidor del panel) de cada respuesta fallida del backend, con su
+// categoría. Nunca incluye tokens, sesiones ni datos de clientes.
+function categoriaFallo(status: number, motivo: string): string {
+    if (motivo === "respuesta_invalida") return status === 404 ? "ruta inexistente en el backend (¿backend sin este código?)" : "respuesta no JSON del backend";
+    if (motivo === "TOKEN_SERVICIO_NO_CONFIGURADO") return "configuración: el backend no tiene token de servicio";
+    if (motivo === "NO_AUTORIZADO") return "configuración: token de servicio distinto entre panel y backend";
+    if (motivo === "sin_sesion" || motivo === "sesion_invalida") return "autenticación: sesión del usuario rechazada";
+    if (motivo === "migracion_pendiente") return "base de datos: falta una migración";
+    if (motivo === "error_supabase") return "base de datos: error al consultar";
+    if (status >= 500) return "error interno del backend";
+    return "solicitud rechazada";
+}
+
+function registrarFallo(metodo: string, camino: string, status: number, datos: { motivo?: string; code?: string }) {
+    const motivo = datos?.motivo || datos?.code || "desconocido";
+    const log = status >= 500 || status === 401 || motivo === "respuesta_invalida" ? console.error : console.warn;
+    log(`❌ [PROXY SORTEOS] ${metodo} ${camino} → HTTP ${status} · ${motivo} · ${categoriaFallo(status, motivo)}`);
+}
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type Metodo = "GET" | "POST" | "PUT" | "PATCH";
+type Metodo = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 function destino(metodo: Metodo, ruta: string[]): string | null {
 
@@ -28,7 +48,8 @@ function destino(metodo: Metodo, ruta: string[]): string | null {
     }
 
     if (ruta.length === 2) {
-        if ((a === "plantillas" || a === "cuentas" || a === "loterias") && UUID.test(b)) return metodo === "PATCH" ? `/${a}/${b}` : null;
+        if (a === "loterias" && UUID.test(b)) return metodo === "PATCH" || metodo === "DELETE" ? `/${a}/${b}` : null;
+        if ((a === "plantillas" || a === "cuentas") && UUID.test(b)) return metodo === "PATCH" ? `/${a}/${b}` : null;
         if (UUID.test(a) && b === "vista-previa") return metodo === "GET" ? `/${a}/vista-previa` : null;
         if (UUID.test(a) && (b === "confirmar" || b === "cancelar")) return metodo === "POST" ? `/${a}/${b}` : null;
         return null;
@@ -57,7 +78,7 @@ async function reenviar(metodo: Metodo, req: Request, params: Promise<{ ruta?: s
 
     let cuerpo: string | undefined;
 
-    if (metodo !== "GET") {
+    if (metodo !== "GET" && metodo !== "DELETE") {
         const texto = await req.text();
         if (texto.length > 64 * 1024) return NextResponse.json({ ok: false, motivo: "demasiado_grande" }, { status: 413, headers: CABECERAS });
         cuerpo = texto || "{}";
@@ -78,10 +99,12 @@ async function reenviar(metodo: Metodo, req: Request, params: Promise<{ ruta?: s
         });
 
         const datos = await res.json().catch(() => ({ ok: false, motivo: "respuesta_invalida" }));
+        if (!res.ok) registrarFallo(metodo, camino, res.status, datos);
         return NextResponse.json(datos, { status: res.status, headers: CABECERAS });
 
-    } catch {
+    } catch (error) {
 
+        console.error(`❌ [PROXY SORTEOS] ${metodo} ${camino} → backend no disponible (${BOT_API_HOST}): ${(error as Error)?.name || "error"}`);
         return NextResponse.json({ ok: false, motivo: "backend_no_disponible" }, { status: 502, headers: CABECERAS });
 
     }
@@ -94,3 +117,4 @@ export async function GET(req: Request, { params }: Contexto) { return reenviar(
 export async function POST(req: Request, { params }: Contexto) { return reenviar("POST", req, params); }
 export async function PUT(req: Request, { params }: Contexto) { return reenviar("PUT", req, params); }
 export async function PATCH(req: Request, { params }: Contexto) { return reenviar("PATCH", req, params); }
+export async function DELETE(req: Request, { params }: Contexto) { return reenviar("DELETE", req, params); }

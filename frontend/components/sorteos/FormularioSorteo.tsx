@@ -151,7 +151,12 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado }: 
             if (c.ok) setCuentas(c.data.filter(x => x.activa !== false));
             else { describirError(c); setErrorCuentas(true); }
             if (p.ok) setPlantillas(p.data);
-            if (l.ok) setLoterias(l.data.filter(x => x.activo));
+            if (l.ok) {
+                setLoterias(l.data.filter(x => x.activo));
+                // Lotería eliminada del calendario después de crear el sorteo:
+                // se conserva el nombre como personalizado.
+                setForm(prev => (prev.loteriaId && !l.data.some(x => x.id === prev.loteriaId) ? { ...prev, loteriaId: "" } : prev));
+            }
             else { describirError(l); setAvisoLoterias("No pudimos cargar el calendario de loterías. Puedes escribir el nombre de la lotería a mano."); }
             setCuentaSesion(s.data.session?.user?.email || null);
         }

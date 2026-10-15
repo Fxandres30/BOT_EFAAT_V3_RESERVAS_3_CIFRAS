@@ -72,6 +72,7 @@ router.get("/grupos", seguro(async (req, res) => responder(res, await servicio.g
 router.get("/loterias", seguro(async (req, res) => responder(res, await servicio.loterias.listar(req.usuarioId))));
 router.post("/loterias", seguro(async (req, res) => responder(res, await servicio.loterias.crear(req.usuarioId, req.body || {}), 201)));
 router.patch("/loterias/:id", conId(async (req, res) => responder(res, await servicio.loterias.actualizar(req.usuarioId, req.params.id, req.body || {}))));
+router.delete("/loterias/:id", conId(async (req, res) => responder(res, await servicio.loterias.eliminar(req.usuarioId, req.params.id))));
 router.get("/loterias/:id/horario", conId(async (req, res) => responder(res, await servicio.loterias.horario(req.usuarioId, req.params.id, String(req.query.fecha || "")))));
 
 // ----------------------------------------------------------- plantillas ---

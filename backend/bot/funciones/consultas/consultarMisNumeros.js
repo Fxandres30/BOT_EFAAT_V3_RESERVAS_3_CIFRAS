@@ -1,4 +1,5 @@
 const supabase = require("../../../lib/supabase");
+const { reservaPerteneceAUsuario } = require("../usuarios/obtenerUsuarioGlobal");
 const { soloDelCliente } = require("../reservas/filtroCliente");
 
 // READ-ONLY. Busca por usuario_global_id (el identificador de dueño que
@@ -74,7 +75,10 @@ async function obtenerFilasDelUsuario({ evento, usuario }) {
 
     }
 
-    const filas = data || [];
+    // La consulta trae CANDIDATAS (cualquier fila con su id, LID o teléfono);
+    // cada una se confirma con la regla única de pertenencia: una fila de
+    // OTRO propietario con este teléfono no es suya (fuga 65/86).
+    const filas = (data || []).filter(f => reservaPerteneceAUsuario(f, usuario));
 
     // Aísla del mismo sorteo real (independiente del grupo) — una reserva
     // del mismo usuario pero de OTRO evento/ciclo (mismo precio, tabla

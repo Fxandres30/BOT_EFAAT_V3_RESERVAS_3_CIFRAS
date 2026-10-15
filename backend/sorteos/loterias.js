@@ -13,6 +13,8 @@ const supabase = require("../lib/supabase");
 const { horarioPara } = require("./calendario");
 
 const TABLA = "loterias_catalogo";
+const GLOBAL = "loterias_catalogo_global";            // migración 026
+const OFRECIDAS = "loterias_catalogo_ofrecidas";        // migración 026
 const COLUMNAS = "id, nombre, modalidad, categoria, dias, hora, horas_por_dia, regla_festivo, hora_festivo, notas, activo, creado_en, actualizado_en";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HORA = /^([01]\d|2[0-3]):([0-5]\d)(:[0-5]\d)?$/;
@@ -38,13 +40,19 @@ const CATALOGO_INICIAL = [
     ["SuperMillonaria", ""]
 ].map(([nombre, modalidad]) => ({ nombre, modalidad, categoria: "chance" }));
 
+const faltaTabla = (error) => error?.code === "42P01" || error?.code === "PGRST205";
+
 function resultado(data, error) {
     if (!error) return { ok: true, data };
-    const faltaTabla = error.code === "42P01" || error.code === "PGRST205";
+    const sinTabla = faltaTabla(error);
+    const motivo = sinTabla ? "migracion_pendiente" : error.code === "23505" ? "nombre_duplicado" : "error_supabase";
+    // Error real al log del servidor (código y mensaje de la base; sin datos
+    // de clientes). Al panel solo llega el motivo.
+    if (motivo !== "nombre_duplicado") console.error(`❌ [LOTERIAS] ${motivo}: ${error.code || "sin código"} ${error.message || ""}`.trim());
     return {
         ok: false,
-        motivo: faltaTabla ? "migracion_pendiente" : error.code === "23505" ? "nombre_duplicado" : "error_supabase",
-        ...(faltaTabla ? { migracion: "025" } : {}),
+        motivo,
+        ...(sinTabla ? { migracion: "025" } : {}),
         error: error.message
     };
 }
@@ -119,6 +127,8 @@ function validar(entrada = {}, { parcial = false } = {}) {
 
 }
 
+// Sin la migración 026: catálogo inicial del código si el calendario está
+// vacío (comportamiento anterior).
 async function sembrarSiVacio(usuarioId) {
 
     const { count, error } = await supabase.from(TABLA).select("id", { count: "exact", head: true }).eq("usuario_id", usuarioId);
@@ -133,9 +143,70 @@ async function sembrarSiVacio(usuarioId) {
 
 }
 
+// Con la migración 026: SINCRONIZACIÓN SEGURA con el catálogo global. Cada
+// vez que el cliente abre su calendario se le copian solo las entradas
+// globales que NUNCA se le ofrecieron (la primera vez: todas). Queda
+// registrado qué se le ofreció, así:
+//   - lo que editó no se sobrescribe (nunca se actualizan sus copias);
+//   - lo que eliminó no vuelve (ya consta como ofrecido);
+//   - una entrada global nueva le llega una vez, salvo que ya tenga una
+//     propia con el mismo nombre y modalidad (entonces solo se marca).
+const claveDe = (f) => `${String(f.nombre || "").toLocaleLowerCase("es")}|${String(f.modalidad || "").toLocaleLowerCase("es")}`;
+const CAMPOS_COPIA = ["nombre", "modalidad", "categoria", "dias", "hora", "horas_por_dia", "regla_festivo", "hora_festivo", "notas"];
+
+async function copiarEntradas(filas) {
+
+    const { error } = await supabase.from(TABLA).upsert(filas, { onConflict: "usuario_id,origen_global_id", ignoreDuplicates: true });
+    if (!error) return { ok: true };
+    if (error.code !== "23505") return resultado(null, error);
+
+    // Choque por nombre (el cliente creó una igual en paralelo): una a una.
+    for (const fila of filas) {
+        const r = await supabase.from(TABLA).upsert([fila], { onConflict: "usuario_id,origen_global_id", ignoreDuplicates: true });
+        if (r.error && r.error.code !== "23505") return resultado(null, r.error);
+    }
+    return { ok: true };
+
+}
+
+async function sincronizarDesdeGlobal(usuarioId) {
+
+    const global = await supabase.from(GLOBAL).select(`id, ${CAMPOS_COPIA.join(", ")}`).eq("activo", true);
+    if (global.error) return faltaTabla(global.error) ? sembrarSiVacio(usuarioId) : resultado(null, global.error);
+
+    const ofrecidas = await supabase.from(OFRECIDAS).select("global_id").eq("usuario_id", usuarioId);
+    if (ofrecidas.error) return faltaTabla(ofrecidas.error) ? sembrarSiVacio(usuarioId) : resultado(null, ofrecidas.error);
+
+    const yaOfrecidas = new Set((ofrecidas.data || []).map(o => o.global_id));
+    const nuevas = (global.data || []).filter(g => !yaOfrecidas.has(g.id));
+    if (!nuevas.length) return { ok: true, data: 0 };
+
+    const propias = await supabase.from(TABLA).select("nombre, modalidad, origen_global_id").eq("usuario_id", usuarioId);
+    if (propias.error) return resultado(null, propias.error);
+
+    const yaTiene = new Set((propias.data || []).map(claveDe));
+    const yaCopiadas = new Set((propias.data || []).map(f => f.origen_global_id).filter(Boolean));
+
+    const filas = nuevas
+        .filter(g => !yaCopiadas.has(g.id) && !yaTiene.has(claveDe(g)))
+        .map(g => ({ usuario_id: usuarioId, origen_global_id: g.id, activo: true, ...Object.fromEntries(CAMPOS_COPIA.map(c => [c, g[c]])) }));
+
+    if (filas.length) {
+        const copia = await copiarEntradas(filas);
+        if (!copia.ok) return copia;
+    }
+
+    const marcas = nuevas.map(g => ({ usuario_id: usuarioId, global_id: g.id }));
+    const { error } = await supabase.from(OFRECIDAS).upsert(marcas, { onConflict: "usuario_id,global_id", ignoreDuplicates: true });
+    if (error) return resultado(null, error);
+
+    return { ok: true, data: filas.length };
+
+}
+
 async function listar(usuarioId) {
 
-    const siembra = await sembrarSiVacio(usuarioId);
+    const siembra = await sincronizarDesdeGlobal(usuarioId);
     if (!siembra.ok) return siembra;
 
     const { data, error } = await supabase
@@ -199,6 +270,20 @@ async function actualizar(usuarioId, id, entrada) {
 
 }
 
+// Elimina una entrada del calendario DEL CLIENTE (nunca la del catálogo
+// global ni la de otro cliente). Los sorteos que la usaban conservan su copia
+// del nombre.
+async function eliminar(usuarioId, id) {
+
+    if (!UUID.test(id || "")) return { ok: false, motivo: "no_encontrado" };
+
+    const { data, error } = await supabase.from(TABLA).delete().eq("usuario_id", usuarioId).eq("id", id).select("id");
+    if (error) return resultado(null, error);
+    if (!data || !data.length) return { ok: false, motivo: "no_encontrado" };
+    return { ok: true, data: { id } };
+
+}
+
 async function horario(usuarioId, id, fecha) {
 
     const loteria = await obtener(usuarioId, id);
@@ -215,5 +300,6 @@ module.exports = {
     obtener,
     crear,
     actualizar,
+    eliminar,
     horario
 };

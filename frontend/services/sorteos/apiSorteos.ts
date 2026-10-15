@@ -142,17 +142,29 @@ const MENSAJES: Record<string, string> = {
 // base de datos): nunca detalles técnicos. Esos van a la consola.
 export const ERROR_GENERICO = "No pudimos completar la operación. Inténtalo de nuevo en unos minutos.";
 
+// Categoría técnica del fallo (solo para la consola del administrador).
+export function categoriaFallo(r: { motivo: string; status?: number }): string {
+    if (r.motivo === "respuesta_invalida") return r.status === 404 ? "ruta inexistente (backend o panel sin este código)" : "respuesta no válida del servidor";
+    if (r.motivo === "TOKEN_SERVICIO_NO_CONFIGURADO") return "configuración: el backend no tiene token de servicio";
+    if (r.motivo === "NO_AUTORIZADO") return "configuración: token de servicio distinto entre panel y backend";
+    if (r.motivo === "sin_sesion" || r.motivo === "sesion_invalida") return "autenticación";
+    if (r.motivo === "backend_no_disponible") return "backend no disponible";
+    if (r.motivo === "migracion_pendiente") return "base de datos: migración pendiente";
+    if (r.motivo === "error_supabase") return "base de datos";
+    return r.status && r.status >= 500 ? "error interno del servidor" : "solicitud rechazada";
+}
+
 export function describirError(r: { motivo: string; error?: string; migracion?: string; status?: number }): string {
     const conocido = MENSAJES[r.motivo];
     if (!conocido || r.motivo === "migracion_pendiente") {
-        console.warn("[EFAAT] error interno:", { motivo: r.motivo, status: r.status, migracion: r.migracion, error: r.error });
+        console.warn("[EFAAT] error interno:", { categoria: categoriaFallo(r), motivo: r.motivo, status: r.status, migracion: r.migracion });
     }
     return conocido || ERROR_GENERICO;
 }
 
 export const esSesionCaducada = (r: { motivo: string }) => r.motivo === "sin_sesion" || r.motivo === "sesion_invalida";
 
-async function llamar<T>(metodo: "GET" | "POST" | "PUT" | "PATCH", ruta: string, cuerpo?: unknown): Promise<Respuesta<T>> {
+async function llamar<T>(metodo: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", ruta: string, cuerpo?: unknown): Promise<Respuesta<T>> {
 
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
@@ -203,5 +215,6 @@ export const apiSorteos = {
     loterias: () => llamar<Loteria[]>("GET", "/loterias"),
     crearLoteria: (loteria: LoteriaEntrada) => llamar<Loteria>("POST", "/loterias", loteria),
     actualizarLoteria: (id: string, cambios: Partial<LoteriaEntrada>) => llamar<Loteria>("PATCH", `/loterias/${id}`, cambios),
+    eliminarLoteria: (id: string) => llamar<{ id: string }>("DELETE", `/loterias/${id}`),
     horarioLoteria: (id: string, fecha: string) => llamar<HorarioLoteria>("GET", `/loterias/${id}/horario?fecha=${encodeURIComponent(fecha)}`)
 };

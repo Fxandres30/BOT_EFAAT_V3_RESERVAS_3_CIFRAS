@@ -68,6 +68,21 @@ export default function CalendarioLoteriasPage() {
     const [busqueda, setBusqueda] = useState("");
     const [editando, setEditando] = useState<{ abierta: boolean; loteria: Loteria | null }>({ abierta: false, loteria: null });
 
+    const [eliminando, setEliminando] = useState<string | null>(null);
+    const [errorAccion, setErrorAccion] = useState<string | null>(null);
+
+    // Solo borra la entrada de SU calendario; el catálogo base de EFAAT y
+    // los calendarios de otros clientes no cambian.
+    async function eliminar(l: Loteria) {
+        if (!window.confirm(`¿Eliminar «${l.etiqueta}» de tu calendario? Los sorteos ya creados conservan su nombre.`)) return;
+        setEliminando(l.id);
+        setErrorAccion(null);
+        const r = await apiSorteos.eliminarLoteria(l.id);
+        setEliminando(null);
+        if (!r.ok) { setErrorAccion(`No pudimos eliminar «${l.etiqueta}». ${describirError(r)}`); return; }
+        setLoterias(prev => prev.filter(x => x.id !== l.id));
+    }
+
     const cargar = useCallback(async () => {
         const r = await apiSorteos.loterias();
         setCargando(false);
@@ -97,6 +112,7 @@ export default function CalendarioLoteriasPage() {
             />
 
             {error && <p className={`${styles.alerta} ${styles.alertaError}`}>{error}</p>}
+            {errorAccion && <p className={`${styles.alerta} ${styles.alertaError}`} role="alert">{errorAccion}</p>}
 
             {pendientes > 0 && (
                 <p className={`${styles.alerta} ${styles.alertaAviso}`}>
@@ -137,8 +153,9 @@ export default function CalendarioLoteriasPage() {
                                         <span>Festivos: {REGLAS[l.regla_festivo]}{l.regla_festivo === "hora_especial" && l.hora_festivo ? ` (${l.hora_festivo})` : ""}</span>
                                     </div>
                                     {l.notas && <p className={styles.notas}>{l.notas}</p>}
-                                    <div>
+                                    <div className={styles.acciones}>
                                         <Button size="sm" variant="secondary" onClick={() => setEditando({ abierta: true, loteria: l })}>Editar</Button>
+                                        <Button size="sm" variant="ghost" loading={eliminando === l.id} onClick={() => eliminar(l)}>Eliminar</Button>
                                     </div>
                                 </Card>
                             ))}</div>}

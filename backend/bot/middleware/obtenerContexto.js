@@ -39,7 +39,10 @@ module.exports = async (
 
             message,
 
-            session: sock.context
+            session: sock.context,
+
+            // Para la asociación LID <-> teléfono de Baileys (identidad).
+            sock
 
         });
 

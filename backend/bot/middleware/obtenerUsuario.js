@@ -127,11 +127,14 @@ module.exports = async function (ctx) {
     // resolución de identidad real sigue funcionando igual.
     const usuario = await obtenerUsuarioGlobal({
 
+        // jid = remitente principal (decide ante un conflicto LID/teléfono).
+        jid: identidad.jid,
         telefono: identidad.telefono,
         lid: identidad.lid,
         nombre: identidad.pushName,
         usuarioIdTenant: ctx.session?.usuarioId || null,
-        origenContacto: "mensaje"
+        origenContacto: "mensaje",
+        sock: ctx.sock || null
 
     });
 
