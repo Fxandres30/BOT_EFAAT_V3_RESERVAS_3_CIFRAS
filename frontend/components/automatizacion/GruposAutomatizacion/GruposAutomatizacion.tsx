@@ -131,9 +131,13 @@ export default function GruposAutomatizacion() {
     }
 
     const hayAlgunaSesion = sesiones.length > 0;
-    const sesionesConectadas = sesiones.filter((s) => s.conectada);
-    const sesionesDesconectadas = sesiones.filter((s) => !s.conectada);
+    const sesionesConectadas = sesiones.filter((s) => s.estado === "conectada");
+    const sesionesDesconectadas = sesiones.filter((s) => s.estado === "desconectada");
+    const sesionesSinVerificar = sesiones.filter((s) => s.estado === "no_verificable");
     const hayAlgunaSesionConectada = sesionesConectadas.length > 0;
+    // Si alguna sesión no se pudo consultar, un grupo ausente puede estar
+    // en ella: no se puede afirmar que «no está disponible».
+    const hayConsultaIncompleta = sesionesSinVerificar.length > 0;
 
     return (
 
@@ -194,6 +198,12 @@ export default function GruposAutomatizacion() {
                                 </span>
                             ))}
 
+                            {sesionesSinVerificar.map((s) => (
+                                <span key={s.sessionId} className="grupos-sesion-badge pendiente" title={s.error || undefined}>
+                                    ⏳ {s.nombreSesion} — sin verificar
+                                </span>
+                            ))}
+
                         </div>
 
                     )}
@@ -203,6 +213,23 @@ export default function GruposAutomatizacion() {
                         <div className="grupos-estado-vacio">
                             No tienes ninguna sesión de WhatsApp registrada. Créala en
                             &quot;Sesiones&quot;, o usa <strong>+ Agregar por JID</strong>.
+                        </div>
+
+                    ) : !hayAlgunaSesionConectada && hayConsultaIncompleta ? (
+
+                        <div className="grupos-estado-vacio" role="status">
+                            No pudimos comprobar tus sesiones de WhatsApp en este momento, así que
+                            no sabemos qué grupos están activos ahora. Tus grupos autorizados siguen
+                            guardados y no se ha cambiado nada.
+                            <div>
+                                <button
+                                    type="button"
+                                    className="grupos-boton-reintentar"
+                                    onClick={() => usuarioId && cargarTodo(usuarioId)}
+                                >
+                                    Reintentar
+                                </button>
+                            </div>
                         </div>
 
                     ) : !hayAlgunaSesionConectada ? (
@@ -277,14 +304,13 @@ export default function GruposAutomatizacion() {
                         <div className="grupos-otros">
 
                             <h3 className="grupos-otros-titulo">
-                                No disponibles actualmente
+                                {hayConsultaIncompleta ? "Autorizados sin verificar" : "No disponibles actualmente"}
                             </h3>
 
                             <p className="grupos-otros-nota">
-                                Tienen una autorización guardada, pero WhatsApp no los reportó en la
-                                consulta más reciente — pueden haber sido eliminados o el bot fue
-                                removido. No se muestra un nombre actual porque no hay confirmación de
-                                que el grupo siga existiendo.
+                                {hayConsultaIncompleta
+                                    ? "Tienen una autorización guardada, pero no pudimos consultar todas tus sesiones. Su autorización y su configuración siguen intactas; no se muestra un nombre porque no hay confirmación actual."
+                                    : "Tienen una autorización guardada, pero WhatsApp no los reportó en la consulta más reciente — pueden haber sido eliminados o el bot fue removido. No se muestra un nombre actual porque no hay confirmación de que el grupo siga existiendo."}
                             </p>
 
                             <div className="grupos-grid">
@@ -295,8 +321,8 @@ export default function GruposAutomatizacion() {
 
                                         <div className="grupo-card-nombre">JID: {g.grupoId}</div>
 
-                                        <div className="grupo-card-estado off">
-                                            🚫 No disponible actualmente
+                                        <div className={`grupo-card-estado ${hayConsultaIncompleta ? "pendiente" : "off"}`}>
+                                            {hayConsultaIncompleta ? "⏳ Sin verificar ahora" : "🚫 No disponible actualmente"}
                                         </div>
 
                                         <div className="grupo-card-acciones">

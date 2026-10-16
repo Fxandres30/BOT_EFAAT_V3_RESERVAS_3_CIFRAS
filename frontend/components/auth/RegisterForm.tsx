@@ -99,7 +99,7 @@ export default function RegisterForm() {
             Te enviamos un enlace a <strong>{email}</strong> para confirmar tu cuenta.
             Después de confirmarla podrás iniciar sesión.
           </p>
-          <Link className="login-link" href="/login">Ir a iniciar sesión</Link>
+          <Link className="login-link" href="/login">iniciar sesión</Link>
         </div>
       </div>
     );

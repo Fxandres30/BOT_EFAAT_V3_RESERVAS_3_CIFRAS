@@ -28,6 +28,21 @@ export interface GrupoDisponible {
     nombre: string;
 }
 
+export type EstadoConsultaGrupos = "conectada" | "desconectada" | "no_verificable";
+
+// Clasifica la respuesta de /api/sessions/grupos-disponibles. Solo el 409
+// del backend (sessionsController.gruposDisponibles: manager.get(id) sin
+// socket) prueba que la sesión no tiene socket; 401/503 (token de
+// servicio), 5xx o 502 (backend inalcanzable) solo dicen que no se pudo
+// comprobar.
+export function clasificarConsultaGrupos(status: number, exito: boolean): EstadoConsultaGrupos {
+
+    if (exito) return "conectada";
+    if (status === 409) return "desconectada";
+    return "no_verificable";
+
+}
+
 export interface SesionConGrupos {
     sessionId: string;
     nombreSesion: string;
@@ -36,6 +51,12 @@ export interface SesionConGrupos {
     // real vivo para esta sesión en esta misma consulta — nunca inferido
     // de sesiones.estado.
     conectada: boolean;
+    // Resultado de ESA consulta:
+    //   conectada       el backend devolvió los grupos del socket vivo;
+    //   desconectada    el backend respondió 409: no hay socket para ella;
+    //   no_verificable  no se pudo preguntar (configuración, red o error
+    //                   del servidor). NO significa que esté desconectada.
+    estado: EstadoConsultaGrupos;
     grupos: GrupoDisponible[];
     error: string | null;
 }
@@ -55,9 +76,14 @@ export async function obtenerGruposDisponibles(usuarioId: string): Promise<Sesio
             try {
 
                 const res = await fetchConSesion(`/api/sessions/grupos-disponibles?id=${encodeURIComponent(sesion.id)}`);
-                const data = await res.json();
+                const data = await res.json().catch(() => ({ success: false }));
+                const estado = clasificarConsultaGrupos(res.status, !!data.success);
 
-                if (!data.success) {
+                if (estado !== "conectada") {
+
+                    // El motivo técnico va a la consola, nunca a la pantalla.
+                    if (estado === "no_verificable") console.warn(`[grupos] no se pudo consultar la sesión ${sesion.id}: HTTP ${res.status}${data.code ? ` · ${data.code}` : ""}`);
+
 
                     // Incluye el caso explícito "La sesión ... no tiene un
                     // socket conectado ahora mismo" — esta sesión no
@@ -68,8 +94,11 @@ export async function obtenerGruposDisponibles(usuarioId: string): Promise<Sesio
                         nombreSesion: sesion.nombre,
                         telefono: sesion.telefono,
                         conectada: false,
+                        estado,
                         grupos: [],
-                        error: data.error || "No se pudieron cargar los grupos de esta sesión."
+                        error: estado === "desconectada"
+                            ? "Esta sesión no está conectada a WhatsApp ahora mismo."
+                            : "No pudimos comprobar esta sesión en este momento."
                     };
 
                 }
@@ -79,19 +108,23 @@ export async function obtenerGruposDisponibles(usuarioId: string): Promise<Sesio
                     nombreSesion: sesion.nombre,
                     telefono: sesion.telefono,
                     conectada: true,
+                    estado,
                     grupos: (data.grupos || []) as GrupoDisponible[],
                     error: null
                 };
 
             } catch (err) {
 
+                console.warn(`[grupos] error de red consultando la sesión ${sesion.id}:`, err);
+
                 return {
                     sessionId: sesion.id,
                     nombreSesion: sesion.nombre,
                     telefono: sesion.telefono,
                     conectada: false,
+                    estado: "no_verificable" as const,
                     grupos: [],
-                    error: err instanceof Error ? err.message : "Error de red."
+                    error: "No pudimos comprobar esta sesión en este momento."
                 };
 
             }
