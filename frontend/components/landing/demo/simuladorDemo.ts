@@ -4,17 +4,26 @@
 // NO importa Supabase, NO hace fetch, NO conoce sesiones de WhatsApp ni
 // tablas reales. Es una versión simplificada y propia de la demo: imita el
 // tipo de respuesta que da EFAAT (reserva completa/parcial, número ocupado,
-// disponibilidad, mis números) con textos inspirados en las plantillas base
-// "Natural" (services/mensajes/plantillasBase.ts), pero NO es el motor real
-// de intenciones del bot (backend/bot/funciones/consultas/detectarIntencion.js).
+// mis números) con textos inspirados en las plantillas base "Natural"
+// (services/mensajes/plantillasBase.ts), pero NO es el motor real de
+// intenciones del bot (backend/bot/funciones/consultas/detectarIntencion.js).
 // Todos los nombres y números son ficticios.
+//
+// Lo que se anuncia comercialmente:
+//   - Reacciones: las mismas reglas que reaccionReserva.js del bot — ✅ solo
+//     si TODOS los números pedidos se reservaron, ❌ solo si TODOS estaban
+//     ocupados por otras personas, y ninguna en cualquier otro caso.
+//   - Consultas: cada participante consulta solo SUS números. Preguntar por
+//     la disponibilidad general o por un número concreto no reserva nada y
+//     remite a la tabla publicada en el grupo.
 // ==========================================================================
 
 export const PARTICIPANTE_DEMO = "Camila";
 export const EVENTO_DEMO = "Sorteo de demostración";
 export const PRECIO_DEMO = 5000;
 export const MAX_NUMEROS_POR_MENSAJE = 10;
-export const REACCION_RESERVA = "👍";
+export const REACCION_TODOS_RESERVADOS = "✅";
+export const REACCION_TODOS_OCUPADOS = "❌";
 
 // Dueño de cada número 0..99 (null = libre).
 export type EstadoDemo = ReadonlyArray<string | null>;
@@ -26,8 +35,7 @@ export type TipoRespuesta =
     | "todos_ocupados"
     | "ya_era_tuyo"
     | "mis_numeros"
-    | "disponibilidad"
-    | "numero_especifico"
+    | "consulta_general"
     | "fuera_de_rango"
     | "ayuda";
 
@@ -103,6 +111,13 @@ function resultado(estado: EstadoDemo, tipo: TipoRespuesta, respuesta: string, e
     return { estado, tipo, respuesta, reaccion: null, reservados: [], ...extra };
 }
 
+// Las consultas solo cubren los números propios: la disponibilidad general
+// no se anuncia, así que la demo no la responde y no toca la tabla.
+function consultaGeneral(estado: EstadoDemo, cliente: string): ResultadoDemo {
+    return resultado(estado, "consulta_general",
+        `${cliente}, por aquí puedes consultar tus propios números (escribe «mis números»). Para ver qué números siguen libres, revisa la tabla publicada en el grupo.`);
+}
+
 // Procesa un mensaje de la participante de ejemplo. Función pura: nunca
 // modifica `estado`, devuelve uno nuevo.
 export function procesarMensaje(estado: EstadoDemo, mensaje: string, cliente: string = PARTICIPANTE_DEMO): ResultadoDemo {
@@ -121,15 +136,9 @@ export function procesarMensaje(estado: EstadoDemo, mensaje: string, cliente: st
     }
 
     if (enteros.length === 0) {
-        if (RE_DISPONIBILIDAD.test(texto)) {
-            const libres = estado.flatMap((d, i) => (d === null ? [i] : []));
-            if (libres.length === 0) return resultado(estado, "disponibilidad", "Ya no quedan números disponibles en este sorteo.");
-            return resultado(estado, "disponibilidad", libres.length === 1
-                ? `Número disponible: ${listaNumeros(libres)}`
-                : `Números disponibles (${libres.length}): ${listaNumeros(libres)}`);
-        }
+        if (RE_DISPONIBILIDAD.test(texto)) return consultaGeneral(estado, cliente);
         return resultado(estado, "ayuda",
-            "En esta demostración puedes reservar (por ejemplo «me anotas el 23 y el 45»), preguntar qué números quedan o consultar tus números.");
+            "En esta demostración puedes reservar (por ejemplo «me anotas el 23 y el 45») o consultar tus números.");
     }
 
     if (enteros.some((e) => e.length > 2)) {
@@ -143,16 +152,9 @@ export function procesarMensaje(estado: EstadoDemo, mensaje: string, cliente: st
 
     const numeros = enteros.map(Number).slice(0, MAX_NUMEROS_POR_MENSAJE);
 
-    // "¿El 23 está libre?" — consulta, no reserva.
+    // "¿El 23 está libre?" — es una pregunta, nunca una reserva.
     if (RE_PREGUNTA_NUMERO.test(texto) || (texto.includes("?") && RE_DISPONIBILIDAD.test(texto))) {
-        const partes = numeros.map((n) => {
-            const dueno = estado[n];
-            if (dueno === null) return `el ${formatearNumero(n)} está disponible`;
-            if (dueno === cliente) return `el ${formatearNumero(n)} ya es tuyo`;
-            return `el ${formatearNumero(n)} ya está ocupado`;
-        });
-        const frase = partes.length === 1 ? partes[0] : `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}`;
-        return resultado(estado, "numero_especifico", `${cliente}, ${frase}.`);
+        return consultaGeneral(estado, cliente);
     }
 
     const libres = numeros.filter((n) => estado[n] === null);
@@ -166,9 +168,12 @@ export function procesarMensaje(estado: EstadoDemo, mensaje: string, cliente: st
     }
 
     if (libres.length === 0) {
+        // ❌ solo si TODOS los pedidos eran de otras personas; si alguno ya
+        // era del participante, sin reacción (igual que el bot).
         return resultado(estado, ocupados.length === 1 ? "numero_ocupado" : "todos_ocupados", ocupados.length === 1
             ? `${cliente}, el número ${listaNumeros(ocupados)} ya está ocupado.`
-            : `${cliente}, los números ${listaNumeros(ocupados)} ya estaban ocupados.`);
+            : `${cliente}, los números ${listaNumeros(ocupados)} ya estaban ocupados.`,
+        { reaccion: mios.length === 0 ? REACCION_TODOS_OCUPADOS : null });
     }
 
     const nuevo = [...estado];
@@ -178,14 +183,18 @@ export function procesarMensaje(estado: EstadoDemo, mensaje: string, cliente: st
         ? `${listaNumeros(libres)} quedó reservado`
         : `${listaNumeros(libres)} quedaron reservados`;
 
-    if (ocupados.length === 0) {
-        return resultado(nuevo, "reserva_completa", `¡Listo ${cliente}! ${reservadoTxt} 🎟️`, { reaccion: REACCION_RESERVA, reservados: libres });
+    if (ocupados.length === 0 && mios.length === 0) {
+        return resultado(nuevo, "reserva_completa", `¡Listo ${cliente}! ${reservadoTxt} 🎟️`, { reaccion: REACCION_TODOS_RESERVADOS, reservados: libres });
     }
 
-    const ocupadoTxt = ocupados.length === 1
-        ? `${listaNumeros(ocupados)} ya estaba ocupado`
-        : `${listaNumeros(ocupados)} ya estaban ocupados`;
+    // Parcial (algún número ocupado o ya propio): se reserva lo libre, pero
+    // sin reacción.
+    const ocupadoTxt = ocupados.length === 0
+        ? (mios.length === 1 ? `${listaNumeros(mios)} ya era tuyo` : `${listaNumeros(mios)} ya eran tuyos`)
+        : ocupados.length === 1
+            ? `${listaNumeros(ocupados)} ya estaba ocupado`
+            : `${listaNumeros(ocupados)} ya estaban ocupados`;
 
-    return resultado(nuevo, "reserva_parcial", `${cliente}, ${reservadoTxt}. ${ocupadoTxt}.`, { reaccion: REACCION_RESERVA, reservados: libres });
+    return resultado(nuevo, "reserva_parcial", `${cliente}, ${reservadoTxt}. ${ocupadoTxt}.`, { reservados: libres });
 
 }

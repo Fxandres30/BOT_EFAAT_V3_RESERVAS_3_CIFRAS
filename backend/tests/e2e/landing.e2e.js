@@ -110,7 +110,7 @@ async function main() {
         assert.ok(enlaces.includes("/login"));
         assert.ok(enlaces.some((h) => h.startsWith("mailto:soporte@efaat.com")));
         const ctaHero = await page.$eval("#inicio a[href='#solicitar-prueba']", (a) => a.textContent.trim());
-        assert.match(ctaHero, /Probar gratis 7 días/);
+        assert.match(ctaHero, /Solicitar prueba gratis de 7 días/);
         paso("CTA lleva a la solicitud por correo; sin /register ni enlaces legales inexistentes");
 
         // ---- demostración: todas las peticiones a partir de aquí ----
@@ -129,24 +129,34 @@ async function main() {
         assert.match(await ultimoBot(), /23 quedó reservado\. 45 ya estaba ocupado/);
         assert.strictEqual(await page.$eval("[data-numero='23']", (b) => b.dataset.estado), "mio");
         assert.strictEqual(await page.$eval("[data-contador='libres']", (e) => e.textContent), "79");
-        assert.ok(await page.$("[aria-label='Reacción automática 👍']"), "falta la reacción simulada");
-        paso("reserva parcial simulada: tabla, contador y reacción");
+        // Mismas reglas que reaccionReserva.js: la reserva parcial no reacciona.
+        assert.strictEqual(await page.$("[aria-label^='Reacción automática']"), null, "la reserva parcial no debe reaccionar");
+        paso("reserva parcial simulada: tabla, contador y sin reacción");
 
-        await pulsarSugerencia("¿Qué números quedan?");
+        await pulsarSugerencia("Quiero el 03 y el 07");
         await esperarRespuestas(2);
-        assert.match(await ultimoBot(), /Números disponibles \(79\)/);
-        paso("consulta de disponibilidad simulada");
+        assert.match(await ultimoBot(), /03 y 07 ya estaban ocupados/);
+        assert.ok(await page.$("[aria-label='Reacción automática ❌']"), "todos ocupados: falta la reacción ❌");
+        assert.strictEqual(await page.$eval("[data-contador='libres']", (e) => e.textContent), "79");
+        paso("todos ocupados simulado: reacción ❌ y la tabla no cambia");
+
+        await page.type("#demo-mensaje", "qué números quedan");
+        await page.keyboard.press("Enter");
+        await esperarRespuestas(3);
+        assert.match(await ultimoBot(), /consultar tus propios números/);
+        assert.doesNotMatch(await ultimoBot(), /Números disponibles/);
+        paso("la disponibilidad general no se anuncia: remite a la tabla del grupo");
 
         await page.click("[data-numero='15']");
         assert.strictEqual(await page.$eval("#demo-mensaje", (i) => i.value), "Me anotas el 15");
         await page.click("[data-demo] button[type='submit']");
-        await esperarRespuestas(3);
+        await esperarRespuestas(4);
         assert.strictEqual(await page.$eval("[data-numero='15']", (b) => b.dataset.estado), "mio");
         paso("tocar un número libre y enviarlo lo reserva");
 
         await page.type("#demo-mensaje", "cuáles son mis números");
         await page.keyboard.press("Enter");
-        await esperarRespuestas(4);
+        await esperarRespuestas(5);
         assert.match(await ultimoBot(), /tus números son: 15 y 23/);
         paso("mis números simulado");
 

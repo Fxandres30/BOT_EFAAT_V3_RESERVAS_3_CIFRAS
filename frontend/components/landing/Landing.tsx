@@ -9,7 +9,21 @@
 //     desarrollo aparece como tal.
 //   - La prueba gratuita y la contratación se piden por correo
 //     (CORREO_COMERCIAL): todavía no hay registro comercial ni suscripciones.
+//     La solicitud queda pendiente de coordinación; nunca se promete
+//     activación inmediata.
+//   - Reacciones: ✅ todos reservados, ❌ todos ocupados, ninguna si es
+//     parcial (backend/bot/funciones/reservas/reaccionReserva.js).
+//   - Consultas: solo los números propios de cada participante.
+//   - El sticker de pago es una función en verificación y no consulta
+//     bancos. No se anuncian la lectura de pagos en Android ni el control
+//     de inactividad.
 //   - No hay términos ni política de privacidad publicados: no se enlazan.
+//   - Conexiones (auditado en backend/services/baileys/manager.js): el bot
+//     atiende con UNA sesión activa a la vez y el failover automático elige
+//     entre todas las sesiones conectadas del proceso, sin filtrar por
+//     cliente. Por eso no se anuncian varias conexiones operativas a la vez
+//     ni el cambio automático a la de respaldo: el respaldo queda «En
+//     espera» y se activa desde el panel («Usar esta sesión»).
 // ==========================================================================
 
 import Link from "next/link";
@@ -21,12 +35,17 @@ import {
     FileText,
     Hourglass,
     LayoutGrid,
+    ListChecks,
     Mail,
     MessageCircle,
+    MonitorSmartphone,
     Printer,
     QrCode,
     Search,
+    ShieldCheck,
+    Smartphone,
     SmilePlus,
+    Wifi,
     Wrench
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -57,12 +76,12 @@ const FUNCIONES: Funcion[] = [
     {
         icono: SmilePlus,
         titulo: "Respuestas y reacciones automáticas",
-        texto: "Cada reserva recibe su respuesta en el grupo y una reacción en el mensaje del participante, sin que tengas que escribir nada."
+        texto: "Cada pedido recibe su respuesta en el grupo. Además, EFAAT reacciona con ✅ cuando se reservan todos los números pedidos y con ❌ cuando todos estaban ocupados; si la reserva es parcial, no reacciona."
     },
     {
         icono: Search,
-        titulo: "Consultas de disponibilidad",
-        texto: "Responde qué números quedan libres, si un número específico está disponible y cuáles son los números de cada participante."
+        titulo: "Consulta de números propios",
+        texto: "Cada participante puede preguntar en el grupo qué números tiene reservados y EFAAT le responde solo con los suyos."
     },
     {
         icono: FileText,
@@ -98,8 +117,8 @@ const FUNCIONES: Funcion[] = [
 
 const EN_DESARROLLO = [
     {
-        titulo: "Confirmación automática de pagos",
-        texto: "Está en desarrollo. Hoy los pagos se marcan manualmente desde el panel."
+        titulo: "Confirmación de pagos con sticker",
+        texto: "Está en verificación: el organizador responde con un sticker al mensaje del participante y sus números reservados pasan a pagados. No consulta bancos ni comprueba transferencias; mientras tanto, los pagos se marcan desde el panel."
     },
     {
         titulo: "Apertura y cierre automático de grupos",
@@ -113,8 +132,8 @@ const PROBLEMAS = [
         despues: "EFAAT aparta el número y responde en el grupo al instante."
     },
     {
-        antes: "Revisar la lista cada vez que alguien pregunta qué números quedan.",
-        despues: "Los participantes consultan la disponibilidad y reciben la respuesta automática."
+        antes: "Buscar en la lista cada vez que alguien pregunta qué números tiene.",
+        despues: "Cada participante consulta sus propios números y recibe la respuesta automática."
     },
     {
         antes: "Llevar la cuenta de quién reservó qué en notas o capturas.",
@@ -127,20 +146,65 @@ const PROBLEMAS = [
 ];
 
 const PASOS = [
-    { titulo: "Solicita tu prueba", texto: `Escríbenos a ${CORREO_COMERCIAL}. Revisamos tu caso y habilitamos la prueba.` },
-    { titulo: "Conecta tu WhatsApp", texto: "Te acompañamos para vincular tu número con código QR y elegir el grupo." },
+    { titulo: "Envía tu solicitud", texto: `Escríbenos a ${CORREO_COMERCIAL}. Tu solicitud queda pendiente hasta que la revisemos y te contactemos.` },
+    { titulo: "Coordinamos el inicio", texto: "Acordamos contigo la fecha de inicio y te acompañamos a vincular tu número con código QR." },
     { titulo: "Configura tus respuestas", texto: "Elige el estilo de las respuestas y programa tu primer sorteo." },
-    { titulo: "Deja que EFAAT responda", texto: "Las reservas y consultas del grupo se atienden solas; tú lo sigues desde el panel." }
+    { titulo: "Deja que EFAAT responda", texto: "Las reservas y las consultas de números propios se atienden solas; tú lo sigues desde el panel." }
+];
+
+interface Recomendacion extends Funcion {
+    esencial?: boolean;
+}
+
+const RECOMENDACIONES: Recomendacion[] = [
+    {
+        icono: Smartphone,
+        titulo: "Utiliza un número dedicado para EFAAT",
+        texto: "Recomendamos utilizar un número destinado al sistema, separado del número personal que usas para conversar con familiares y clientes. Así reduces las interrupciones y facilitas la administración.",
+        esencial: true
+    },
+    {
+        icono: ShieldCheck,
+        titulo: "Haz administrador al número conectado",
+        texto: "El número de WhatsApp vinculado a EFAAT debe ser administrador de los grupos donde funcionará el bot. Este permiso es necesario para las acciones administrativas que lo requieran, como expulsar participantes bloqueados y abrir o cerrar grupos cuando corresponda.",
+        esencial: true
+    },
+    {
+        icono: Wifi,
+        titulo: "Mantén activa y estable la conexión",
+        texto: "No cierres manualmente la sesión vinculada desde tu teléfono si quieres que el bot siga atendiendo tus grupos."
+    },
+    {
+        icono: ListChecks,
+        titulo: "Comprueba los permisos del grupo",
+        texto: "Ser administrador no garantiza por sí solo que todas las funciones estén disponibles: también deben estar habilitadas las acciones correspondientes y configuradas correctamente."
+    }
 ];
 
 const PREGUNTAS = [
     {
         p: "¿Cómo funciona la prueba gratuita?",
-        r: `La prueba dura ${DIAS_PRUEBA_GRATUITA} días desde que la habilitamos. Por ahora se solicita escribiendo a ${CORREO_COMERCIAL}: revisamos tu solicitud y te acompañamos en la configuración. Durante la prueba no se cobra nada.`
+        r: `Por ahora se solicita escribiendo a ${CORREO_COMERCIAL}. La solicitud no activa nada de inmediato: queda pendiente hasta que la revisemos y coordinemos contigo el inicio. La prueba dura ${DIAS_PRUEBA_GRATUITA} días desde la fecha acordada y durante ese tiempo no se cobra nada.`
     },
     {
         p: "¿Necesito conectar mi WhatsApp?",
-        r: "Sí. Para que EFAAT responda en tu grupo hay que vincular un número de WhatsApp escaneando un código QR, igual que con WhatsApp Web. La conexión se coordina con nuestro equipo cuando habilitamos tu prueba."
+        r: "Sí. Para que EFAAT responda en tus grupos, debes vincular un número de WhatsApp mediante un código QR. Recomendamos utilizar un número dedicado al sistema y mantenerlo como administrador de los grupos donde funcionará el bot. La conexión se coordina al iniciar tu servicio."
+    },
+    {
+        p: "¿Por qué mi número debe ser administrador?",
+        r: "Porque algunas funciones administrativas de EFAAT necesitan permisos de administrador en el grupo. Por ejemplo, retirar participantes bloqueados y ejecutar las acciones de apertura o cierre que correspondan. Comprueba también que las opciones necesarias estén habilitadas en cada grupo."
+    },
+    {
+        p: "¿Puedo conectar más de un número?",
+        r: "El panel permite administrar sesiones según las capacidades y autorizaciones de tu cuenta. Consulta la disponibilidad de conexiones adicionales antes de configurar un número de respaldo."
+    },
+    {
+        p: "¿Qué pasa si WhatsApp desconecta mi número?",
+        r: "Puedes revisar el estado de la sesión desde el panel y, si es necesario, volver a vincular WhatsApp escaneando un nuevo código QR. La continuidad del servicio depende del estado de la sesión y de las capacidades de recuperación disponibles."
+    },
+    {
+        p: "¿Puedo eliminar una conexión desde el panel?",
+        r: "Puedes administrar las sesiones disponibles desde el panel. Antes de eliminar una conexión, comprueba que no sea la sesión que actualmente atiende tus grupos."
     },
     {
         p: "¿Qué ocurre cuando termina la prueba?",
@@ -177,7 +241,7 @@ function Encabezado() {
                 <div className={styles.encabezadoAcciones}>
                     <Link href="/login" className={styles.enlaceSesion}>Iniciar sesión</Link>
                     <a href="#solicitar-prueba" className={`${styles.boton} ${styles.botonPrimario} ${styles.botonChico}`}>
-                        Probar gratis
+                        Solicitar prueba
                     </a>
                 </div>
             </div>
@@ -208,7 +272,7 @@ function IlustracionPanel() {
                     ))}
                 </div>
                 <div className={styles.ilusChat}>
-                    <p className={styles.ilusBurbujaCliente}>Me anotas el 09 y el 23 <span>👍</span></p>
+                    <p className={styles.ilusBurbujaCliente}>Me anotas el 09 y el 23 <span aria-label="Reacción ✅">✅</span></p>
                     <p className={styles.ilusBurbujaBot}>¡Listo Camila! 09 y 23 quedaron reservados 🎟️</p>
                 </div>
             </div>
@@ -232,16 +296,16 @@ export default function Landing() {
                             <p className={styles.etiqueta}>Para organizadores de sorteos por WhatsApp</p>
                             <h1 className={styles.heroTitulo}>Automatiza tus sorteos de WhatsApp con EFAAT</h1>
                             <p className={styles.heroSub}>
-                                EFAAT toma las reservas de números que llegan a tu grupo, responde quién reservó y qué
-                                números quedan, y te deja programar y seguir cada sorteo desde un solo panel.
+                                EFAAT toma las reservas de números que llegan a tu grupo, responde a cada participante y le
+                                dice cuáles son sus números, y te deja programar y seguir cada sorteo desde un solo panel.
                             </p>
                             <div className={styles.acciones}>
                                 <a href="#solicitar-prueba" className={`${styles.boton} ${styles.botonPrimario}`}>
-                                    Probar gratis {DIAS_PRUEBA_GRATUITA} días <ArrowRight size={18} aria-hidden="true" />
+                                    Solicitar prueba gratis de {DIAS_PRUEBA_GRATUITA} días <ArrowRight size={18} aria-hidden="true" />
                                 </a>
                                 <a href="#demo" className={`${styles.boton} ${styles.botonSecundario}`}>Ver demostración</a>
                             </div>
-                            <p className={styles.nota}>Sin cobros automáticos. La prueba se habilita con nuestro equipo.</p>
+                            <p className={styles.nota}>Sin cobros automáticos. La prueba no se activa al instante: coordinamos el inicio contigo.</p>
                         </div>
                         <IlustracionPanel />
                     </div>
@@ -307,9 +371,9 @@ export default function Landing() {
                 {/* PASOS + SOLICITUD DE PRUEBA */}
                 <section id="solicitar-prueba" className={`${styles.seccion} ${styles.seccionSuave}`} aria-labelledby="prueba-titulo">
                     <div className={styles.contenedor}>
-                        <h2 id="prueba-titulo" className={styles.tituloSeccion}>Prueba gratis {DIAS_PRUEBA_GRATUITA} días</h2>
+                        <h2 id="prueba-titulo" className={styles.tituloSeccion}>Solicita una prueba gratuita de {DIAS_PRUEBA_GRATUITA} días</h2>
                         <p className={styles.introSeccion}>
-                            Mientras terminamos el registro en línea, habilitamos cada prueba de forma personal para
+                            Mientras terminamos el registro en línea, coordinamos cada prueba de forma personal para
                             acompañarte en la conexión de WhatsApp.
                         </p>
                         <ol className={styles.pasos}>
@@ -332,6 +396,60 @@ export default function Landing() {
                             <a href={enlaceSolicitud()} className={`${styles.boton} ${styles.botonPrimario}`} data-cta="solicitar-prueba">
                                 <Mail size={18} aria-hidden="true" /> Solicitar prueba gratis
                             </a>
+                        </div>
+                    </div>
+                </section>
+
+                {/* RECOMENDACIONES DE CONEXIÓN + ADMINISTRACIÓN DESDE EL PANEL */}
+                <section id="conectar-whatsapp" className={styles.seccion} aria-labelledby="conectar-titulo">
+                    <div className={styles.contenedor}>
+                        <h2 id="conectar-titulo" className={styles.tituloSeccion}>Recomendaciones para conectar WhatsApp correctamente</h2>
+                        <p className={styles.introSeccion}>
+                            Antes de vincular tu número, revisa estas indicaciones. Las dos primeras son esenciales para
+                            que EFAAT funcione bien en tus grupos.
+                        </p>
+                        <ul className={`${styles.funciones} ${styles.recomendaciones}`}>
+                            {RECOMENDACIONES.map(({ icono: Icono, titulo, texto, esencial }) => (
+                                <li
+                                    key={titulo}
+                                    className={`${styles.funcion} ${esencial ? styles.recomendacionEsencial : ""}`}
+                                    data-esencial={esencial ? "si" : undefined}
+                                >
+                                    <span className={styles.funcionIcono} aria-hidden="true"><Icono size={20} /></span>
+                                    {esencial && <span className={styles.insigniaEsencial}>Esencial</span>}
+                                    <h3>{titulo}</h3>
+                                    <p>{texto}</p>
+                                </li>
+                            ))}
+                        </ul>
+
+                        <div className={styles.conexiones}>
+                            <h3><MonitorSmartphone size={18} aria-hidden="true" /> Administra tus conexiones desde el panel</h3>
+                            <p>
+                                En la sección Sesiones del panel puedes gestionar las sesiones de WhatsApp que tu cuenta
+                                permite administrar: agregar y vincular un número adicional con código QR, revisar el estado
+                                de cada conexión, desconectarla y eliminar las que ya no necesites.
+                            </p>
+                            <ul>
+                                <li>
+                                    <strong>Conexión de respaldo.</strong> Un número adicional puede servirte como alternativa
+                                    si la conexión principal se interrumpe. EFAAT atiende tus grupos con una sola sesión a la
+                                    vez; la de respaldo queda en espera.
+                                </li>
+                                <li>
+                                    <strong>Principal y respaldo.</strong> Cada sesión muestra su estado: «Bot activo» indica la
+                                    que atiende tus grupos, «Preferida» la principal y «En espera» las demás. Para pasar a otra
+                                    conexión, usa «Usar esta sesión».
+                                </li>
+                                <li>
+                                    <strong>Si se desconecta.</strong> Si WhatsApp cierra una sesión o la cierras por accidente,
+                                    revisa su estado en el panel y vuelve a vincularla escaneando un nuevo código QR.
+                                </li>
+                            </ul>
+                            <p className={styles.conexionesNota}>
+                                El cambio automático a la conexión de respaldo no forma parte de las funciones garantizadas:
+                                comprueba en el panel qué sesión está atendiendo tus grupos.
+                            </p>
                         </div>
                     </div>
                 </section>
@@ -397,7 +515,7 @@ export default function Landing() {
                         <p>Solicita tu prueba de {DIAS_PRUEBA_GRATUITA} días y te ayudamos a configurarla.</p>
                         <div className={`${styles.acciones} ${styles.accionesCentro}`}>
                             <a href={enlaceSolicitud()} className={`${styles.boton} ${styles.botonClaro}`}>
-                                Probar gratis {DIAS_PRUEBA_GRATUITA} días
+                                Solicitar prueba gratis de {DIAS_PRUEBA_GRATUITA} días
                             </a>
                             <Link href="/login" className={`${styles.boton} ${styles.botonContorno}`}>Ya tengo cuenta</Link>
                         </div>

@@ -27,10 +27,13 @@ interface MensajeChat {
     reaccion?: string | null;
 }
 
+// Una sugerencia por cada caso de reacción (✅ todos reservados, sin
+// reacción en la reserva parcial, ❌ todos ocupados) y la consulta de los
+// números propios.
 const SUGERENCIAS = [
+    "Me anotas el 15 y el 16",
     "Me anotas el 23 y el 45",
-    "¿Qué números quedan?",
-    "¿El 18 está libre?",
+    "Quiero el 03 y el 07",
     "¿Cuáles son mis números?"
 ];
 
@@ -122,7 +125,8 @@ export default function DemoSorteo() {
             <p className={styles.aviso} role="note">
                 <strong>Simulación.</strong> No envía mensajes de WhatsApp, no se conecta a ningún sorteo real
                 y no guarda datos: todo ocurre en tu navegador y se borra al recargar la página.
-                Los nombres y números son ficticios.
+                Los nombres y números son ficticios. Reacciones: ✅ si se reservan todos los números pedidos,
+                ❌ si todos estaban ocupados y ninguna si la reserva es parcial.
             </p>
 
             <div className={styles.cuadricula}>
