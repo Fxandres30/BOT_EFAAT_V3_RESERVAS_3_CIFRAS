@@ -18,6 +18,12 @@
 //     bancos. No se anuncian la lectura de pagos en Android ni el control
 //     de inactividad.
 //   - No hay términos ni política de privacidad publicados: no se enlazan.
+//   - Conexiones (auditado en backend/services/baileys/manager.js): el bot
+//     atiende con UNA sesión activa a la vez y el failover automático elige
+//     entre todas las sesiones conectadas del proceso, sin filtrar por
+//     cliente. Por eso no se anuncian varias conexiones operativas a la vez
+//     ni el cambio automático a la de respaldo: el respaldo queda «En
+//     espera» y se activa desde el panel («Usar esta sesión»).
 // ==========================================================================
 
 import Link from "next/link";
@@ -29,12 +35,17 @@ import {
     FileText,
     Hourglass,
     LayoutGrid,
+    ListChecks,
     Mail,
     MessageCircle,
+    MonitorSmartphone,
     Printer,
     QrCode,
     Search,
+    ShieldCheck,
+    Smartphone,
     SmilePlus,
+    Wifi,
     Wrench
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -141,6 +152,35 @@ const PASOS = [
     { titulo: "Deja que EFAAT responda", texto: "Las reservas y las consultas de números propios se atienden solas; tú lo sigues desde el panel." }
 ];
 
+interface Recomendacion extends Funcion {
+    esencial?: boolean;
+}
+
+const RECOMENDACIONES: Recomendacion[] = [
+    {
+        icono: Smartphone,
+        titulo: "Utiliza un número dedicado para EFAAT",
+        texto: "Recomendamos utilizar un número destinado al sistema, separado del número personal que usas para conversar con familiares y clientes. Así reduces las interrupciones y facilitas la administración.",
+        esencial: true
+    },
+    {
+        icono: ShieldCheck,
+        titulo: "Haz administrador al número conectado",
+        texto: "El número de WhatsApp vinculado a EFAAT debe ser administrador de los grupos donde funcionará el bot. Este permiso es necesario para las acciones administrativas que lo requieran, como expulsar participantes bloqueados y abrir o cerrar grupos cuando corresponda.",
+        esencial: true
+    },
+    {
+        icono: Wifi,
+        titulo: "Mantén activa y estable la conexión",
+        texto: "No cierres manualmente la sesión vinculada desde tu teléfono si quieres que el bot siga atendiendo tus grupos."
+    },
+    {
+        icono: ListChecks,
+        titulo: "Comprueba los permisos del grupo",
+        texto: "Ser administrador no garantiza por sí solo que todas las funciones estén disponibles: también deben estar habilitadas las acciones correspondientes y configuradas correctamente."
+    }
+];
+
 const PREGUNTAS = [
     {
         p: "¿Cómo funciona la prueba gratuita?",
@@ -148,7 +188,23 @@ const PREGUNTAS = [
     },
     {
         p: "¿Necesito conectar mi WhatsApp?",
-        r: "Sí. Para que EFAAT responda en tu grupo hay que vincular un número de WhatsApp escaneando un código QR, igual que con WhatsApp Web. La conexión se coordina con nuestro equipo cuando acordamos el inicio de tu prueba."
+        r: "Sí. Para que EFAAT responda en tus grupos, debes vincular un número de WhatsApp mediante un código QR. Recomendamos utilizar un número dedicado al sistema y mantenerlo como administrador de los grupos donde funcionará el bot. La conexión se coordina al iniciar tu servicio."
+    },
+    {
+        p: "¿Por qué mi número debe ser administrador?",
+        r: "Porque algunas funciones administrativas de EFAAT necesitan permisos de administrador en el grupo. Por ejemplo, retirar participantes bloqueados y ejecutar las acciones de apertura o cierre que correspondan. Comprueba también que las opciones necesarias estén habilitadas en cada grupo."
+    },
+    {
+        p: "¿Puedo conectar más de un número?",
+        r: "El panel permite administrar sesiones según las capacidades y autorizaciones de tu cuenta. Consulta la disponibilidad de conexiones adicionales antes de configurar un número de respaldo."
+    },
+    {
+        p: "¿Qué pasa si WhatsApp desconecta mi número?",
+        r: "Puedes revisar el estado de la sesión desde el panel y, si es necesario, volver a vincular WhatsApp escaneando un nuevo código QR. La continuidad del servicio depende del estado de la sesión y de las capacidades de recuperación disponibles."
+    },
+    {
+        p: "¿Puedo eliminar una conexión desde el panel?",
+        r: "Puedes administrar las sesiones disponibles desde el panel. Antes de eliminar una conexión, comprueba que no sea la sesión que actualmente atiende tus grupos."
     },
     {
         p: "¿Qué ocurre cuando termina la prueba?",
@@ -340,6 +396,60 @@ export default function Landing() {
                             <a href={enlaceSolicitud()} className={`${styles.boton} ${styles.botonPrimario}`} data-cta="solicitar-prueba">
                                 <Mail size={18} aria-hidden="true" /> Solicitar prueba gratis
                             </a>
+                        </div>
+                    </div>
+                </section>
+
+                {/* RECOMENDACIONES DE CONEXIÓN + ADMINISTRACIÓN DESDE EL PANEL */}
+                <section id="conectar-whatsapp" className={styles.seccion} aria-labelledby="conectar-titulo">
+                    <div className={styles.contenedor}>
+                        <h2 id="conectar-titulo" className={styles.tituloSeccion}>Recomendaciones para conectar WhatsApp correctamente</h2>
+                        <p className={styles.introSeccion}>
+                            Antes de vincular tu número, revisa estas indicaciones. Las dos primeras son esenciales para
+                            que EFAAT funcione bien en tus grupos.
+                        </p>
+                        <ul className={`${styles.funciones} ${styles.recomendaciones}`}>
+                            {RECOMENDACIONES.map(({ icono: Icono, titulo, texto, esencial }) => (
+                                <li
+                                    key={titulo}
+                                    className={`${styles.funcion} ${esencial ? styles.recomendacionEsencial : ""}`}
+                                    data-esencial={esencial ? "si" : undefined}
+                                >
+                                    <span className={styles.funcionIcono} aria-hidden="true"><Icono size={20} /></span>
+                                    {esencial && <span className={styles.insigniaEsencial}>Esencial</span>}
+                                    <h3>{titulo}</h3>
+                                    <p>{texto}</p>
+                                </li>
+                            ))}
+                        </ul>
+
+                        <div className={styles.conexiones}>
+                            <h3><MonitorSmartphone size={18} aria-hidden="true" /> Administra tus conexiones desde el panel</h3>
+                            <p>
+                                En la sección Sesiones del panel puedes gestionar las sesiones de WhatsApp que tu cuenta
+                                permite administrar: agregar y vincular un número adicional con código QR, revisar el estado
+                                de cada conexión, desconectarla y eliminar las que ya no necesites.
+                            </p>
+                            <ul>
+                                <li>
+                                    <strong>Conexión de respaldo.</strong> Un número adicional puede servirte como alternativa
+                                    si la conexión principal se interrumpe. EFAAT atiende tus grupos con una sola sesión a la
+                                    vez; la de respaldo queda en espera.
+                                </li>
+                                <li>
+                                    <strong>Principal y respaldo.</strong> Cada sesión muestra su estado: «Bot activo» indica la
+                                    que atiende tus grupos, «Preferida» la principal y «En espera» las demás. Para pasar a otra
+                                    conexión, usa «Usar esta sesión».
+                                </li>
+                                <li>
+                                    <strong>Si se desconecta.</strong> Si WhatsApp cierra una sesión o la cierras por accidente,
+                                    revisa su estado en el panel y vuelve a vincularla escaneando un nuevo código QR.
+                                </li>
+                            </ul>
+                            <p className={styles.conexionesNota}>
+                                El cambio automático a la conexión de respaldo no forma parte de las funciones garantizadas:
+                                comprueba en el panel qué sesión está atendiendo tus grupos.
+                            </p>
                         </div>
                     </div>
                 </section>

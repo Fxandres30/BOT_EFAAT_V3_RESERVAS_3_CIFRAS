@@ -559,6 +559,75 @@
   color: var(--efaat-text);
 }
 
+/* Recomendaciones de conexión y administración de sesiones */
+
+/* Cuatro tarjetas: 2 × 2 también en pantallas anchas. */
+@media (min-width: 640px) {
+  .funciones.recomendaciones {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.recomendacionEsencial {
+  border-color: var(--efaat-primary);
+  box-shadow: inset 4px 0 0 var(--efaat-primary);
+}
+
+.insigniaEsencial {
+  align-self: flex-start;
+  padding: 2px 10px;
+  border-radius: var(--efaat-radius-pill);
+  background: var(--efaat-primary-soft);
+  color: var(--efaat-primary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.conexiones {
+  display: grid;
+  gap: 10px;
+  margin-top: 24px;
+  padding: 22px;
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-modal);
+  background: var(--efaat-surface);
+}
+
+.conexiones h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.conexiones p,
+.conexiones ul {
+  color: var(--efaat-text-secondary);
+  font-size: 15px;
+}
+
+.conexiones ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.conexiones strong {
+  color: var(--efaat-text);
+}
+
+.conexiones .conexionesNota {
+  padding: 10px 14px;
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-warning-soft);
+  color: var(--efaat-text);
+  font-size: 14px;
+}
+
 /* Pasos y solicitud */
 
 .pasos {

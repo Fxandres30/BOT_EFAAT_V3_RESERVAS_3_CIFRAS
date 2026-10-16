@@ -218,6 +218,38 @@ prueba("no se anuncian pagos Android ni control de inactividad", () => {
     assert.ok(!/lector de pagos/i.test(textoLanding));
 });
 
+console.log("Conexión de WhatsApp");
+
+prueba("recomendaciones de conexión: número dedicado y administrador marcados como esenciales", () => {
+    assert.match(textoLanding, /Recomendaciones para conectar WhatsApp correctamente/);
+    const landing = fs.readFileSync(path.join(FRONT, "components/landing/Landing.tsx"), "utf8");
+    const esenciales = [...landing.matchAll(/titulo: "([^"]+)",\s*texto: "[^"]*",\s*esencial: true/g)].map((m) => m[1]);
+    assert.deepStrictEqual(esenciales, ["Utiliza un número dedicado para EFAAT", "Haz administrador al número conectado"]);
+    assert.match(textoLanding, /Mantén activa y estable la conexión/);
+    assert.match(textoLanding, /Ser administrador no garantiza por sí solo/);
+});
+
+prueba("administración de conexiones sin prometer respaldo automático ni sesiones simultáneas", () => {
+    assert.match(textoLanding, /Administra tus conexiones desde el panel/);
+    assert.match(textoLanding, /una sola sesión a la\s+vez/);
+    assert.match(textoLanding, /no forma parte de las funciones garantizadas/);
+    assert.ok(!/simultáne/i.test(textoLanding));
+    assert.ok(!/(cambia|pasa|conmuta)[a-z]* automáticamente/i.test(textoLanding));
+    assert.ok(!/todas las funciones (administrativas|de administrador)/i.test(textoLanding));
+});
+
+prueba("preguntas frecuentes de conexión", () => {
+    for (const p of [
+        "¿Necesito conectar mi WhatsApp?",
+        "¿Por qué mi número debe ser administrador?",
+        "¿Puedo conectar más de un número?",
+        "¿Qué pasa si WhatsApp desconecta mi número?",
+        "¿Puedo eliminar una conexión desde el panel?"
+    ]) {
+        assert.ok(textoLanding.includes(`p: "${p}"`), p);
+    }
+});
+
 console.log("Aislamiento");
 
 prueba("la landing y la demo no usan Supabase, fetch ni el backend", () => {
