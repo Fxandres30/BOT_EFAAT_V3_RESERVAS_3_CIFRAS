@@ -33,7 +33,8 @@ export default function SessionsPage() {
   }, []);
 
   const { sessions, load } = useSessions(usuarioId);
-  const { salud, error: errorSalud } = useSaludSesiones(!!usuarioId);
+  const { salud, error: errorSalud, consultado } = useSaludSesiones(!!usuarioId);
+  const consultaSalud = errorSalud ? "error" : consultado ? "ok" : "pendiente";
 
   async function agregarSesion() {
     if (!usuarioId) {
@@ -62,8 +63,9 @@ export default function SessionsPage() {
 
       {usuarioId && errorSalud && (
         <p className={styles.avisoSalud} role="status">
-          No pudimos consultar el estado del bot en este momento. Se muestra el
-          último estado guardado; inténtalo de nuevo en unos minutos.
+          No pudimos consultar el estado del bot en este momento, así que las
+          sesiones aparecen «Sin verificar». No se ha desconectado nada; se
+          vuelve a comprobar automáticamente cada pocos segundos.
         </p>
       )}
 
@@ -96,6 +98,7 @@ export default function SessionsPage() {
               principal={session.principal}
               activa={session.activa}
               salud={salud[session.id] || null}
+              consultaSalud={consultaSalud}
               onRefresh={load}
             />
           ))}

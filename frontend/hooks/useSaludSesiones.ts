@@ -12,6 +12,8 @@ export default function useSaludSesiones(habilitado: boolean) {
 
     const [salud, setSalud] = useState<Record<string, SaludSesion>>({});
     const [error, setError] = useState<string | null>(null);
+    // true en cuanto llega la primera respuesta (buena o mala).
+    const [consultado, setConsultado] = useState(false);
 
     useEffect(() => {
 
@@ -25,10 +27,14 @@ export default function useSaludSesiones(habilitado: boolean) {
 
             if (!vivo) return;
 
+            setConsultado(true);
+
             if (!r.ok) {
                 // El motivo técnico va a la consola (administrador), no a la pantalla.
                 console.warn("[salud sesiones] no disponible:", r.motivo);
                 setError(r.motivo);
+                // Una respuesta anterior ya no es el estado actual.
+                setSalud({});
                 return;
             }
 
@@ -48,6 +54,6 @@ export default function useSaludSesiones(habilitado: boolean) {
 
     }, [habilitado]);
 
-    return { salud, error };
+    return { salud, error, consultado };
 
 }

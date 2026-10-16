@@ -8,6 +8,18 @@ export interface ResultadoContactos {
     migracionPendiente: boolean;
 }
 
+// Texto para el cliente según la respuesta del backend: nunca detalles
+// técnicos (token, servidor, base de datos). Esos van a la consola.
+export function mensajeErrorContactos(status: number, codigo?: string): string {
+
+    if (status === 401 && (codigo === "sin_sesion" || codigo === "sesion_invalida")) {
+        return "Tu sesión expiró. Vuelve a iniciar sesión.";
+    }
+
+    return "No pudimos cargar los contactos en este momento. Siguen guardados; inténtalo de nuevo en unos minutos.";
+
+}
+
 // Proxy hacia GET /api/contactos -> backend GET /contactos. Mismo patrón
 // que services/sessions/*.ts (fetch a la ruta interna de Next, nunca al
 // backend directo desde el navegador).
@@ -15,10 +27,12 @@ export async function obtenerContactos(usuarioId: string): Promise<ResultadoCont
 
     const res = await fetchConSesion(`/api/contactos?usuarioId=${encodeURIComponent(usuarioId)}`);
 
-    const data = await res.json();
+    const data = await res.json().catch(() => null);
 
-    if (!res.ok || !data.success) {
-        throw new Error(data.error || "No se pudieron cargar los contactos.");
+    if (!res.ok || !data?.success) {
+        const codigo = data?.code || data?.motivo;
+        console.warn(`[contactos] no se pudieron cargar: HTTP ${res.status}${codigo ? ` · ${codigo}` : ""}`);
+        throw new Error(mensajeErrorContactos(res.status, codigo));
     }
 
     return {

@@ -4,11 +4,11 @@ import { useState } from "react";
 import { Power, QrCode, Plug, Star, Check } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
-import { Badge, StatusBadge, type StatusKind } from "@/components/ui/Badge";
+import { Badge, StatusBadge } from "@/components/ui/Badge";
 
 import SessionMenu from "../SessionMenu/SessionMenu";
 import SessionModals from "./components/SessionModals/SessionModals";
-import SaludSesion, { ESTADO_SALUD } from "./components/SaludSesion/SaludSesion";
+import SaludSesion from "./components/SaludSesion/SaludSesion";
 
 import { useSession } from "./hooks/useSession";
 
@@ -17,6 +17,7 @@ import { setPreferredSession } from "@/services/sessions/setPreferredSession";
 import { connectSession, isSessionNotFound } from "@/services/sessions/connectSession";
 
 import type { SaludSesion as Salud } from "@/services/sessions/saludSesiones";
+import { estadoVisibleSesion, type ConsultaSalud } from "@/services/sessions/estadoVisible";
 
 import styles from "./SessionCard.module.css";
 
@@ -29,6 +30,8 @@ interface Props {
   activa: boolean;
   /** Estado real del bot (GET /sessions/salud); null si no se pudo leer. */
   salud?: Salud | null;
+  /** Si la consulta de salud ya respondió, sigue pendiente o falló. */
+  consultaSalud?: ConsultaSalud;
   onRefresh?: () => void;
 }
 
@@ -40,6 +43,7 @@ export default function SessionCard({
   principal,
   activa,
   salud = null,
+  consultaSalud = "pendiente",
   onRefresh,
 }: Props) {
   const {
@@ -59,15 +63,15 @@ export default function SessionCard({
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  // Con señal de salud, el estado mostrado es el REAL del bot; sin ella
-  // (backend no disponible), el guardado en la base, como antes.
-  const status: { kind: StatusKind; label: string } = salud
-    ? ESTADO_SALUD[salud.estado]
-    : conectado
-    ? { kind: "online", label: "Conectada" }
-    : esperandoQR
-    ? { kind: "pending", label: "QR pendiente" }
-    : { kind: "offline", label: "Desconectada" };
+  // El estado mostrado es el REAL del bot (GET /sessions/salud). Sin esa
+  // respuesta se dice «Verificando…» o «Sin verificar»: lo guardado en la
+  // base nunca se presenta como conexión confirmada.
+  const { status, marcaActiva, nota } = estadoVisibleSesion({
+    salud,
+    consulta: consultaSalud,
+    estadoGuardado: estadoActual,
+    activa,
+  });
 
   const tieneTelefono = telefono && telefono !== "Sin conectar";
 
@@ -126,14 +130,9 @@ export default function SessionCard({
         </div>
 
         <div className={styles.flags}>
-          {activa && (!salud || salud.estado === "saludable") && (
-            <Badge tone="primary" dot>
-              Bot activo
-            </Badge>
-          )}
-          {activa && salud && salud.estado !== "saludable" && (
-            <Badge tone="error" dot>
-              Activa · no está procesando
+          {marcaActiva && (
+            <Badge tone={marcaActiva.tone} dot>
+              {marcaActiva.label}
             </Badge>
           )}
           {principal && <Badge tone="warning">Preferida</Badge>}
@@ -141,6 +140,11 @@ export default function SessionCard({
         </div>
 
         {salud && <SaludSesion salud={salud} />}
+        {nota && (
+          <p className={styles.nota} role="status">
+            {nota}
+          </p>
+        )}
 
         <div className={styles.idRow} title={id}>
           <span className={styles.idLabel}>ID</span>

@@ -45,6 +45,13 @@
   gap: 6px;
 }
 
+/* Estado no verificado: lo guardado en la base, solo como referencia. */
+.nota {
+  margin: 0;
+  font-size: var(--efaat-text-sm);
+  color: var(--efaat-text-secondary);
+}
+
 .idRow {
   display: flex;
   align-items: center;

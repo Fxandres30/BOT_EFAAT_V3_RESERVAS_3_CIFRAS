@@ -104,11 +104,13 @@ function restEnMemoria(req, res, cuerpo) {
     res.end("[]");
 }
 
-function arrancarBackend() {
+// montarBackend(app, express): rutas extra de una prueba concreta.
+function arrancarBackend(montarBackend) {
     const express = require("express");
     const app = express();
     app.use(express.json());
     app.use("/sorteos", require(r("routes/sorteos.js")));
+    if (montarBackend) montarBackend(app, express);
     return new Promise(res => { const s = app.listen(PUERTO_BACKEND, "127.0.0.1", () => res(s)); });
 }
 
@@ -169,9 +171,9 @@ function arrancarPanel() {
 }
 
 // Arranca todo y devuelve { browser, nuevaPagina(token), cerrar() }.
-async function arrancarEntorno() {
+async function arrancarEntorno({ montarBackend } = {}) {
 
-    const backend = await arrancarBackend();
+    const backend = await arrancarBackend(montarBackend);
     const supabaseFalso = await arrancarSupabaseFalso();
     const panel = arrancarPanel();
     let browser = null;

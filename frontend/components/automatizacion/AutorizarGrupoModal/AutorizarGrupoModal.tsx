@@ -144,6 +144,13 @@ export default function AutorizarGrupoModal({
                             &quot;Sesiones&quot; o usa &quot;Escribir el JID&quot;.
                         </p>
 
+                    ) : !sesiones.some((s) => s.conectada) && sesiones.some((s) => s.estado === "no_verificable") ? (
+
+                        <p className="autorizar-cargando">
+                            No pudimos comprobar tus sesiones de WhatsApp en este momento. Inténtalo de
+                            nuevo en unos minutos o usa &quot;Escribir el JID&quot;.
+                        </p>
+
                     ) : !sesiones.some((s) => s.conectada) ? (
 
                         <p className="autorizar-cargando">

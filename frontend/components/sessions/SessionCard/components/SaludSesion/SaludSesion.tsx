@@ -1,19 +1,8 @@
 "use client";
 
-import type { StatusKind } from "@/components/ui/Badge";
-import type { EstadoSalud, SaludSesion as Salud } from "@/services/sessions/saludSesiones";
+import type { SaludSesion as Salud } from "@/services/sessions/saludSesiones";
 
 import styles from "./SaludSesion.module.css";
-
-// Etiqueta y color del estado REAL (no solo "WhatsApp conectado").
-export const ESTADO_SALUD: Record<EstadoSalud, { kind: StatusKind; label: string }> = {
-  saludable: { kind: "online", label: "Saludable · escuchando" },
-  conectada: { kind: "online", label: "Conectada a WhatsApp" },
-  conectando: { kind: "pending", label: "Conectando" },
-  degradada: { kind: "warning", label: "Degradada" },
-  desconectada: { kind: "offline", label: "Desconectada" },
-  conflicto_lease: { kind: "warning", label: "Atendida en otro equipo" },
-};
 
 function hace(iso: string | null): string {
   if (!iso) return "—";

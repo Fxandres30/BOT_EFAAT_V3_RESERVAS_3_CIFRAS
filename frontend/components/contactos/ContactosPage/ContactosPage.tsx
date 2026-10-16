@@ -122,7 +122,7 @@ function formatearUltimaActividad(iso: string | null): string {
 
 export default function ContactosPage() {
 
-    const { usuarioId, contactos, migracionPendiente, loading, error, recargar } = useContactos();
+    const { usuarioId, contactos, migracionPendiente, loading, error, cargado, recargar } = useContactos();
 
     const [busqueda, setBusqueda] = useState("");
     const [filtro, setFiltro] = useState<FiltroContactos>("todos");
@@ -288,7 +288,7 @@ export default function ContactosPage() {
                         onClick={() => setFiltro(f.valor)}
                     >
                         {f.etiqueta}
-                        <span className="contactos-filtro-conteo">{conteos[f.valor] ?? 0}</span>
+                        <span className="contactos-filtro-conteo">{cargado ? conteos[f.valor] ?? 0 : "—"}</span>
                     </button>
 
                 ))}
@@ -303,7 +303,14 @@ export default function ContactosPage() {
                         <p className="contactos-vacio"><Loader2 size={14} className="contactos-spin" /> Cargando contactos...</p>
                     )}
 
-                    {!loading && error && <p className="contactos-error">{error}</p>}
+                    {!loading && error && (
+                        <div className="contactos-error" role="alert">
+                            <p>{error}</p>
+                            <button type="button" className="contactos-boton-reintentar" onClick={() => recargar()}>
+                                Reintentar
+                            </button>
+                        </div>
+                    )}
 
                     {!loading && !error && contactosFiltrados.length === 0 && (
                         <p className="contactos-vacio">

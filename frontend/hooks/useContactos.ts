@@ -25,6 +25,9 @@ export function useContactos() {
     const [migracionPendiente, setMigracionPendiente] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    // true en cuanto se cargó el directorio al menos una vez: sin eso, los
+    // contadores no pueden decir «0», porque no se sabe cuántos hay.
+    const [cargado, setCargado] = useState(false);
 
     // Evita solapar dos cargas si un cambio en tiempo real llega mientras
     // ya hay una petición en vuelo.
@@ -40,6 +43,7 @@ export function useContactos() {
             const data = await obtenerContactos(uid);
             setContactos(data.contactos);
             setMigracionPendiente(data.migracionPendiente);
+            setCargado(true);
             setError(null);
 
         } catch (e) {
@@ -148,6 +152,7 @@ export function useContactos() {
         migracionPendiente,
         loading,
         error,
+        cargado,
         recargar: () => usuarioId && cargar(usuarioId)
     };
 
