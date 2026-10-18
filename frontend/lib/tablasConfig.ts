@@ -10,7 +10,7 @@ export interface TablaConfig {
     cantidad: number;
 }
 
-export const PRECIOS_VALIDOS = [1000, 1500, 2000, 3000, 5000, 10000, 15000] as const;
+export const PRECIOS_VALIDOS = [1000, 1500, 2000, 3000, 5000, 7000, 10000, 15000] as const;
 
 export type PrecioValido = (typeof PRECIOS_VALIDOS)[number];
 
@@ -20,6 +20,7 @@ export const TABLAS_CONFIG: Record<number, TablaConfig> = {
     2000: { tabla: "reservas_dos_cifras", cifras: 2, cantidad: 100 },
     3000: { tabla: "5k_15k_reservas_2_cifras", cifras: 2, cantidad: 100 },
     5000: { tabla: "5k_15k_reservas_2_cifras", cifras: 2, cantidad: 100 },
+    7000: { tabla: "5k_15k_reservas_2_cifras", cifras: 2, cantidad: 100 },
     10000: { tabla: "5k_15k_reservas_2_cifras", cifras: 2, cantidad: 100 },
     15000: { tabla: "5k_15k_reservas_2_cifras", cifras: 2, cantidad: 100 }
 };

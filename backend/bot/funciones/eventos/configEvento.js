@@ -30,6 +30,12 @@ const CONFIG_EVENTOS = {
         cantidad: 100
     },
 
+    7000: {
+        tabla: "5k_15k_reservas_2_cifras",
+        cifras: 2,
+        cantidad: 100
+    },
+
     10000: {
         tabla: "5k_15k_reservas_2_cifras",
         cifras: 2,
