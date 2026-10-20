@@ -11,7 +11,10 @@ async function guardarEvento({
     // Sorteo activo del que este anuncio es continuación (ver
     // identidadEventoReal.js::buscarSorteoVigente): conserva su identidad y
     // su fecha para no partir sus reservas/pagos en dos sorteos.
-    sorteoVigente = null
+    sorteoVigente = null,
+    // Fecha del sorteo según el anuncio (hoy, o mañana si se publicó de
+    // noche una hora ya pasada — ver identidadEventoReal.js).
+    fechaSorteo = null
 
 }) {
 
@@ -44,7 +47,7 @@ async function guardarEvento({
 
     // Día operativo de Colombia (no UTC) — ver fechaEventoHoy(). Un sorteo
     // que continúa conserva la fecha con la que nació.
-    const hoy = sorteoVigente?.fecha_evento || fechaEventoHoy();
+    const hoy = sorteoVigente?.fecha_evento || fechaSorteo || fechaEventoHoy();
 
     // Identidad del sorteo REAL (independiente del grupo) — mismo sorteo
     // anunciado en varios grupos produce el MISMO valor aquí, lo que

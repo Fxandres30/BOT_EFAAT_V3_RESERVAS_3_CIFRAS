@@ -4,7 +4,7 @@ const { consultarEvento } = require("./consultarEvento");
 const { guardarEvento } = require("./guardarEvento");
 const { obtenerConfiguracion } = require("./configEvento");
 const { abrirGrupo } = require("./grupos/abrirGrupo");
-const { esMismoSorteo, fechaEventoHoy, buscarSorteoVigente } = require("./identidadEventoReal");
+const { esMismoSorteo, fechaSorteoAnunciado, buscarSorteoVigente } = require("./identidadEventoReal");
 const { consultarDisponibilidad } = require("../consultas/consultarDisponibilidad");
 
 // Sorteos creados y programados desde el panel (backend/sorteos). Solo se
@@ -173,6 +173,10 @@ async function detectarEvento(ctx) {
         // grupo): identidad estable durante todo su ciclo de vida.
         let sorteoVigente = null;
 
+        // Hoy, o mañana si se anuncia de noche una hora que ya pasó (ver
+        // fechaSorteoAnunciado). Se calcula una sola vez para todo el flujo.
+        const fechaSorteo = fechaSorteoAnunciado(eventoCompleto.hora, eventoCompleto.horaCierre);
+
         try {
 
             sorteoVigente = await buscarSorteoVigente({
@@ -181,7 +185,8 @@ async function detectarEvento(ctx) {
                 nombre: eventoCompleto.nombre,
                 hora: eventoCompleto.hora,
                 valor: eventoCompleto.valor,
-                grupoId
+                grupoId,
+                hoy: fechaSorteo
             });
 
         } catch (err) {
@@ -196,7 +201,7 @@ async function detectarEvento(ctx) {
             nombre_evento: eventoCompleto.nombre,
             hora_fin: eventoCompleto.hora,
             valor: eventoCompleto.valor,
-            fecha_evento: fechaEventoHoy()
+            fecha_evento: fechaSorteo
 
         }) || (sorteoVigente && eventoAnterior.identidad_evento_real === sorteoVigente.identidad_evento_real))) {
 
@@ -237,7 +242,8 @@ async function detectarEvento(ctx) {
             grupoId,
             evento: eventoCompleto,
             eventoAnterior,
-            sorteoVigente
+            sorteoVigente,
+            fechaSorteo
 
         });
 

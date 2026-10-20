@@ -59,6 +59,33 @@ function fechaEventoHoy(ahora = new Date()) {
 
 }
 
+// Fecha del sorteo de un anuncio recién detectado. Desde las 18:00 (hora de
+// Colombia), una hora de sorteo que ya pasó hoy se entiende como de mañana:
+// por la noche se publican sorteos para la mañana siguiente. En cualquier
+// otro caso, hoy (comportamiento de siempre). Si el cierre cae antes de la
+// medianoche (sorteo 00:02 -> cierre 23:58), no se aplica: queda hoy.
+function fechaSorteoAnunciado(horaFin, horaCierre, ahora = new Date()) {
+
+    const hoy = fechaEventoHoy(ahora);
+    const HHMM = /^\d{2}:\d{2}$/;
+
+    if (!HHMM.test(horaFin || "") || !HHMM.test(horaCierre || "") || horaCierre > horaFin) return hoy;
+
+    const horaActual = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "America/Bogota",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23"
+    }).format(ahora);
+
+    if (horaActual < "18:00" || horaFin >= horaActual) return hoy;
+
+    const [a, m, d] = hoy.split("-").map(Number);
+
+    return new Date(Date.UTC(a, m - 1, d + 1)).toISOString().slice(0, 10);
+
+}
+
 // ¿La fila existente de eventos_bot y el sorteo recién detectado son el
 // MISMO sorteo real? Misma identidad que ya usa el sistema (tenant +
 // lotería + hora + valor + fecha). Si la fila es previa a la migración 015
@@ -126,6 +153,7 @@ async function buscarSorteoVigente({ supabase, usuarioId, nombre, hora, valor, g
 module.exports = {
     crearIdentidadEventoReal,
     fechaEventoHoy,
+    fechaSorteoAnunciado,
     esMismoSorteo,
     valorComparable,
     buscarSorteoVigente

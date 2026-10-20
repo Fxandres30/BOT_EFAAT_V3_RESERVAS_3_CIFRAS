@@ -1,4 +1,6 @@
-function verificarHoraCierre(evento) {
+const { fechaEventoHoy } = require("../identidadEventoReal");
+
+function verificarHoraCierre(evento, ahora = new Date()) {
 
     if (!evento)
         return false;
@@ -6,7 +8,11 @@ function verificarHoraCierre(evento) {
     if (!evento.hora_cierre)
         return false;
 
-    const ahora = new Date();
+    // Sorteo de un día posterior (publicado de noche para mañana): todavía
+    // no llega su cierre. Sin fecha, de hoy o de días anteriores: la
+    // comparación por hora de siempre.
+    if (evento.fecha_evento && String(evento.fecha_evento).slice(0, 10) > fechaEventoHoy(ahora))
+        return false;
 
     const horaActual =
         ahora.getHours() * 60 +
