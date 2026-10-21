@@ -3,9 +3,8 @@
 // resultado estructurado con un "mensaje" fijo (fallback determinístico,
 // igual patrón que reserva.mensaje en detectarReserva.js). Gemini solo
 // redacta a partir de este resultado; nunca lo calcula.
-const { consultarMisNumeros, consultarMisNumerosPorEstado } = require("./consultarMisNumeros");
+const { consultarMisNumerosPorEstado } = require("./consultarMisNumeros");
 const { determinarEstadoPago } = require("../../../shared/pagos/determinarEstadoPago");
-const { consultarCantidad } = require("./consultarCantidad");
 const { consultarNumero } = require("./consultarNumero");
 const { consultarDisponibilidad } = require("./consultarDisponibilidad");
 const { consultarInfoEvento } = require("./consultarInfoEvento");
@@ -35,20 +34,111 @@ const TEXTO_ESTADO = {
 // NO existen pagos parciales en este sistema (cada número vale
 // evento.valor completo) — por eso el monto es siempre
 // cantidad_en_ese_estado * evento.valor, sin abonos ni saldos.
+//
+// Sin precio configurado (evento.valor vacío o 0) los montos quedan en
+// null: nunca se muestra "$0" ni se inventa un importe — las preguntas de
+// dinero se responden con el resumen de números (pagados/pendientes).
 // ==========================================================================
+function formatearMonto(monto) {
+    return `$${monto.toLocaleString("es-CO")}`;
+}
+
+// Mensaje fijo de las DOS respuestas de esta familia, ambas construidas
+// con los mismos datos de una sola lectura:
+//   "numeros"   -> "mis números": todos sus números, cada uno con su estado.
+//   "pendiente" -> la respuesta de PAGO ("qué debo", "cuánto debo", "estoy
+//                  al día", "¿ya pagué?"): SOLO lo pendiente y su valor si
+//                  hay precio; si no queda nada pendiente, lo dice. Nunca
+//                  afirma un pago que no esté registrado como "pagado".
+function construirMensajeResumen({ enfoque, todos, reservados, pagados, montoPendiente }) {
+
+    if (todos.length === 0) {
+
+        return enfoque === "pendiente"
+            ? "No tienes números en este sorteo, así que no debes nada."
+            : "No tienes números en este sorteo.";
+
+    }
+
+    if (enfoque === "pendiente") {
+
+        if (reservados.length === 0) {
+            return "✅ Estás al día: no tienes números pendientes de pago.";
+        }
+
+        const valor = montoPendiente != null ? ` — ${formatearMonto(montoPendiente)}` : "";
+
+        return `⏳ Te falta pagar: ${formatearListaNumeros(reservados)}${valor}.`;
+
+    }
+
+    // "numeros": nunca afirma "reservado" para un número ya pagado
+    // (contradicción real corregida antes) — cada número con su estado real.
+    const uno = todos.length === 1;
+    const g = construirVariablesGramaticales(todos.length);
+    const encabezado = `${capitalizar(g.tu_numero_tus_numeros)} ${g.es_son}: ${formatearListaNumeros(todos)}`;
+
+    if (reservados.length === 0) {
+        return [encabezado, uno ? "✅ Está pagado." : "✅ Todos están pagados."].join("\n");
+    }
+
+    if (pagados.length === 0) {
+        return [encabezado, uno ? "⏳ Está pendiente de pago." : "⏳ Todos están pendientes de pago."].join("\n");
+    }
+
+    return [
+        encabezado,
+        `✅ ${pagados.length === 1 ? "Pagado" : "Pagados"}: ${formatearListaNumeros(pagados)}`,
+        `⏳ ${reservados.length === 1 ? "Pendiente" : "Pendientes"} de pago: ${formatearListaNumeros(reservados)}`
+    ].join("\n");
+
+}
+
 function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, pagados, valorUnidad }) {
 
     // Montos y estado de pago se calculan SIEMPRE, sin importar el modo
-    // (lista/cantidad/monto): el estado real del usuario (sin_pago/
+    // (lista/cantidad/monto/resumen): el estado real del usuario (sin_pago/
     // pago_parcial/pago_completo/sin_saldo) es el mismo sin importar qué
     // faceta preguntó — determinarEstadoPago() es la única fuente de
     // verdad, reutilizada también por calcularTipoPresentacion
     // (backend/bot/ai/plantillaMensaje.js) para elegir la categoría de
-    // plantilla correcta. Nunca se duplica este cálculo en otro lugar.
-    const montoTotal = total * valorUnidad;
-    const montoPagado = pagados.length * valorUnidad;
-    const montoPendiente = reservados.length * valorUnidad;
-    const estadoPago = determinarEstadoPago({ total, montoTotal, montoPagado, montoPendiente });
+    // plantilla correcta. Nunca se duplica este cálculo en otro lugar. El
+    // estado se decide por CANTIDADES (nunca por montos).
+    //
+    // Toda faceta devuelve además las listas reservados/pagados y los
+    // montos (mismos datos para cualquier variable de plantilla).
+    const precioConfigurado = valorUnidad > 0;
+    const montoTotal = precioConfigurado ? total * valorUnidad : null;
+    const montoPagado = precioConfigurado ? pagados.length * valorUnidad : null;
+    const montoPendiente = precioConfigurado ? reservados.length * valorUnidad : null;
+    const estadoPago = determinarEstadoPago({
+        total,
+        cantidadPagados: pagados.length,
+        cantidadPendientes: reservados.length
+    });
+
+    // Pregunta de dinero sin precio configurado: se responde con los
+    // números reales en vez de un importe inventado (lo pendiente, o todos
+    // con su estado para "cuánto he pagado"/"cuánto es todo").
+    if (modo === "monto" && !precioConfigurado) {
+        return construirFacetaEstadoNumeros({ tipo, modo: "resumen", bucket: bucket === "pendiente" ? "pendiente" : "numeros", total, reservados, pagados, valorUnidad });
+    }
+
+    if (modo === "resumen") {
+
+        const todos = [...reservados, ...pagados].sort();
+
+        const mensaje = construirMensajeResumen({
+            enfoque: bucket === "pendiente" ? "pendiente" : "numeros",
+            todos,
+            reservados,
+            pagados,
+            montoPendiente
+        });
+
+        return { tipo, modo, bucket, total, reservados, pagados, numerosDelUsuario: todos, mensaje, montoTotal, montoPagado, montoPendiente, estadoPago, precioConfigurado };
+
+    }
 
     if (modo === "lista") {
 
@@ -112,7 +202,7 @@ function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, p
             bucket === "pendiente" ? `Tienes ${cantidad} número${sufijo} pendiente${sufijo} de pago.` :
             `Tienes ${cantidad} número${sufijo} en total.`;
 
-        return { tipo, modo, bucket, total, cantidad, mensaje, montoTotal, montoPagado, montoPendiente, estadoPago };
+        return { tipo, modo, bucket, total, cantidad, reservados, pagados, mensaje, montoTotal, montoPagado, montoPendiente, estadoPago };
 
     }
 
@@ -158,19 +248,21 @@ function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, p
 
     }
 
-    return { tipo, modo, bucket, montoTotal, montoPagado, montoPendiente, estadoPago, mensaje };
+    return { tipo, modo, bucket, total, reservados, pagados, montoTotal, montoPagado, montoPendiente, estadoPago, mensaje };
 
 }
 
 // Deriva (modo, bucket) implícitos para una sub-intención que no trajo un
 // modo/bucket explícito (mis_numeros/mis_reservas/cantidad_reservas nunca
-// lo traen — solo consulta_pago puede, vía PAGO_FRASES_EXPLICITAS). Único
-// lugar que conoce esta correspondencia — reutilizado tanto por el caso
-// "consulta_pago" en solitario como por "multiple".
+// lo traen — consulta_pago siempre lo trae desde detectarIntencion.js).
+// Único lugar que conoce esta correspondencia — reutilizado tanto por el
+// caso "consulta_pago" en solitario como por "multiple". Un consulta_pago
+// sin modo (llamador antiguo) recibe el resumen de lo pendiente, nunca
+// solo un monto.
 function modoBucketImplicitos(tipo, modo, bucket) {
 
     return {
-        modo: modo || (tipo === "cantidad_reservas" ? "cantidad" : tipo === "consulta_pago" ? "monto" : "lista"),
+        modo: modo || (tipo === "cantidad_reservas" ? "cantidad" : tipo === "consulta_pago" ? "resumen" : "lista"),
         bucket: bucket || (tipo === "consulta_pago" ? "pendiente" : "total")
     };
 
@@ -229,42 +321,28 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
 
         }
 
+        // mis_numeros y mis_reservas: mismos datos (una lectura) y mismo
+        // resumen — cada número con su estado REAL (pagado / pendiente).
+        // Conservan su propio tipo para que el panel siga usando sus
+        // plantillas e interruptores.
         case "mis_numeros":
         case "mis_reservas": {
 
-            const numerosDelUsuario = await consultarMisNumeros({ evento, usuario });
+            const datos = await consultarMisNumerosPorEstado({ evento, usuario });
 
-            const cantidad = numerosDelUsuario.length;
-
-            let mensaje;
-
-            if (cantidad === 0) {
-
-                mensaje = "No tienes números reservados actualmente.";
-
-            } else {
-
-                // CORRECCIÓN — contradicción real detectada: antes decía
-                // siempre "reservado(s)" aunque el número YA estuviera
-                // pagado (esta función mezcla reservado+pagado a
-                // propósito, ver consultarMisNumeros.js). El estado real
-                // por separado ya lo reportan "cuáles pagados"/"cuáles
-                // pendientes" (consulta_pago, más arriba) — aquí solo se
-                // listan los números, SIN afirmar un estado que podría ser
-                // falso.
-                const g = construirVariablesGramaticales(cantidad);
-
-                mensaje = `${capitalizar(g.tu_numero_tus_numeros)} ${g.es_son}: ${formatearListaNumeros(numerosDelUsuario)}`;
-
-            }
-
-            return { tipo, numerosDelUsuario, mensaje };
+            return construirFacetaEstadoNumeros({
+                tipo,
+                modo: "resumen",
+                bucket: "numeros",
+                ...datos,
+                valorUnidad: Number(evento.valor) || 0
+            });
 
         }
 
         case "cantidad_reservas": {
 
-            const cantidad = await consultarCantidad({ evento, usuario });
+            const { total: cantidad } = await consultarMisNumerosPorEstado({ evento, usuario });
 
             const g = construirVariablesGramaticales(cantidad);
 

@@ -25,6 +25,19 @@ function usaListaDeDisponibles(contenido) {
     return /\{\{\s*numeros_disponibles\b/.test(contenido || "");
 }
 
+// ¿La plantilla muestra un importe? Sin precio configurado en el evento,
+// esas plantillas dirían "Debes  de un total de ." — no participan.
+function usaMontos(contenido) {
+    return /\{\{\s*(monto_total|monto_pagado|monto_pendiente|pago_pendiente)\b/.test(contenido || "");
+}
+
+// Consultas de números/estado de pago del cliente: la respuesta sale SOLO
+// de plantillas del panel o del mensaje fijo de resolverConsulta.js (datos
+// reales pagado/pendiente). Nunca Gemini — podía contradecir el estado
+// real (afirmar o negar pagos, o "no tienes números" por una cantidad mal
+// leída).
+const TIPOS_SIN_IA = new Set(["mis_numeros", "mis_reservas", "cantidad_reservas", "consulta_pago", "multiple"]);
+
 // Devuelve true si el mensaje se envió, false si no (sin resultado,
 // tipo desactivado o error de envío). Los llamadores que no lo necesitan
 // pueden ignorarlo.
@@ -86,10 +99,18 @@ async function responderResultado(ctx) {
     // que hay números). Sin plantilla válida -> resultado.mensaje (mensaje
     // fijo de agotado, resolverConsulta.js).
     const esAgotado = resultado.agotado === true;
+    const esConsultaDeEstado = !ctx.reserva && TIPOS_SIN_IA.has(resultado.tipo);
 
     // Resguardo: si por cualquier motivo el tipo no fuera el de agotado, no
     // se pide ninguna plantilla (jamás las de "disponibilidad").
-    const puedeUsarPlantillas = !esAgotado || tipoPresentacion === "disponibilidad_agotada";
+    // Las plantillas consulta_pago_<estado> son la presentación de UNA sola
+    // respuesta: la de pago (lo pendiente o "estás al día", modo
+    // "resumen"). Las preguntas puntuales de la misma familia ("¿cuáles
+    // están pagados?", "¿cuántos debo?", "¿cuánto he pagado?") responden
+    // con su mensaje fijo: una plantilla de estado no contesta eso.
+    const esPreguntaPuntualDePago = resultado.tipo === "consulta_pago" && resultado.modo !== "resumen";
+
+    const puedeUsarPlantillas = (!esAgotado || tipoPresentacion === "disponibilidad_agotada") && !esPreguntaPuntualDePago;
 
     let config = null;
     let habilitadas = [];
@@ -107,6 +128,10 @@ async function responderResultado(ctx) {
         // {{numeros_disponibles}} enviaría una lista vacía: no participa.
         if (esAgotado) {
             habilitadas = (habilitadas || []).filter(p => !usaListaDeDisponibles(p?.contenido));
+        }
+
+        if (esConsultaDeEstado && !(Number(ctx.evento?.valor) > 0)) {
+            habilitadas = (habilitadas || []).filter(p => !usaMontos(p?.contenido));
         }
 
         const catalogoExtra = variablesDinamicas
@@ -150,7 +175,13 @@ async function responderResultado(ctx) {
 
     }
 
-    if (!plantillaUtilizada && !esAgotado) {
+    if (esConsultaDeEstado && !plantillaUtilizada) {
+
+        console.log("[RESPONSE] consulta de números/pago sin plantilla — mensaje fijo con estados reales (sin IA)");
+
+    }
+
+    if (!plantillaUtilizada && !esAgotado && !esConsultaDeEstado) {
 
         try {
 

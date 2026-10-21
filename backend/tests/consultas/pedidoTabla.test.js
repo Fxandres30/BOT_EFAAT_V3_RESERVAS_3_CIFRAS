@@ -183,10 +183,13 @@ const CONFLICTOS = [
     { msg: "actualiza el 25", tipo: "reserva" },
     { msg: "anótame el 07 y el 99", tipo: "reserva" },
     { msg: "¿el 25 está libre?", tipo: "numero_especifico" },
-    { msg: "ya pagué el 25", tipo: "numero_especifico" },
+    // afirmaciones de pago: el bot no responde (nunca tabla ni reserva)
+    { msg: "ya pagué el 25", tipo: "ninguna" },
+    { msg: "¿ya pagué el 25?", tipo: "numero_especifico" },
     { msg: "cuánto debo", tipo: "consulta_pago" },
-    { msg: "ya pagué, actualiza", tipo: "consulta_pago" },
-    { msg: "actualiza mi pago", tipo: "consulta_pago" },
+    { msg: "ya pagué, actualiza", tipo: "ninguna" },
+    { msg: "actualiza mi pago", tipo: "ninguna" },
+    { msg: "¿ya pagué?", tipo: "consulta_pago" },
     { msg: "les envié el comprobante", tipo: "ninguna" },
     { msg: "comprobante tabla", tipo: "ninguna" },
     { msg: "transferencia nequi", tipo: "ninguna" },
@@ -204,7 +207,7 @@ const CONFLICTOS = [
     { msg: "el 10 y el 20 de la tabla 5k", tipo: "reserva" },
     { msg: "tabla 🙏 25", tipo: "reserva" },
     { msg: "el 10.000 está libre?", tipo: "numero_especifico" },
-    { msg: "ya pague actualiza la tabla", tipo: "consulta_pago" },
+    { msg: "ya pague actualiza la tabla", tipo: "ninguna" },
     { msg: "ya mandé comprobante, actualiza", tipo: "ninguna" },
     { msg: "cuántos números hay", tipo: "cantidad_reservas" }
 ];

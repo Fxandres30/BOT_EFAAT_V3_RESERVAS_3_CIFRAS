@@ -27,6 +27,7 @@
 // ==========================================================================
 
 const { coincideAprox } = require("../../utils/coincidenciaAproximada");
+const { canonizarTokens, contieneAccionPago, contieneDeuda } = require("./vocabularioPago");
 
 // ------------------------------------------------------------ vocabulario ---
 
@@ -61,9 +62,11 @@ const RELLENO = new Set([
     "amiga", "amigo", "amigos", "familia", "bro", "hermano", "hermana", "veci", "vecina", "vecino"
 ]);
 
-// Pago / comprobante — nunca se responde con la tabla.
+// Pago / comprobante — nunca se responde con la tabla. Los verbos de pago
+// y deuda ("pago", "pagar", "debo"...) se comparan EXACTOS vía
+// vocabularioPago.js ("pasar la tabla" no es pago); aquí solo quedan las
+// palabras largas de comprobante, que sí toleran errores de tecleo.
 const EXCLUSION_PAGO = [
-    "pago", "pagar", "pague", "pagado", "pagos", "debo", "debe",
     "comprobante", "comprobantes", "transferencia", "transferi", "consigne", "consignacion",
     "nequi", "daviplata", "abono", "abone"
 ];
@@ -152,7 +155,11 @@ function esPedidoDeTabla(textoOriginal, tokensNormalizados = [], numeros = []) {
 
     if (numeros.length > 0) return { esPedido: false, regla: "trae_numero" };
 
-    if (contieneAprox(tokens, EXCLUSION_PAGO)) return { esPedido: false, regla: "pago" };
+    const tokensPago = canonizarTokens(tokens);
+
+    if (contieneAccionPago(tokensPago) || contieneDeuda(tokensPago) || contieneAprox(tokens, EXCLUSION_PAGO)) {
+        return { esPedido: false, regla: "pago" };
+    }
 
     if (contieneAprox(tokens, EXCLUSION_RESULTADO)) return { esPedido: false, regla: "resultado" };
 

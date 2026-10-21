@@ -21,6 +21,22 @@ const { enmascararJid } = require("../utils/enmascararJid");
 // Diagnóstico del ciclo de vida (Paso 0) — solo observa.
 const cicloMensaje = require("../../diagnostico/cicloMensaje");
 
+// Interruptor previo a la consulta. "consulta_pago" ya no es un tipo del
+// panel (se reparte en consulta_pago_sin_pago/_pago_parcial/
+// _pago_completo/_sin_saldo según el estado REAL, que solo se conoce tras
+// leer los números): su interruptor lo aplica responderResultado() con esa
+// clave por estado. Comprobar aquí la clave antigua podía silenciar todas
+// las consultas de pago por una fila heredada que el panel ya no muestra.
+async function interruptorPrevioHabilitado(usuarioId, tipo) {
+
+    if (tipo === "consulta_pago") {
+        return true;
+    }
+
+    return estaRespuestaHabilitada(usuarioId, tipo);
+
+}
+
 module.exports = async (ctx) => {
 
     if (!ctx.chat.esGrupo) {
@@ -174,17 +190,19 @@ module.exports = async (ctx) => {
 
     // Fase "consultas combinadas": "mis números y cuánto debo" trae varias
     // sub-intenciones (ver detectarIntencion.js). Cada una respeta SU
-    // PROPIO interruptor de tipo — si el tenant desactivó "consulta_pago"
-    // pero no "mis_numeros", la combinada responde solo la parte
-    // habilitada; si ninguna sigue habilitada, silencio total (mismo
-    // criterio que el resto de tipos, sin excepción nueva).
+    // PROPIO interruptor de tipo — si el tenant desactivó "mis_numeros",
+    // la combinada responde solo la parte habilitada; si ninguna sigue
+    // habilitada, silencio total (mismo criterio que el resto de tipos,
+    // sin excepción nueva). La parte de pago no tiene interruptor previo
+    // (ver interruptorPrevioHabilitado); la respuesta combinada respeta el
+    // interruptor "multiple" en responderResultado().
     if (intencion.tipo === "multiple") {
 
         const subIntencionesHabilitadas = [];
 
         for (const sub of intencion.intenciones) {
 
-            const habilitadaSub = await estaRespuestaHabilitada(usuarioId, sub.tipo);
+            const habilitadaSub = await interruptorPrevioHabilitado(usuarioId, sub.tipo);
 
             if (habilitadaSub) {
                 subIntencionesHabilitadas.push(sub);
@@ -222,7 +240,7 @@ module.exports = async (ctx) => {
 
     }
 
-    const habilitada = await estaRespuestaHabilitada(usuarioId, intencion.tipo);
+    const habilitada = await interruptorPrevioHabilitado(usuarioId, intencion.tipo);
 
     if (!habilitada) {
 

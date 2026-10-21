@@ -1,4 +1,5 @@
-// Plantillas iniciales (15 por tipo soportado) — datos puros, no UI.
+// Plantillas iniciales (15 por tipo soportado; "mis números" y la respuesta
+// de pago, en plantillasNumerosPagos.ts) — datos puros, no UI.
 // Son solo un punto de partida: el usuario puede editar, duplicar,
 // eliminar o crear más desde el panel (sin límite artificial).
 // Los nombres de estilo son únicamente etiquetas iniciales, no controlan
@@ -15,10 +16,14 @@
 // plantillas y se vuelva a sembrar, ya nazca con las plantillas
 // correctas, sin reintroducir "1 números" o "3 número(s)".
 
+import { PLANTILLAS_NUMEROS_PAGOS } from "./plantillasNumerosPagos";
+
 export interface PlantillaBase {
     nombre: string;
     estilo: string;
     contenido: string;
+    // false = se siembra guardada pero inactiva (por defecto: activa).
+    activa?: boolean;
 }
 
 // Los 15 estilos base, en el orden pedido. "Personalizada" siempre queda
@@ -120,23 +125,7 @@ const PLANTILLAS_POR_TIPO: Record<string, PlantillaBase[]> = {
         ""
     ]),
 
-    mis_numeros: construir([
-        "{{cliente}}, {{tu_numero_tus_numeros}} {{es_son}}: {{numeros_reservados}}",
-        "{{tu_numero_tus_numeros}}: {{numeros_reservados}}",
-        "{{cliente}}, {{tu_numero_tus_numeros}} {{es_son}}: {{numeros_reservados}} 😊",
-        "¡Hola {{cliente}}! {{tu_numero_tus_numeros}} {{es_son}}: {{numeros_reservados}}",
-        "{{cliente}}, ¡tienes {{numeros_reservados}}! Mucha suerte con {{ese_esos}} 🍀",
-        "{{numeros_reservados}} {{es_son}} {{tuyo_tuyos}}, {{cliente}}. ¡Que ganes! 🎉",
-        "{{cliente}}, según nuestro registro, {{tu_numero_tus_numeros}} {{reservado_reservados}} {{es_son}}: {{numeros_reservados}}.",
-        "{{numeros_reservados}}",
-        "{{cliente}}, tienes: {{numeros_reservados}}",
-        "Estimado {{cliente}}, {{su_numero_sus_numeros}} {{reservado_reservados}} {{es_son}}: {{numeros_reservados}}.",
-        "{{tuyo_tuyos}}: {{numeros_reservados}}",
-        "{{cliente}}, para {{evento}} tienes: {{numeros_reservados}}",
-        "{{numero_numeros}} a tu nombre: {{numeros_reservados}}",
-        "{{cliente}} 🎫 {{tu_numero_tus_numeros}} {{es_son}} {{numeros_reservados}} ✨",
-        ""
-    ]),
+    // mis_numeros: ver plantillasNumerosPagos.ts (10 sugeridas, 2 activas).
 
     mis_reservas: construir([
         // "esto es lo que tienes reservado" es una construcción neutra
@@ -186,6 +175,7 @@ const PLANTILLAS_POR_TIPO: Record<string, PlantillaBase[]> = {
         "{{cliente}} 🔢 llevas {{cantidad}} {{numero_numeros}} ✨",
         ""
     ]),
+
 
     // numero_especifico siempre trata de EXACTAMENTE 1 número (por diseño
     // de resolverConsulta.js) — las 15 ya son singulares/neutras y
@@ -310,59 +300,8 @@ const PLANTILLAS_POR_TIPO: Record<string, PlantillaBase[]> = {
         }
     ],
 
-    // CONSULTA DE PAGO — auditoría "consulta de pago contextual" (2026-09):
-    // antes existía UNA sola plantilla universal ("Has pagado X de Y. Te
-    // falta Z.") aplicada a los 4 estados reales posibles, aunque el
-    // cliente no hubiera pagado nada o ya no tuviera saldo pendiente. Cada
-    // uno de los 4 estados (ver determinarEstadoPago en
-    // backend/shared/pagos) recibe ahora su PROPIO grupo de 5 semillas —
-    // ninguna se comparte entre estados. Todas usan EXCLUSIVAMENTE
-    // {{cliente}}, {{evento}}, {{monto_total}}, {{monto_pagado}},
-    // {{monto_pendiente}} — las mismas variables del caso "monto" por
-    // defecto (ver resolverConsulta.js::modoBucketImplicitos).
-
-    // 🔴 SIN NINGÚN PAGO — monto_pagado = 0, monto_pendiente > 0. Nunca
-    // menciona "pagaste X" (sería falso): siempre parte de que el pago
-    // está en cero.
-    consulta_pago_sin_pago: [
-        { nombre: "Natural", estilo: "natural", contenido: "Hola {{cliente}} 👋 aún no registras ningún pago. Debes {{monto_pendiente}} de un total de {{monto_total}}." },
-        { nombre: "Profesional", estilo: "profesional", contenido: "Estimado/a {{cliente}}, le informamos que actualmente no registra ningún pago para {{evento}}. El valor total a cancelar es de {{monto_total}}." },
-        { nombre: "Informativa", estilo: "informativa", contenido: "{{cliente}}, estado de pago: total {{monto_total}} · pagado {{monto_pagado}} · pendiente {{monto_pendiente}}. Todavía no registras ningún pago." },
-        { nombre: "Directa", estilo: "directa", contenido: "{{cliente}}: no has pagado nada. Debes {{monto_pendiente}}." },
-        { nombre: "Cercana", estilo: "cercana", contenido: "¡Hola {{cliente}}! 🙌 Todavía no has hecho ningún pago. Recuerda que el total es {{monto_total}} 💰" }
-    ],
-
-    // 🟡 PAGO PARCIAL — monto_pagado > 0 y monto_pendiente > 0. Es el
-    // ÚNICO estado donde "has pagado X de Y, te falta Z" es correcto.
-    consulta_pago_pago_parcial: [
-        { nombre: "Natural", estilo: "natural", contenido: "Hola {{cliente}} 👋 tu saldo pendiente es de {{monto_pendiente}}. Ya llevas pagado {{monto_pagado}} de un total de {{monto_total}}." },
-        { nombre: "Profesional", estilo: "profesional", contenido: "Estimado/a {{cliente}}, este es el estado de su cuenta para {{evento}}: total {{monto_total}}, pagado {{monto_pagado}}, pendiente {{monto_pendiente}}." },
-        { nombre: "Informativa", estilo: "informativa", contenido: "{{cliente}}, tu resumen de pago: total {{monto_total}} · pagado {{monto_pagado}} · pendiente {{monto_pendiente}}." },
-        { nombre: "Directa", estilo: "directa", contenido: "{{cliente}}: has pagado {{monto_pagado}} de {{monto_total}}. Te falta {{monto_pendiente}} por pagar." },
-        { nombre: "Cercana", estilo: "cercana", contenido: "¡Hola {{cliente}}! 💰 Vas pagando {{monto_pagado}} de {{monto_total}}. Te falta {{monto_pendiente}} 🙌" }
-    ],
-
-    // 🟢 PAGO COMPLETO — monto_pendiente = 0. Nunca dice "te falta $0":
-    // confirma explícitamente que no queda ningún saldo pendiente.
-    consulta_pago_pago_completo: [
-        { nombre: "Natural", estilo: "natural", contenido: "Hola {{cliente}} 👋 tu pago ya está completo: {{monto_pagado}} de {{monto_total}}. No tienes ningún saldo pendiente ✅" },
-        { nombre: "Profesional", estilo: "profesional", contenido: "Estimado/a {{cliente}}, le confirmamos que su pago para {{evento}} está completo ({{monto_total}}). No registra ningún saldo pendiente." },
-        { nombre: "Informativa", estilo: "informativa", contenido: "{{cliente}}, estado de pago: total {{monto_total}} · pagado {{monto_pagado}} · sin saldo pendiente." },
-        { nombre: "Directa", estilo: "directa", contenido: "{{cliente}}: pago completo. No debes nada." },
-        { nombre: "Cercana", estilo: "cercana", contenido: "¡Hola {{cliente}}! 🎉 Ya pagaste todo ({{monto_total}}). ¡Gracias! No tienes nada pendiente 🙌" }
-    ],
-
-    // ⚪ SIN SALDO / RESERVAS CANCELADAS — sin números activos (nunca
-    // reservó, o sus reservas fueron liberadas/canceladas). Nunca se trata
-    // como pago parcial ni muestra montos de reservas que ya no existen
-    // — por eso NO usa {{monto_total}}/{{monto_pagado}}/{{monto_pendiente}}.
-    consulta_pago_sin_saldo: [
-        { nombre: "Natural", estilo: "natural", contenido: "Hola {{cliente}} 👋 no tienes ningún saldo pendiente ni reservas activas en este momento." },
-        { nombre: "Profesional", estilo: "profesional", contenido: "Estimado/a {{cliente}}, actualmente no registra reservas activas ni ningún saldo pendiente." },
-        { nombre: "Informativa", estilo: "informativa", contenido: "{{cliente}}, no tienes reservas activas en este momento — no existe ningún saldo pendiente." },
-        { nombre: "Directa", estilo: "directa", contenido: "{{cliente}}: no tienes saldo pendiente ni reservas activas." },
-        { nombre: "Cercana", estilo: "cercana", contenido: "¡Hola {{cliente}}! 🙌 Por ahora no tienes ninguna reserva activa ni saldo pendiente." }
-    ],
+    // consulta_pago_sin_pago / _pago_parcial / _pago_completo / _sin_saldo:
+    // ver plantillasNumerosPagos.ts (3 por estado, 2 activas).
 
     // 🚫 AGOTADO — el sorteo no tiene ningún número libre (todos ocupados,
     // reservados o pagados). Nunca listan números: sin
@@ -390,5 +329,5 @@ const PLANTILLAS_POR_TIPO: Record<string, PlantillaBase[]> = {
 // se revisó de nuevo esta decisión y se mantiene sin cambios — no es
 // técnicamente compatible con una plantilla estática única.
 export function obtenerPlantillasBase(tipoId: string): PlantillaBase[] {
-    return PLANTILLAS_POR_TIPO[tipoId] || [];
+    return PLANTILLAS_NUMEROS_PAGOS[tipoId] || PLANTILLAS_POR_TIPO[tipoId] || [];
 }

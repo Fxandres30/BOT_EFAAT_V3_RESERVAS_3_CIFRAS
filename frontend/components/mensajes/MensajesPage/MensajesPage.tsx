@@ -24,6 +24,12 @@ import {
     ModoSeleccion as TipoModo
 } from "@/services/mensajes/configuracionSeleccion";
 
+import {
+    MODALIDADES_NUMEROS_PAGOS,
+    esModalidadNumerosPagos,
+    obtenerModalidad
+} from "@/services/mensajes/modalidadesNumerosPagos";
+
 import ListaPlantillas from "../ListaPlantillas/ListaPlantillas";
 import EditorMensaje from "../EditorMensaje/EditorMensaje";
 import ModoSeleccion from "../ModoSeleccion/ModoSeleccion";
@@ -31,6 +37,28 @@ import ModoSeleccion from "../ModoSeleccion/ModoSeleccion";
 import styles from "./MensajesPage.module.css";
 
 const CATEGORIAS: TipoMensaje["categoria"][] = ["Reservas", "Consultas", "Automatización", "Futuro"];
+
+// Grupo visual propio, mostrado después de "Reservas": los tipos de
+// números y pagos salen de "Consultas" para encontrarlos juntos (su
+// categoría real no cambia — ver modalidadesNumerosPagos.ts).
+const GRUPO_NUMEROS_PAGOS = "Números y pagos";
+
+const TIPOS_NUMEROS_PAGOS: TipoMensaje[] = MODALIDADES_NUMEROS_PAGOS
+    .map((m) => TIPOS_MENSAJE.find((t) => t.id === m.tipoId))
+    .filter((t): t is TipoMensaje => !!t);
+
+const GRUPOS_RAIL: { titulo: string; tipos: TipoMensaje[] }[] = CATEGORIAS.flatMap((categoria) => {
+
+    const grupo = {
+        titulo: categoria,
+        tipos: TIPOS_MENSAJE.filter((t) => t.categoria === categoria && !esModalidadNumerosPagos(t.id))
+    };
+
+    return categoria === "Reservas"
+        ? [grupo, { titulo: GRUPO_NUMEROS_PAGOS, tipos: TIPOS_NUMEROS_PAGOS }]
+        : [grupo];
+
+});
 
 // Interruptor de las reacciones ✅/❌ que el bot pone en el mensaje del
 // cliente al reservar. Se guarda como un tipo más en
@@ -375,13 +403,13 @@ export default function MensajesPage() {
 
                 <aside className={styles.rail}>
 
-                    {CATEGORIAS.map((categoria) => (
+                    {GRUPOS_RAIL.map((grupo) => (
 
-                        <div key={categoria} className={styles.railGroup}>
+                        <div key={grupo.titulo} className={styles.railGroup}>
 
-                            <p className={styles.railGroupTitle}>{categoria}</p>
+                            <p className={styles.railGroupTitle}>{grupo.titulo}</p>
 
-                            {TIPOS_MENSAJE.filter((t) => t.categoria === categoria).map((tipo) => {
+                            {grupo.tipos.map((tipo) => {
 
                                 const habilitado = estaHabilitado(tipo.id);
 
@@ -470,6 +498,12 @@ export default function MensajesPage() {
                                     </div>
                                 </div>
 
+                                {obtenerModalidad(tipoSeleccionado.id) && (
+                                    <p className={styles.note}>
+                                        <strong>Cuándo se usa:</strong> {obtenerModalidad(tipoSeleccionado.id)!.cuandoSeUsa}
+                                    </p>
+                                )}
+
                                 {!estaHabilitado(tipoSeleccionado.id) && (
                                     <p className={styles.note}>
                                         El BOT sigue detectando esta intención y (si aplica) ejecutando la
@@ -518,6 +552,9 @@ export default function MensajesPage() {
                                     onDuplicada={agregarNuevaLocal}
                                     onEliminada={quitarLocal}
                                     onCreada={agregarNuevaLocal}
+                                    agruparPorEstado={esModalidadNumerosPagos(tipoSeleccionado.id)}
+                                    modoFijo={configSeleccion?.modo_seleccion === "fijo"}
+                                    onReorganizada={() => cargarTipo(tipoSeleccionado, usuarioId)}
                                 />
 
                             </div>

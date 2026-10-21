@@ -258,17 +258,21 @@ async function ejecutarPruebas() {
     });
 
     // ======================================================================
-    // 14-15. detectarIntencion — numero_especifico (pagué/pagado + número)
+    // 14-15. detectarIntencion — pagué/pagado + número. AFIRMACIÓN: el bot
+    // no responde (el pago lo confirma el administrador con el sticker);
+    // PREGUNTA: estado real de ese número. Nunca reserva.
     // ======================================================================
 
-    await test('14. "el 25 ya lo pagué" => numero_especifico', () => {
-        const r = detectarIntencion("el 25 ya lo pagué");
+    await test('14. "el 25 ya lo pagué" (afirmación) => ninguna; "¿el 25 ya lo pagué?" => numero_especifico', () => {
+        assert.strictEqual(detectarIntencion("el 25 ya lo pagué").tipo, "ninguna");
+        const r = detectarIntencion("¿el 25 ya lo pagué?");
         assert.strictEqual(r.tipo, "numero_especifico");
         assert.deepStrictEqual(r.numeros, ["25"]);
     });
 
-    await test('15. "el 25 está pagado" => numero_especifico', () => {
-        const r = detectarIntencion("el 25 está pagado");
+    await test('15. "el 25 está pagado" (afirmación) => ninguna; "¿el 25 está pagado?" => numero_especifico', () => {
+        assert.strictEqual(detectarIntencion("el 25 está pagado").tipo, "ninguna");
+        const r = detectarIntencion("¿el 25 está pagado?");
         assert.strictEqual(r.tipo, "numero_especifico");
         assert.deepStrictEqual(r.numeros, ["25"]);
     });

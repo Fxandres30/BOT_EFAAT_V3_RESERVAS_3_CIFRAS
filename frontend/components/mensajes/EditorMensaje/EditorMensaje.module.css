@@ -151,3 +151,26 @@
     max-width: 100%;
   }
 }
+
+/* "Variables de esta respuesta": variable + qué representa, una por fila. */
+.varsTipo {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.varTipo {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.varTipoTexto {
+  font-size: 12px;
+  color: var(--efaat-text-secondary);
+  line-height: 1.4;
+}

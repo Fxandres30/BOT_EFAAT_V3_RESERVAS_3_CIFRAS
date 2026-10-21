@@ -93,3 +93,87 @@
   gap: 2px;
   flex-shrink: 0;
 }
+
+/* ---- Grupo "Números y pagos": activas/inactivas + organizar ---- */
+
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.badgeActiva,
+.badgeInactiva,
+.badgeRecomendada {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: var(--efaat-weight-semibold);
+  line-height: 16px;
+}
+
+.badgeActiva {
+  background: var(--efaat-success-soft);
+  color: var(--efaat-success);
+}
+
+.badgeInactiva {
+  background: var(--efaat-surface-muted);
+  color: var(--efaat-text-muted);
+}
+
+.badgeRecomendada {
+  background: var(--efaat-warning-soft);
+  color: var(--efaat-warning);
+}
+
+.seccion {
+  margin: 6px 4px 2px;
+  font-size: 11px;
+  font-weight: var(--efaat-weight-semibold);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--efaat-text-muted);
+}
+
+.seccion:first-child {
+  margin-top: 0;
+}
+
+.seccionVacia {
+  margin: 0 4px 4px;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-muted);
+}
+
+.organizar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px dashed var(--efaat-border);
+  border-radius: 8px;
+}
+
+.organizarTexto,
+.organizarAviso {
+  margin: 0;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+  line-height: 1.5;
+}
+
+.organizarAviso {
+  color: var(--efaat-text);
+}
+
+.organizarAcciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

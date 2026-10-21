@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { obtenerPlantillasBase } from "./plantillasBase";
 import { TIPOS_MENSAJE } from "./tiposMensaje";
+import { PLANTILLAS_NUMEROS_PAGOS, esRecomendada } from "./plantillasNumerosPagos";
 
 export interface VariablesConfig {
     mostrar_nombre?: boolean;
@@ -173,7 +174,7 @@ export async function sembrarPlantillasIniciales(usuarioId: string, tipoRespuest
         estilo: p.estilo,
         contenido: p.contenido,
         variables: valoresPorDefectoVariables(),
-        habilitada: true,
+        habilitada: p.activa ?? true,
         orden: i,
         updated_at: new Date().toISOString()
     }));
@@ -209,6 +210,69 @@ export async function contarHabilitadas(usuarioId: string) {
         .select("id", { count: "exact", head: true })
         .eq("usuario_id", usuarioId)
         .eq("habilitada", true);
+
+}
+
+// ---------------------------------------------------------------------------
+// "Organizar plantillas" (números y pagos) — acciones que el admin dispara
+// desde el panel. NUNCA borran ni editan el texto de ninguna plantilla.
+// ---------------------------------------------------------------------------
+
+// Agrega las plantillas sugeridas que falten en este tipo (se reconocen por
+// su "estilo" sugerida_N), al final de la lista y SIEMPRE inactivas: así
+// nunca cambia lo que el bot responde hoy hasta que el admin las active.
+export async function completarPlantillasSugeridas(usuarioId: string, tipoRespuesta: string, existentes: PlantillaMensaje[]) {
+
+    const sugeridas = PLANTILLAS_NUMEROS_PAGOS[tipoRespuesta] || [];
+    const estilosExistentes = new Set(existentes.map((p) => p.estilo));
+    const faltantes = sugeridas.filter((s) => !estilosExistentes.has(s.estilo));
+
+    if (faltantes.length === 0) {
+        return { creadas: 0, error: null };
+    }
+
+    const ordenBase = existentes.length ? Math.max(...existentes.map((p) => p.orden)) + 1 : 0;
+
+    const filas = faltantes.map((s, i) => ({
+        usuario_id: usuarioId,
+        tipo_respuesta: tipoRespuesta,
+        nombre: s.nombre,
+        estilo: s.estilo,
+        contenido: s.contenido,
+        variables: valoresPorDefectoVariables(),
+        habilitada: false,
+        orden: ordenBase + i,
+        updated_at: new Date().toISOString()
+    }));
+
+    const { error } = await supabase.from("plantillas_mensaje").insert(filas);
+
+    return { creadas: error ? 0 : filas.length, error };
+
+}
+
+// Deja activas SOLO las 2 recomendadas del tipo (sugerida_1 y sugerida_2);
+// todas las demás quedan guardadas e inactivas. Solo cambia "habilitada".
+export async function dejarActivasSoloRecomendadas(plantillas: PlantillaMensaje[]) {
+
+    const ahora = new Date().toISOString();
+    const activar = plantillas.filter((p) => esRecomendada(p.estilo)).map((p) => p.id);
+    const desactivar = plantillas.filter((p) => !esRecomendada(p.estilo) && p.habilitada).map((p) => p.id);
+
+    if (activar.length === 0) {
+        return { error: { message: "Este tipo no tiene las plantillas recomendadas. Usa primero «Completar sugeridas»." } };
+    }
+
+    const r1 = await supabase.from("plantillas_mensaje").update({ habilitada: true, updated_at: ahora }).in("id", activar);
+
+    if (r1.error) return { error: r1.error };
+
+    if (desactivar.length > 0) {
+        const r2 = await supabase.from("plantillas_mensaje").update({ habilitada: false, updated_at: ahora }).in("id", desactivar);
+        if (r2.error) return { error: r2.error };
+    }
+
+    return { error: null };
 
 }
 

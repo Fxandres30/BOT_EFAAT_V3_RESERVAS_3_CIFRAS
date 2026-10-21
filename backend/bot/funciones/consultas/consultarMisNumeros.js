@@ -15,10 +15,8 @@ const { soloDelCliente } = require("../reservas/filtroCliente");
 // cierre de evento no resetea las filas).
 //
 // Única consulta real a Supabase para "los números de este usuario en este
-// evento" — tanto consultarMisNumeros() (comportamiento original, sin
-// cambios) como consultarMisNumerosPorEstado() (nueva, separa
-// reservado/pagado) reutilizan esta misma función en vez de duplicar el
-// acceso a datos.
+// evento" — consultarMisNumerosPorEstado() la clasifica por estado y
+// consultarMisNumeros() (compatibilidad) se apoya en esa misma función.
 async function obtenerFilasDelUsuario({ evento, usuario }) {
 
     if (!evento?.tabla || !usuario?.id) {
@@ -94,19 +92,14 @@ async function obtenerFilasDelUsuario({ evento, usuario }) {
 
 }
 
-async function consultarMisNumeros({ evento, usuario }) {
-
-    const filas = await obtenerFilasDelUsuario({ evento, usuario });
-
-    return filas.map(r => r.numero);
-
-}
-
-// NUEVO — mismos datos que consultarMisNumeros(), separados por estado
-// real. Usado por las consultas de pendientes/pagados/cantidad separada/
-// consulta_pago (ver resolverConsulta.js). No inventa ningún estado: solo
-// clasifica lo que ya trae la fila ("reservado" / "pagado" — los únicos
-// dos valores no-libres que existen en las tablas dinámicas).
+// ÚNICA lógica de "números del cliente por estado de pago" — la usan TODAS
+// las consultas de esta familia (mis_numeros, mis_reservas,
+// cantidad_reservas, consulta_pago y multiple, ver resolverConsulta.js),
+// siempre con UNA sola lectura. No inventa ningún estado: solo clasifica
+// lo que ya trae la fila. Lista BLANCA a propósito: solo "reservado"
+// (pendiente de pago) y "pagado" son números del cliente — un estado
+// operativo del panel ("bloqueado", "en_proceso") nunca se cuenta como
+// suyo ni como deuda.
 async function consultarMisNumerosPorEstado({ evento, usuario }) {
 
     const filas = await obtenerFilasDelUsuario({ evento, usuario });
@@ -114,11 +107,25 @@ async function consultarMisNumerosPorEstado({ evento, usuario }) {
     const reservados = filas.filter(f => f.estado === "reservado").map(f => f.numero);
     const pagados = filas.filter(f => f.estado === "pagado").map(f => f.numero);
 
+    // Números de igual longitud (canonicalizados al reservar): sort()
+    // lexicográfico = orden numérico.
+    const todos = [...reservados, ...pagados].sort();
+
     return {
-        total: filas.length,
+        total: todos.length,
+        todos,
         reservados,
         pagados
     };
+
+}
+
+// Compatibilidad: misma lectura, solo la lista de números.
+async function consultarMisNumeros({ evento, usuario }) {
+
+    const { todos } = await consultarMisNumerosPorEstado({ evento, usuario });
+
+    return todos;
 
 }
 

@@ -190,10 +190,10 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         icono: "🎫",
         nombre: "Mis números",
         descripcion: "El cliente pregunta qué números tiene.",
-        variables: [V.cliente, V.evento, V.reservados, V.tuNumeroTusNumeros, V.esSon, V.reservadoReservados, V.eseEsos, V.tuyoTuyos, V.suNumeroSusNumeros, V.numeroNumeros],
-        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["01", "27", "48"]) },
-        ejemploSingular: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["27"]), tu_numero_tus_numeros: "tu número", es_son: "es", reservado_reservados: "reservado", ese_esos: "ese número", tuyo_tuyos: "tuyo", su_numero_sus_numeros: "su número", numero_numeros: "número" },
-        ejemploPlural: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["01", "27", "48"]), tu_numero_tus_numeros: "tus números", es_son: "son", reservado_reservados: "reservados", ese_esos: "esos números", tuyo_tuyos: "tuyos", su_numero_sus_numeros: "sus números", numero_numeros: "números" },
+        variables: [V.cliente, V.evento, V.numerosTotalesCliente, V.numerosPagados, V.numerosPendientes, V.cantidadPagados, V.cantidadPendientes, V.reservados, V.tuNumeroTusNumeros, V.esSon, V.reservadoReservados, V.eseEsos, V.tuyoTuyos, V.suNumeroSusNumeros, V.numeroNumeros],
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["01", "27", "48"]), numeros_totales_cliente: formatearListaNumeros(["01","27","48"]), numeros_pagados: formatearListaNumeros(["27"]), numeros_pendientes: formatearListaNumeros(["01","48"]), cantidad_pagados: "1", cantidad_pendientes: "2" },
+        ejemploSingular: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["27"]), numeros_totales_cliente: formatearListaNumeros(["27"]), numeros_pagados: "ninguno", numeros_pendientes: formatearListaNumeros(["27"]), cantidad_pagados: "0", cantidad_pendientes: "1", tu_numero_tus_numeros: "tu número", es_son: "es", reservado_reservados: "reservado", ese_esos: "ese número", tuyo_tuyos: "tuyo", su_numero_sus_numeros: "su número", numero_numeros: "número" },
+        ejemploPlural: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["01", "27", "48"]), numeros_totales_cliente: formatearListaNumeros(["01","27","48"]), numeros_pagados: formatearListaNumeros(["27"]), numeros_pendientes: formatearListaNumeros(["01","48"]), cantidad_pagados: "1", cantidad_pendientes: "2", tu_numero_tus_numeros: "tus números", es_son: "son", reservado_reservados: "reservados", ese_esos: "esos números", tuyo_tuyos: "tuyos", su_numero_sus_numeros: "sus números", numero_numeros: "números" },
         soportado: true
     },
     {
@@ -202,7 +202,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         icono: "📋",
         nombre: "Mis reservas",
         descripcion: "El cliente pregunta qué tiene reservado.",
-        variables: [V.cliente, V.evento, V.reservados, V.tuNumeroTusNumeros, V.esSon, V.reservadoReservados],
+        variables: [V.cliente, V.evento, V.reservados, V.tuNumeroTusNumeros, V.esSon, V.reservadoReservados, V.numerosPagados, V.numerosPendientes],
         ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["01", "27", "48"]) },
         ejemploSingular: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["27"]), tu_numero_tus_numeros: "tu número", es_son: "es", reservado_reservados: "reservado" },
         ejemploPlural: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["01", "27", "48"]), tu_numero_tus_numeros: "tus números", es_son: "son", reservado_reservados: "reservados" },
@@ -302,8 +302,8 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         icono: "🔴",
         nombre: "Consulta de pago — Sin ningún pago",
         descripcion: "El cliente tiene reservas activas pero todavía no ha pagado nada (monto_pagado = 0, monto_pendiente > 0).",
-        variables: [V.cliente, V.evento, V.montoTotal, V.montoPagado, V.montoPendiente],
-        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", monto_total: "$20.000", monto_pagado: "$0", monto_pendiente: "$20.000" },
+        variables: [V.cliente, V.evento, V.numerosPagados, V.numerosPendientes, V.cantidadPagados, V.cantidadPendientes, V.montoTotal, V.montoPagado, V.montoPendiente],
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_pagados: "ninguno", numeros_pendientes: formatearListaNumeros(["12","45"]), cantidad_pagados: "0", cantidad_pendientes: "2", monto_total: "$10.000", monto_pagado: "$0" },
         soportado: true
     },
     {
@@ -312,8 +312,8 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         icono: "🟡",
         nombre: "Consulta de pago — Pago parcial",
         descripcion: "El cliente ya pagó una parte, pero todavía tiene saldo pendiente (monto_pagado > 0 y monto_pendiente > 0). Es el ÚNICO caso donde tiene sentido decir \"has pagado X de Y, te falta Z\".",
-        variables: [V.cliente, V.evento, V.montoTotal, V.montoPagado, V.montoPendiente],
-        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", monto_total: "$20.000", monto_pagado: "$10.000", monto_pendiente: "$10.000" },
+        variables: [V.cliente, V.evento, V.numerosPagados, V.numerosPendientes, V.cantidadPagados, V.cantidadPendientes, V.montoTotal, V.montoPagado, V.montoPendiente],
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_pagados: formatearListaNumeros(["12"]), numeros_pendientes: formatearListaNumeros(["45"]), cantidad_pagados: "1", cantidad_pendientes: "1", monto_total: "$10.000", monto_pagado: "$5.000" },
         soportado: true
     },
     {
@@ -322,16 +322,16 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         icono: "🟢",
         nombre: "Consulta de pago — Pago completo",
         descripcion: "El cliente ya pagó el total: no tiene ningún saldo pendiente (monto_pendiente = 0). Nunca debe decir \"te falta $0\" — confirma explícitamente que no hay saldo.",
-        variables: [V.cliente, V.evento, V.montoTotal, V.montoPagado, V.montoPendiente],
-        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", monto_total: "$20.000", monto_pagado: "$20.000", monto_pendiente: "$0" },
+        variables: [V.cliente, V.evento, V.numerosPagados, V.numerosPendientes, V.cantidadPagados, V.cantidadPendientes, V.montoTotal, V.montoPagado, V.montoPendiente],
+        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_pagados: formatearListaNumeros(["12","45"]), numeros_pendientes: "ninguno", cantidad_pagados: "2", cantidad_pendientes: "0", monto_total: "$10.000", monto_pagado: "$10.000", monto_pendiente: "$0" },
         soportado: true
     },
     {
         id: "consulta_pago_sin_saldo",
         categoria: "Consultas",
         icono: "⚪",
-        nombre: "Consulta de pago — Sin saldo / reservas canceladas",
-        descripcion: "El cliente no tiene ninguna reserva activa en este momento (nunca reservó, o sus reservas fueron liberadas/canceladas): no existe ninguna obligación de pago vigente. Nunca se trata como pago parcial ni muestra montos de reservas ya canceladas.",
+        nombre: "Consulta de pago — Sin saldo / sin números activos",
+        descripcion: "El cliente no tiene ninguna reserva activa en este momento (nunca reservó, o sus reservas fueron liberadas): no existe ninguna obligación de pago vigente. Nunca se trata como pago parcial ni muestra montos de reservas ya liberadas.",
         variables: [V.cliente, V.evento],
         ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales" },
         soportado: true

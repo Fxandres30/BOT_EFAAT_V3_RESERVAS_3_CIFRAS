@@ -53,6 +53,23 @@ function valorSeguro(valor) {
 // en el caso "multiple") que cumpla el predicado — solo LEE datos ya
 // calculados por resolverConsulta.js, nunca combina/recalcula montos o
 // listas por su cuenta.
+// Facetas de construirFacetaEstadoNumeros() — todas traen el desglose
+// pagados/pendientes y los montos (null sin precio configurado), sin
+// importar el modo en que preguntó el cliente.
+function conDesglose(r) {
+    return Array.isArray(r.reservados) && Array.isArray(r.pagados);
+}
+
+function conMontos(r) {
+    return r.montoTotal !== undefined;
+}
+
+// Lista de una faceta de pago: vacía -> "ninguno" (dato real: no hay
+// ninguno), nunca un hueco en la plantilla ("Por pagar: ").
+function formatearListaDeFaceta(lista) {
+    return lista.length > 0 ? obtenerGramatica().formatearListaNumeros(lista) : "ninguno";
+}
+
 function buscarEnResultados(resultado, predicado) {
 
     if (!resultado) {
@@ -239,47 +256,55 @@ function resolverValorBase(key, contextoGlobal) {
         // ninguna vuelve a calcular un monto o una lista por su cuenta.
 
         case "numeros_pagados": {
-            const f = buscarEnResultados(resultado, r => Array.isArray(r.pagados));
-            return f ? obtenerGramatica().formatearListaNumeros(f.pagados) : "";
+            const f = buscarEnResultados(resultado, r => conDesglose(r));
+            return f ? formatearListaDeFaceta(f.pagados) : "";
         }
 
         case "numeros_pendientes": {
-            const f = buscarEnResultados(resultado, r => r.modo === "lista" && Array.isArray(r.reservados));
-            return f ? obtenerGramatica().formatearListaNumeros(f.reservados) : "";
+            const f = buscarEnResultados(resultado, r => conDesglose(r));
+            return f ? formatearListaDeFaceta(f.reservados) : "";
         }
 
         case "numeros_totales_cliente": {
             const f = buscarEnResultados(resultado, r => Array.isArray(r.numerosDelUsuario));
-            return f ? obtenerGramatica().formatearListaNumeros(f.numerosDelUsuario) : "";
+            if (!f) return "";
+            // En una faceta con desglose (resumen de "mis números"), sin
+            // números -> "ninguno", igual que las listas pagados/pendientes.
+            return conDesglose(f)
+                ? formatearListaDeFaceta(f.numerosDelUsuario)
+                : obtenerGramatica().formatearListaNumeros(f.numerosDelUsuario);
         }
 
         case "cantidad_pagados": {
-            const lista = buscarEnResultados(resultado, r => r.modo === "lista" && Array.isArray(r.pagados));
+            const lista = buscarEnResultados(resultado, r => conDesglose(r) && Array.isArray(r.pagados));
             if (lista) return valorSeguro(lista.pagados.length);
             const directa = buscarEnResultados(resultado, r => r.modo === "cantidad" && r.bucket === "pagado");
             return directa ? valorSeguro(directa.cantidad) : "";
         }
 
         case "cantidad_pendientes": {
-            const lista = buscarEnResultados(resultado, r => r.modo === "lista" && Array.isArray(r.reservados));
+            const lista = buscarEnResultados(resultado, r => conDesglose(r) && Array.isArray(r.reservados));
             if (lista) return valorSeguro(lista.reservados.length);
             const directa = buscarEnResultados(resultado, r => r.modo === "cantidad" && r.bucket === "pendiente");
             return directa ? valorSeguro(directa.cantidad) : "";
         }
 
+        // Sin precio configurado el monto llega null: variable vacía, nunca
+        // "$0" (responderResultado.js ya descarta las plantillas con montos
+        // en ese caso).
         case "monto_total": {
-            const f = buscarEnResultados(resultado, r => r.modo === "monto");
-            return f ? formatearMoneda(f.montoTotal) : "";
+            const f = buscarEnResultados(resultado, r => conMontos(r));
+            return f && f.montoTotal != null ? formatearMoneda(f.montoTotal) : "";
         }
 
         case "monto_pagado": {
-            const f = buscarEnResultados(resultado, r => r.modo === "monto");
-            return f ? formatearMoneda(f.montoPagado) : "";
+            const f = buscarEnResultados(resultado, r => conMontos(r));
+            return f && f.montoPagado != null ? formatearMoneda(f.montoPagado) : "";
         }
 
         case "monto_pendiente": {
-            const f = buscarEnResultados(resultado, r => r.modo === "monto");
-            return f ? formatearMoneda(f.montoPendiente) : "";
+            const f = buscarEnResultados(resultado, r => conMontos(r));
+            return f && f.montoPendiente != null ? formatearMoneda(f.montoPendiente) : "";
         }
 
         default: return "";

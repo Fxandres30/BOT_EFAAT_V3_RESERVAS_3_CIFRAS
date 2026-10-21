@@ -34,7 +34,10 @@ function construirContextoDisponible(tipo: TipoMensaje): Record<string, boolean>
     }
 
     if (tipo.categoria === "Consultas") {
-        const esPago = tipo.id.startsWith("consulta_pago") || tipo.id === "multiple";
+        // "mis números"/"mis reservas" también traen el desglose
+        // pagados/pendientes (resumen del backend, resolverConsulta.js).
+        const esPago = tipo.id.startsWith("consulta_pago") || tipo.id === "multiple" ||
+            tipo.id === "mis_numeros" || tipo.id === "mis_reservas";
         return { usuario: true, evento: true, reserva: false, consulta: true, estado_pago: esPago };
     }
 
@@ -339,6 +342,14 @@ export default function EditorMensaje({ tipo, usuarioId, plantilla, onGuardada, 
 
     const variablesDisponibles = tipo.variables;
 
+    // Variables propias del tipo con su explicación (la del catálogo
+    // global; si no está catalogada, su etiqueta) — sección "Variables de
+    // esta respuesta".
+    const variablesDelTipo = useMemo(() => tipo.variables.map((v) => ({
+        variable: v.variable,
+        descripcion: catalogoUnificado.find((d) => d.key === v.variable)?.description || v.etiqueta
+    })), [tipo, catalogoUnificado]);
+
     // Vista previa — SOLO visual. Cuando el tipo puede producir tanto 1
     // como 2+ números reales (tipo.ejemploSingular/ejemploPlural), se
     // muestran ambos casos con datos de ejemplo YA escritos en
@@ -408,6 +419,31 @@ export default function EditorMensaje({ tipo, usuarioId, plantilla, onGuardada, 
                     <AlertTriangle size={13} />
                     Variable no reconocida: {variablesDesconocidas.map((v) => `{{${v}}}`).join(", ")}
                 </p>
+            )}
+
+            {variablesDelTipo.length > 0 && (
+                <div className={styles.field}>
+                    <span className={styles.label}>📌 Variables de esta respuesta</span>
+                    <ul className={styles.varsTipo}>
+                        {variablesDelTipo.map((v) => (
+                            <li key={v.variable} className={styles.varTipo}>
+                                <button
+                                    type="button"
+                                    className={styles.varChip}
+                                    title="Insertar en el contenido"
+                                    onClick={() => insertarClaveEnCursor(v.variable)}
+                                >
+                                    {`{{${v.variable}}}`}
+                                </button>
+                                <span className={styles.varTipoTexto}>{v.descripcion}</span>
+                            </li>
+                        ))}
+                    </ul>
+                    <p className={styles.note}>
+                        Estas son las variables que se llenan con datos reales en este tipo de
+                        respuesta. Una lista vacía aparece como «ninguno».
+                    </p>
+                </div>
             )}
 
             <div className={styles.field}>

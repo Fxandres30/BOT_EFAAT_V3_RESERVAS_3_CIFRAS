@@ -21,10 +21,25 @@
 //                       reservó, o sus reservas fueron liberadas/canceladas
 //                       — no existe ninguna obligación de pago vigente.
 // ==========================================================================
-function determinarEstadoPago({ total, montoTotal, montoPagado, montoPendiente }) {
+//
+// cantidadPagados/cantidadPendientes (opcionales, preferidos): el estado
+// se decide por CANTIDAD de números en cada estado, no por dinero — así un
+// sorteo sin precio configurado (valor vacío -> montos 0) nunca convierte
+// a un cliente con números pagados en "sin_pago". Sin ellos se usa el
+// criterio por montos de siempre.
+function determinarEstadoPago({ total, montoTotal, montoPagado, montoPendiente, cantidadPagados, cantidadPendientes }) {
 
     if (!total || total <= 0) {
         return "sin_saldo";
+    }
+
+    if (Number.isInteger(cantidadPagados) && Number.isInteger(cantidadPendientes)) {
+
+        if (cantidadPagados > 0 && cantidadPendientes === 0) return "pago_completo";
+        if (cantidadPagados > 0) return "pago_parcial";
+
+        return "sin_pago";
+
     }
 
     if (montoPagado > 0 && montoPendiente <= 0) {

@@ -8,14 +8,22 @@
 // ==========================================================================
 
 // "Hay estado de pago" = el resultado (o alguna faceta dentro de
-// resultado.resultados[], caso "multiple") es una consulta_pago ya
-// resuelta por construirFacetaEstadoNumeros() — en cualquiera de sus tres
-// modos (lista/cantidad/monto). Un mis_numeros/mis_reservas plano NO
-// cuenta aquí (no trae desglose pagados/pendientes), aunque
-// numeros_totales_cliente sí pueda resolver desde ahí igualmente (esa
-// variable no exige "estado_pago" en su requires[], solo usuario+evento).
+// resultado.resultados[], caso "multiple") ya fue resuelto por
+// construirFacetaEstadoNumeros() — una consulta_pago en cualquiera de sus
+// modos (lista/cantidad/monto/resumen), o un mis_numeros/mis_reservas en
+// solitario, que ahora también trae el desglose pagados/pendientes (modo
+// "resumen"). La faceta mis_numeros DENTRO de un "multiple" es una lista
+// plana (modo "lista") y no cuenta.
 function esFacetaDePago(r) {
-    return !!r && r.tipo === "consulta_pago" && ["monto", "lista", "cantidad"].includes(r.modo);
+
+    if (!r) return false;
+
+    if (r.tipo === "consulta_pago") {
+        return ["monto", "lista", "cantidad", "resumen"].includes(r.modo);
+    }
+
+    return (r.tipo === "mis_numeros" || r.tipo === "mis_reservas") && r.modo === "resumen";
+
 }
 
 function tieneEstadoPago(resultado) {

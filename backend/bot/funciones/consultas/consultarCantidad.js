@@ -1,11 +1,12 @@
-const { consultarMisNumeros } = require("./consultarMisNumeros");
+const { consultarMisNumerosPorEstado } = require("./consultarMisNumeros");
 
-// READ-ONLY. Reutiliza consultarMisNumeros para no duplicar la consulta.
+// READ-ONLY. Compatibilidad: resolverConsulta.js ya no la usa (lee
+// consultarMisNumerosPorEstado una sola vez); reutiliza esa misma lectura.
 async function consultarCantidad({ evento, usuario }) {
 
-    const numeros = await consultarMisNumeros({ evento, usuario });
+    const { total } = await consultarMisNumerosPorEstado({ evento, usuario });
 
-    return numeros.length;
+    return total;
 
 }
 
