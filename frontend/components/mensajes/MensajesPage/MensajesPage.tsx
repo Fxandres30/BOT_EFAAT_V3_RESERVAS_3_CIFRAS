@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Sparkles } from "lucide-react";
+import { AlertTriangle, Sparkles, Workflow } from "lucide-react";
 
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Button } from "@/components/ui/Button";
+import ActivadoresModal, { entradaParaTipoRespuesta } from "@/components/activadores/ActivadoresModal";
 
 import { getUser } from "@/services/auth/getUser";
 import { TIPOS_MENSAJE, TipoMensaje } from "@/services/mensajes/tiposMensaje";
@@ -87,6 +89,16 @@ export default function MensajesPage() {
     const [errorInicializacion, setErrorInicializacion] = useState<string | null>(null);
 
     const [resumen, setResumen] = useState<{ total: number; habilitadas: number } | null>(null);
+
+    // Modal «Activadores y acciones» (solo lectura). enfocarActivador abre
+    // el catálogo directamente en la función del tipo seleccionado.
+    const [activadoresAbierto, setActivadoresAbierto] = useState(false);
+    const [enfocarActivador, setEnfocarActivador] = useState<string | null>(null);
+
+    function abrirActivadores(entradaId: string | null) {
+        setEnfocarActivador(entradaId);
+        setActivadoresAbierto(true);
+    }
 
     // Fase 5.5: estado de cada TIPO DE RESPUESTA, independiente de las
     // plantillas y del modo de selección. Un tipo sin entrada aquí todavía
@@ -355,6 +367,18 @@ export default function MensajesPage() {
             <PageHeader
                 title="Mensajes"
                 description="Respuestas que EFAAT puede enviar. Cada tipo de resultado puede tener varias plantillas: fija, aleatoria o por rotación. El BOT calcula reservas y disponibilidad igual; esto solo cambia la redacción."
+                actions={
+                    <Button variant="secondary" size="sm" leftIcon={<Workflow size={14} />} onClick={() => abrirActivadores(null)}>
+                        Activadores y acciones
+                    </Button>
+                }
+            />
+
+            <ActivadoresModal
+                open={activadoresAbierto}
+                onClose={() => setActivadoresAbierto(false)}
+                usuarioId={usuarioId}
+                enfocarId={enfocarActivador}
             />
 
             {resumen && (
@@ -486,6 +510,16 @@ export default function MensajesPage() {
                                         {tipoSeleccionado.icono} {tipoSeleccionado.nombre}
                                     </h2>
                                     <div className={styles.typeHeaderRight}>
+                                        {entradaParaTipoRespuesta(tipoSeleccionado.id) && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                leftIcon={<Workflow size={13} />}
+                                                onClick={() => abrirActivadores(entradaParaTipoRespuesta(tipoSeleccionado.id))}
+                                            >
+                                                Activadores y acciones
+                                            </Button>
+                                        )}
                                         <button
                                             className={`${styles.typeToggle} ${estaHabilitado(tipoSeleccionado.id) ? styles.typeToggleOn : styles.typeToggleOff}`}
                                             onClick={() => alternarTipoHabilitado(tipoSeleccionado.id)}

@@ -16,22 +16,32 @@ function extraerValorNumero(texto = "") {
 
     ];
 
-    for (const linea of lineas) {
+    for (const lineaOriginal of lineas) {
 
-        const esLineaValor = patronesLinea.some(
-            patron => patron.test(linea)
-        );
+        // La hora de la misma línea ("Lotería de Bogotá 10:30 valor número
+        // 5000") nunca es el precio.
+        const linea = lineaOriginal.replace(/\b\d{1,2}\s*:\s*\d{2}\b/g, " ");
 
-        if (!esLineaValor)
+        const etiqueta = patronesLinea
+            .map(patron => linea.match(patron))
+            .find(Boolean);
+
+        if (!etiqueta)
             continue;
 
-        const match = linea.match(/\$?\s*([\d.,]+)/);
+        // El precio es el número que SIGUE a la etiqueta ("valor número
+        // 5000"); si no hay ninguno después, el que la precede ("$2.000
+        // cada número").
+        const inicio = etiqueta.index;
+        const despues = linea.slice(inicio + etiqueta[0].length).match(/\d[\d.,]*/);
+        const antes = linea.slice(0, inicio).match(/\d[\d.,]*/g);
+        const encontrado = despues ? despues[0] : antes?.[antes.length - 1];
 
-        if (!match)
+        if (!encontrado)
             continue;
 
         const valor = Number(
-            match[1].replace(/[.,]/g, "")
+            encontrado.replace(/[.,]/g, "")
         );
 
         if (!Number.isNaN(valor))
@@ -42,7 +52,6 @@ function extraerValorNumero(texto = "") {
     return null;
 
 }
-
 module.exports = {
     extraerValorNumero
 };

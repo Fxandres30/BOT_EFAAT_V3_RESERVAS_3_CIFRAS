@@ -12,6 +12,25 @@ const { formatearListaNumeros } = require("../../ai/gramatica");
 // Reacción ✅/❌ sobre el mensaje del cliente (se añade a la respuesta, no la
 // cambia). Ver reaccionReserva.js.
 const { decidirReaccion } = require("./reaccionReserva");
+const { verificarHoraCierre } = require("../eventos/lifecycle/verificarHoraCierre");
+
+// ¿El sorteo todavía acepta reservas? No, si ya se cerró (activo=false o
+// estado "cerrado", ver cerrarEvento.js) o si ya pasó su hora de cierre:
+// cuando WhatsApp no confirma el cierre del grupo, la fila sigue activo=true
+// mientras el worker reintenta, y sin esta comprobación los clientes
+// podían seguir reservando. Mismo criterio de hora que el worker
+// (verificarHoraCierre: un sorteo de un día posterior todavía no cierra).
+// "abierto=false" con activo=true NO bloquea: es una apertura fallida que
+// el worker reconcilia, el sorteo sigue vigente.
+function sorteoAceptaReservas(evento, ahora = new Date()) {
+
+    if (!evento) return false;
+
+    if (evento.activo === false || evento.estado === "cerrado") return false;
+
+    return !verificarHoraCierre(evento, ahora);
+
+}
 
 async function detectarReserva({
 
@@ -21,6 +40,11 @@ async function detectarReserva({
     lib
 
 }) {
+
+    if (!sorteoAceptaReservas(evento)) {
+        console.log("⛔ Reserva ignorada: el sorteo ya no acepta reservas (cerrado o pasada la hora de cierre).");
+        return null;
+    }
 
     if (!validarTextoReserva(texto)) {
         return null;
@@ -168,6 +192,7 @@ async function detectarReserva({
 
 module.exports = {
 
-    detectarReserva
+    detectarReserva,
+    sorteoAceptaReservas
 
 };

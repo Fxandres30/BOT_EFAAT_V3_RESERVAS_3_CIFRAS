@@ -1,4 +1,5 @@
 const { detectarEvento } = require("../funciones/eventos/detectarEvento");
+const { pareceAnuncioDeSorteo } = require("../funciones/eventos/extraerEvento");
 const { detectarReserva } = require("../funciones/reservas/detectarReserva");
 const { reaccionarAlMensaje } = require("../funciones/reservas/reaccionReserva");
 const { consultarEvento } = require("../funciones/eventos/consultarEvento");
@@ -123,6 +124,15 @@ module.exports = async (ctx) => {
     // pedidos de clientes.
     if (esCuentaIgnorada({ message: ctx.message, usuario: ctx.usuario })) {
         console.log("⏭️ Cuenta ignorada para reservas/consultas — mensaje solo registrado.");
+        return;
+    }
+
+    // Anuncio de sorteo (lotería + hora + precio configurado — el mismo
+    // criterio de detectarEvento, arriba): ya se procesó como anuncio. No se
+    // interpreta ADEMÁS como consulta o reserva — su hora ("10:40"), su
+    // precio o un "Números disponibles" no son pedidos de un cliente.
+    if (pareceAnuncioDeSorteo(ctx.textoOriginal)) {
+        console.log("📣 Anuncio de sorteo — no se evalúa como reserva ni consulta.");
         return;
     }
 

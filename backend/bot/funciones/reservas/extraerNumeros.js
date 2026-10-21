@@ -33,6 +33,17 @@ function extraerNumeros(texto = "", cifras = 2) {
     texto = texto.toLowerCase();
 
     // ==========================
+    // Horas: nunca son números de la dinámica
+    // ==========================
+    // "10:30", "2:30 pm", "10pm", "10 p.m." — la hora de un anuncio o de
+    // una pregunta ("juega a las 10:30") no se reserva ni se consulta como
+    // "10" y "30". Las formas de pedir varios números ("10 30", "10-30",
+    // "10, 30", "10 y 30") no usan ":" ni am/pm y siguen igual.
+    texto = texto
+        .replace(/\b\d{1,2}\s*:\s*\d{2}(?:\s*[ap]\.?\s?m\b\.?)?/g, " ")
+        .replace(/\b\d{1,2}\s*[ap]\.?\s?m\b\.?/g, " ");
+
+    // ==========================
     // Normalizar separadores
     // ==========================
 
