@@ -309,7 +309,7 @@ function Cabecera({
                     <Info size={16} className="shrink-0 mt-0.5" />
                     <span>
                         {eventoActivo
-                            ? `El evento activo en esta tabla física ahora mismo es "${eventoActivo.nombre_evento}" por $${Number(eventoActivo.valor).toLocaleString("es-CO")}, no por $${precio.toLocaleString("es-CO")}. Los números marcados con un punto naranja pertenecen a ese evento.`
+                            ? `El evento activo en esta tabla física ahora mismo es "${eventoActivo.nombre_evento}" por $${Number(eventoActivo.valor).toLocaleString("es-CO")}, no por $${precio.toLocaleString("es-CO")}. Los números ocupados por ese evento se ven como reservados o pagados en esta tabla.`
                             : `No hay ningún evento activo en esta tabla ahora mismo. Las celdas muestran su último estado real, pero no se pueden reservar hasta abrir un evento de $${precio.toLocaleString("es-CO")}.`}
                     </span>
                 </div>

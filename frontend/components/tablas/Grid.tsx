@@ -23,6 +23,9 @@ interface Props {
     onLiberar: (numero: string) => void;
     onBloquear: (numero: string, motivo?: string) => void;
     onMarcarEnProceso: (numero: string, minutos?: number) => void;
+    /** Representación exportada/compartida: solo la cuadrícula de números,
+     *  sin leyenda ni modal de detalle (ver /tablas/imprimir/[precio]). */
+    limpio?: boolean;
 }
 
 export default function Grid({
@@ -37,7 +40,8 @@ export default function Grid({
     onMarcarPagado,
     onLiberar,
     onBloquear,
-    onMarcarEnProceso
+    onMarcarEnProceso,
+    limpio = false
 }: Props) {
 
     const [seleccionado, setSeleccionado] = useState<NumeroReserva | null>(null);
@@ -93,9 +97,11 @@ export default function Grid({
 
         <div className="border rounded-2xl shadow-sm p-2.5 sm:p-4" style={estiloDiseno}>
 
-            <div className="flex justify-center sm:justify-start pb-3 sm:pb-4 mb-1 border-b border-gray-100">
-                <Leyenda diseno={diseno} />
-            </div>
+            {!limpio && (
+                <div className="flex justify-center sm:justify-start pb-3 sm:pb-4 mb-1 border-b border-gray-100">
+                    <Leyenda diseno={diseno} />
+                </div>
+            )}
 
             {visibles.length === 0 ? (
 
@@ -138,16 +144,18 @@ export default function Grid({
 
             )}
 
-            <NumeroDetalleModal
-                numero={seleccionado}
-                paquete={seleccionado ? paquetePorNumero.get(seleccionado.numero) || null : null}
-                accionando={accionando}
-                onClose={() => setSeleccionado(null)}
-                onMarcarPagado={onMarcarPagado}
-                onLiberar={onLiberar}
-                onBloquear={onBloquear}
-                onMarcarEnProceso={onMarcarEnProceso}
-            />
+            {!limpio && (
+                <NumeroDetalleModal
+                    numero={seleccionado}
+                    paquete={seleccionado ? paquetePorNumero.get(seleccionado.numero) || null : null}
+                    accionando={accionando}
+                    onClose={() => setSeleccionado(null)}
+                    onMarcarPagado={onMarcarPagado}
+                    onLiberar={onLiberar}
+                    onBloquear={onBloquear}
+                    onMarcarEnProceso={onMarcarEnProceso}
+                />
+            )}
 
         </div>
 

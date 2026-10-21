@@ -414,6 +414,66 @@ prueba("F3-1. recordatorio: se envía UNA vez dentro de su ventana; nunca tarde"
     assert.strictEqual(tarde.enviados.filter(e => /Falta 1 hora/.test(e.text)).length, 0, "fuera de su ventana no se envía");
 });
 
+// ---- Recordatorios según el estado REAL del sorteo (números y grupo) ----
+//
+// El texto de un recordatorio programado es libre: no indica si invita a
+// participar o recuerda pagar. Se omite solo cuando no corresponde NINGUNO
+// (todo pagado, o grupo cerrado sin pendientes); con pagos pendientes se
+// envía igual que antes, hasta que el recordatorio declare su propósito.
+
+const EN_VENTANA_RECORDATORIO = new Date("2026-10-16T02:27:00Z");
+
+// Primeros `pagados` números pagados, luego `reservados` pendientes; el
+// resto libres — todos del sorteo publicado en g1.
+async function publicadoConEstado({ pagados = 0, reservados = 0, grupoCerrado = null }) {
+    escenario();
+    const s = await creadoYConfirmado({ grupos: ["g1@g.us"] });
+    const { sock } = crearSock();
+    const dep = deps();
+    await publicador.tick(sock, { ahora: EN_PUBLICACION, deps: dep.d });
+    const evento = fake.tablas.eventos_bot.find(e => e.grupo_id === "g1@g.us");
+    fake.tablas[TABLA].filter(f => f.usuario_id === A).forEach((f, i) => Object.assign(f, {
+        estado: i < pagados ? "pagado" : i < pagados + reservados ? "reservado" : "libre",
+        identidad_evento_real: i < pagados + reservados ? s.identidad_evento_real : null,
+        evento_id: i < pagados + reservados ? evento.id : null
+    }));
+    if (grupoCerrado !== null) fake.tablas.grupos = [{ jid: "g1@g.us", announce: grupoCerrado }];
+    await publicador.tick(sock, { ahora: EN_VENTANA_RECORDATORIO, deps: dep.d });
+    return dep.enviados.filter(e => /Falta 1 hora/.test(e.text)).length;
+}
+
+prueba("F3-1b. recordatorio con números libres: se envía", async () => {
+    assert.strictEqual(await publicadoConEstado({ pagados: 30, reservados: 10 }), 1);
+});
+
+prueba("F3-1c. todo pagado (falta 1 hora): NO se envía el recordatorio", async () => {
+    assert.strictEqual(await publicadoConEstado({ pagados: 100 }), 0);
+});
+
+prueba("F3-1d. grupo cerrado antes de tiempo, sin pagos pendientes: NO se envía", async () => {
+    assert.strictEqual(await publicadoConEstado({ pagados: 40, grupoCerrado: true }), 0);
+});
+
+prueba("F3-1e. sin libres pero con pagos pendientes: se envía (propósito del texto desconocido)", async () => {
+    assert.strictEqual(await publicadoConEstado({ pagados: 60, reservados: 40 }), 1);
+});
+
+prueba("F3-1f. grupo cerrado con pagos pendientes: se envía (propósito del texto desconocido)", async () => {
+    assert.strictEqual(await publicadoConEstado({ pagados: 60, reservados: 10, grupoCerrado: true }), 1);
+});
+
+prueba("F3-1g. sorteo finalizado: ningún recordatorio, solo el aviso de cierre", async () => {
+    escenario();
+    await creadoYConfirmado({ grupos: ["g1@g.us"] });
+    const { sock } = crearSock();
+    const dep = deps();
+    await publicador.tick(sock, { ahora: EN_PUBLICACION, deps: dep.d });
+    Object.assign(fake.tablas.eventos_bot[0], { activo: false, estado: "cerrado" });
+    await publicador.tick(sock, { ahora: EN_VENTANA_RECORDATORIO, deps: dep.d });
+    assert.strictEqual(dep.enviados.filter(e => /Falta 1 hora/.test(e.text)).length, 0);
+    assert.strictEqual(dep.enviados.filter(e => /cerrado/.test(e.text)).length, 1);
+});
+
 prueba("F3-2. aviso de cierre: UNA vez cuando el sorteo se cierra", async () => {
     escenario();
     await creadoYConfirmado({ grupos: ["g1@g.us"] });

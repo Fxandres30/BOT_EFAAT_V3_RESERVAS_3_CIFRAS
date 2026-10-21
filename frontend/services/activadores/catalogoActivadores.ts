@@ -695,14 +695,26 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 resumen: "Avisos X minutos antes del cierre del sorteo.",
                 estado: "funciona",
                 activadores: [{ tipo: "horario", descripcion: "Minutos antes de la hora de cierre configurados." }],
-                condiciones: ["Cada recordatorio se envía una sola vez por sorteo."],
-                accion: "Envía un mensaje del grupo de recordatorios.",
-                lee: ["automation_configs", "automation_messages", "eventos_bot"],
+                condiciones: [
+                    "Antes de cada envío se lee el estado real del sorteo: solo se envía si quedan números libres y el grupo sigue abierto en WhatsApp.",
+                    "Sin libres (todo reservado o pagado) o con el grupo cerrado, el recordatorio se omite y queda registrado: nunca se envía tarde ni dos veces.",
+                    "Si el estado no se puede leer, no se envía y se reintenta en el siguiente ciclo.",
+                    "Cada recordatorio se envía una sola vez por sorteo."
+                ],
+                accion: "Envía un mensaje del grupo de recordatorios (invitan a participar).",
+                lee: ["automation_configs", "automation_messages", "eventos_bot", "tabla de números", "grupos (announce)"],
                 escribe: ["automation_actions"],
-                codigo: [{ archivo: "backend/automation/scheduler.js", simbolo: "evaluarRecordatorios" }],
+                codigo: [
+                    { archivo: "backend/automation/scheduler.js", simbolo: "evaluarRecordatorios" },
+                    { archivo: "backend/automation/eventRules.js", simbolo: "decidirRecordatoriosSegunEstado" },
+                    { archivo: "backend/automation/repo/estadoSorteo.js", simbolo: "leerEstadoParaRecordatorios" }
+                ],
                 panel: [{ ...PANEL_AUTOMATIZACION, que: "Minutos y mensajes de recordatorio." }],
                 edicion: { nivel: "panel", detalle: "Configurable por grupo." },
-                avisos: ["Los «Sorteos programados» tienen sus propios recordatorios, independientes de estos."],
+                avisos: [
+                    "Los «Sorteos programados» tienen sus propios recordatorios, independientes de estos.",
+                    "No existen recordatorios de cobro en la automatización: sus categorías (elección, escasez, urgencia…) son de tono, no de propósito."
+                ],
                 estadoReal: "automatizacion"
             },
             {
@@ -711,7 +723,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 resumen: "Aviso cuando entran suficientes reservas nuevas.",
                 estado: "funciona",
                 activadores: [{ tipo: "estado", descripcion: "Reservas nuevas ≥ umbral configurado." }],
-                condiciones: ["Espera mínima (cooldown) entre dos avisos."],
+                condiciones: ["Espera mínima (cooldown) entre dos avisos.", "Solo si quedan números libres y el grupo sigue abierto (estado real leído antes del envío)."],
                 accion: "Envía un mensaje del grupo de actualizaciones.",
                 lee: ["automation_configs", "eventos_bot"],
                 escribe: ["automation_actions", "event_sessions"],
@@ -847,11 +859,20 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 resumen: "Mensajes del sorteo programado antes y al cierre.",
                 estado: "funciona",
                 activadores: [{ tipo: "horario", descripcion: "Horas configuradas en el sorteo programado." }],
-                condiciones: ["Cada mensaje como mucho una vez."],
+                condiciones: [
+                    "Cada mensaje como mucho una vez, solo dentro de su ventana de 10 minutos.",
+                    "Antes de cada recordatorio se lee el estado real: se omite si todo está pagado o si el grupo está cerrado sin pagos pendientes.",
+                    "Con pagos pendientes se envía igual: el texto es libre y no indica si invita a participar o recuerda pagar."
+                ],
                 accion: "Envía los textos escritos en el sorteo programado.",
-                lee: ["sorteos_programados", "sorteos_programados_grupos"],
+                lee: ["sorteos_programados", "sorteos_programados_grupos", "tabla de números", "grupos (announce)"],
                 escribe: ["automation_actions"],
-                codigo: [{ archivo: "backend/sorteos/publicador.js", simbolo: "procesarPublicados" }, { archivo: "backend/sorteos/mensajes.js", simbolo: "mensajeRecordatorio" }],
+                codigo: [
+                    { archivo: "backend/sorteos/publicador.js", simbolo: "procesarPublicados" },
+                    { archivo: "backend/sorteos/mensajes.js", simbolo: "mensajeRecordatorio" },
+                    { archivo: "backend/automation/eventRules.js", simbolo: "decidirRecordatoriosSegunEstado" }
+                ],
+                avisos: ["Sin libres o con el grupo cerrado, un recordatorio que invite a reservar todavía se enviaría si hay pagos pendientes: falta indicar el propósito de cada recordatorio."],
                 panel: [{ pagina: "Sorteos", ruta: "/sorteos", que: "Textos y horas." }],
                 edicion: { nivel: "panel", detalle: "Configurable por sorteo." }
             },

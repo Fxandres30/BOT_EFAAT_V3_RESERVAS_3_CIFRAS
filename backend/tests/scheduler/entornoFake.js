@@ -33,6 +33,11 @@ const RUTAS = {
     // obsoleta al fakeSupabase de una crearEntorno() anterior.
     tablaEventoRepo: path.join(RAIZ, "automation/repo/tablaEvento.js"),
     tablaInicial: path.join(RAIZ, "automation/tablaInicial.js"),
+    // Estado real del sorteo antes de cada recordatorio/actualización
+    // (scheduler.js) — mismo motivo: leen Supabase y deben usar el fake
+    // de ESTA crearEntorno().
+    sorteoReal: path.join(RAIZ, "bot/funciones/eventos/sorteoReal.js"),
+    estadoSorteo: path.join(RAIZ, "automation/repo/estadoSorteo.js"),
     engine: path.join(RAIZ, "automation/engine.js"),
     scheduler: path.join(RAIZ, "automation/scheduler.js"),
     // Fase "Compartir real" — INITIAL_TABLE ahora captura una imagen real

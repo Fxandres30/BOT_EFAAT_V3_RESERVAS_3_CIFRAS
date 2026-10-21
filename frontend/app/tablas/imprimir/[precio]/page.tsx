@@ -13,7 +13,8 @@ import { DEFAULT_TABLA_DISENO_CONFIG } from "@/services/tablas/disenoDefaults";
 // tabla visual); la diferencia es que aquí SOLO se pintan número+estado
 // (nunca nombre/teléfono real) y no hay ninguna interacción — nunca se
 // abre el modal de detalle, así que ningún dato personal llega a
-// aparecer en la imagen capturada.
+// aparecer en la imagen capturada. Grid va en modo `limpio`: sin leyenda
+// de estados ni modal — la imagen compartida es solo la cuadrícula.
 //
 // Requiere un token firmado (?token=...) verificado por el backend en
 // /tablas/imprimir-datos — sin él no hay datos que mostrar. Esta página
@@ -96,6 +97,7 @@ export default function ImprimirTablaPage() {
                 onLiberar={() => {}}
                 onBloquear={() => {}}
                 onMarcarEnProceso={() => {}}
+                limpio
             />
 
         </div>

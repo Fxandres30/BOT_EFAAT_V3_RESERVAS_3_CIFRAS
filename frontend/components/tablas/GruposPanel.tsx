@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Users } from "lucide-react";
 
+import BotonContraer from "./BotonContraer";
 import type { PaqueteReserva } from "./types";
 import { ESTADOS_META_VISUAL, bucketEstado } from "./estadoVisual";
 
@@ -13,18 +14,27 @@ interface Props {
 
 export default function GruposPanel({ paquetes, precio }: Props) {
 
+    const [expandido, setExpandido] = useState(true);
+
     return (
 
         <section className="bg-white border rounded-2xl shadow-sm p-4 sm:p-5">
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-4">
-                <h2 className="text-lg font-bold text-gray-900">Grupos</h2>
-                <span className="text-xs text-gray-400">
-                    Números reservados juntos por un mismo cliente
-                </span>
+            <div className={`flex items-start sm:items-center justify-between gap-2 ${expandido ? "mb-4" : ""}`}>
+                <div className="min-w-0 flex flex-col sm:flex-row sm:items-center sm:gap-3 gap-1">
+                    <h2 className="text-lg font-bold text-gray-900">Grupos</h2>
+                    <span className="text-xs text-gray-400">
+                        Números reservados juntos por un mismo cliente
+                    </span>
+                </div>
+                <BotonContraer
+                    expandido={expandido}
+                    seccion="grupos"
+                    onToggle={() => setExpandido((v) => !v)}
+                />
             </div>
 
-            {paquetes.length === 0 ? (
+            {!expandido ? null : paquetes.length === 0 ? (
 
                 <p className="text-sm text-gray-500 py-6 text-center">
                     No hay reservas de varios números juntos todavía.

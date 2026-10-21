@@ -1,6 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import { History, DollarSign, Unlock, Lock, Ban, Users, RotateCcw, Clock } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+import BotonContraer from "./BotonContraer";
 import type { ActividadReserva, TipoActividad } from "./types";
 
 const ICONOS: Record<TipoActividad, LucideIcon> = {
@@ -31,13 +35,22 @@ interface Props {
 
 export default function ActividadReciente({ actividad }: Props) {
 
+    const [expandido, setExpandido] = useState(true);
+
     return (
 
         <section className="bg-white border rounded-2xl shadow-sm p-4 sm:p-5 min-w-0">
 
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Actividad reciente</h2>
+            <div className={`flex items-center justify-between gap-2 ${expandido ? "mb-4" : ""}`}>
+                <h2 className="text-lg font-bold text-gray-900">Actividad reciente</h2>
+                <BotonContraer
+                    expandido={expandido}
+                    seccion="actividad reciente"
+                    onToggle={() => setExpandido((v) => !v)}
+                />
+            </div>
 
-            {actividad.length === 0 ? (
+            {!expandido ? null : actividad.length === 0 ? (
 
                 <div className="text-sm text-gray-500 py-6 text-center flex flex-col items-center gap-2">
                     <History size={22} className="text-gray-300" />

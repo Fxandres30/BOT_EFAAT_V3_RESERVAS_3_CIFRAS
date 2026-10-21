@@ -28,6 +28,8 @@ interface Props {
     sorteo?: Sorteo | null;
     onClose: () => void;
     onGuardado: (sorteo: Sorteo) => void;
+    /** Valor por número precargado al crear un sorteo nuevo (p. ej. desde /tablas/[precio]). */
+    valorInicial?: number;
 }
 
 interface PremioForm { nombre: string; premio: string; tipo: string }
@@ -110,11 +112,11 @@ function aConfig(f: Form): ConfigSorteo {
     };
 }
 
-export default function FormularioSorteo({ open, sorteo, onClose, onGuardado }: Props) {
+export default function FormularioSorteo({ open, sorteo, onClose, onGuardado, valorInicial }: Props) {
 
     // Estado inicial al montar: la página remonta este componente (key) cada
     // vez que se abre, así no hay que "reiniciar" estado dentro de un efecto.
-    const [form, setForm] = useState<Form>(() => (sorteo ? desdeConfig(sorteo.config, { plantillaId: sorteo.plantilla_id || "" }) : VACIO));
+    const [form, setForm] = useState<Form>(() => (sorteo ? desdeConfig(sorteo.config, { plantillaId: sorteo.plantilla_id || "" }) : { ...VACIO, valor: valorInicial ? String(valorInicial) : "" }));
     const [grupos, setGrupos] = useState<GrupoAutorizado[]>([]);
     const [estadoGrupos, setEstadoGrupos] = useState<EstadoGrupos>({ tipo: "cargando" });
     const [cuentaSesion, setCuentaSesion] = useState<string | null>(null);

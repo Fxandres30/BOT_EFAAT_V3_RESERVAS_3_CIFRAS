@@ -1,7 +1,5 @@
 "use client";
 
-import { Users } from "lucide-react";
-
 import type { NumeroReserva } from "./types";
 import { ESTADOS_META_VISUAL, estadoEfectivo, estadoVisualSimplificado } from "./estadoVisual";
 import styles from "./NumeroCard.module.css";
@@ -23,7 +21,7 @@ export default function NumeroCard({
 }: Props) {
 
     // El estado real (incluye en_proceso/bloqueado) se conserva en
-    // data-estado porque "Aleatorio" y otras herramientas dependen de que
+    // data-estado porque otras herramientas dependen de que
     // sea exactamente "libre" cuando el número está realmente disponible.
     // El color/label que ve el usuario, en cambio, siempre viene del
     // estado visual simplificado (Disponible / Reservado / Pagado).
@@ -60,22 +58,10 @@ export default function NumeroCard({
             `}
         >
 
-            {enGrupo && (
-                <span
-                    className="absolute -top-1 -right-1 h-3.5 w-3.5 sm:h-4 sm:w-4 rounded-full bg-purple-600 border-2 border-white flex items-center justify-center z-10"
-                    title="Pertenece a un grupo de reserva"
-                >
-                    <Users size={8} className="text-white" />
-                </span>
-            )}
-
-            {deOtroEvento && (
-                <span
-                    className="absolute -top-1 -left-1 h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-orange-400 border-2 border-white z-10"
-                    title="Pertenece a otro evento/precio"
-                />
-            )}
-
+            {/* Sin indicadores visuales de grupo / otro evento en la celda:
+                la cara del número solo muestra su estado (Disponible /
+                Reservado / Pagado). Esa información sigue en aria-label y
+                en el modal de detalle (paquete, evento). */}
             <span className={`leading-none tabular-nums ${styles.number}`}>
                 {numero.numero}
             </span>

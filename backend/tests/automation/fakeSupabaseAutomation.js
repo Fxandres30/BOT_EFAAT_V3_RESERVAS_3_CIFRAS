@@ -84,7 +84,10 @@ function crearFakeSupabaseAutomation() {
         // configEvento.js) — se agrega aquí, mismo criterio que
         // reservas_actividad, para que repo/tablaEvento.js (solo lectura)
         // pueda probarse contra el mismo fake.
-        reservas_dos_cifras: []
+        reservas_dos_cifras: [],
+        // Recordatorios según el estado real: repo/estadoSorteo.js lee
+        // grupos.announce (¿el grupo está cerrado en WhatsApp?). Solo lectura.
+        grupos: []
     };
 
     // Corrección quirúrgica Fase 2B: para probar "otro error de Supabase

@@ -1,10 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { RotateCcw, Pencil, Share2, Shuffle, type LucideIcon } from "lucide-react";
+import { RotateCcw, Pencil, Share2, type LucideIcon } from "lucide-react";
 
 import ConfirmDialog from "./ConfirmDialog";
+import AnuncioSorteoModal from "./AnuncioSorteoModal";
 import { compartirTabla } from "@/services/tablas/compartirTabla";
 
 interface Props {
@@ -23,11 +23,10 @@ export default function AccionesTabla({
     onReiniciar
 }: Props) {
 
-    const router = useRouter();
-
     const [confirmandoReinicio, setConfirmandoReinicio] = useState(false);
     const [reiniciando, setReiniciando] = useState(false);
     const [compartiendo, setCompartiendo] = useState(false);
+    const [editandoAnuncio, setEditandoAnuncio] = useState(false);
 
     async function confirmarReinicio() {
 
@@ -48,10 +47,6 @@ export default function AccionesTabla({
 
         }
 
-    }
-
-    function editar() {
-        router.push(`/eventos?precio=${precio}`);
     }
 
     async function compartir() {
@@ -94,22 +89,6 @@ export default function AccionesTabla({
 
     }
 
-    function aleatorio() {
-
-        const tarjetas = document.querySelectorAll("[data-estado='libre']");
-
-        if (!tarjetas.length) {
-            alert("No hay números disponibles.");
-            return;
-        }
-
-        const random = tarjetas[Math.floor(Math.random() * tarjetas.length)] as HTMLElement;
-
-        random.scrollIntoView({ behavior: "smooth", block: "center" });
-        random.click();
-
-    }
-
     return (
 
         <>
@@ -127,14 +106,7 @@ export default function AccionesTabla({
                     icon={Pencil}
                     label="Editar"
                     color="text-gray-600 hover:bg-gray-50 hover:border-gray-300"
-                    onClick={editar}
-                />
-
-                <BotonIcono
-                    icon={Shuffle}
-                    label="Aleatorio"
-                    color="text-violet-600 hover:bg-violet-50 hover:border-violet-200"
-                    onClick={aleatorio}
+                    onClick={() => setEditandoAnuncio(true)}
                 />
 
                 <BotonIcono
@@ -158,6 +130,12 @@ export default function AccionesTabla({
                 onConfirmar={confirmarReinicio}
                 onCancelar={() => setConfirmandoReinicio(false)}
             />
+
+            {/* «Editar» prepara el anuncio del sorteo en un modal de esta
+                misma pantalla (sin navegar). Se monta por apertura. */}
+            {editandoAnuncio && (
+                <AnuncioSorteoModal precio={precio} onClose={() => setEditandoAnuncio(false)} />
+            )}
 
         </>
 

@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { DollarSign, Unlock } from "lucide-react";
+
+import BotonContraer from "./BotonContraer";
 
 import type { NumeroReserva } from "./types";
 import { ESTADOS_META_VISUAL, estadoEfectivo, estadoVisualSimplificado } from "./estadoVisual";
@@ -21,6 +24,8 @@ export default function ReservasRecientes({
     onLiberar
 }: Props) {
 
+    const [expandido, setExpandido] = useState(true);
+
     function confirmarLiberar(numero: string, cliente: string | null) {
 
         const detalle = cliente ? ` (cliente: ${cliente})` : "";
@@ -35,9 +40,16 @@ export default function ReservasRecientes({
 
         <section className="bg-white border rounded-2xl shadow-sm p-4 sm:p-5">
 
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Reservas recientes</h2>
+            <div className={`flex items-center justify-between gap-2 ${expandido ? "mb-4" : ""}`}>
+                <h2 className="text-lg font-bold text-gray-900">Reservas recientes</h2>
+                <BotonContraer
+                    expandido={expandido}
+                    seccion="reservas recientes"
+                    onToggle={() => setExpandido((v) => !v)}
+                />
+            </div>
 
-            {numeros.length === 0 ? (
+            {!expandido ? null : numeros.length === 0 ? (
 
                 <p className="text-sm text-gray-500 py-6 text-center">
                     Todavía no hay reservas registradas en esta tabla.

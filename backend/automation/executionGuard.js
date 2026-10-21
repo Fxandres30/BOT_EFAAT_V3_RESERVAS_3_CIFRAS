@@ -206,6 +206,7 @@ async function obtenerAccionesEstancadas({ minutosAntiguedad = 5 } = {}) {
 module.exports = {
     ESTADOS,
     ejecutarUnaVez,
+    obtenerPorClave,
     obtenerAccionesEstancadas,
     esViolacionUnicidad
 };

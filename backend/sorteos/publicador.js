@@ -24,6 +24,8 @@ const repo = require("./repo");
 const { revisarTabla, revisarGrupo } = require("./disponibilidad");
 const { mensajePublicacion, mensajeRecordatorio, mensajeAvisoCierre } = require("./mensajes");
 const { partesBogota } = require("./validar");
+const { decidirRecordatoriosSegunEstado } = require("../automation/eventRules");
+const { leerEstadoParaRecordatorios } = require("../automation/repo/estadoSorteo");
 
 const MAX_INTENTOS_AUTOMATICOS = 5;
 const VENTANA_RECORDATORIO_MS = 10 * 60 * 1000;
@@ -46,7 +48,8 @@ function dependenciasReales() {
         sendMessage: require("../services/baileys/send").sendMessage,
         ejecutarUnaVez: require("../automation/executionGuard").ejecutarUnaVez,
         actualizarEvento: require("../bot/funciones/reservas/actualizarEvento").actualizarEvento,
-        puedeActuar: require("../services/baileys/propiedadSesion").puedeActuar
+        puedeActuar: require("../services/baileys/propiedadSesion").puedeActuar,
+        leerEstadoParaRecordatorios
     };
 }
 
@@ -252,8 +255,10 @@ async function procesarPublicados({ sock, deps, ahora }) {
         const publicados = (grupos.data || []).filter(g => g.estado === "publicado" && g.evento_bot_id);
         if (!publicados.length) continue;
 
+        // Fila completa: el estado real de los números (antes de cada
+        // recordatorio) necesita tabla, cifras y cantidad del sorteo.
         const { data: eventos } = await deps.supabase.from("eventos_bot")
-            .select("id, activo, estado, identidad_evento_real").in("id", publicados.map(g => g.evento_bot_id));
+            .select("*").in("id", publicados.map(g => g.evento_bot_id));
 
         const fecha = partesBogota(new Date(sorteo.publicar_en)).fecha;
         const cierre = instanteBogota(fecha, sorteo.config.hora_cierre);
@@ -268,6 +273,10 @@ async function procesarPublicados({ sock, deps, ahora }) {
 
             if (ev.activo) {
 
+                // Estado real del sorteo, leído solo si algún recordatorio
+                // está dentro de su ventana (una vez por grupo y ciclo).
+                let decision = null;
+
                 for (const rec of sorteo.config.recordatorios || []) {
 
                     const momento = cierre ? cierre.getTime() - rec.minutos_antes_cierre * 60 * 1000 : null;
@@ -276,6 +285,22 @@ async function procesarPublicados({ sock, deps, ahora }) {
                     // caído) no se envía tarde.
                     if (!momento || ahora.getTime() < momento || ahora.getTime() >= momento + VENTANA_RECORDATORIO_MS || ahora.getTime() >= cierre.getTime()) continue;
                     if (!deps.puedeActuar(sock)) return { ok: true, envios };
+
+                    if (!decision) {
+                        const leerEstado = deps.leerEstadoParaRecordatorios || leerEstadoParaRecordatorios;
+                        decision = decidirRecordatoriosSegunEstado(await leerEstado(ev, g.grupo_id));
+                    }
+
+                    // El texto del recordatorio programado es libre (no indica
+                    // si invita a participar o recuerda pagar): se omite solo
+                    // cuando no corresponde NINGUNO de los dos — todo pagado,
+                    // o sin libres ni pendientes, o grupo cerrado sin
+                    // pendientes. Si no se pudo leer el estado, se reintenta
+                    // dentro de la misma ventana.
+                    if (!decision.participacion && !decision.cobro) {
+                        envios.push({ tipo: "recordatorio", grupo: g.grupo_id, ejecutada: false, motivo: decision.reintentar ? "estado_no_disponible" : `omitido_${decision.motivo}` });
+                        continue;
+                    }
 
                     const { texto } = mensajeRecordatorio(sorteo.config, rec, sorteo.cuentas_snapshot, { fecha });
                     const r = await enviarUnaVez({ deps, sock, sorteo, grupoId: g.grupo_id, sufijo: `recordatorio:${rec.minutos_antes_cierre}`, tipoAccion: "SORTEO_RECORDATORIO", texto });

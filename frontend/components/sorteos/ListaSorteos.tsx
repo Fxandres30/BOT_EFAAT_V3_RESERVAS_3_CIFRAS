@@ -27,6 +27,12 @@ const ESTADO_GRUPO: Record<EstadoGrupo, { texto: string; tono: BadgeTone }> = {
     cancelado: { texto: "Cancelado", tono: "neutral" }
 };
 
+// Un sorteo se puede editar mientras no se haya publicado en ningún grupo.
+// Compartido con el botón «Editar» de /tablas/[precio] (AnuncioSorteoModal).
+export function esEditable(s: Sorteo): boolean {
+    return (s.estado === "borrador" || s.estado === "programado") && !(s.grupos || []).some(g => g.estado !== "pendiente" && g.estado !== "cancelado");
+}
+
 interface Props {
     sorteos: Sorteo[];
     onVistaPrevia: (id: string) => void;
@@ -61,7 +67,7 @@ export default function ListaSorteos({ sorteos, onVistaPrevia, onEditar, onActua
             {sorteos.map(s => {
 
                 const estado = ESTADO_SORTEO[s.estado];
-                const editable = (s.estado === "borrador" || s.estado === "programado") && !(s.grupos || []).some(g => g.estado !== "pendiente" && g.estado !== "cancelado");
+                const editable = esEditable(s);
                 const cancelable = s.estado === "borrador" || s.estado === "programado" || s.estado === "publicando";
 
                 return (

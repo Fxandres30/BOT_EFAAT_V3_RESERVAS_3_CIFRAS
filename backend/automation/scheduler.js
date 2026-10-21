@@ -52,6 +52,11 @@ const { resolverTexto } = require("../shared/variables/resolverVariables");
 const { sendMessage } = require("../services/baileys/send");
 const executionGuard = require("./executionGuard");
 
+// Recordatorios y actualizaciones según el estado REAL del sorteo (libres,
+// reservados pendientes, pagados, grupo cerrado) — ver
+// eventRules.decidirRecordatoriosSegunEstado.
+const { leerEstadoParaRecordatorios } = require("./repo/estadoSorteo");
+
 // Diagnóstico del ciclo de vida (Paso 0) — solo observa.
 const cicloMensaje = require("../diagnostico/cicloMensaje");
 
@@ -418,6 +423,10 @@ async function evaluarRecordatorios(evento, eventSession, sock, opciones = {}) {
     // recordatorios, para no anunciar "faltan X minutos" en negativo.
     if (minutosParaCierre === null || minutosParaCierre < 0) return;
 
+    // Estado real del sorteo: se lee una sola vez por tick y solo si algún
+    // recordatorio está realmente por enviarse.
+    let decision = null;
+
     for (const [offsetTexto, cfg] of Object.entries(config.recordatorios)) {
 
         if (!cfg || cfg.activo !== true) continue;
@@ -430,6 +439,45 @@ async function evaluarRecordatorios(evento, eventSession, sock, opciones = {}) {
         if (minutosParaCierre > offset) continue;
 
         const tipoAccion = `REMINDER_${offset}M`;
+        const claveIdempotencia = `${eventSession.id}:${tipoAccion}`;
+
+        // Ya enviado (u omitido) antes: nada que decidir.
+        try {
+            if (await executionGuard.obtenerPorClave(claveIdempotencia)) continue;
+        } catch (err) {
+            console.error(`⚠️ [AUTOMATION] no se pudo verificar ${tipoAccion} para event_session ${eventSession.id}:`, err?.message || err);
+            continue;
+        }
+
+        if (!decision) {
+            decision = eventRules.decidirRecordatoriosSegunEstado(await leerEstadoParaRecordatorios(evento, evento.grupo_id));
+        }
+
+        // Los recordatorios de la automatización invitan a participar
+        // (REMINDER_MESSAGE no tiene una clase "cobro"): solo con números
+        // libres y el grupo abierto.
+        if (!decision.participacion) {
+
+            if (decision.reintentar) {
+                console.log(`🤖 [AUTOMATION] ${tipoAccion} en espera: no se pudo leer el estado del sorteo — se reintenta en el próximo ciclo.`);
+                return;
+            }
+
+            // Se registra como omitido (misma clave): nunca se envía tarde
+            // ni dos veces si el estado cambia después.
+            await executionGuard.ejecutarUnaVez({
+                claveIdempotencia,
+                eventSessionId: eventSession.id,
+                grupoId: evento.grupo_id,
+                usuarioId: evento.usuario_id,
+                tipoAccion,
+                ejecutar: async () => ({ omitido: true, motivo: decision.motivo })
+            });
+
+            console.log(`🤖 [AUTOMATION] ${tipoAccion} omitido (${decision.motivo}) para event_session ${eventSession.id}.`);
+            continue;
+
+        }
 
         await engine.enviarMensajeProgramado({
 
@@ -438,7 +486,7 @@ async function evaluarRecordatorios(evento, eventSession, sock, opciones = {}) {
             sock,
             tipo: "REMINDER_MESSAGE",
             categoria: cfg.categoria || null,
-            claveIdempotencia: `${eventSession.id}:${tipoAccion}`,
+            claveIdempotencia,
             tipoAccion
 
         });
@@ -481,6 +529,13 @@ async function evaluarActualizacion(evento, eventSession, sock, opciones = {}) {
     });
 
     if (nuevasReservas < umbral) return;
+
+    // Una actualización invita a participar ("van X elegidos, ¿y el tuyo?"):
+    // no se envía sin números libres o con el grupo cerrado. No se registra
+    // nada: el próximo ciclo vuelve a evaluar con el estado real.
+    const decision = eventRules.decidirRecordatoriosSegunEstado(await leerEstadoParaRecordatorios(evento, evento.grupo_id));
+
+    if (!decision.participacion) return;
 
     const numeroActualizacion = (eventSession.actualizaciones_enviadas || 0) + 1;
 

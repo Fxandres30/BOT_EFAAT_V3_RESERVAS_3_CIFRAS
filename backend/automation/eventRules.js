@@ -381,11 +381,58 @@ function minutosEntre(horaInicio, horaFin) {
 
 }
 
+// ==========================================================================
+// RECORDATORIOS SEGÚN EL ESTADO REAL DEL SORTEO
+// ==========================================================================
+//
+// Decide qué CLASE de recordatorio tiene sentido enviar ahora, a partir del
+// estado real de los números (estadoDelSorteo, la misma lectura que usa el
+// cierre automático) y de si el grupo está cerrado en WhatsApp:
+//
+//   participacion -> invita a reservar: solo si quedan números libres y el
+//                    grupo sigue abierto (un grupo cerrado no recibe
+//                    invitaciones, aunque queden libres).
+//   cobro         -> recuerda pagar: solo si hay reservas pendientes de pago
+//                    (una reserva pendiente nunca cuenta como pagada).
+//
+// Sin libres ni pendientes (todo pagado, o lo que queda está bloqueado/en
+// proceso) no corresponde ningún recordatorio.
+//
+// estado: { ok, total, libres, reservados, grupoCerrado }
+//   ok=false (no se pudo leer)  -> nada ahora, reintentar=true (no se
+//                                  registra como enviado ni omitido).
+//   total=0 (al sorteo le falta cantidad_numeros: no se sabe qué números
+//   espera) -> estado desconocido: se mantiene el comportamiento previo
+//   (ambos permitidos) en vez de silenciar recordatorios por falta de datos.
+function decidirRecordatoriosSegunEstado(estado) {
+
+    if (!estado || estado.ok !== true) {
+        return { participacion: false, cobro: false, motivo: "estado_no_disponible", reintentar: true };
+    }
+
+    if (!(estado.total > 0)) {
+        return { participacion: true, cobro: true, motivo: "estado_desconocido", reintentar: false };
+    }
+
+    const hayLibres = estado.libres > 0;
+    const hayPendientes = estado.reservados > 0;
+    const participacion = hayLibres && estado.grupoCerrado !== true;
+
+    let motivo = null;
+
+    if (!hayLibres && !hayPendientes) motivo = "sin_disponibles_ni_pendientes";
+    else if (!participacion) motivo = estado.grupoCerrado === true ? "grupo_cerrado" : "sin_disponibles";
+
+    return { participacion, cobro: hayPendientes, motivo, reintentar: false };
+
+}
+
 module.exports = {
     crearIdentidadCiclo,
     evaluarApertura,
     evaluarPublicacionInicialTabla,
     evaluarInicioDia,
+    decidirRecordatoriosSegunEstado,
     obtenerClaveDia,
     obtenerHoraMinuto,
     obtenerFechaISO,
