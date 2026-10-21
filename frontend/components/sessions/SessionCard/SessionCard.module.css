@@ -86,3 +86,23 @@
   gap: 8px;
   margin-top: 2px;
 }
+
+/* Resultado de Conectar / Desconectar / Reconectar: nunca queda cargando. */
+.errorAccion,
+.avisoAccion {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--efaat-radius-control);
+  font-size: var(--efaat-text-xs);
+  line-height: 1.5;
+}
+
+.errorAccion {
+  background: var(--efaat-error-soft);
+  color: var(--efaat-error);
+}
+
+.avisoAccion {
+  background: var(--efaat-warning-soft);
+  color: var(--efaat-warning);
+}

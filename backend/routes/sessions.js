@@ -88,4 +88,11 @@ router.get("/:id", exigirTokenServicio, admin.obtener);
 router.patch("/:id", exigirTokenServicio, admin.renombrar);
 router.delete("/:id", exigirTokenServicio, admin.eliminar);
 
+// Eliminar una sesión PROPIA desde el panel: mismo eliminar() de arriba
+// (desconecta el socket, failover si era la activa, borra la fila y la
+// carpeta auth/<id>), con la cadena del panel (token de servicio + sesión
+// real del usuario) y la propiedad verificada. El usuario sale de su sesión
+// de Supabase (req.usuarioId), nunca del navegador.
+router.delete("/propias/:id", exigirUsuario, exigirSesionPropia(deParams), admin.eliminar);
+
 module.exports = router;

@@ -73,7 +73,10 @@ function responderError(res, err) {
 
 function leerUsuarioId(req) {
 
-    const usuarioId = (req.query && req.query.usuarioId) || (req.body && req.body.usuarioId);
+    // Rutas del PANEL (exigirUsuario): el usuario es el de su sesión de
+    // Supabase, ya verificado — nunca un usuarioId enviado por el navegador.
+    // Rutas servidor-a-servidor (solo token de servicio): usuarioId explícito.
+    const usuarioId = req.usuarioId || (req.query && req.query.usuarioId) || (req.body && req.body.usuarioId);
 
     if (!usuarioId || !UUID.test(String(usuarioId))) {
 

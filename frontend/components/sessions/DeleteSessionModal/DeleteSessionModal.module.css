@@ -21,3 +21,13 @@
   flex-shrink: 0;
   color: var(--efaat-warning);
 }
+
+.error {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--efaat-error-soft);
+  color: var(--efaat-error);
+  font-size: var(--efaat-text-xs);
+  line-height: 1.5;
+}

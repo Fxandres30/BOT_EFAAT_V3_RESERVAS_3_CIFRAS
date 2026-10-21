@@ -1,35 +1,9 @@
-import { NextResponse } from "next/server";
-import { botApiHeadersDe } from "@/lib/botApi";
+import { reenviarAlBot, leerCuerpo } from "@/lib/botApi";
 
-const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
-
-// Proxy del botón "Compartir" real del panel — mismo patrón que
-// /api/sessions/connect. Toda la lógica real (imagen + texto + WhatsApp)
-// vive en el backend (services/compartirTabla.js); este proxy solo
-// reenvía la solicitud del admin ya autenticado en el panel.
+// POST /tablas/compartir del backend — botón «Compartir». Generar la
+// imagen de la tabla y enviarla puede tardar: 120 s antes de dar por
+// perdida la respuesta (504; el envío podría haber ocurrido igual).
 export async function POST(req: Request) {
-
-    try {
-
-        const { precio, usuarioId } = await req.json();
-
-        const res = await fetch(`${API}/tablas/compartir`, {
-            method: "POST",
-            headers: botApiHeadersDe(req, { "Content-Type": "application/json" }),
-            body: JSON.stringify({ precio, usuarioId })
-        });
-
-        const data = await res.json();
-
-        return NextResponse.json(data, { status: res.status });
-
-    } catch (error: unknown) {
-
-        return NextResponse.json(
-            { enviado: false, motivo: error instanceof Error ? error.message : "Error interno del servidor." },
-            { status: 500 }
-        );
-
-    }
-
+    const { precio, usuarioId } = await leerCuerpo(req);
+    return reenviarAlBot(req, "/tablas/compartir", { metodo: "POST", cuerpo: { precio, usuarioId }, timeoutMs: 120000 });
 }

@@ -14,7 +14,6 @@ import { useSession } from "./hooks/useSession";
 
 import { setActiveSession } from "@/services/sessions/setActiveSession";
 import { setPreferredSession } from "@/services/sessions/setPreferredSession";
-import { connectSession, isSessionNotFound } from "@/services/sessions/connectSession";
 
 import type { SaludSesion as Salud } from "@/services/sessions/saludSesiones";
 import { estadoVisibleSesion, type ConsultaSalud } from "@/services/sessions/estadoVisible";
@@ -48,11 +47,14 @@ export default function SessionCard({
 }: Props) {
   const {
     loading,
+    error,
+    aviso,
     open,
     qr,
     segundos,
     estadoActual,
     accionPrincipal,
+    reconectar,
     textoBoton,
     cerrarQR,
   } = useSession(id, estado, onRefresh);
@@ -97,22 +99,7 @@ export default function SessionCard({
                 console.error(error);
               }
             }}
-            onReconnect={async () => {
-              try {
-                const res = await connectSession(id);
-
-                if (isSessionNotFound(res)) {
-                  alert(
-                    "Esta sesión ya no existe (fue eliminada). " +
-                      "Actualiza la lista y crea o selecciona una sesión válida."
-                  );
-
-                  onRefresh?.();
-                }
-              } catch (error) {
-                console.error(error);
-              }
-            }}
+            onReconnect={reconectar}
             onUseSession={async () => {
               const res = await setActiveSession(id);
               console.log(res);
@@ -170,6 +157,17 @@ export default function SessionCard({
           >
             {textoBoton()}
           </Button>
+
+          {error && (
+            <p className={styles.errorAccion} role="alert">
+              {error}
+            </p>
+          )}
+          {!error && aviso && (
+            <p className={styles.avisoAccion} role="status">
+              {aviso}
+            </p>
+          )}
 
           {conectado && (
             <Button

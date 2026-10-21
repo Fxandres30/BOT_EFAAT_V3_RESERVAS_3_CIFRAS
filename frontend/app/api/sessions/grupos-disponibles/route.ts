@@ -1,30 +1,13 @@
 import { NextResponse } from "next/server";
-import { botApiHeadersDe } from "@/lib/botApi";
+import { reenviarAlBot } from "@/lib/botApi";
 
-const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
-
-// Proxy delgado hacia GET /sessions/:id/grupos-disponibles del backend
-// (Fase 4D) — mismo patrón exacto que app/api/sessions/status/route.ts.
-// No agrega autenticación propia: el "id" que llega aquí ya sale de una
-// consulta a Supabase filtrada por usuario_id (ver
-// services/automatizacion/gruposDisponibles.ts), igual que status/connect/
-// disconnect ya confían en que el frontend solo pide sus propias sesiones.
+// GET /sessions/:id/grupos-disponibles del backend (Fase 4D). El backend
+// comprueba que la sesión sea del usuario (exigirSesionPropia). Leer los
+// grupos de WhatsApp puede tardar: 30 s.
 export async function GET(req: Request) {
-
-    const { searchParams } = new URL(req.url);
-
-    const id = searchParams.get("id");
-
+    const id = new URL(req.url).searchParams.get("id");
     if (!id) {
         return NextResponse.json({ success: false, error: "Falta el parámetro id." }, { status: 400 });
     }
-
-    const res = await fetch(`${API}/sessions/${encodeURIComponent(id)}/grupos-disponibles`, {
-        headers: botApiHeadersDe(req)
-    });
-
-    const data = await res.json();
-
-    return NextResponse.json(data, { status: res.status });
-
+    return reenviarAlBot(req, `/sessions/${encodeURIComponent(id)}/grupos-disponibles`, { timeoutMs: 30000 });
 }

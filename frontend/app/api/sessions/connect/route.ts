@@ -1,74 +1,8 @@
-import { NextResponse } from "next/server";
-import { botApiHeadersDe } from "@/lib/botApi";
+import { reenviarAlBot, leerCuerpo } from "@/lib/botApi";
 
+// POST /sessions/connect del backend. Arrancar WhatsApp puede tardar unos
+// segundos; con 30 s sin respuesta el panel recibe 504 y deja de esperar.
 export async function POST(req: Request) {
-    try {
-
-        const { sessionId } = await req.json();
-
-        const BOT_API_URL = process.env.BOT_API_URL;
-
-        if (!BOT_API_URL) {
-            return NextResponse.json(
-                {
-                    success: false,
-                    message: "BOT_API_URL no está configurada."
-                },
-                {
-                    status: 500
-                }
-            );
-        }
-
-        const res = await fetch(`${BOT_API_URL}/sessions/connect`, {
-            method: "POST",
-            headers: botApiHeadersDe(req, {
-                "Content-Type": "application/json"
-            }),
-            body: JSON.stringify({
-                sessionId
-            })
-        });
-
-        const text = await res.text();
-
-        if (!res.ok) {
-
-            let parsed: any = null;
-
-            try {
-                parsed = text ? JSON.parse(text) : null;
-            } catch {
-                parsed = null;
-            }
-
-            return NextResponse.json(
-                parsed ?? {
-                    success: false,
-                    message: text || "Error al conectar con el bot."
-                },
-                {
-                    status: res.status
-                }
-            );
-        }
-
-        const data = text ? JSON.parse(text) : {};
-
-        return NextResponse.json(data);
-
-    } catch (error: any) {
-
-        console.error(error);
-
-        return NextResponse.json(
-            {
-                success: false,
-                message: error.message || "Error interno del servidor."
-            },
-            {
-                status: 500
-            }
-        );
-    }
+    const { sessionId } = await leerCuerpo(req);
+    return reenviarAlBot(req, "/sessions/connect", { metodo: "POST", cuerpo: { sessionId }, timeoutMs: 30000 });
 }

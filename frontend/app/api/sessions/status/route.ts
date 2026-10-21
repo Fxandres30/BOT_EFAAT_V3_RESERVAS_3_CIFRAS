@@ -1,20 +1,11 @@
 import { NextResponse } from "next/server";
-import { botApiHeadersDe } from "@/lib/botApi";
+import { reenviarAlBot } from "@/lib/botApi";
 
-const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
-
+// GET /sessions/status/:id del backend.
 export async function GET(req: Request) {
-
-    const { searchParams } = new URL(req.url);
-
-    const id = searchParams.get("id");
-
-    const res = await fetch(`${API}/sessions/status/${id}`, {
-        headers: botApiHeadersDe(req)
-    });
-
-    const data = await res.json();
-
-    return NextResponse.json(data);
-
+    const id = new URL(req.url).searchParams.get("id");
+    if (!id) {
+        return NextResponse.json({ success: false, error: "Falta el parámetro id." }, { status: 400 });
+    }
+    return reenviarAlBot(req, `/sessions/status/${encodeURIComponent(id)}`, { timeoutMs: 10000 });
 }

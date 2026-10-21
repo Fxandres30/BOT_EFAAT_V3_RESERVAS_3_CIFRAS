@@ -842,37 +842,56 @@ if (!sesion) {
     }
 
     // Elige la mejor candidata para failover entre las sesiones REALMENTE
-    // conectadas (excluyendo la que acaba de caer). Orden: preferida primero,
-    // si no, cualquier otra conectada disponible.
+    // conectadas (excluyendo la que acaba de caer) y SOLO del mismo dueño
+    // (sesiones.usuario_id) que la sesión que cae: el BOT nunca pasa a
+    // atender con el WhatsApp de otro cliente. Orden: la preferida de ese
+    // dueño primero; si no, otra suya conectada.
+    //
+    // Falla cerrado: si no se puede saber el dueño (fila eliminada, error de
+    // Supabase) no hay failover (null -> activeLost), nunca una sesión
+    // ajena por descarte.
     async selectFailoverSession({ excluir } = {}) {
 
         const conectadas = this.getConnectedSessions()
             .filter(id => id !== excluir);
 
-        if (conectadas.length === 0) {
+        if (!excluir || conectadas.length === 0) {
             return null;
         }
 
         try {
 
-            const { data } = await supabase
+            const { data, error } = await supabase
                 .from("sesiones")
-                .select("id")
-                .in("id", conectadas)
-                .eq("principal", true)
-                .maybeSingle();
+                .select("id, usuario_id, principal")
+                .in("id", [excluir, ...conectadas]);
 
-            if (data?.id) {
-                return data.id;
+            if (error) throw error;
+
+            const filas = data || [];
+            const duenio = filas.find(f => f.id === excluir)?.usuario_id || null;
+
+            if (!duenio) {
+
+                console.warn("⚠️ [FAILOVER] no se conoce el dueño de la sesión que cae — sin failover (nunca a otro cliente):", excluir);
+
+                return null;
+
             }
+
+            // Mismo orden que getConnectedSessions(), solo las del dueño.
+            const propias = conectadas.filter(id => filas.some(f => f.id === id && f.usuario_id === duenio));
+            const preferida = propias.find(id => filas.some(f => f.id === id && f.principal === true));
+
+            return preferida || propias[0] || null;
 
         } catch (err) {
 
-            console.error("❌ Error buscando sesión preferida para failover:", err.message);
+            console.error("❌ [FAILOVER] error buscando candidata del mismo dueño — sin failover:", err.message);
+
+            return null;
 
         }
-
-        return conectadas[0];
 
     }
 

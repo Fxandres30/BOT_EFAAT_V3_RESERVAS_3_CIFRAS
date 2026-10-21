@@ -1,38 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
-import { botApiHeadersDe } from "@/lib/botApi";
+import { reenviarAlBot, leerCuerpo } from "@/lib/botApi";
 
-const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
-
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-
-    const res = await fetch(`${API}/sessions/preferred`, {
-      method: "POST",
-      headers: botApiHeadersDe(req, {
-        "Content-Type": "application/json",
-      }),
-      body: JSON.stringify(body),
-    });
-
-    const text = await res.text();
-
-    return new NextResponse(text, {
-      status: res.status,
-      headers: {
-        "Content-Type": res.headers.get("content-type") || "text/plain",
-      },
-    });
-
-  } catch (err: any) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: err.message,
-      },
-      {
-        status: 500,
-      }
-    );
-  }
+// POST /sessions/preferred del backend (marcar la sesión principal).
+export async function POST(req: Request) {
+    const { sessionId } = await leerCuerpo(req);
+    return reenviarAlBot(req, "/sessions/preferred", { metodo: "POST", cuerpo: { sessionId }, timeoutMs: 15000 });
 }

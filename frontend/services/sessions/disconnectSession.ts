@@ -1,31 +1,7 @@
-import { fetchConSesion } from "@/lib/fetchConSesion";
+import { ejecutarAccionSesion, type ResultadoAccion } from "./accionSesion";
 
-export async function disconnectSession(sessionId: string) {
-
-    const res = await fetchConSesion("/api/sessions/disconnect", {
-
-        method: "POST",
-
-        headers: {
-
-            "Content-Type": "application/json"
-
-        },
-
-        body: JSON.stringify({
-
-            sessionId
-
-        })
-
-    });
-
-    console.log("STATUS:", res.status);
-
-    const texto = await res.text();
-
-    console.log(texto);
-
-    return texto;
-
+// Pide al bot que desconecte la sesión. Nunca lanza ni queda esperando:
+// ver accionSesion.ts.
+export function disconnectSession(sessionId: string): Promise<ResultadoAccion> {
+    return ejecutarAccionSesion("/api/sessions/disconnect", sessionId);
 }

@@ -1,6 +1,7 @@
 const { DisconnectReason } = require("@whiskeysockets/baileys");
 const supabase = require("../../lib/supabase");
 const lease = require("./lease");
+const { archivarCredencialesInvalidadas } = require("./credencialesInvalidadas");
 
 // ---------------------------------------------------------------------
 // Backoff para la rama de "desconexión temporal" (reintento automático de
@@ -141,6 +142,19 @@ async function desconectado(sessionId, statusCode, contexto) {
         console.log("❌ Logout / QR expirado");
 
         cancelarReintentoPendiente(sessionId);
+
+        // WhatsApp ya invalidó estas credenciales (dispositivo eliminado,
+        // device_removed, logout): se apartan para que el próximo
+        // «Conectar» muestre un QR nuevo en vez de reintentar con ellas y
+        // recibir otro 401. Antes se cortan las escrituras de credenciales
+        // del socket que se cierra, para que no vuelvan a crear la carpeta.
+        // No se borra nada (ver credencialesInvalidadas.js).
+        sockActual?.ev?.removeAllListeners?.("creds.update");
+
+        const archivar = contexto.archivarCredenciales || archivarCredencialesInvalidadas;
+        const archivo = await archivar(sessionId);
+
+        console.log("🗄️ [AUTH] credenciales invalidadas por WhatsApp:", { sessionId, archivadas: archivo.archivada, motivo: archivo.motivo || null });
 
         sockets.delete(sessionId);
 

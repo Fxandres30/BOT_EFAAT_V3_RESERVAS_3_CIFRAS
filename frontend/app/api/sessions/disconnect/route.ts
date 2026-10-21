@@ -1,32 +1,7 @@
-import { NextResponse } from "next/server";
-import { botApiHeadersDe } from "@/lib/botApi";
+import { reenviarAlBot, leerCuerpo } from "@/lib/botApi";
 
-const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
-
+// POST /sessions/disconnect del backend.
 export async function POST(req: Request) {
-
-    const { sessionId } = await req.json();
-
-    const res = await fetch(`${API}/sessions/disconnect`, {
-
-        method: "POST",
-
-        headers: botApiHeadersDe(req, {
-
-            "Content-Type": "application/json"
-
-        }),
-
-        body: JSON.stringify({
-
-            sessionId
-
-        })
-
-    });
-
-    const data = await res.json();
-
-    return NextResponse.json(data);
-
+    const { sessionId } = await leerCuerpo(req);
+    return reenviarAlBot(req, "/sessions/disconnect", { metodo: "POST", cuerpo: { sessionId }, timeoutMs: 20000 });
 }

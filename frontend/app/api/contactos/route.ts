@@ -1,26 +1,12 @@
 import { NextResponse } from "next/server";
-import { botApiHeadersDe } from "@/lib/botApi";
+import { reenviarAlBot } from "@/lib/botApi";
 
-const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
-
-// Proxy delgado hacia GET /contactos del backend — mismo patrón exacto que
-// app/api/sessions/grupos-disponibles/route.ts. No agrega autenticación
-// propia: usuarioId ya sale de supabase.auth en el navegador (mismo
-// criterio que el resto del panel, ver services/tablas/obtenerTabla.ts).
+// GET /contactos del backend. El backend identifica al usuario por su
+// sesión (Authorization) y comprueba que los datos sean suyos.
 export async function GET(req: Request) {
-
-    const { searchParams } = new URL(req.url);
-
-    const usuarioId = searchParams.get("usuarioId");
-
+    const usuarioId = new URL(req.url).searchParams.get("usuarioId");
     if (!usuarioId) {
         return NextResponse.json({ success: false, error: "Falta el parámetro usuarioId." }, { status: 400 });
     }
-
-    const res = await fetch(`${API}/contactos?usuarioId=${encodeURIComponent(usuarioId)}`, { headers: botApiHeadersDe(req) });
-
-    const data = await res.json();
-
-    return NextResponse.json(data, { status: res.status });
-
+    return reenviarAlBot(req, `/contactos?usuarioId=${encodeURIComponent(usuarioId)}`, { timeoutMs: 20000 });
 }

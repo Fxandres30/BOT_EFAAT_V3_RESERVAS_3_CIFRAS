@@ -1,34 +1,7 @@
-import { NextResponse } from "next/server";
-import { botApiHeadersDe } from "@/lib/botApi";
+import { reenviarAlBot } from "@/lib/botApi";
 
-const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
-
-// Proxy delgado hacia GET /sessions/active/estado-backfill-contactos del
-// backend — solo lectura, para hacer polling del progreso del escaneo sin
-// volver a dispararlo.
+// GET /sessions/active/estado-backfill-contactos del backend — solo lectura,
+// para el polling del progreso del escaneo.
 export async function GET(req: Request) {
-
-    try {
-
-        const res = await fetch(`${API}/sessions/active/estado-backfill-contactos`, {
-            headers: botApiHeadersDe(req)
-        });
-
-        const data = await res.json();
-
-        return NextResponse.json(data, { status: res.status });
-
-    } catch (error) {
-
-        console.error(error);
-
-        const mensaje = error instanceof Error ? error.message : "Error desconocido";
-
-        return NextResponse.json(
-            { success: false, error: mensaje },
-            { status: 500 }
-        );
-
-    }
-
+    return reenviarAlBot(req, "/sessions/active/estado-backfill-contactos", { timeoutMs: 10000 });
 }

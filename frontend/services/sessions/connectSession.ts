@@ -1,39 +1,12 @@
-import { fetchConSesion } from "@/lib/fetchConSesion";
+import { ejecutarAccionSesion, esSesionInexistente, type ResultadoAccion } from "./accionSesion";
 
-export async function connectSession(sessionId: string) {
-
-    const res = await fetchConSesion(
-
-        "/api/sessions/connect",
-
-        {
-
-            method: "POST",
-
-            headers: {
-
-                "Content-Type":"application/json"
-
-            },
-
-            body: JSON.stringify({
-
-                sessionId
-
-            })
-
-        }
-
-    );
-
-    return await res.json();
-
+// Pide al bot que conecte la sesión (muestra QR o reconecta). Nunca lanza
+// ni queda esperando: ver accionSesion.ts.
+export function connectSession(sessionId: string): Promise<ResultadoAccion> {
+    return ejecutarAccionSesion("/api/sessions/connect", sessionId);
 }
 
-// La sesión ya no existe en Supabase (fila eliminada). El backend nunca
-// llegó a arrancar Baileys para ese id.
-export function isSessionNotFound(res: any) {
-
-    return res?.success === false && res?.code === "SESSION_NOT_FOUND";
-
+// La sesión ya no existe (fila eliminada o de otro usuario).
+export function isSessionNotFound(res: ResultadoAccion): boolean {
+    return esSesionInexistente(res);
 }

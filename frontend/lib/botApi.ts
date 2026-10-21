@@ -10,6 +10,8 @@
 // su .env, se usa ese valor: es el mismo secreto compartido. Nunca se loguea.
 import fs from "node:fs";
 import path from "node:path";
+import { NextResponse } from "next/server";
+import { llamarBot } from "./llamarBot";
 
 let descubierto: string | null | undefined;
 
@@ -57,4 +59,42 @@ export function botApiHeadersDe(req: Request, extra: Record<string, string> = {}
 
     return botApiHeaders(autorizacion ? { ...extra, Authorization: autorizacion } : extra);
 
+}
+
+// Reenvía una petición del panel al backend del bot y devuelve la respuesta
+// del bot, SIEMPRE con un límite de espera (ver lib/llamarBot.ts): nunca
+// deja colgado al navegador. Mantiene las dos autenticaciones: el token de
+// servicio (x-service-token) y la sesión del usuario (Authorization).
+// Solo registra la ruta y el código de error, nunca cabeceras ni secretos.
+export async function reenviarAlBot(
+    req: Request,
+    ruta: string,
+    { metodo = "GET", cuerpo, timeoutMs }: { metodo?: string; cuerpo?: unknown; timeoutMs?: number } = {}
+): Promise<NextResponse> {
+
+    const API = process.env.BOT_API_URL || "http://127.0.0.1:4000";
+
+    const { status, cuerpo: respuesta } = await llamarBot(`${API}${ruta}`, {
+        method: metodo,
+        headers: botApiHeadersDe(req, cuerpo !== undefined ? { "Content-Type": "application/json" } : {}),
+        body: cuerpo !== undefined ? JSON.stringify(cuerpo) : undefined
+    }, { timeoutMs });
+
+    if (status >= 500 || status === 401) {
+        const datos = (respuesta && typeof respuesta === "object" ? respuesta : {}) as Record<string, unknown>;
+        console.error(`❌ [PANEL→BOT] ${metodo} ${ruta.split("?")[0]} → HTTP ${status}${datos.code || datos.motivo ? ` · ${datos.code || datos.motivo}` : ""}`);
+    }
+
+    return NextResponse.json(respuesta, { status, headers: { "Cache-Control": "no-store" } });
+
+}
+
+// Cuerpo JSON de la petición del navegador; {} si no es JSON válido.
+export async function leerCuerpo(req: Request): Promise<Record<string, unknown>> {
+    try {
+        const datos = await req.json();
+        return datos && typeof datos === "object" ? datos : {};
+    } catch {
+        return {};
+    }
 }

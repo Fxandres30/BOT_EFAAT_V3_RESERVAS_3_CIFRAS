@@ -197,6 +197,28 @@ prueba("/sessions/active/* (backfill, escáner) solo para el dueño de la sesió
     assert.strictEqual((await pedir("GET", "/sessions/active/escaner-identidades", { jwt: "jwt-B" })).status, 404);
 });
 
+prueba("eliminar sesión desde el panel: B NO puede eliminar la de A (404, sin ejecutar)", async () => {
+    const n = llamadas.length;
+    const r = await pedir("DELETE", `/sessions/propias/${SES_A}`, { jwt: "jwt-B" });
+    assert.strictEqual(r.status, 404);
+    assert.strictEqual(llamadas.length, n);
+});
+
+prueba("eliminar sesión desde el panel: sin sesión de usuario -> 401; sin token de servicio -> 401", async () => {
+    const n = llamadas.length;
+    assert.strictEqual((await pedir("DELETE", `/sessions/propias/${SES_A}`, {})).status, 401);
+    assert.strictEqual((await pedir("DELETE", `/sessions/propias/${SES_A}`, { jwt: "jwt-A", servicio: false })).status, 401);
+    assert.strictEqual(llamadas.length, n);
+});
+
+prueba("eliminar sesión desde el panel: A elimina SU sesión con el usuario de su token (aunque mande otro usuarioId)", async () => {
+    const r = await pedir("DELETE", `/sessions/propias/${SES_A}?usuarioId=${B}`, { jwt: "jwt-A" });
+    assert.strictEqual(r.status, 200);
+    const l = ultima("admin.eliminar");
+    assert.strictEqual(l.usuarioId, A);
+    assert.strictEqual(l.sessionId, SES_A);
+});
+
 prueba("rutas de administración (BANN): solo token de servicio; sin él -> 401", async () => {
     assert.strictEqual((await pedir("GET", "/sessions/", { servicio: false })).status, 401);
     assert.strictEqual((await pedir("DELETE", `/sessions/${SES_A}`, { servicio: false })).status, 401);

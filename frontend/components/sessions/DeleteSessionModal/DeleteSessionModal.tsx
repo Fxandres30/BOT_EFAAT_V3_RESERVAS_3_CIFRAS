@@ -26,27 +26,32 @@ export default function DeleteSessionModal({
   onDeleted,
 }: Props) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function eliminar() {
+    if (loading) return;
+
     setLoading(true);
+    setError(null);
 
-    try {
-      await deleteSession(sessionId);
-
-      // No dependemos solo de Supabase Realtime (el evento DELETE puede no
-      // llegar, p.ej. si la tabla no tiene REPLICA IDENTITY FULL):
-      // refrescamos la lista explícitamente para que la card desaparezca
-      // de inmediato, aquí mismo.
-      onDeleted?.();
-
-      onClose();
-    } catch (err) {
-      console.error(err);
-
-      alert("No fue posible eliminar la sesión.");
-    }
+    // El bot desconecta WhatsApp, borra la fila y las credenciales. Nunca
+    // lanza ni queda esperando (ver services/sessions/accionSesion.ts).
+    const res = await deleteSession(sessionId);
 
     setLoading(false);
+
+    if (!res.ok) {
+      setError(res.mensaje);
+      return;
+    }
+
+    // No dependemos solo de Supabase Realtime (el evento DELETE puede no
+    // llegar, p.ej. si la tabla no tiene REPLICA IDENTITY FULL):
+    // refrescamos la lista explícitamente para que la card desaparezca
+    // de inmediato, aquí mismo.
+    onDeleted?.();
+
+    onClose();
   }
 
   return (
@@ -73,10 +78,16 @@ export default function DeleteSessionModal({
       <div className={styles.warn}>
         <AlertTriangle size={16} />
         <span>
-          Se eliminarán la sesión y sus archivos de autenticación. No se puede
-          deshacer.
+          Se desconectará el número, y se eliminarán la sesión y sus archivos
+          de autenticación. No se puede deshacer.
         </span>
       </div>
+
+      {error && (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      )}
     </Modal>
   );
 }

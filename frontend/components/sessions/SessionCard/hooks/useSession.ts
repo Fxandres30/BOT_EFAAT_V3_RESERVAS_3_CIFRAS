@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabase";
 import { connectSession, isSessionNotFound } from "@/services/sessions/connectSession";
 import { disconnectSession } from "@/services/sessions/disconnectSession";
 import { getSession } from "@/services/sessions/getSession";
+import { crearControlAccion } from "@/services/sessions/controlAccionSesion";
+import type { ResultadoAccion } from "@/services/sessions/accionSesion";
 
 export function useSession(
     id: string,
@@ -16,6 +18,11 @@ export function useSession(
 
     const [loading, setLoading] = useState(false);
 
+    // Mensaje del último fallo (o aviso si el bot no confirmó a tiempo);
+    // se limpia al iniciar otra acción.
+    const [error, setError] = useState<string | null>(null);
+    const [aviso, setAviso] = useState<string | null>(null);
+
     const [open, setOpen] = useState(false);
 
     const [qr, setQr] = useState("");
@@ -24,6 +31,19 @@ export function useSession(
 
     const [estadoActual, setEstadoActual] =
         useState(estadoInicial);
+
+    // «Procesando…» siempre termina: con error, con la confirmación del bot
+    // (cambio de estado en Supabase) o al vencer la espera. Ver
+    // services/sessions/controlAccionSesion.ts.
+    const [control] = useState(() => crearControlAccion({
+        alCambiar: ({ cargando, error: e, aviso: a }) => {
+            setLoading(cargando);
+            setError(e);
+            setAviso(a);
+        }
+    }));
+
+    useEffect(() => () => control.destruir(), [control]);
 
     useEffect(() => {
 
@@ -64,9 +84,27 @@ export function useSession(
 
     }, [open]);
 
+    // Ejecuta conectar/desconectar una sola vez a la vez y entrega el
+    // resultado al control (que decide cuándo deja de cargar).
+    async function ejecutar(accion: () => Promise<ResultadoAccion>) {
+
+        if (!control.iniciar()) return;
+
+        const res = await accion();
+
+        control.resultado(res);
+
+        // La tarjeta desaparece al actualizar la lista: el aviso va aparte.
+        if (isSessionNotFound(res)) {
+            alert(res.ok ? "" : res.mensaje);
+            onSessionNotFound?.();
+        }
+
+    }
+
     async function accionPrincipal() {
 
-        if (loading)
+        if (control.enCurso())
             return;
 
         // ==========================
@@ -74,9 +112,7 @@ export function useSession(
         // ==========================
         if (estadoActual === "conectado") {
 
-            setLoading(true);
-
-            await disconnectSession(id);
+            await ejecutar(() => disconnectSession(id));
 
             return;
 
@@ -93,24 +129,24 @@ export function useSession(
                 return;
             setQr(data.qr);
 
-if (data.qr_expira_en) {
+            if (data.qr_expira_en) {
 
-    const restante = Math.max(
-        Math.floor(
-            (new Date(data.qr_expira_en).getTime() - Date.now()) / 1000
-        ),
-        0
-    );
+                const restante = Math.max(
+                    Math.floor(
+                        (new Date(data.qr_expira_en).getTime() - Date.now()) / 1000
+                    ),
+                    0
+                );
 
-    setSegundos(restante);
+                setSegundos(restante);
 
-} else {
+            } else {
 
-    setSegundos(120);
+                setSegundos(120);
 
-}
+            }
 
-setOpen(true);
+            setOpen(true);
 
             return;
 
@@ -119,24 +155,14 @@ setOpen(true);
         // ==========================
         // CONECTAR
         // ==========================
-        setLoading(true);
+        await ejecutar(() => connectSession(id));
 
-        const res = await connectSession(id);
+    }
 
-        if (isSessionNotFound(res)) {
+    // «Reconectar» del menú: misma acción y mismo control que «Conectar».
+    async function reconectar() {
 
-            setLoading(false);
-
-            alert(
-                "Esta sesión ya no existe (fue eliminada). " +
-                "Actualiza la lista y crea o selecciona una sesión válida."
-            );
-
-            onSessionNotFound?.();
-
-            return;
-
-        }
+        await ejecutar(() => connectSession(id));
 
     }
 
@@ -169,47 +195,36 @@ setOpen(true);
                     table: "sesiones",
                     filter: `id=eq.${id}`
                 },
-                (payload: any) => {
+                (payload: { new: { estado: string; qr?: string; qr_expira_en?: string } }) => {
 
                     const sesion = payload.new;
 
                     setEstadoActual(sesion.estado);
 
                     if (
-    sesion.estado === "esperando_qr" &&
-    sesion.qr
-) {
-
-    setQr(sesion.qr);
-
-    if (sesion.qr_expira_en) {
-
-        const restante = Math.max(
-            Math.floor(
-                (new Date(sesion.qr_expira_en).getTime() - Date.now()) / 1000
-            ),
-            0
-        );
-
-        setSegundos(restante);
-
-    }
-
-}
-
-                    if (
-                        sesion.estado === "conectado"
+                        sesion.estado === "esperando_qr" &&
+                        sesion.qr
                     ) {
 
-                        setOpen(false);
+                        setQr(sesion.qr);
 
-                        setQr("");
+                        if (sesion.qr_expira_en) {
 
-                        setSegundos(120);
+                            const restante = Math.max(
+                                Math.floor(
+                                    (new Date(sesion.qr_expira_en).getTime() - Date.now()) / 1000
+                                ),
+                                0
+                            );
+
+                            setSegundos(restante);
+
+                        }
 
                     }
 
                     if (
+                        sesion.estado === "conectado" ||
                         sesion.estado === "desconectado"
                     ) {
 
@@ -221,7 +236,8 @@ setOpen(true);
 
                     }
 
-                    setLoading(false);
+                    // El bot confirmó con un cambio real de estado.
+                    control.confirmado();
 
                 }
 
@@ -235,11 +251,15 @@ setOpen(true);
 
         };
 
-    }, [id]);
+    }, [id, control]);
 
     return {
 
         loading,
+
+        error,
+
+        aviso,
 
         open,
 
@@ -250,6 +270,8 @@ setOpen(true);
         estadoActual,
 
         accionPrincipal,
+
+        reconectar,
 
         textoBoton,
 
