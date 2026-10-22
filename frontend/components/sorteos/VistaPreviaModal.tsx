@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { Modal, Button, Badge } from "@/components/ui";
 import TablaImprimible from "@/components/tablas/TablaImprimible";
-import { apiSorteos, describirError, type VistaPrevia } from "@/services/sorteos/apiSorteos";
+import { apiSorteos, describirError, type EstadoPublicacion, type VistaPrevia } from "@/services/sorteos/apiSorteos";
 import { mostrarFecha } from "./fechas";
 import styles from "./Sorteos.module.css";
 
@@ -15,6 +15,14 @@ interface Props {
 }
 
 const fechaLegible = (yyyyMmDd: string) => yyyyMmDd.split("-").reverse().join("/");
+
+// Estado de la publicación EN SU FECHA (no hoy): el backend decide los
+// conflictos con la fecha real de publicación y del sorteo existente.
+const ESTADO_PUBLICACION: Record<EstadoPublicacion, { texto: string; tono: "success" | "primary" | "error"; detalle: string }> = {
+    listo: { texto: "Listo para publicar", tono: "success", detalle: "Nada pendiente: se publicará a la hora indicada." },
+    programado: { texto: "Programado", tono: "primary", detalle: "Se publicará a su hora, cuando el sorteo actual ya haya cerrado. El sorteo actual no se modifica." },
+    bloqueado: { texto: "Bloqueado por un conflicto real", tono: "error", detalle: "Hay un conflicto que seguirá existiendo en la fecha de publicación (ver abajo)." }
+};
 
 // Orden fijo: fecha y hora -> tabla (la MISMA que la imagen de WhatsApp) ->
 // anuncio -> cuentas -> grupos -> advertencias y validaciones. Los botones
@@ -46,6 +54,9 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
 
     // Solo hay algo que confirmar si el reinicio es posible Y libera números.
     const conReinicio = !!vista?.reinicio?.posible && (vista?.reinicio?.liberables || 0) > 0;
+    // Reinicio al publicar (el sorteo actual cierra antes): también se confirma.
+    const reinicioDiferido = !!vista?.reinicio?.diferido;
+    const pideConfirmarReinicio = conReinicio || reinicioDiferido;
 
     async function confirmar() {
 
@@ -57,7 +68,9 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
         const r = await apiSorteos.confirmar(
             vista.id,
             vista.version,
-            conReinicio ? { confirmado: reinicioConfirmado, huella: vista.reinicio?.huella || null } : undefined
+            conReinicio
+                ? { confirmado: reinicioConfirmado, huella: vista.reinicio?.huella || null }
+                : reinicioDiferido ? { confirmado: reinicioConfirmado, huella: null, diferido: true } : undefined
         );
 
         setConfirmando(false);
@@ -81,7 +94,7 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                 <>
                     <Button variant="secondary" onClick={onClose} disabled={confirmando}>Cerrar</Button>
                     {vista?.estado === "borrador" && (
-                        <Button onClick={confirmar} loading={confirmando} disabled={!vista.puede_confirmar || !revisado || (conReinicio && !reinicioConfirmado)}>
+                        <Button onClick={confirmar} loading={confirmando} disabled={!vista.puede_confirmar || !revisado || (pideConfirmarReinicio && !reinicioConfirmado)}>
                             {conReinicio ? "Reiniciar tabla y programar" : "Confirmar y programar"}
                         </Button>
                     )}
@@ -95,6 +108,11 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
 
                 {vista && (
                     <>
+                        <div className={`${styles.alerta} ${vista.estado_publicacion === "bloqueado" ? styles.alertaError : styles.alertaInfo}`} role="status" aria-label="Estado de la publicación">
+                            <Badge tone={ESTADO_PUBLICACION[vista.estado_publicacion].tono} dot>{ESTADO_PUBLICACION[vista.estado_publicacion].texto}</Badge>
+                            <p>{ESTADO_PUBLICACION[vista.estado_publicacion].detalle}</p>
+                        </div>
+
                         <section className={styles.seccion} aria-label="Fecha y hora">
                             <h3 className={styles.seccionTitulo}>Publicación</h3>
                             <p>
@@ -136,9 +154,9 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                             <ul className={styles.grupos}>
                                 {vista.grupos.map(g => (
                                     <li key={g.grupo_id} className={styles.grupo}>
-                                        <Badge tone={g.bloqueo ? "error" : "success"} dot>{g.bloqueo ? "Bloqueado" : "Listo"}</Badge>
+                                        <Badge tone={ESTADO_PUBLICACION[g.estado_previo].tono} dot>{ESTADO_PUBLICACION[g.estado_previo].texto}</Badge>
                                         {g.nombre || g.grupo_id}
-                                        {g.bloqueo && <span className={styles.error}>{g.bloqueo}</span>}
+                                        {g.motivo && <span className={g.bloqueo ? styles.error : styles.ayuda}>{g.motivo}</span>}
                                     </li>
                                 ))}
                             </ul>
@@ -147,7 +165,13 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                         {vista.reinicio && (
                             <section className={styles.seccion} aria-label="Reinicio de la tabla">
                                 <h3 className={styles.seccionTitulo}>Reinicio de la tabla</h3>
-                                {vista.reinicio.posible ? (
+                                {vista.reinicio.diferido ? (
+                                    <p>
+                                        Hoy la tabla tiene números del sorteo actual, que cierra el <b>{mostrarFecha(vista.reinicio.cierra_antes || "")}</b>.
+                                        {" "}No se tocan ahora: al publicar ({mostrarFecha(vista.publicar_en)}) se archivarán (no se borran) los de sorteos ya terminados y la tabla quedará libre.
+                                        {" "}Si en ese momento el sorteo sigue abierto, la publicación espera.
+                                    </p>
+                                ) : vista.reinicio.posible ? (
                                     vista.reinicio.liberables > 0 ? (
                                         <>
                                             <p>Se archivarán (no se borran) y quedarán libres {vista.reinicio.liberables} número(s):</p>
@@ -159,10 +183,10 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                                 )}
                                 {(vista.reinicio.se_conservan || []).map((t, i) => <p key={i} className={styles.ayuda}>{t}</p>)}
                                 {vista.reinicio.liberar_bloqueados && <p className={styles.ayuda}>Elegiste liberar también los números bloqueados a mano.</p>}
-                                {vista.estado === "borrador" && vista.reinicio.posible && vista.reinicio.liberables > 0 && (
+                                {vista.estado === "borrador" && pideConfirmarReinicio && (
                                     <label className={styles.check}>
                                         <input type="checkbox" checked={reinicioConfirmado} onChange={e => setReinicioConfirmado(e.target.checked)} />
-                                        Confirmo que se archiven y liberen estos números.
+                                        {reinicioDiferido ? "Confirmo que la tabla se reinicie al publicar." : "Confirmo que se archiven y liberen estos números."}
                                     </label>
                                 )}
                             </section>

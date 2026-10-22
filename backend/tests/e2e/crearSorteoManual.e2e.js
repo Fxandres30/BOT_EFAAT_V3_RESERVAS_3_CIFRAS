@@ -152,10 +152,12 @@ ${vista}`);
 
         // 6. Editar (borrador): versión 2, sin duplicar grupos.
         await pulsar(page, "Editar");
-        await esperarTexto(page, "Editar sorteo programado");
+        await esperarTexto(page, "Editar sorteo");
+        // El formulario pide el sorteo al backend antes de mostrar los campos.
+        await page.waitForFunction(() => [...document.querySelectorAll("label")].some(l => l.textContent.startsWith("Valor por número")));
         await rellenar(page, "Valor por número", "5000");
         await rellenar(page, "Lotería o nombre del sorteo", "Lotería E2E Manual (editada)");
-        await pulsar(page, "Guardar y ver vista previa");
+        await pulsar(page, "Guardar cambios");
         await esperarTexto(page, "Anuncio que se publicará");
         await esperarTexto(page, "Lotería E2E Manual (editada)");
         assert.strictEqual(t.sorteos_programados.length, 1, "editar no crea otro sorteo");
@@ -163,7 +165,7 @@ ${vista}`);
         paso("editar el borrador: misma fila, versión 2, vista previa actualizada");
 
         // 7. Confirmación expresa -> programado. Nada se envía.
-        await marcar(page, "Revisé el anuncio");
+        await marcar(page, "Revisé la fecha");
         await pulsar(page, "Confirmar y programar");
         await page.waitForFunction(() => !document.body.innerText.includes("Anuncio que se publicará"));
         await esperarTexto(page, "Programado");

@@ -92,7 +92,7 @@ export default function SorteosPage() {
             <FormularioSorteo
                 key={formulario.abierto ? `form-${formulario.sorteo?.id || "nuevo"}-${formulario.sorteo?.version || 0}` : "form-cerrado"}
                 open={formulario.abierto}
-                sorteo={formulario.sorteo}
+                sorteoId={formulario.sorteo?.id || null}
                 onClose={() => setFormulario({ abierto: false, sorteo: null })}
                 onGuardado={s => {
                     setFormulario({ abierto: false, sorteo: null });

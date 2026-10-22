@@ -12,12 +12,35 @@
 
 const repo = require("./repo");
 const loterias = require("./loterias");
-const { validarSorteo, validarPlantilla, fechaSorteoDe } = require("./validar");
+const { validarSorteo, validarPlantilla, fechaSorteoDe, instanteBogota } = require("./validar");
 const { normalizarConfigDiseno } = require("./disenoTabla");
 const reinicioTabla = require("./reinicioTabla");
 const tablaEvento = require("../automation/repo/tablaEvento");
 const { mensajePublicacion, mensajeRecordatorio, mensajeAvisoCierre, VARIABLES } = require("./mensajes");
-const { revisarTabla, revisarGrupo } = require("./disponibilidad");
+const { revisarTabla, revisarGrupo, cierresDeIdentidades, legible } = require("./disponibilidad");
+
+// ¿El reinicio que HOY no es posible lo será al publicar? Solo si lo único
+// que lo impide son números de sorteos activos cuyo cierre (conocido) llega
+// antes de la publicación: entonces se hará al publicar, cuando ya estén
+// cerrados (la 030 vuelve a decidir en ese momento; nunca toca uno activo).
+async function reinicioDiferible(usuarioId, reinicio, porSorteo, publicarEn) {
+
+    const protegidos = (porSorteo || []).filter(g => String(g.clase).startsWith("protegido"));
+    if (!protegidos.length || protegidos.some(g => g.clase !== "protegido_activo" || !g.identidad)) return null;
+
+    const r = await cierresDeIdentidades(usuarioId, protegidos.map(g => g.identidad), reloj.ahora());
+    if (!r.ok) return null;
+
+    let ultimo = null;
+    for (const g of protegidos) {
+        const c = r.cierres.get(g.identidad);
+        if (!c || c.getTime() >= publicarEn.getTime()) return null;
+        if (!ultimo || c > ultimo) ultimo = c;
+    }
+
+    return { ...reinicio, diferido: true, cierra_antes: ultimo.toISOString() };
+
+}
 const { crearIdentidadEventoReal } = require("../bot/funciones/eventos/identidadEventoReal");
 const tablasCliente = require("../bot/funciones/eventos/tablasCliente");
 
@@ -196,13 +219,19 @@ async function vistaPrevia(usuarioId, id) {
                 : "No pudimos revisar la tabla para reiniciarla. Inténtalo de nuevo en unos minutos.");
         } else {
             reinicio = rr.data;
-            if (!reinicio.posible) {
+            const diferido = !reinicio.posible
+                ? await reinicioDiferible(usuarioId, reinicio, rr.porSorteo, new Date(sorteo.publicar_en))
+                : null;
+            if (diferido) {
+                reinicio = diferido;
+                avisos.push(`La tabla se reiniciará al publicar (${legible(new Date(sorteo.publicar_en))}), cuando el sorteo actual ya haya cerrado (${legible(new Date(diferido.cierra_antes))}). Hasta entonces sus reservas y pagos no se tocan; al publicar se archivan (no se borran).`);
+            } else if (!reinicio.posible) {
                 bloqueos.push(`No se puede reiniciar la tabla: ${reinicio.bloqueos.join("; ")}. Nada se modificó. Espera a que ese sorteo cierre o edita el sorteo y elige «Conservar tabla».`);
             }
         }
     }
 
-    const seReiniciara = !!reinicio?.posible;
+    const seReiniciara = !!reinicio?.posible || !!reinicio?.diferido;
 
     const tabla = await revisarTabla({
         usuarioId, tabla: sorteo.tabla, cifras: sorteo.cifras, cantidad: sorteo.cantidad_numeros, identidad: sorteo.identidad_evento_real, seReiniciara
@@ -221,12 +250,35 @@ async function vistaPrevia(usuarioId, id) {
     const autorizados = await repo.gruposAutorizados(usuarioId);
     const setAutorizados = new Set((autorizados.data || []).map(g => g.grupo_id));
 
+    // Conflictos de grupo EN LA FECHA DE PUBLICACIÓN (no solo activo=true):
+    // un sorteo actual que habrá cerrado para entonces no bloquea.
+    const publicarEn = new Date(sorteo.publicar_en);
+    const cierreNuevo = sorteo.config.hora_cierre ? instanteBogota(fecha, sorteo.config.hora_cierre) : null;
+
     const grupos = [];
     for (const g of sorteo.grupos) {
-        const r = await revisarGrupo({ usuarioId, grupoId: g.grupo_id, identidad: sorteo.identidad_evento_real, autorizados: setAutorizados });
-        grupos.push({ grupo_id: g.grupo_id, nombre: g.grupo_nombre, estado: g.estado, bloqueo: r.bloqueo });
+        if (g.estado === "cancelado") continue;
+        const r = await revisarGrupo({
+            usuarioId, grupoId: g.grupo_id, identidad: sorteo.identidad_evento_real, autorizados: setAutorizados,
+            publicarEn, ahora: reloj.ahora(), sorteoId: sorteo.id, cierreNuevo
+        });
+        grupos.push({
+            grupo_id: g.grupo_id,
+            nombre: g.grupo_nombre,
+            estado: g.estado,
+            bloqueo: r.bloqueo,
+            // "bloqueado" (conflicto real en la fecha de publicación),
+            // "programado" (depende de que el sorteo actual cierre antes) o
+            // "listo" (nada pendiente).
+            estado_previo: r.bloqueo ? "bloqueado" : r.espera ? "programado" : "listo",
+            motivo: r.bloqueo || r.espera || null
+        });
         if (r.bloqueo) bloqueos.push(`${g.grupo_nombre || g.grupo_id}: ${r.bloqueo}`);
     }
+
+    const estadoPublicacion = bloqueos.length
+        ? "bloqueado"
+        : (reinicio?.diferido || grupos.some(g => g.estado_previo === "programado")) ? "programado" : "listo";
 
     return {
         ok: true,
@@ -252,6 +304,7 @@ async function vistaPrevia(usuarioId, id) {
             bloqueos,
             avisos,
             variables: VARIABLES,
+            estado_publicacion: estadoPublicacion,
             puede_confirmar: sorteo.estado === "borrador" && bloqueos.length === 0
         }
     };
@@ -283,11 +336,23 @@ async function confirmar(usuarioId, id, { version, confirmacion, reinicio } = {}
         if (!r.ok) return falla(r.motivo, { bloqueos: r.bloqueos || [] });
     }
 
-    const r = await repo.actualizarSorteoSi(usuarioId, id, { version: Number(version), estados: ["borrador"] }, {
+    // Reinicio DIFERIDO: hoy la tabla tiene números del sorteo actual (que
+    // cierra antes de la publicación). No se toca nada ahora; se confirma
+    // expresamente que se haga al publicar, y queda anotado en el sorteo.
+    const cambios = {
         estado: "programado",
         confirmado_en: new Date().toISOString(),
         confirmado_version: Number(version)
-    });
+    };
+
+    if (previa.data.reinicio?.diferido) {
+        if (reinicio?.confirmado !== true || reinicio?.diferido !== true) return falla("confirmacion_reinicio_requerida");
+        const actual = await repo.obtenerSorteo(usuarioId, id);
+        if (!actual.ok) return actual;
+        cambios.config = { ...actual.data.config, tabla: { ...actual.data.config.tabla, reiniciar_al_publicar: true } };
+    }
+
+    const r = await repo.actualizarSorteoSi(usuarioId, id, { version: Number(version), estados: ["borrador"] }, cambios);
 
     if (!r.ok) return r.motivo === "conflicto" ? falla("version_cambiada") : r;
 

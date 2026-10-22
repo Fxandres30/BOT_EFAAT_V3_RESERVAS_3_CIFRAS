@@ -30,6 +30,17 @@ const { leerEstadoParaRecordatorios } = require("../automation/repo/estadoSorteo
 const MAX_INTENTOS_AUTOMATICOS = 5;
 const VENTANA_RECORDATORIO_MS = 10 * 60 * 1000;
 
+// Conflicto REAL en el momento de publicar que se resuelve solo (el sorteo
+// actual del grupo todavía no cerró, o el reinicio diferido de la tabla
+// todavía no es posible): el grupo sigue 'pendiente', sin gastar intentos,
+// con este prefijo en ultimo_error para explicarlo. Se reintenta en cada
+// ciclo hasta el cierre de reservas del sorteo nuevo; nunca se reemplaza
+// el sorteo actual.
+const EN_ESPERA = "En espera: ";
+const TIPOS_ESPERA = new Set(["sorteo_activo", "otra_cuenta"]);
+
+const enEspera = (grupo) => String(grupo?.ultimo_error || "").startsWith(EN_ESPERA);
+
 // Campos que limpia una liberación: los MISMOS que el botón "Liberar" del
 // panel (services/reservaManual.js, liberarManual).
 const CAMPOS_LIBERACION = {
@@ -69,15 +80,26 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
     const cierre = config.hora_cierre ? instanteBogota(fechaSorteo, config.hora_cierre) : null;
 
     // Nunca se publica fuera de su día de publicación ni después del cierre.
-    if (actual.fecha !== programado.fecha) {
+    // Excepción: un grupo que estaba EN ESPERA por un conflicto real puede
+    // publicarse después de su día, siempre antes del cierre de reservas.
+    if (actual.fecha !== programado.fecha && !enEspera(grupo)) {
         return { estado: "requiere_revision", ultimo_error: `La fecha programada (${programado.fecha}) ya pasó; no se publicó.` };
     }
     if (cierre && ahora.getTime() >= cierre.getTime()) {
-        return { estado: "requiere_revision", ultimo_error: `El cierre (${fechaSorteo} ${config.hora_cierre}) ya pasó; no se publicó.` };
+        return { estado: "requiere_revision", ultimo_error: `El cierre (${fechaSorteo} ${config.hora_cierre}) ya pasó; no se publicó.${enEspera(grupo) ? ` El conflicto del grupo no se resolvió a tiempo (${grupo.ultimo_error.slice(EN_ESPERA.length)}).` : ""}` };
     }
 
-    const rg = await revisarGrupo({ usuarioId, grupoId, identidad: sorteo.identidad_evento_real, autorizados });
-    if (rg.bloqueo) return { estado: "requiere_revision", ultimo_error: rg.bloqueo };
+    // Conflictos EN ESTE MOMENTO: un sorteo distinto todavía abierto en el
+    // grupo nunca se reemplaza; se espera a que cierre.
+    const rg = await revisarGrupo({ usuarioId, grupoId, identidad: sorteo.identidad_evento_real, autorizados, ahora });
+    if (rg.bloqueo && TIPOS_ESPERA.has(rg.tipo)) {
+        return {
+            estado: "pendiente",
+            intentos: Math.max(0, (Number(grupo.intentos) || 0) - 1),
+            ultimo_error: `${EN_ESPERA}${rg.bloqueo}${cierre ? ` Debe resolverse antes del cierre de reservas (${fechaSorteo} ${config.hora_cierre}); si no, quedará en revisión. Para publicar antes, cierra el sorteo actual o cambia el grupo.` : ""}`
+        };
+    }
+    if (rg.bloqueo) return { estado: rg.tipo === "error_lectura" ? "fallido" : "requiere_revision", ultimo_error: rg.bloqueo };
 
     const rt = await revisarTabla({ usuarioId, tabla: sorteo.tabla, cifras: sorteo.cifras, cantidad: sorteo.cantidad_numeros, identidad: sorteo.identidad_evento_real });
     if (rt.bloqueos.length) return { estado: "requiere_revision", ultimo_error: rt.bloqueos.join(" ") };
@@ -169,6 +191,43 @@ async function finalizarSorteo(usuarioId, sorteoId) {
 
 }
 
+// Reinicio DIFERIDO de la tabla (confirmado en la vista previa): se hace UNA
+// vez, antes del primer grupo, cuando el sorteo anterior ya cerró. La 030
+// vuelve a decidir con la tabla de este momento y nunca toca un sorteo
+// activo. Si todavía no es posible, el sorteo espera (no se pierde).
+// Devuelve { ok: true, sorteo } o { ok: false, espera }.
+async function prepararPublicacion({ usuarioId, sorteo, ahora, deps }) {
+
+    const tablaCfg = sorteo.config?.tabla || {};
+    if (!tablaCfg.reiniciar_al_publicar || tablaCfg.reiniciado_en) return { ok: true, sorteo };
+
+    // Pasado el cierre del sorteo nuevo no se reinicia nada: los grupos
+    // quedarán en revisión por el cierre (publicarEnGrupo).
+    const fecha = fechaSorteoDe(sorteo.config, sorteo.publicar_en);
+    const cierre = sorteo.config.hora_cierre ? instanteBogota(fecha, sorteo.config.hora_cierre) : null;
+    if (cierre && ahora.getTime() >= cierre.getTime()) return { ok: true, sorteo };
+
+    const reinicio = deps.reinicioTabla || require("./reinicioTabla");
+    const revision = await reinicio.revisarReinicio(usuarioId, sorteo);
+
+    if (!revision.ok) return { ok: false, espera: `${EN_ESPERA}no se pudo revisar la tabla para el reinicio programado; se reintentará.` };
+
+    if (!revision.data.posible) {
+        return { ok: false, espera: `${EN_ESPERA}la tabla todavía tiene números protegidos (${revision.data.bloqueos.join("; ")}). Se reiniciará y publicará en cuanto ese sorteo cierre.` };
+    }
+
+    if (revision.data.liberables > 0) {
+        const aplicado = await reinicio.aplicarReinicio(usuarioId, { id: sorteo.id, tabla: sorteo.tabla, liberarBloqueados: tablaCfg.liberar_bloqueados === true }, revision.data.huella);
+        if (!aplicado.ok) return { ok: false, espera: `${EN_ESPERA}la tabla cambió durante el reinicio programado; se reintentará.` };
+    }
+
+    const config = { ...sorteo.config, tabla: { ...tablaCfg, reiniciado_en: ahora.toISOString() } };
+    const marcado = await repo.actualizarSorteoSi(usuarioId, sorteo.id, { estados: ["publicando"] }, { config, ultimo_error: null });
+
+    return { ok: true, sorteo: marcado.ok ? marcado.data : { ...sorteo, config } };
+
+}
+
 async function publicarPendientes({ sock, deps, ahora }) {
 
     const usuarioId = sock.context.usuarioId;
@@ -193,6 +252,21 @@ async function publicarPendientes({ sock, deps, ahora }) {
 
         const grupos = await repo.gruposDelSorteo(usuarioId, sorteo.id);
         if (!grupos.ok) continue;
+
+        const preparado = await prepararPublicacion({ usuarioId, sorteo, ahora, deps });
+
+        if (!preparado.ok) {
+            // Espera: los grupos siguen pendientes con la explicación; nada
+            // se publica ni se reinicia en este ciclo.
+            for (const g of grupos.data) {
+                if (g.estado === "pendiente" || g.estado === "fallido") await repo.marcarGrupo(usuarioId, g.id, { ultimo_error: preparado.espera });
+            }
+            await repo.actualizarSorteoSi(usuarioId, sorteo.id, { estados: ["publicando"] }, { ultimo_error: preparado.espera });
+            informe.push({ sorteo: sorteo.id, estado: "en_espera", error: preparado.espera });
+            continue;
+        }
+
+        sorteo = preparado.sorteo;
 
         for (const grupo of grupos.data) {
 

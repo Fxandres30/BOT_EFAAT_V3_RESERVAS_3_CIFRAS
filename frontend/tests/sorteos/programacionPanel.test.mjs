@@ -96,9 +96,34 @@ prueba("vista previa: orden fecha -> tabla -> anuncio -> cuentas -> grupos -> ad
 
 prueba("vista previa: el reinicio exige su propia confirmación y envía la huella vista", () => {
     const vista = leer("components/sorteos/VistaPreviaModal.tsx");
-    assert.ok(vista.includes("(conReinicio && !reinicioConfirmado)"));
+    // Reinicio inmediato o diferido a la publicación: los dos se confirman.
+    assert.ok(vista.includes("const pideConfirmarReinicio = conReinicio || reinicioDiferido;"));
+    assert.ok(vista.includes("(pideConfirmarReinicio && !reinicioConfirmado)"));
     assert.ok(vista.includes("{ confirmado: reinicioConfirmado, huella: vista.reinicio?.huella || null }"));
+    assert.ok(vista.includes("{ confirmado: reinicioConfirmado, huella: null, diferido: true }"));
     assert.ok(/se_liberarian\.map/.test(vista), "muestra qué se liberaría");
+});
+
+prueba("vista previa: distingue «Listo para publicar», «Programado» y «Bloqueado por un conflicto real», por sorteo y por grupo", () => {
+    const vista = leer("components/sorteos/VistaPreviaModal.tsx");
+    for (const t of ["Listo para publicar", "Programado", "Bloqueado por un conflicto real"]) assert.ok(vista.includes(`"${t}"`), t);
+    assert.ok(vista.includes("ESTADO_PUBLICACION[vista.estado_publicacion]"), "estado del sorteo");
+    assert.ok(vista.includes("ESTADO_PUBLICACION[g.estado_previo]") && vista.includes("g.motivo"), "estado y motivo por grupo");
+    assert.ok(!/g\.bloqueo \? "Bloqueado" : "Listo"/.test(vista), "ya no es solo bloqueado/listo por activo=true");
+});
+
+prueba("formulario de edición: carga por id desde el backend, título y botón de edición, sin guardar si no cargó", () => {
+    const f = leer("components/sorteos/FormularioSorteo.tsx");
+    assert.ok(f.includes("apiSorteos.obtener(sorteoId)"), "pide el sorteo al backend");
+    assert.ok(f.includes('edicion ? "Editar sorteo" : "Nuevo sorteo"') && f.includes('edicion ? "Guardar cambios"'));
+    assert.ok(f.includes("disabled={edicion && !sorteo}") && f.includes("if (edicion && !sorteo) return;"), "sin sorteo cargado no se guarda");
+    assert.ok(f.includes("apiSorteos.editar(sorteo.id"), "guarda sobre el mismo id");
+    // Ningún llamador pasa ya el sorteo de la lista (podía estar desactualizado).
+    for (const rel of ["components/sorteos/SorteosPage.tsx", "components/tablas/AnuncioSorteoModal.tsx", "components/eventos/CrearSorteoModal/CrearSorteoModal.tsx"]) {
+        assert.ok(!/<FormularioSorteo[^>]*\ssorteo=\{/.test(leer(rel)), rel);
+    }
+    const anuncio = leer("components/tablas/AnuncioSorteoModal.tsx");
+    assert.ok(anuncio.includes('"sin_editable"') && anuncio.includes("Crear sorteo nuevo"), "Tablas no abre un formulario vacío en silencio");
 });
 
 prueba("formulario: reinicio NUNCA por defecto; fecha del sorteo; cuentas sin salir; estilo de tabla", () => {

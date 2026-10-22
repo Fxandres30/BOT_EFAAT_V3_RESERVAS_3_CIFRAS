@@ -90,15 +90,31 @@ export interface VistaPrevia {
     recordatorios: Recordatorio[];
     aviso_cierre: string | null;
     tabla: { esperados: number; presentes: number; ocupadosOtroSorteo: number; retenidos: number } | null;
-    grupos: { grupo_id: string; nombre: string | null; estado: EstadoGrupo; bloqueo: string | null }[];
+    grupos: {
+        grupo_id: string;
+        nombre: string | null;
+        estado: EstadoGrupo;
+        bloqueo: string | null;
+        /** En la fecha de publicación: listo, programado (el sorteo actual
+         *  cierra antes) o bloqueado por un conflicto real. */
+        estado_previo: EstadoPublicacion;
+        motivo: string | null;
+    }[];
     bloqueos: string[];
     avisos: string[];
     variables: Record<string, string>;
+    estado_publicacion: EstadoPublicacion;
     puede_confirmar: boolean;
 }
 
+export type EstadoPublicacion = "listo" | "programado" | "bloqueado";
+
 export interface ReinicioTabla {
     posible: boolean;
+    /** Hoy no es posible (números del sorteo actual), pero sí al publicar:
+     *  ese sorteo cierra antes (cierra_antes). Se hace al publicar. */
+    diferido?: boolean;
+    cierra_antes?: string;
     /** Lo que vio el usuario: la confirmación solo vale si la tabla sigue igual. */
     huella: string | null;
     liberables: number;
@@ -247,7 +263,7 @@ export const apiSorteos = {
     crear: (config: ConfigSorteo & { plantilla_id?: string | null }) => llamar<Sorteo>("POST", "", config),
     editar: (id: string, config: ConfigSorteo & { version: number; plantilla_id?: string | null }) => llamar<Sorteo>("PUT", `/${id}`, config),
     vistaPrevia: (id: string) => llamar<VistaPrevia>("GET", `/${id}/vista-previa`),
-    confirmar: (id: string, version: number, reinicio?: { confirmado: boolean; huella: string | null }) =>
+    confirmar: (id: string, version: number, reinicio?: { confirmado: boolean; huella: string | null; diferido?: boolean }) =>
         llamar<Sorteo>("POST", `/${id}/confirmar`, { version, confirmacion: true, ...(reinicio ? { reinicio } : {}) }),
     cancelar: (id: string) => llamar<Sorteo>("POST", `/${id}/cancelar`),
     reintentarGrupo: (id: string, grupoId: string) => llamar<Sorteo>("POST", `/${id}/grupos/reintentar`, { grupo_id: grupoId }),

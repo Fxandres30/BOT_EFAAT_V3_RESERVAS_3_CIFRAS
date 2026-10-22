@@ -131,7 +131,6 @@ export function BotonCrearSorteo() {
             <FormularioSorteo
                 key={paso.tipo === "formulario" ? "form-abierto" : "form-cerrado"}
                 open={paso.tipo === "formulario"}
-                sorteo={null}
                 onClose={cerrar}
                 onGuardado={s => setPaso({ tipo: "vista_previa", sorteoId: s.id })}
             />

@@ -27,6 +27,11 @@ const ESTADO_GRUPO: Record<EstadoGrupo, { texto: string; tono: BadgeTone }> = {
     cancelado: { texto: "Cancelado", tono: "neutral" }
 };
 
+// Prefijo del publicador (backend/sorteos/publicador.js) para un grupo que
+// espera a que se resuelva un conflicto real (p. ej. el sorteo actual sigue
+// abierto): no está perdido, se publicará en cuanto se pueda.
+const EN_ESPERA = "En espera: ";
+
 // Un sorteo se puede editar mientras no se haya publicado en ningún grupo.
 // Compartido con el botón «Editar» de /tablas/[precio] (AnuncioSorteoModal).
 export function esEditable(s: Sorteo): boolean {
@@ -88,7 +93,9 @@ export default function ListaSorteos({ sorteos, onVistaPrevia, onEditar, onActua
                         <ul className={styles.grupos}>
                             {(s.grupos || []).map(g => (
                                 <li key={g.id} className={styles.grupo}>
-                                    <Badge tone={ESTADO_GRUPO[g.estado].tono} size="sm">{ESTADO_GRUPO[g.estado].texto}</Badge>
+                                    {g.estado === "pendiente" && g.ultimo_error?.startsWith(EN_ESPERA)
+                                        ? <Badge tone="warning" size="sm">En espera</Badge>
+                                        : <Badge tone={ESTADO_GRUPO[g.estado].tono} size="sm">{ESTADO_GRUPO[g.estado].texto}</Badge>}
                                     {g.grupo_nombre || g.grupo_id}
                                     {g.ultimo_error && g.estado !== "publicado" && <span className={styles.error}>{g.ultimo_error}</span>}
                                     {g.estado === "requiere_revision" && s.estado !== "cancelado" && (

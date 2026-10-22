@@ -26,11 +26,14 @@ import { listarDisenos } from "@/services/tablas/disenos";
 import { TABLA_DISENO_PRESETS } from "@/services/tablas/disenoDefaults";
 import type { TablaDiseno } from "@/components/tablas/disenoTypes";
 import DisenoThumbnail from "@/components/tablas/DisenoThumbnail";
+import { esEditable } from "./ListaSorteos";
 import styles from "./Sorteos.module.css";
 
 interface Props {
     open: boolean;
-    sorteo?: Sorteo | null;
+    /** Sorteo a editar. El formulario lo pide al backend (que comprueba que
+     *  sea del usuario de la sesión); sin él, es un sorteo nuevo. */
+    sorteoId?: string | null;
     onClose: () => void;
     onGuardado: (sorteo: Sorteo) => void;
     /** Valor por número precargado al crear un sorteo nuevo (p. ej. desde /tablas/[precio]). */
@@ -72,16 +75,19 @@ type Form = typeof VACIO;
 
 const CUENTA_VACIA = { nombre: "", tipo: "nequi", numero: "", titular: "" };
 
-// Elección guardada en el sorteo -> valor del selector.
+// Elección guardada en el sorteo -> valor del selector. Un estilo que ya no
+// está en los predefinidos se conserva tal cual ("guardado"): editar el
+// sorteo nunca debe cambiarlo por el diseño actual sin que se elija.
 function disenoAForm(d?: DisenoSorteo): string {
     if (!d || d.origen === "actual") return "actual";
     if (d.origen === "biblioteca" && d.diseno_id) return `biblioteca:${d.diseno_id}`;
     const preset = TABLA_DISENO_PRESETS.find(p => p.nombre === d.nombre);
-    return preset ? `preset:${preset.key}` : "actual";
+    return preset ? `preset:${preset.key}` : "guardado";
 }
 
 // Valor del selector -> elección para el backend (que copia el diseño).
-function formADiseno(valor: string): DisenoSorteo {
+function formADiseno(valor: string, guardado?: DisenoSorteo | null): DisenoSorteo {
+    if (valor === "guardado" && guardado) return guardado;
     if (valor.startsWith("biblioteca:")) return { origen: "biblioteca", diseno_id: valor.slice(11), nombre: null, config: null };
     if (valor.startsWith("preset:")) {
         const p = TABLA_DISENO_PRESETS.find(x => x.key === valor.slice(7));
@@ -131,7 +137,7 @@ function desdeConfig(config: ConfigSorteo, extra: Partial<Form> = {}): Form {
     };
 }
 
-function aConfig(f: Form): ConfigSorteo {
+function aConfig(f: Form, disenoGuardado?: DisenoSorteo | null): ConfigSorteo {
     return {
         modalidad: f.modalidad,
         nombre: f.nombre,
@@ -145,18 +151,55 @@ function aConfig(f: Form): ConfigSorteo {
         publicar_en: isoDesdeColombia(f.publicarEn),
         fecha_sorteo: f.fechaSorteo || (f.publicarEn ? f.publicarEn.slice(0, 10) : null),
         tabla: { reiniciar: f.reiniciarTabla, liberar_bloqueados: f.reiniciarTabla && f.liberarBloqueados },
-        diseno: formADiseno(f.diseno),
+        diseno: formADiseno(f.diseno, disenoGuardado),
         mensajes: { publicacion: f.mensajePublicacion, aviso_cierre: f.avisoCierre },
         recordatorios: f.recordatorios.map(r => ({ minutos_antes_cierre: Number(r.minutos), texto: r.texto })),
         reservas: { liberar_no_pagados: f.liberar, vencimiento_minutos: f.liberar ? Number(f.vencimiento) : null }
     };
 }
 
-export default function FormularioSorteo({ open, sorteo, onClose, onGuardado, valorInicial }: Props) {
+type CargaSorteo =
+    | { tipo: "nuevo" }
+    | { tipo: "cargando" }
+    | { tipo: "ok"; sorteo: Sorteo }
+    | { tipo: "error"; mensaje: string };
+
+export default function FormularioSorteo({ open, sorteoId = null, onClose, onGuardado, valorInicial }: Props) {
 
     // Estado inicial al montar: la página remonta este componente (key) cada
     // vez que se abre, así no hay que "reiniciar" estado dentro de un efecto.
-    const [form, setForm] = useState<Form>(() => (sorteo ? desdeConfig(sorteo.config, { plantillaId: sorteo.plantilla_id || "" }) : { ...VACIO, valor: valorInicial ? String(valorInicial) : "" }));
+    // Al editar, los campos NO se muestran ni se pueden guardar hasta tener
+    // el sorteo real del backend: nunca un formulario vacío por un fallo.
+    const edicion = Boolean(sorteoId);
+    const [carga, setCarga] = useState<CargaSorteo>(edicion ? { tipo: "cargando" } : { tipo: "nuevo" });
+    const [intentoCarga, setIntentoCarga] = useState(0);
+    const sorteo = carga.tipo === "ok" ? carga.sorteo : null;
+    const [form, setForm] = useState<Form>(() => ({ ...VACIO, valor: valorInicial ? String(valorInicial) : "" }));
+
+    useEffect(() => {
+
+        if (!open || !sorteoId) return;
+
+        let vigente = true;
+
+        apiSorteos.obtener(sorteoId).then(r => {
+            if (!vigente) return;
+            if (!r.ok) {
+                setCarga({ tipo: "error", mensaje: r.motivo === "no_encontrado" ? "No encontramos este sorteo en tu cuenta." : describirError(r) });
+                return;
+            }
+            // Mismo criterio que el backend (servicio.editar) y que la lista.
+            if (!esEditable(r.data)) {
+                setCarga({ tipo: "error", mensaje: "Este sorteo ya se publicó en algún grupo o cambió de estado: no se puede editar. Ábrelo en la vista previa." });
+                return;
+            }
+            setForm(desdeConfig(r.data.config, { plantillaId: r.data.plantilla_id || "" }));
+            setCarga({ tipo: "ok", sorteo: r.data });
+        });
+
+        return () => { vigente = false; };
+
+    }, [open, sorteoId, intentoCarga]);
     const [grupos, setGrupos] = useState<GrupoAutorizado[]>([]);
     const [estadoGrupos, setEstadoGrupos] = useState<EstadoGrupos>({ tipo: "cargando" });
     const [cuentaSesion, setCuentaSesion] = useState<string | null>(null);
@@ -300,7 +343,9 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado, va
         setNuevaCuenta(null);
     }
 
-    const disenoElegido = form.diseno.startsWith("preset:")
+    const disenoElegido = form.diseno === "guardado"
+        ? sorteo?.config.diseno?.config || null
+        : form.diseno.startsWith("preset:")
         ? TABLA_DISENO_PRESETS.find(p => p.key === form.diseno.slice(7))?.config || null
         : form.diseno.startsWith("biblioteca:")
             ? disenos.find(d => d.id === form.diseno.slice(11))?.config || null
@@ -315,11 +360,14 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado, va
 
     async function guardar() {
 
+        // Edición sin el sorteo cargado: nunca se envía nada.
+        if (edicion && !sorteo) return;
+
         setGuardando(true);
         setErrores([]);
         setError(null);
 
-        const config = aConfig(form);
+        const config = aConfig(form, sorteo?.config.diseno);
 
         if (!config.publicar_en) {
             setErrores([{ campo: "publicar_en", mensaje: "Indica la fecha y hora de publicación." }]);
@@ -327,7 +375,9 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado, va
             return;
         }
 
-        const r = sorteo
+        // Edición: SIEMPRE actualiza el mismo sorteo (PUT /:id con su versión);
+        // nunca crea otro.
+        const r = edicion && sorteo
             ? await apiSorteos.editar(sorteo.id, { ...config, version: sorteo.version, plantilla_id: form.plantillaId || null })
             : await apiSorteos.crear({ ...config, plantilla_id: form.plantillaId || null });
 
@@ -354,15 +404,27 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado, va
             open={open}
             onClose={onClose}
             size="lg"
-            title={sorteo ? "Editar sorteo programado" : "Nuevo sorteo"}
-            description="Al guardar verás la vista previa. Nada se publica hasta que la revises y confirmes."
+            title={edicion ? "Editar sorteo" : "Nuevo sorteo"}
+            description={edicion
+                ? "Al guardar verás la vista previa y tendrás que confirmarlo otra vez. Nada se publica hasta entonces."
+                : "Al guardar verás la vista previa. Nada se publica hasta que la revises y confirmes."}
             footer={
                 <>
                     <Button variant="secondary" onClick={onClose} disabled={guardando}>Cancelar</Button>
-                    <Button onClick={guardar} loading={guardando}>Guardar y ver vista previa</Button>
+                    {carga.tipo === "error" && (
+                        <Button variant="secondary" onClick={() => { setCarga({ tipo: "cargando" }); setIntentoCarga(n => n + 1); }}>Reintentar</Button>
+                    )}
+                    <Button onClick={guardar} loading={guardando} disabled={edicion && !sorteo}>
+                        {edicion ? "Guardar cambios" : "Guardar y ver vista previa"}
+                    </Button>
                 </>
             }
         >
+            {carga.tipo === "cargando" ? (
+                <p className={styles.ayuda} role="status">Cargando el sorteo…</p>
+            ) : carga.tipo === "error" ? (
+                <p className={`${styles.alerta} ${styles.alertaError}`} role="alert">No se pudo cargar el sorteo: {carga.mensaje}</p>
+            ) : (
             <div className={styles.stack}>
 
                 {error && <p className={`${styles.alerta} ${styles.alertaError}`}>{error}</p>}
@@ -523,6 +585,9 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado, va
                 <section className={styles.seccion}>
                     <h3 className={styles.seccionTitulo}>Tabla de números</h3>
                     <Select label="Estilo de la tabla" value={form.diseno} onChange={e => cambiar("diseno", e.target.value)} error={errorDe("diseno")} hint="Es el diseño de la imagen que se comparte por WhatsApp. Lo verás en la vista previa.">
+                        {form.diseno === "guardado" && sorteo?.config.diseno && (
+                            <option value="guardado">Estilo guardado en este sorteo{sorteo.config.diseno.nombre ? ` (${sorteo.config.diseno.nombre})` : ""}</option>
+                        )}
                         <option value="actual">Diseño actual de esta tabla</option>
                         <optgroup label="Predefinidos">
                             {TABLA_DISENO_PRESETS.map(p => <option key={p.key} value={`preset:${p.key}`}>{p.nombre}</option>)}
@@ -591,13 +656,14 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado, va
                     )}
                 </section>
 
-                {!sorteo && (
+                {!edicion && (
                     <section className={styles.seccion}>
                         <Input label="Guardar también como plantilla" optional value={form.guardarPlantilla} onChange={e => cambiar("guardarPlantilla", e.target.value)} placeholder="Nombre de la plantilla" maxLength={80} />
                     </section>
                 )}
 
             </div>
+            )}
         </Modal>
     );
 

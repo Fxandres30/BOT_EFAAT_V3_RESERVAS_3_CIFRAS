@@ -93,7 +93,10 @@ async function revisarReinicio(usuarioId, sorteo) {
             se_liberarian: seLiberarian,
             se_conservan: seConservan,
             bloqueos
-        }
+        },
+        // Detalle por sorteo (identidad + clase), solo para el backend: decide
+        // si un reinicio hoy imposible se podrá hacer al publicar.
+        porSorteo: r.data.por_sorteo || []
     };
 
 }

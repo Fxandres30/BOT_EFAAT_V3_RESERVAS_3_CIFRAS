@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import FormularioSorteo from "@/components/sorteos/FormularioSorteo";
 import VistaPreviaModal from "@/components/sorteos/VistaPreviaModal";
 import { esEditable } from "@/components/sorteos/ListaSorteos";
-import { apiSorteos, describirError, type Sorteo } from "@/services/sorteos/apiSorteos";
+import { apiSorteos, describirError } from "@/services/sorteos/apiSorteos";
 
 interface Props {
     precio: number;
@@ -17,7 +17,10 @@ interface Props {
 type Paso =
     | { tipo: "buscando" }
     | { tipo: "error"; mensaje: string }
-    | { tipo: "formulario"; sorteo: Sorteo | null }
+    // No hay ningún sorteo programado de este precio que se pueda editar:
+    // se explica y solo se crea uno nuevo si el administrador lo pide.
+    | { tipo: "sin_editable"; publicado: string | null }
+    | { tipo: "formulario"; sorteoId: string | null }
     | { tipo: "vista_previa"; sorteoId: string };
 
 // Botón «Editar» de /tablas/[precio]: abre en esta misma pantalla el flujo
@@ -26,9 +29,10 @@ type Paso =
 // publica al abrirlo: guardar deja el sorteo en borrador y solo se programa
 // si el admin confirma expresamente en la vista previa.
 //
-// Sorteo elegido: el más reciente de este precio que todavía se pueda editar;
-// si ya se publicó, se abre solo su vista previa; si no hay ninguno, el
-// formulario arranca vacío con el valor de esta tabla.
+// Sorteo elegido: el más reciente de este precio que todavía se pueda editar
+// (el formulario lo vuelve a pedir al backend por su id). Antes, si no había
+// ninguno o el detalle fallaba, se abría «Nuevo sorteo» vacío como si fuera
+// la edición: ahora se explica y crear uno nuevo es una decisión explícita.
 export default function AnuncioSorteoModal({ precio, onClose }: Props) {
 
     const [paso, setPaso] = useState<Paso>({ tipo: "buscando" });
@@ -55,21 +59,28 @@ export default function AnuncioSorteoModal({ precio, onClose }: Props) {
                 .sort((a, b) => new Date(b.publicar_en).getTime() - new Date(a.publicar_en).getTime());
 
             if (!delPrecio.length) {
-                setPaso({ tipo: "formulario", sorteo: null });
+                setPaso({ tipo: "sin_editable", publicado: null });
                 return;
             }
 
             // El listado no trae los grupos: hacen falta para saber si ya se
-            // publicó en alguno (mismo criterio que la lista de /sorteos).
+            // publicó en alguno (mismo criterio que la lista de /sorteos). Un
+            // detalle que falla NO se da por editable.
             const detalles = await Promise.all(delPrecio.map(s => apiSorteos.obtener(s.id)));
 
             if (!vivo) return;
 
-            const completos = detalles.map((d, i) => (d.ok ? d.data : delPrecio[i]));
+            const fallo = detalles.find(d => !d.ok);
+            if (fallo && !fallo.ok) {
+                setPaso({ tipo: "error", mensaje: describirError(fallo) });
+                return;
+            }
+
+            const completos = detalles.flatMap(d => (d.ok ? [d.data] : []));
             const editable = completos.find(esEditable);
 
-            if (editable) setPaso({ tipo: "formulario", sorteo: editable });
-            else setPaso({ tipo: "vista_previa", sorteoId: completos[0].id });
+            if (editable) setPaso({ tipo: "formulario", sorteoId: editable.id });
+            else setPaso({ tipo: "sin_editable", publicado: completos[0]?.id || null });
 
         }
 
@@ -80,23 +91,43 @@ export default function AnuncioSorteoModal({ precio, onClose }: Props) {
     }, [precio]);
 
     const textoPrecio = `$${precio.toLocaleString("es-CO")}`;
+    const mensajeEspera = paso.tipo === "error" ? paso.mensaje : "Cargando el sorteo de esta tabla…";
 
     return (
         <>
             <Modal
-                open={paso.tipo === "buscando" || paso.tipo === "error"}
+                open={paso.tipo === "buscando" || paso.tipo === "error" || paso.tipo === "sin_editable"}
                 onClose={onClose}
                 title={`Anuncio del sorteo ${textoPrecio}`}
                 size="sm"
-                footer={<Button variant="secondary" onClick={onClose}>Cerrar</Button>}
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={onClose}>Cerrar</Button>
+                        {paso.tipo === "sin_editable" && paso.publicado && (
+                            <Button variant="secondary" onClick={() => setPaso({ tipo: "vista_previa", sorteoId: paso.publicado as string })}>Ver el publicado</Button>
+                        )}
+                        {paso.tipo === "sin_editable" && (
+                            <Button onClick={() => setPaso({ tipo: "formulario", sorteoId: null })}>Crear sorteo nuevo</Button>
+                        )}
+                    </>
+                }
             >
-                <p>{paso.tipo === "error" ? paso.mensaje : "Cargando el sorteo de esta tabla…"}</p>
+                {paso.tipo === "sin_editable" ? (
+                    <p>
+                        {paso.publicado
+                            ? "El último sorteo programado de esta tabla ya se publicó: no se puede editar."
+                            : "Esta tabla no tiene sorteos programados desde el panel. Los sorteos que el bot detecta en los grupos no se editan aquí."}
+                        {" "}Puedes crear un sorteo nuevo para esta tabla.
+                    </p>
+                ) : (
+                    <p role={paso.tipo === "error" ? "alert" : "status"}>{mensajeEspera}</p>
+                )}
             </Modal>
 
             <FormularioSorteo
-                key={paso.tipo === "formulario" ? `form-${paso.sorteo?.id || "nuevo"}-${paso.sorteo?.version || 0}` : "form-cerrado"}
+                key={paso.tipo === "formulario" ? `form-${paso.sorteoId || "nuevo"}` : "form-cerrado"}
                 open={paso.tipo === "formulario"}
-                sorteo={paso.tipo === "formulario" ? paso.sorteo : null}
+                sorteoId={paso.tipo === "formulario" ? paso.sorteoId : null}
                 valorInicial={precio}
                 onClose={onClose}
                 onGuardado={s => setPaso({ tipo: "vista_previa", sorteoId: s.id })}
