@@ -50,6 +50,9 @@ require("../utils/mensajesEnviados");
 // Diagnóstico del ciclo de vida (Paso 0) — solo observa.
 const cicloMensaje = require("../../diagnostico/cicloMensaje");
 
+// Aislamiento multiusuario: cada cliente solo actúa en SUS grupos autorizados.
+const politicaGrupos = require("../funciones/grupos/politicaGrupos");
+
 module.exports = async ({
 
     sock,
@@ -77,12 +80,47 @@ module.exports = async ({
 
         cicloMensaje.etapa("dispatcher");
 
-        // ¿YA PROCESADO? — persistente: si este mensaje (grupo + key.id) ya
-        // tiene fila en mensajes_grupos_sorteos, ya pasó por el bot en esta
-        // u otra sesión, antes o después de un reinicio. Cero acciones y
-        // sin segunda fila de historial.
-        const identidad = compuertaIngreso.identidadMensaje(message);
+        // CLIENTE — el dueño validado de la sesión que recibió el mensaje
+        // (sesiones.usuario_id, leído por socket.js). Nunca se infiere del
+        // mensaje ni del participante. Sin él no se procesa nada.
+        const clienteUsuarioId = session?.usuarioId || null;
 
+        if (!clienteUsuarioId) {
+
+            console.error(`❌ [AISLAMIENTO] sesión sin cliente dueño (usuario_id) — mensaje descartado [${traceId}]`);
+
+            cicloMensaje.etapa("compuerta", { DECISION: "DESCARTADO_SIN_PROPIETARIO" });
+
+            return;
+
+        }
+
+        const identidad = compuertaIngreso.identidadMensaje(message, clienteUsuarioId);
+
+        // GRUPO AUTORIZADO — un cliente solo procesa (ni historial ni
+        // negocio) los grupos que autorizó en el panel. Autorización
+        // desconocida (error) = no autorizado.
+        if (identidad?.esGrupo) {
+
+            const politica = await politicaGrupos.evaluarGrupo(clienteUsuarioId, identidad.remoteJid);
+
+            if (!politica.permitido) {
+
+                console.log(`⏭️ [GRUPOS AUTORIZADOS] grupo no autorizado para este cliente (${politica.motivo}) — descartado [${traceId}]`);
+
+                cicloMensaje.etapa("compuerta", { DECISION: "DESCARTADO_GRUPO_NO_AUTORIZADO", MOTIVO: politica.motivo });
+
+                return;
+
+            }
+
+        }
+
+        // ¿YA PROCESADO? — persistente: si este mensaje (grupo + key.id) ya
+        // tiene fila de ESTE cliente en mensajes_grupos_sorteos, ya pasó por
+        // su bot en esta u otra sesión, antes o después de un reinicio. Cero
+        // acciones y sin segunda fila de historial. Otro cliente en el mismo
+        // grupo procesa su propia copia.
         if (identidad?.esGrupo && await compuertaIngreso.yaRegistrado(identidad)) {
 
             console.log(`⏭️ [COMPUERTA] mensaje ya registrado/procesado anteriormente — descartado [${traceId}]`);
@@ -142,7 +180,9 @@ module.exports = async ({
 
                 grupoNombre: null,
 
-                usuario: ctx.usuario
+                usuario: ctx.usuario,
+
+                clienteUsuarioId
 
             });
 

@@ -15,6 +15,8 @@
 // ==========================================================================
 
 const assert = require("assert");
+// Suite anterior a la política de grupos autorizados (ver el ayudante).
+require("../utils/politicaGruposPermisiva");
 const path = require("path");
 
 const RAIZ = path.resolve(__dirname, "../..");

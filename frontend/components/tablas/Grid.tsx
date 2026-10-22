@@ -9,8 +9,10 @@ import type { NumeroReserva, PaqueteReserva, EventoActivo } from "./types";
 import { estadoVisualSimplificado, type FiltroEstado } from "./estadoVisual";
 import type { TablaDisenoConfig } from "./disenoTypes";
 import { cssVarsFromConfig } from "./disenoCssVars";
+import type { DatosLiberar, DatosPago, DatosReserva, Resultado } from "@/services/tablas/reservaManual";
 
 interface Props {
+    precio: number;
     numeros: NumeroReserva[];
     paquetes: PaqueteReserva[];
     eventoActivo: EventoActivo | null;
@@ -19,16 +21,16 @@ interface Props {
     filtro: FiltroEstado;
     accionando: string | null;
     diseno: TablaDisenoConfig;
-    onMarcarPagado: (numero: string) => void;
-    onLiberar: (numero: string) => void;
-    onBloquear: (numero: string, motivo?: string) => void;
-    onMarcarEnProceso: (numero: string, minutos?: number) => void;
+    onReservar: (numero: string, datos: DatosReserva) => Promise<Resultado>;
+    onMarcarPagado: (numero: string, datos?: DatosPago) => Promise<Resultado>;
+    onLiberar: (numero: string, datos?: DatosLiberar) => Promise<Resultado>;
     /** Representación exportada/compartida: solo la cuadrícula de números,
      *  sin leyenda ni modal de detalle (ver /tablas/imprimir/[precio]). */
     limpio?: boolean;
 }
 
 export default function Grid({
+    precio,
     numeros,
     paquetes,
     eventoActivo,
@@ -37,10 +39,9 @@ export default function Grid({
     filtro,
     accionando,
     diseno,
+    onReservar,
     onMarcarPagado,
     onLiberar,
-    onBloquear,
-    onMarcarEnProceso,
     limpio = false
 }: Props) {
 
@@ -146,14 +147,14 @@ export default function Grid({
 
             {!limpio && (
                 <NumeroDetalleModal
+                    precio={precio}
                     numero={seleccionado}
                     paquete={seleccionado ? paquetePorNumero.get(seleccionado.numero) || null : null}
                     accionando={accionando}
                     onClose={() => setSeleccionado(null)}
+                    onReservar={onReservar}
                     onMarcarPagado={onMarcarPagado}
                     onLiberar={onLiberar}
-                    onBloquear={onBloquear}
-                    onMarcarEnProceso={onMarcarEnProceso}
                 />
             )}
 

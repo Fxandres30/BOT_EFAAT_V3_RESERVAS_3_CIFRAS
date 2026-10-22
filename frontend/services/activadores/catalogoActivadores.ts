@@ -610,10 +610,10 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 sensible: true,
                 activadores: [{ tipo: "panel", descripcion: "Acción manual en la página Tablas." }],
                 condiciones: ["Solo números ya reservados de la cuenta."],
-                accion: "Marca el número como pagado y registra la actividad.",
+                accion: "Marca el número como pagado en el servidor (con método de pago y observaciones opcionales) y lo deja en el historial.",
                 lee: ["tabla de números"],
-                escribe: ["tabla de números (reservado → pagado)", "actividad de la tabla"],
-                codigo: [{ archivo: "frontend/services/tablas/marcarPagado.ts", simbolo: "marcarPagado" }],
+                escribe: ["tabla de números (reservado → pagado)", "actividad de la tabla", "historial de auditoría"],
+                codigo: [{ archivo: "backend/services/reservaManual.js", simbolo: "pagarManual" }],
                 panel: [{ pagina: "Tablas", ruta: "/tablas", que: "Acciones sobre cada número." }],
                 edicion: { nivel: "panel", detalle: "Acción manual." }
             },
@@ -984,19 +984,23 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
             },
             {
                 id: "acciones-numero",
-                nombre: "Liberar, bloquear o marcar en proceso un número",
-                resumen: "Cambios manuales sobre un número de la tabla.",
+                nombre: "Reservar a mano, registrar el pago, liberar o desbloquear un número",
+                resumen: "Intervención manual del propietario sobre un número de la tabla.",
                 estado: "funciona",
                 sensible: true,
-                activadores: [{ tipo: "panel", descripcion: "Acciones sobre cada número en Tablas." }],
-                condiciones: ["Bloquear y «en proceso» solo sobre números libres."],
-                accion: "Cambia el estado del número y registra la actividad.",
-                lee: ["tabla de números"],
-                escribe: ["tabla de números", "actividad de la tabla"],
+                activadores: [{ tipo: "panel", descripcion: "Ventana de cada número en Tablas." }],
+                condiciones: [
+                    "Reservar: número libre, sorteo activo del precio y abierto, grupo autorizado y contacto de tus contactos (mismas reglas que el bot).",
+                    "Registrar el pago: solo números reservados.",
+                    "Liberar, anular un pago o desbloquear: con confirmación; anular un pago exige motivo."
+                ],
+                accion: "Cambia el estado del número en el servidor, sin enviar mensajes, y lo deja en el historial con el operador.",
+                lee: ["tabla de números", "contactos", "sorteo activo"],
+                escribe: ["tabla de números", "actividad de la tabla", "historial de auditoría"],
                 codigo: [
-                    { archivo: "frontend/services/tablas/liberarNumero.ts", simbolo: "liberarNumero" },
-                    { archivo: "frontend/services/tablas/bloquearNumero.ts", simbolo: "bloquearNumero" },
-                    { archivo: "frontend/services/tablas/marcarEnProceso.ts", simbolo: "marcarEnProceso" }
+                    { archivo: "backend/services/reservaManual.js", simbolo: "reservarManual" },
+                    { archivo: "backend/bot/funciones/reservas/reservarNumeros.js", simbolo: "reservarNumeros" },
+                    { archivo: "backend/routes/tablas.js", simbolo: "reservaManual" }
                 ],
                 panel: [{ pagina: "Tablas", ruta: "/tablas", que: "Acciones sobre cada número." }],
                 edicion: { nivel: "panel", detalle: "Acción manual." }

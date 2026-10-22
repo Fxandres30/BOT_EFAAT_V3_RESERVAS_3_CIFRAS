@@ -16,6 +16,8 @@
 // ==========================================================================
 
 const assert = require("assert");
+// Suite anterior a la política de grupos autorizados (ver el ayudante).
+require("../utils/politicaGruposPermisiva");
 const path = require("path");
 
 const RAIZ = path.resolve(__dirname, "../..");
@@ -244,7 +246,7 @@ async function main() {
         const { dispatcher, llamadas } = crearDispatcher();
         const { sendMessage } = crearSend();
         const ecos = [];
-        const sock = crearSocketFake((eco) => ecos.push(dispatcher({ sock, message: eco, session: {}, tipo: "append" })));
+        const sock = crearSocketFake((eco) => ecos.push(dispatcher({ sock, message: eco, session: { usuarioId: "tenant-test" }, tipo: "append" })));
         const enviado = await sendMessage({ sock, jid: GRUPO, text: "Sin números disponibles por el momento familia" });
         await new Promise(res => setImmediate(res)); // el eco llega en process.nextTick
         await Promise.all(ecos);
@@ -259,7 +261,7 @@ async function main() {
         const { dispatcher, llamadas } = crearDispatcher();
         const { sendImage } = crearSend();
         const ecos = [];
-        const sock = crearSocketFake((eco) => ecos.push(dispatcher({ sock, message: eco, session: {}, tipo: "append" })));
+        const sock = crearSocketFake((eco) => ecos.push(dispatcher({ sock, message: eco, session: { usuarioId: "tenant-test" }, tipo: "append" })));
         await sendImage({ sock, jid: GRUPO, image: Buffer.from("x"), caption: "Tabla 23 45" });
         await new Promise(res => setImmediate(res)); // el eco llega en process.nextTick
         await Promise.all(ecos);
@@ -283,7 +285,7 @@ async function main() {
     await test("2d. mensaje escrito A MANO desde el teléfono del bot (fromMe, id no registrado) -> pipeline completo como antes", async () => {
         mensajesEnviados.reiniciar();
         const { dispatcher, llamadas } = crearDispatcher();
-        await dispatcher({ sock: {}, message: { key: { id: "MANUAL-1", remoteJid: GRUPO, fromMe: true }, message: { conversation: "SORTEO …" } }, session: {}, tipo: "notify" });
+        await dispatcher({ sock: {}, message: { key: { id: "MANUAL-1", remoteJid: GRUPO, fromMe: true }, message: { conversation: "SORTEO …" } }, session: { usuarioId: "tenant-test" }, tipo: "notify" });
         assert.strictEqual(llamadas.guardar, 1);
         assert.strictEqual(llamadas.clasificar, 1);
         assert.strictEqual(llamadas.registrarSticker, 1);
@@ -295,7 +297,7 @@ async function main() {
         mensajesEnviados.reiniciar();
         mensajesEnviados.registrarEnviado("ID-X");
         const { dispatcher, llamadas } = crearDispatcher();
-        await dispatcher({ sock: {}, message: { key: { id: "ID-X", remoteJid: GRUPO, participant: CLIENTE_LID, fromMe: false }, message: { conversation: "23 45" } }, session: {}, tipo: "notify" });
+        await dispatcher({ sock: {}, message: { key: { id: "ID-X", remoteJid: GRUPO, participant: CLIENTE_LID, fromMe: false }, message: { conversation: "23 45" } }, session: { usuarioId: "tenant-test" }, tipo: "notify" });
         assert.strictEqual(llamadas.eventHandler, 1);
     });
 

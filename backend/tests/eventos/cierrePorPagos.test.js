@@ -15,6 +15,8 @@
 process.env.GROUP_QUEUE_DELAY_MS = "0";
 
 const assert = require("assert");
+// Suite anterior a la política de grupos autorizados (ver el ayudante).
+require("../utils/politicaGruposPermisiva");
 const path = require("path");
 const { execSync } = require("child_process");
 const fs = require("fs");
@@ -94,7 +96,7 @@ function crearSock({ falla = false } = {}) {
     return {
         llamadas,
         sock: {
-            context: { sessionId: "s1" },
+            context: { sessionId: "s1", usuarioId: "tenant-1" },
             groupSettingUpdate: async (grupoId, ajuste) => {
                 llamadas.push({ grupoId, ajuste });
                 if (falla) throw new Error("WhatsApp no confirmó el cierre (simulado)");
@@ -227,11 +229,25 @@ prueba("5b. reintento: el worker real (workerEventos) reintenta en el siguiente 
 
 });
 
-prueba("6a. la hora de cierre sigue igual: verificarHoraCierre.js idéntico a HEAD", async () => {
+prueba("6a. la hora de cierre sigue igual, ahora siempre en hora de Colombia (solo cambia el cálculo de la hora respecto a HEAD)", async () => {
 
     const actual = fs.readFileSync(r("bot/funciones/eventos/lifecycle/verificarHoraCierre.js"), "utf8").replace(/\r\n/g, "\n");
     const head = execSync("git show HEAD:backend/bot/funciones/eventos/lifecycle/verificarHoraCierre.js", { cwd: RAIZ, encoding: "utf8" }).replace(/\r\n/g, "\n");
-    assert.strictEqual(actual, head);
+    // Fuera del bloque de la hora actual, el archivo es el de HEAD.
+    const recortadoActual = actual.replace(/\n    \/\/ Hora del día EN COLOMBIA[\s\S]*?    const horaActual =[\s\S]*?;\n/, "\n<HORA>\n");
+    const recortadoHead = head.replace(/\n    const horaActual =[\s\S]*?;\n/, "\n<HORA>\n");
+    assert.ok(recortadoActual.includes("<HORA>") && recortadoHead.includes("<HORA>"));
+    assert.strictEqual(recortadoActual, recortadoHead);
+    assert.ok(/timeZone: "America\/Bogota"/.test(actual) && !/getHours\(\)/.test(actual));
+
+    // Comportamiento (instantes UTC fijos; da igual la zona del servidor):
+    const { verificarHoraCierre: v } = require(r("bot/funciones/eventos/lifecycle/verificarHoraCierre.js"));
+    const ev = { hora_cierre: "22:26", fecha_evento: "2026-10-16" };
+    assert.strictEqual(v(ev, new Date("2026-10-16T22:30:00Z")), false, "16/10 17:30 Colombia: abierto");
+    assert.strictEqual(v(ev, new Date("2026-10-17T03:25:00Z")), false, "16/10 22:25 Colombia: abierto");
+    assert.strictEqual(v(ev, new Date("2026-10-17T03:26:00Z")), true, "16/10 22:26 Colombia: cierra");
+    assert.strictEqual(v({ ...ev, fecha_evento: "2026-10-17" }, new Date("2026-10-17T03:30:00Z")), false, "sorteo de mañana: no cierra hoy");
+    assert.strictEqual(v({ hora_cierre: "22:26" }, new Date("2026-10-17T03:30:00Z")), true, "sin fecha: por la hora de siempre");
 
 });
 

@@ -43,6 +43,7 @@ function crearCliente({ usuario, filas = {} }) {
                 update(v) { q.update = v; return b; },
                 eq(c, v) { q.filtros.push([c, v]); return b; },
                 order() { return b; },
+                limit() { return b; },
                 then(ok, ko) {
                     const datos = (filas[tabla] || []).filter(f => q.filtros.every(([c, v]) => f[c] === v));
                     return Promise.resolve({ data: datos, error: null }).then(ok, ko);
@@ -70,6 +71,8 @@ function cargarTs(rutaAbs) {
 }
 
 const { obtenerEventos } = cargarTs(path.join(FRONT, "services/eventos/obtenerEventos.ts"));
+const { obtenerGruposConversacion } = cargarTs(path.join(FRONT, "services/chats/obtenerGruposConversacion.ts"));
+const { obtenerMensajesGrupo } = cargarTs(path.join(FRONT, "services/chats/obtenerMensajesGrupo.ts"));
 const { updateSession, soloCamposEditables } = cargarTs(path.join(FRONT, "services/sessions/updateSession.ts"));
 
 const EVENTOS = {
@@ -145,6 +148,49 @@ prueba("/eventos: A y B, cada uno solo lo suyo; filas sin dueño no aparecen par
         const { cliente } = crearCliente({ usuario, filas });
         assert.deepStrictEqual((await obtenerEventos(cliente)).map(e => e.grupo_id), esperado);
     }
+});
+
+// Chats: el mismo grupo puede tener a los dos clientes (cada uno con su bot).
+const CHATS = {
+    mensajes_grupos_sorteos: [
+        { id: 1, grupo_id: "compartido@g.us", grupo_nombre: "Compartido", cliente_usuario_id: A, texto: "copia del bot de A" },
+        { id: 2, grupo_id: "compartido@g.us", grupo_nombre: "Compartido", cliente_usuario_id: B, texto: "copia del bot de B" },
+        { id: 3, grupo_id: "soloB@g.us", grupo_nombre: "Solo B", cliente_usuario_id: B, texto: "de B" },
+        { id: 4, grupo_id: "viejo@g.us", grupo_nombre: "Histórico", cliente_usuario_id: null, texto: "sin cliente" }
+    ]
+};
+
+prueba("chats: A y B solo ven los grupos y mensajes que recibió SU bot (también en un grupo compartido)", async () => {
+    for (const [usuario, grupos, textos] of [[A, ["compartido@g.us"], ["copia del bot de A"]], [B, ["compartido@g.us", "soloB@g.us"], ["copia del bot de B"]]]) {
+        const { cliente, consultas } = crearCliente({ usuario, filas: CHATS });
+        const { data } = await obtenerGruposConversacion(500, cliente);
+        assert.deepStrictEqual(data.map(g => g.grupo_id).sort(), grupos.sort());
+        const r = await obtenerMensajesGrupo("compartido@g.us", 200, cliente);
+        assert.deepStrictEqual(r.data.map(m => m.texto), textos);
+        assert.ok(consultas.every(q => q.filtros.some(([c, v]) => c === "cliente_usuario_id" && v === usuario)), "siempre filtra por el usuario de la sesión");
+    }
+});
+
+prueba("chats: sin sesión -> nada y no consulta la tabla; el historial sin cliente no se muestra a nadie", async () => {
+    const { cliente, consultas } = crearCliente({ usuario: null, filas: CHATS });
+    assert.deepStrictEqual((await obtenerGruposConversacion(500, cliente)).data, []);
+    assert.deepStrictEqual((await obtenerMensajesGrupo("viejo@g.us", 200, cliente)).data, []);
+    assert.strictEqual(consultas.length, 0);
+    const { cliente: deA } = crearCliente({ usuario: A, filas: CHATS });
+    assert.deepStrictEqual((await obtenerMensajesGrupo("viejo@g.us", 200, deA)).data, []);
+});
+
+prueba("mensajes_grupos_sorteos desde el navegador: toda consulta filtra por cliente_usuario_id", async () => {
+    let vistas = 0;
+    for (const archivo of fuentesPanel()) {
+        const src = fs.readFileSync(archivo, "utf8");
+        for (const m of src.matchAll(/\.from\(\s*["']mensajes_grupos_sorteos["']\s*\)/g)) {
+            vistas++;
+            const cadena = src.slice(m.index, src.indexOf(";", m.index));
+            assert.ok(/\.eq\(\s*["']cliente_usuario_id["']/.test(cadena), `${path.relative(FRONT, archivo)}: chats sin filtro de cliente`);
+        }
+    }
+    assert.ok(vistas >= 3, `se revisaron ${vistas}`);
 });
 
 prueba("updateSession: solo envía nombre aunque lleguen usuario_id/activa/principal/estado", async () => {

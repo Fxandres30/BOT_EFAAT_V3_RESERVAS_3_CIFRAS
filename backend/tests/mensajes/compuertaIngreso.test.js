@@ -17,6 +17,8 @@
 // ==========================================================================
 
 const assert = require("assert");
+// Suite anterior a la política de grupos autorizados (ver el ayudante).
+require("../utils/politicaGruposPermisiva");
 const path = require("path");
 const { EventEmitter } = require("events");
 
@@ -38,6 +40,9 @@ function crearFakeSupabase({ unico = false } = {}) {
     function builder(tabla) {
 
         const filtros = [];
+        // .or("col.eq.X,col.is.null") como PostgREST (alternativas de una
+        // misma llamada; varias llamadas se combinan con AND).
+        const alternativas = [];
         let operacion = "select";
         let fila = null;
         let limite = null;
@@ -67,7 +72,8 @@ function crearFakeSupabase({ unico = false } = {}) {
                 return { data: null, error: null };
             }
 
-            let res = filas.filter(f => filtros.every(([c, v]) => f[c] === v));
+            let res = filas.filter(f => filtros.every(([c, v]) => f[c] === v)
+                && alternativas.every(alts => alts.some(([c, op, v]) => (op === "eq" ? f[c] === v : f[c] == null))));
             if (limite !== null) res = res.slice(0, limite);
             return { data: single ? (res[0] || null) : res, error: null };
 
@@ -78,6 +84,7 @@ function crearFakeSupabase({ unico = false } = {}) {
             insert(f) { operacion = "insert"; fila = f; return b; },
             update(f) { operacion = "update"; fila = f; return b; },
             eq(c, v) { filtros.push([c, v]); return b; },
+            or(texto) { alternativas.push(texto.split(",").map(t => { const [c, op, ...v] = t.split("."); return [c, op, v.join(".")]; })); return b; },
             limit(n) { limite = n; return b; },
             single() { single = true; return b; },
             maybeSingle() { single = true; return b; },

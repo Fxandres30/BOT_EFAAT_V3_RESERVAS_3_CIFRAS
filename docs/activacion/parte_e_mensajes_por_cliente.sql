@@ -2,6 +2,11 @@
 -- PARTE E — DISEÑO (NO APLICADA, NO ES UNA MIGRACIÓN, NO EJECUTAR TODAVÍA)
 -- Chats por cliente: mensajes_grupos_sorteos con dueño.
 --
+-- ⚠️ SUSTITUIDA (2026-10-21) por las migraciones oficiales
+--    backend/supabase_migrations/028_mensajes_por_cliente.sql (columna +
+--    deduplicación por cliente) y 029_rls_mensajes_por_cliente.sql (RLS con
+--    guardias). Usar esas; este archivo queda como registro del diseño.
+--
 -- HALLAZGO (auditoría 2026-10-21):
 --   - mensajes_grupos_sorteos.usuario_id es el PARTICIPANTE de WhatsApp que
 --     escribió (bot/funciones/mensajes/guardarMensajeGrupo.js), NO el

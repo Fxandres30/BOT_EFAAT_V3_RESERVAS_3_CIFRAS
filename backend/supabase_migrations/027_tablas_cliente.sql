@@ -26,13 +26,14 @@
 -- DEPENDENCIAS (orden obligatorio):
 --   1. Parte A (docs/activacion/propuesta_rls_tablas_antiguas.sql) aplicada y
 --      validada. La guardia de abajo ABORTA si falta.
---   2. Diagnóstico D17 (docs/activacion/diagnostico_rls_solo_lectura.sql):
---      si hay una unicidad solo sobre numero, la cuadrícula de un cliente
---      nuevo no puede crearse (la función falla y no toca nada). Esta
---      migración NO cambia restricciones de las tablas físicas.
---   3. Desplegar backend y panel (que leen tablas_cliente) DESPUÉS de esta
---      migración. El código anterior la ignora; el nuevo funciona sin ella
---      (usa los 8 precios base).
+--   2. Migración 033 (UNIQUE(numero) -> UNIQUE(usuario_id, numero)). El
+--      diagnóstico de producción (2026-10-22) confirmó UNIQUE(numero) en las
+--      2 tablas. La guardia de abajo ABORTA si queda una unicidad sin
+--      usuario_id. Esta migración NO cambia restricciones de las tablas.
+--   3. Backend y panel pueden desplegarse antes o después: el código
+--      anterior la ignora y el nuevo funciona sin ella (usa los 8 precios
+--      base). Orden recomendado (auditoría 2026-10-22): desplegar ANTES de la
+--      Parte A y de esta migración; ver docs/activacion/ACTIVACION.md §2d.
 --
 -- Idempotente. Una sola transacción: si algo falla, no queda nada aplicado.
 -- Ejecutar manualmente en el SQL Editor de Supabase.
@@ -64,6 +65,19 @@ begin
 
         if has_table_privilege('anon', format('public.%I', t), 'select, insert, update, delete') then
             raise exception '027 abortada: anon conserva permisos sobre %. Aplica y valida antes la Parte A.', t;
+        end if;
+
+        -- Una unicidad que no incluya usuario_id (p. ej. UNIQUE(numero))
+        -- impide la cuadrícula de cualquier otro cliente: antes, la 033.
+        if exists (
+            select 1 from pg_index x
+            where x.indrelid = to_regclass(format('public.%I', t))
+              and x.indisunique and not x.indisprimary
+              and not exists (select 1 from pg_attribute a
+                              where a.attrelid = x.indrelid and a.attname = 'usuario_id'
+                                and a.attnum = any (x.indkey::smallint[]))
+        ) then
+            raise exception '027 abortada: % tiene una unicidad sin usuario_id (UNIQUE(numero)). Aplica antes la 033.', t;
         end if;
 
     end loop;

@@ -226,7 +226,7 @@ prueba("11. no destructiva: columnas y filas de las tablas de reservas intactas"
 //     update ... set estado, fecha_pago, hora_pago, [identidad]
 //     where usuario_global_id = $u and usuario_id = $tenant and estado = 'reservado'
 //       and identidad_evento_real = $id     (varias filas a la vez)
-prueba("12. PANEL: UPDATE real de marcarPagado.ts (authenticated) -> compra persistente en el grupo de la reserva", async () => {
+prueba("12. PANEL: UPDATE de pago como authenticated (el de la antigua marcarPagado.ts) -> compra persistente en el grupo de la reserva", async () => {
     const db = await crearDb({ semillas: `insert into public."5k_15k_reservas_2_cifras" (numero, estado, grupo_id, usuario_id, usuario_global_id) values ('21', 'reservado', 'G-panel@g.us', '${TENANT}', '${U1}');` });
     await db.exec("set role authenticated");
     await db.query(`update public."5k_15k_reservas_2_cifras" set estado = 'pagado', fecha_pago = $1, hora_pago = $2

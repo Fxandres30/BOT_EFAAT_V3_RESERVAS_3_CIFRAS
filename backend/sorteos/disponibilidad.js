@@ -8,15 +8,16 @@
 //     grupo tiene una sola fila en eventos_bot: publicar encima dejaría
 //     huérfanas las reservas del sorteo activo).
 //   - La tabla de números del cliente debe existir completa y no tener
-//     números reservados/pagados de OTRO sorteo: nunca se reinicia sola (eso
-//     borraría el historial de ese sorteo); el administrador la reinicia
-//     desde Tablas si corresponde.
+//     números reservados/pagados de OTRO sorteo: nunca se reinicia sola. El
+//     sorteo puede pedir el reinicio seguro (reinicioTabla.js, migración
+//     030: archiva y libera, nunca toca un sorteo activo) y confirmarlo en la
+//     vista previa; entonces esos números dejan de bloquear (seReiniciara).
 // ==========================================================================
 
 const supabase = require("../lib/supabase");
 const { numerosEsperados } = require("../bot/funciones/eventos/sorteoReal");
 
-async function revisarTabla({ usuarioId, tabla, cifras, cantidad, identidad }) {
+async function revisarTabla({ usuarioId, tabla, cifras, cantidad, identidad, seReiniciara = false }) {
 
     const bloqueos = [];
     const avisos = [];
@@ -45,8 +46,10 @@ async function revisarTabla({ usuarioId, tabla, cifras, cantidad, identidad }) {
         bloqueos.push(`La tabla de números está incompleta (${presentes.size}/${esperados.size}). Créala o reiníciala desde Tablas.`);
     }
 
-    if (ocupadosOtro > 0) {
-        bloqueos.push(`La tabla tiene ${ocupadosOtro} número(s) reservados o pagados de otro sorteo. Reiníciala desde Tablas antes de publicar.`);
+    if (ocupadosOtro > 0 && seReiniciara) {
+        avisos.push(`Al confirmar se reiniciará la tabla: ${ocupadosOtro} número(s) reservados o pagados de sorteos anteriores se archivarán (no se borran) y quedarán libres.`);
+    } else if (ocupadosOtro > 0) {
+        bloqueos.push(`La tabla tiene ${ocupadosOtro} número(s) reservados o pagados de otro sorteo. Edita el sorteo y elige «Reiniciar tabla antes de programar» (se archivan, no se borran; nunca se tocan los de un sorteo activo).`);
     }
 
     if (retenidos > 0) {
@@ -68,26 +71,34 @@ async function revisarGrupo({ usuarioId, grupoId, identidad, autorizados }) {
         return { bloqueo: "El grupo no está autorizado para este usuario.", avisos: [] };
     }
 
+    // Todas las filas del grupo: con varios clientes puede haber una por
+    // cliente (antes .maybeSingle() fallaba y el mensaje era confuso).
     const { data, error } = await supabase
         .from("eventos_bot")
         .select("id, usuario_id, activo, identidad_evento_real, nombre_evento, hora_fin")
-        .eq("grupo_id", grupoId)
-        .maybeSingle();
+        .eq("grupo_id", grupoId);
 
     if (error) {
         console.error("❌ [SORTEOS] no se pudo revisar el grupo:", error.message);
         return { bloqueo: "No pudimos revisar este grupo en este momento. Inténtalo de nuevo en unos minutos.", avisos: [] };
     }
 
-    if (data?.activo && data.identidad_evento_real !== identidad) {
+    const propio = (data || []).find(f => f.usuario_id === usuarioId) || null;
+
+    if (propio?.activo && propio.identidad_evento_real !== identidad) {
         return {
-            bloqueo: `El grupo tiene un sorteo activo (${data.nombre_evento || "sin nombre"} ${data.hora_fin || ""}). Espera a que cierre.`,
+            bloqueo: `El grupo tiene un sorteo activo (${propio.nombre_evento || "sin nombre"} ${propio.hora_fin || ""}). Espera a que cierre o programa la publicación para después del cierre.`,
             avisos: [],
-            eventoActual: data
+            eventoActual: propio
         };
     }
 
-    return { bloqueo: null, avisos: [], eventoActual: data || null };
+    // Sorteo activo de OTRO cliente en el mismo grupo: no se revela cuál.
+    if ((data || []).some(f => f.usuario_id !== usuarioId && f.activo)) {
+        return { bloqueo: "Otra cuenta tiene un sorteo activo en este grupo. Elige otro grupo o espera a que termine.", avisos: [], eventoActual: propio };
+    }
+
+    return { bloqueo: null, avisos: [], eventoActual: propio };
 
 }
 

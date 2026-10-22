@@ -270,8 +270,49 @@ async function esEventoDeSorteoProgramado(eventoBotId) {
 
 }
 
+// ------------------------------------------------- diseño y números ---
+
+// Diseño de la biblioteca DEL USUARIO (tabla_disenos, 010). Ajeno = null.
+async function obtenerDisenoPropio(usuarioId, id) {
+    const { data, error } = await supabase.from("tabla_disenos").select("id, nombre, config")
+        .eq("usuario_id", usuarioId).eq("id", id).maybeSingle();
+    return resultado(data, error);
+}
+
+// Diseño activo de la tabla de ese precio (tabla_configuracion_visual, 010).
+async function obtenerConfigVisual(usuarioId, precio) {
+    const { data, error } = await supabase.from("tabla_configuracion_visual").select("config, diseno_origen_id")
+        .eq("usuario_id", usuarioId).eq("precio", precio).maybeSingle();
+    return resultado(data, error);
+}
+
+// Estilo guardado en el sorteo programado que originó ESE evento del
+// cliente (eventos_bot.id -> identidad_evento_real -> sorteos_programados).
+// Todo filtrado por usuario_id: un evento o sorteo ajeno da null. Sin
+// sorteo programado (evento creado a mano) también null.
+async function disenoDelEvento(usuarioId, eventoId) {
+    const { data: evento, error } = await supabase.from("eventos_bot").select("identidad_evento_real")
+        .eq("usuario_id", usuarioId).eq("id", eventoId).maybeSingle();
+    if (error || !evento?.identidad_evento_real) return resultado(null, error);
+    const { data, error: errorSorteo } = await supabase.from("sorteos_programados").select("config")
+        .eq("usuario_id", usuarioId).eq("identidad_evento_real", evento.identidad_evento_real)
+        .order("creado_en", { ascending: false }).limit(1);
+    return resultado(data?.[0]?.config?.diseno || null, errorSorteo);
+}
+
+// Número + estado de la cuadrícula del cliente (sin datos personales).
+async function estadoNumeros(usuarioId, tabla) {
+    const { data, error } = await supabase.from(tabla).select("numero, estado, identidad_evento_real")
+        .eq("usuario_id", usuarioId).order("numero", { ascending: true });
+    return resultado(data, error);
+}
+
 module.exports = {
     gruposAutorizados,
+    obtenerDisenoPropio,
+    obtenerConfigVisual,
+    disenoDelEvento,
+    estadoNumeros,
     resumenGrupos,
     listarCuentas,
     cuentasActivasPorId,

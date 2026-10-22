@@ -82,7 +82,7 @@ async function conectar(manager, ids) {
         const sock = manager.get(id);
         sock.user = { id: `${id}:1@s.whatsapp.net` };
         emitir(sock, "open");
-        await esperarHasta(() => evaluaciones.length === ids.indexOf(id) + 1, { mensaje: `evaluación de ${id}` });
+        await esperarHasta(() => evaluaciones.length === ids.indexOf(id) + 1, { maxVueltas: 20000, mensaje: `evaluación de ${id}` });
         await Promise.all(evaluaciones);
     }
     manager.evaluarConexion = original;
@@ -108,22 +108,26 @@ const CLIENTE_2 = "cliente-2";
         await conectar(manager, ["A", "B"]);
         emitir(manager.get("A"), "close", 401);
         await flush(40);
-        assert.notStrictEqual(manager.getActiveSession(), "B", "nunca el WhatsApp de otro cliente");
-        assert.strictEqual(manager.getActiveSession(), null);
+        // Multisesión: B ya era la activa DE SU cliente y lo sigue siendo;
+        // el cliente 1 queda sin sesión (nunca pasa a usar la de B).
+        assert.strictEqual(manager.getSesionActivaDe(CLIENTE_1), null, "nunca el WhatsApp de otro cliente");
+        assert.strictEqual(manager.getSesionActivaDe(CLIENTE_2), "B", "el cliente 2 no se ve afectado");
     });
 
     await test("failover: pasa a otra sesión del MISMO cliente aunque otra ajena sea «preferida»", async () => {
         const { manager } = crearEntorno({ sesionesIniciales: [sesion("A", CLIENTE_1), sesion("B", CLIENTE_2, { principal: true }), sesion("C", CLIENTE_1)] });
         await conectar(manager, ["A", "B", "C"]);
         emitir(manager.get("A"), "close", 401);
-        await esperarHasta(() => manager.getActiveSession() === "C", { mensaje: "debería pasar a C (del mismo cliente)" });
+        await esperarHasta(() => manager.getSesionActivaDe(CLIENTE_1) === "C", { mensaje: "debería pasar a C (del mismo cliente)" });
+        assert.strictEqual(manager.getSesionActivaDe(CLIENTE_2), "B");
     });
 
     await test("failover: entre varias propias, elige la preferida de ese cliente", async () => {
         const { manager } = crearEntorno({ sesionesIniciales: [sesion("A", CLIENTE_1), sesion("C", CLIENTE_1), sesion("D", CLIENTE_1, { principal: true }), sesion("B", CLIENTE_2, { principal: true })] });
         await conectar(manager, ["A", "C", "D", "B"]);
         emitir(manager.get("A"), "close", 401);
-        await esperarHasta(() => manager.getActiveSession() === "D", { mensaje: "debería pasar a D (preferida del cliente 1)" });
+        await esperarHasta(() => manager.getSesionActivaDe(CLIENTE_1) === "D", { mensaje: "debería pasar a D (preferida del cliente 1)" });
+        assert.strictEqual(manager.getSesionActivaDe(CLIENTE_2), "B");
     });
 
     await test("failover: desconexión manual de la activa (panel) tampoco pasa a la sesión de otro cliente", async () => {
@@ -131,7 +135,8 @@ const CLIENTE_2 = "cliente-2";
         await conectar(manager, ["A", "B"]);
         await manager.stop("A");
         await flush(20);
-        assert.strictEqual(manager.getActiveSession(), null);
+        assert.strictEqual(manager.getSesionActivaDe(CLIENTE_1), null);
+        assert.strictEqual(manager.getSesionActivaDe(CLIENTE_2), "B");
     });
 
     await test("failover: si no se conoce el dueño de la sesión que cae (fila borrada) -> sin failover", async () => {

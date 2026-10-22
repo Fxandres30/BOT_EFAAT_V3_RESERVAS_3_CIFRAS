@@ -1,6 +1,7 @@
 const supabase = require("../../../lib/supabase");
 const { soloDelCliente } = require("./filtroCliente");
 const { validarFormatoNumero } = require("./extraerNumeros");
+const { registrarAuditoria } = require("./auditoriaReservas");
 
 async function reservarNumeros({
 
@@ -9,7 +10,16 @@ async function reservarNumeros({
     usuario,
     comprador,
     contacto,
-    lib
+    lib,
+
+    // Quién origina la reserva: "bot" (mensaje de WhatsApp, por defecto) o
+    // "manual" (panel, services/reservaManual.js). `operador` = usuario
+    // autenticado del panel ({ id, email }, sacado del token en el backend);
+    // `auditoria` = { motivo, observaciones, solicitudId, precio }. Solo se
+    // usan para el registro: la regla de negocio es exactamente la misma.
+    origen = "bot",
+    operador = null,
+    auditoria = {}
 
 }) {
 
@@ -190,10 +200,13 @@ async function reservarNumeros({
                     detalle: {
                         comprador: nombre,
                         contacto: telefono,
-                        grupo_nombre: evento.grupo_nombre
+                        grupo_nombre: evento.grupo_nombre,
+                        origen
                     },
 
-                    realizado_por: "bot"
+                    realizado_por: origen === "manual"
+                        ? `panel:${operador?.email || operador?.id || "desconocido"}`
+                        : "bot"
 
                 })));
 
@@ -202,6 +215,40 @@ async function reservarNumeros({
     } catch (errorActividad) {
 
         console.error("⚠ No se pudo registrar actividad de reserva:", errorActividad);
+
+    }
+
+    // Auditoría inmutable (reservas_auditoria, migración 032). Best-effort:
+    // nunca lanza ni revierte la reserva ya guardada.
+    if (evento.usuario_id) {
+
+        const manual = origen === "manual";
+
+        await registrarAuditoria(data.map((fila) => ({
+
+            usuario_id: evento.usuario_id,
+            operador_id: manual ? operador?.id || null : null,
+            operador_email: manual ? operador?.email || null : null,
+            origen: manual ? "manual" : "bot",
+            accion: "reservar",
+            tabla: evento.tabla,
+            precio: auditoria.precio ?? (Number(evento.valor) || null),
+            numero: fila.numero,
+            evento_id: evento.id || null,
+            identidad_evento_real: evento.identidad_evento_real || null,
+            grupo_id: evento.grupo_id || null,
+            grupo_nombre: evento.grupo_nombre || null,
+            contacto_id: usuario?.id || null,
+            contacto_nombre: nombre,
+            contacto_telefono: telefono,
+            estado_anterior: "libre",
+            estado_nuevo: "reservado",
+            motivo: auditoria.motivo || null,
+            observaciones: auditoria.observaciones || null,
+            resultado: "ok",
+            solicitud_id: auditoria.solicitudId || null
+
+        })));
 
     }
 

@@ -69,23 +69,49 @@ const {
     detenerEscanerIdentidades
 } = require("./funciones/usuarios/escanerIdentidadesLifecycle");
 
-let socketActual = null;
-let sesionActual = null;
+// MULTISESIÓN (2026-10-21): una sesión registrada POR CLIENTE, todas a la
+// vez. sessionId -> { socket, usuarioId }. Registrar o detener una sesión
+// nunca toca las de otros clientes; un cambio de sesión del MISMO cliente
+// (A -> B) detiene A antes de registrar B.
+const registradas = new Map();
+const sospechas = new Map(); // sessionId -> revisiones desalineadas seguidas
 let iniciado = false;
 let vigilante = null;
-let sospechasSeguidas = 0;
 
 const VIGILANTE_MS = 30000;
 
-// Único punto donde el BOT cambia de sesión: siempre a través de
-// manager "activeChanged" (Fase 5.1). Nunca se llama directamente
-// desde conectado.js para cualquier sesión que conecte.
+// Quita TODO lo de una sesión (listeners, workers, scheduler, escáner).
+function detenerSesion(sessionId, motivo) {
+
+    if (!registradas.has(sessionId)) return;
+
+    console.log("[BOT]", { listener: "eliminado", sesion: sessionId, motivo });
+
+    unregisterMessages(sessionId);
+    unregisterIdentitySync(sessionId);
+    detenerWorkerEventos(sessionId);
+    detenerEscanerIdentidades(sessionId);
+    scheduler.stop(sessionId);
+    detenerWorkerInactividad(sessionId);
+    detenerPublicadorSorteos(sessionId);
+
+    registradas.delete(sessionId);
+    sospechas.delete(sessionId);
+
+    console.log("[WORKER] detenido:", sessionId);
+
+}
+
+// Registra listeners y workers de UNA sesión sobre SU socket. Solo llega
+// aquí a través de manager "activeChanged" (activa de su cliente) o del
+// vigilante. Sin dueño validado (sock.context.usuarioId, de la fila de
+// sesiones) no se registra nada.
 function conectar(socket, sessionId) {
 
     console.log("================================");
     console.log("🔄 CONECTAR");
-    console.log("Session nueva :", sessionId);
-    console.log("Session actual:", sesionActual);
+    console.log("Session:", sessionId);
+    console.log("Sesiones registradas:", registradas.size);
     console.log("================================");
 
     if (!socket || !sessionId) {
@@ -96,15 +122,21 @@ function conectar(socket, sessionId) {
 
     }
 
-    // BUG CORREGIDO: antes esta comparación era solo por sessionId. Si la
-    // MISMA sesión reconectaba con una instancia de socket nueva (p. ej.
-    // tras un "restartRequired" o una reconexión temporal), este `return`
-    // se ejecutaba igual y el listener se quedaba colgado del socket
-    // viejo/muerto para siempre — el BOT dejaba de recibir mensajes de
-    // esa sesión aunque manager.activeSession y Supabase siguieran
-    // diciendo "conectado". Ahora también exige que sea el MISMO objeto
-    // socket para saltarse el re-registro.
-    if (sesionActual === sessionId && socketActual === socket) {
+    const usuarioId = socket.context?.usuarioId || null;
+
+    if (!usuarioId) {
+
+        console.error("❌ [BOT] sesión sin dueño (usuario_id): no se registra nada:", sessionId);
+
+        detenerSesion(sessionId, "sin dueño");
+
+        return;
+
+    }
+
+    // Misma sesión con el MISMO socket: nada que hacer. Con un socket
+    // nuevo (reconexión, restartRequired) se re-registra de cero.
+    if (registradas.get(sessionId)?.socket === socket) {
 
         console.log("ℹ️ Ya estaba escuchando esta misma sesión con este mismo socket.");
 
@@ -112,27 +144,17 @@ function conectar(socket, sessionId) {
 
     }
 
-    const anterior = sesionActual;
-
-    if (anterior) {
-
-        console.log("[WORKER] detenido:", anterior);
-        console.log("[BOT]", { listener: "eliminado", sesion: anterior });
-
-        unregisterMessages(anterior);
-        unregisterIdentitySync(anterior);
-        detenerWorkerEventos(anterior);
-        detenerEscanerIdentidades(anterior);
-        scheduler.stop(anterior);
-        detenerWorkerInactividad(anterior);
-        detenerPublicadorSorteos(anterior);
-
+    // Una sola sesión procesa por cliente: la anterior del MISMO cliente
+    // se detiene. Las de otros clientes siguen intactas.
+    for (const [id, r] of [...registradas]) {
+        if (id !== sessionId && r.usuarioId === usuarioId) detenerSesion(id, "cambio de sesión del mismo cliente");
     }
 
-    socketActual = socket;
-    sesionActual = sessionId;
+    detenerSesion(sessionId, "socket reemplazado");
 
-    console.log("[BOT]", { listener: "registrado", anterior: anterior || "(ninguno)", nuevo: sessionId });
+    registradas.set(sessionId, { socket, usuarioId });
+
+    console.log("[BOT]", { listener: "registrado", sesion: sessionId, sesionesActivas: registradas.size });
 
     registerMessages(socket, sessionId);
 
@@ -154,8 +176,7 @@ function conectar(socket, sessionId) {
     iniciarEscanerIdentidades(sessionId, socket);
 
     // ─────────────────────────────────────────────────────────────
-    // TRAZABILIDAD — identidad de la sesión que el BOT está usando
-    // AHORA (listener + worker ya apuntan a este socket). Solo log.
+    // TRAZABILIDAD — identidad de la sesión registrada. Solo log.
     // ─────────────────────────────────────────────────────────────
     const idActiva = identidadDesdeSocket(socket);
 
@@ -164,94 +185,97 @@ function conectar(socket, sessionId) {
         sesion: idActiva.nombre,
         telefono: maskPhone(idActiva.telefono),
         estado: idActiva.estado,
-        sesionAnterior: anterior || "(ninguna)",
         listener: "registrado",
         workerEventos: "iniciado"
     });
 
 }
 
-// Se dispara cuando el manager avisa que ya no hay ninguna sesión activa
-// disponible (failover sin candidatas). Detiene listener y worker sin
-// dejar nada corriendo para una sesión muerta.
+// Detiene todas las sesiones registradas (compatibilidad: un "activeLost"
+// sin datos de sesión).
 function detenerBot() {
 
-    if (!sesionActual) {
-        return;
-    }
-
-    console.log("[BOT]", { listener: "detenido (sin sesión activa disponible)", sesion: sesionActual });
-
-    unregisterMessages(sesionActual);
-    unregisterIdentitySync(sesionActual);
-    detenerWorkerEventos(sesionActual);
-    detenerEscanerIdentidades(sesionActual);
-    scheduler.stop(sesionActual);
-    detenerWorkerInactividad(sesionActual);
-    detenerPublicadorSorteos(sesionActual);
-
-    console.log("[WORKER] detenido:", sesionActual);
-
-    socketActual = null;
-    sesionActual = null;
+    for (const sessionId of [...registradas.keys()]) detenerSesion(sessionId, "sin sesión activa disponible");
 
 }
 
 // ─────────────────────────────────────────────────────────────
-// VIGILANTE — recuperación automática segura.
+// VIGILANTE — recuperación automática segura, POR SESIÓN.
 //
 // Síntoma real en producción: la sesión activa figura "conectada" pero el
 // bot deja de leer mensajes hasta reconectar a mano. Causa: el socket
 // activo cambia (o vuelve a open) sin que el listener/worker se registren
-// sobre él. Cada 30 s se comprueba que el socket VIGENTE, open, de la
-// sesión activa sea el que tiene el listener de negocio. Si dos revisiones
-// seguidas lo encuentran desalineado, se vuelve a ejecutar conectar() sobre
-// ESE socket: quita los listeners viejos antes de poner los nuevos (nunca
-// duplica), no abre sockets, no toca credenciales ni el lease, y no hace
-// nada si no hay un socket activo open (la reconexión es del manager).
+// sobre él. Cada 30 s, para CADA cliente con sesión activa, se comprueba que
+// su socket VIGENTE, open, sea el que tiene el listener de negocio. Si dos
+// revisiones seguidas lo encuentran desalineado, se vuelve a ejecutar
+// conectar() sobre ESE socket (nunca duplica: quita antes lo viejo). Además
+// detiene lo registrado para una sesión que ya no es la activa de su
+// cliente (workers huérfanos). No abre sockets, no toca credenciales ni el
+// lease. Devuelve el resultado más grave: "recuperado" | "sospecha" | null.
 // ─────────────────────────────────────────────────────────────
 function revisarSalud() {
 
-    const sessionId = manager.getActiveSession();
-    const socket = manager.getActiveSocket();
+    let resultado = null;
+    const vigentes = new Set();
 
-    if (!socket || !sessionId || !manager.esSocketVigenteActivo(socket)) {
-        sospechasSeguidas = 0;
-        return null;
+    for (const { usuarioId, sessionId } of manager.getSesionesActivas()) {
+
+        const socket = manager.getSocketActivoDe(usuarioId);
+
+        // Reconectando (sin socket open): no se toca nada; lo suyo se
+        // conserva hasta que el manager decida.
+        if (!socket || !manager.esSocketVigenteActivo(socket)) {
+            sospechas.delete(sessionId);
+            if (registradas.has(sessionId)) vigentes.add(sessionId);
+            continue;
+        }
+
+        vigentes.add(sessionId);
+
+        const alineado = registradas.get(sessionId)?.socket === socket
+            && socketConListener(sessionId) === socket;
+
+        if (alineado) {
+            sospechas.delete(sessionId);
+            continue;
+        }
+
+        const n = (sospechas.get(sessionId) || 0) + 1;
+
+        // La primera vez puede ser una transición en curso (activeChanged a
+        // punto de llegar): se espera a la siguiente revisión.
+        if (n < 2) {
+            sospechas.set(sessionId, n);
+            if (!resultado) resultado = "sospecha";
+            continue;
+        }
+
+        sospechas.delete(sessionId);
+
+        const causa = socketConListener(sessionId) !== socket
+            ? "socket activo sin listener de mensajes"
+            : "el bot apuntaba a otro socket";
+
+        console.log("🩺 [SALUD] recuperación automática:", { sessionId, causa });
+
+        salud.marcarRecuperacion(sessionId, causa);
+
+        // Fuerza el re-registro completo aunque conectar() crea que ya está
+        // escuchando este mismo socket.
+        detenerSesion(sessionId, "recuperación del vigilante");
+
+        conectar(socket, sessionId);
+
+        resultado = "recuperado";
+
     }
 
-    const alineado = sesionActual === sessionId
-        && socketActual === socket
-        && socketConListener(sessionId) === socket;
-
-    if (alineado) {
-        sospechasSeguidas = 0;
-        return null;
+    // Registradas que ya no son la activa de su cliente: huérfanas.
+    for (const sessionId of [...registradas.keys()]) {
+        if (!vigentes.has(sessionId)) detenerSesion(sessionId, "ya no es la sesión activa de su cliente");
     }
 
-    sospechasSeguidas++;
-
-    // La primera vez puede ser una transición en curso (activeChanged a
-    // punto de llegar): se espera a la siguiente revisión.
-    if (sospechasSeguidas < 2) return "sospecha";
-
-    sospechasSeguidas = 0;
-
-    const causa = socketConListener(sessionId) !== socket
-        ? "socket activo sin listener de mensajes"
-        : "el bot apuntaba a otro socket";
-
-    console.log("🩺 [SALUD] recuperación automática:", { sessionId, causa });
-
-    salud.marcarRecuperacion(sessionId, causa);
-
-    // Fuerza el re-registro completo aunque conectar() crea que ya está
-    // escuchando este mismo socket.
-    if (socketActual === socket) socketActual = null;
-
-    conectar(socket, sessionId);
-
-    return "recuperado";
+    return resultado;
 
 }
 
@@ -286,27 +310,29 @@ function iniciarBot() {
 
     });
 
-    manager.on("activeLost", () => {
+    // Solo la sesión indicada (o, sin datos, todas: compatibilidad).
+    manager.on("activeLost", (datos) => {
 
-        console.log("⚠️ activeLost recibido");
+        console.log("⚠️ activeLost recibido:", datos?.sessionId || "(todas)");
 
-        detenerBot();
+        if (datos?.sessionId) detenerSesion(datos.sessionId, "sesión activa perdida");
+        else detenerBot();
 
     });
 
-    // Fase 1: el socket activo se cerró (reconexión temporal, restart
-    // requerido, logout...). Se detiene YA todo lo que dependía de él; si
-    // la misma sesión vuelve a open, evaluarConexion re-emite
-    // activeChanged con el socket nuevo y conectar() lo registra de cero.
+    // Fase 1: el socket activo de un cliente se cerró (reconexión temporal,
+    // restart requerido, logout...). Se detiene YA lo de esa sesión; si
+    // vuelve a open, evaluarConexion re-emite activeChanged con el socket
+    // nuevo y conectar() lo registra de cero.
     manager.on("activeSocketClosed", ({ sessionId, socket }) => {
 
-        if (socket !== socketActual) {
+        if (registradas.get(sessionId)?.socket !== socket) {
             return;
         }
 
         console.log("⚠️ activeSocketClosed recibido:", sessionId);
 
-        detenerBot();
+        detenerSesion(sessionId, "socket cerrado");
 
     });
 
@@ -314,16 +340,19 @@ function iniciarBot() {
 
     iniciarVigilante();
 
-    // Por si al momento de suscribirse ya existía una sesión activa
+    // Por si al momento de suscribirse ya existían sesiones activas
     // (orden de arranque del servidor).
-    const socket = manager.getActiveSocket();
-    const sessionId = manager.getActiveSession();
+    for (const { usuarioId, sessionId } of manager.getSesionesActivas()) {
 
-    if (socket && sessionId) {
+        const socket = manager.getSocketActivoDe(usuarioId);
 
-        console.log("➡️ Sesión activa ya existente al iniciar:", sessionId);
+        if (socket) {
 
-        conectar(socket, sessionId);
+            console.log("➡️ Sesión activa ya existente al iniciar:", sessionId);
+
+            conectar(socket, sessionId);
+
+        }
 
     }
 
@@ -333,4 +362,12 @@ module.exports = iniciarBot;
 
 // Para pruebas y para la ruta de salud.
 module.exports.revisarSalud = revisarSalud;
-module.exports.estadoBot = () => ({ sesionActual, socketActual });
+module.exports.estadoBot = () => {
+    const primera = registradas.entries().next();
+    return {
+        // Compatibilidad: la primera sesión registrada.
+        sesionActual: primera.done ? null : primera.value[0],
+        socketActual: primera.done ? null : primera.value[1].socket,
+        sesiones: [...registradas].map(([sessionId, r]) => ({ sessionId, usuarioId: r.usuarioId, socket: r.socket }))
+    };
+};

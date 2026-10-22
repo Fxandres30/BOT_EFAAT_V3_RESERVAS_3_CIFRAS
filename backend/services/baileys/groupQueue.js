@@ -12,7 +12,14 @@
 // mensajes (el espaciado de mensajes de texto sigue en services/baileys/
 // send.js, sin cambios).
 //
-// Garantías:
+// UNA COLA POR SESIÓN (multiusuario, 2026-10-21). El límite "rate-overlimit"
+// de WhatsApp es por cuenta: con una sola cola global, el backoff de la cuenta
+// de un cliente (hasta 4 reintentos de hasta 30 s) retrasaba las operaciones
+// de grupo de TODOS los demás. Ahora cada sesión (sock.context.sessionId)
+// tiene su cola y las de cuentas distintas corren en paralelo. Una cola vacía
+// se elimina (sin restos de sesiones desconectadas).
+//
+// Garantías (POR SESIÓN):
 //   1. Concurrencia 1  -> nunca hay dos IQ de grupo en vuelo a la vez.
 //   2. Espaciado       -> pausa fija entre operaciones distintas.
 //   3. FIFO            -> se ejecutan en orden de llegada.
@@ -137,27 +144,39 @@ function conTimeout(promesa, ms) {
 
 }
 
-// ---- estado de la cola (un único proceso, en memoria) ----
-const cola = [];
-let procesando = false;
+// ---- estado de las colas (por sesión, en memoria del proceso) ----
+// clave de sesión -> { cola: [], procesando: boolean }
+const colas = new Map();
 
-function encolar(operacion, meta = {}) {
+function claveDe(sock) {
+    return sock?.context?.sessionId || "(sin-sesion)";
+}
+
+function encolar(sock, operacion, meta = {}) {
 
     return new Promise((resolve, reject) => {
 
-        cola.push({ operacion, meta, resolve, reject, intentos: 0 });
+        const clave = claveDe(sock);
 
-        arrancar();
+        if (!colas.has(clave)) colas.set(clave, { cola: [], procesando: false });
+
+        colas.get(clave).cola.push({ operacion, meta, resolve, reject, intentos: 0 });
+
+        arrancar(clave);
 
     });
 
 }
 
-async function arrancar() {
+async function arrancar(clave) {
 
-    if (procesando) return;
+    const estado = colas.get(clave);
 
-    procesando = true;
+    if (!estado || estado.procesando) return;
+
+    estado.procesando = true;
+
+    const { cola } = estado;
 
     try {
 
@@ -182,7 +201,7 @@ async function arrancar() {
 
                     const espera = backoffPara(item.intentos);
 
-                    console.log(`[GROUP-QUEUE] rate-overlimit en ${item.meta.desc || "op"}${item.meta.grupoId ? " (" + item.meta.grupoId + ")" : ""} — reintento ${item.intentos}/${cfg.maxReintentos()} en ${espera} ms`);
+                    console.log(`[GROUP-QUEUE] ${clave}: rate-overlimit en ${item.meta.desc || "op"}${item.meta.grupoId ? " (" + item.meta.grupoId + ")" : ""} — reintento ${item.intentos}/${cfg.maxReintentos()} en ${espera} ms`);
 
                     completado = false;
 
@@ -212,13 +231,15 @@ async function arrancar() {
 
     } finally {
 
-        procesando = false;
+        estado.procesando = false;
 
     }
 
-    // Por si algo entró justo al vaciar la cola.
+    // Por si algo entró justo al vaciar la cola; si no, se elimina.
     if (cola.length > 0) {
-        arrancar();
+        arrancar(clave);
+    } else if (colas.get(clave) === estado) {
+        colas.delete(clave);
     }
 
 }
@@ -230,6 +251,7 @@ function groupSettingUpdate(sock, grupoId, ajuste) {
     const ficha = cicloMensaje.accion(`groupSettingUpdate(${ajuste})`, sock, grupoId);
 
     return encolar(
+        sock,
         () => {
             cicloMensaje.accionEjecutada(ficha, sock);
             exigirSocketVigente(sock, `groupSettingUpdate(${ajuste})`);
@@ -243,6 +265,7 @@ function groupSettingUpdate(sock, grupoId, ajuste) {
 function groupMetadata(sock, grupoId) {
 
     return encolar(
+        sock,
         () => sock.groupMetadata(grupoId),
         { desc: "groupMetadata", grupoId }
     );
@@ -259,6 +282,7 @@ function groupParticipantsUpdate(sock, grupoId, participantes, accion) {
     const ficha = cicloMensaje.accion(`groupParticipantsUpdate(${accion})`, sock, grupoId);
 
     return encolar(
+        sock,
         () => {
             cicloMensaje.accionEjecutada(ficha, sock);
             exigirSocketVigente(sock, `groupParticipantsUpdate(${accion})`);
@@ -277,15 +301,24 @@ function groupParticipantsUpdate(sock, grupoId, participantes, accion) {
 function groupFetchAllParticipating(sock) {
 
     return encolar(
+        sock,
         () => sock.groupFetchAllParticipating(),
         { desc: "groupFetchAllParticipating" }
     );
 
 }
 
-// Solo para pruebas: estado interno de la cola.
+// Solo para pruebas: estado interno. enCola/procesando: totales del
+// proceso (compatibilidad); porSesion: { clave: { enCola, procesando } }.
 function _estado() {
-    return { enCola: cola.length, procesando };
+    const porSesion = {};
+    for (const [clave, e] of colas) porSesion[clave] = { enCola: e.cola.length, procesando: e.procesando };
+    const lista = Object.values(porSesion);
+    return {
+        enCola: lista.reduce((n, e) => n + e.enCola, 0),
+        procesando: lista.some(e => e.procesando),
+        porSesion
+    };
 }
 
 module.exports = {

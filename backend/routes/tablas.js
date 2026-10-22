@@ -18,7 +18,9 @@ const supabase = require("../lib/supabase");
 // sin ella, la configuración base de siempre).
 const { obtenerConfiguracionCliente, inicializarCliente } = require("../bot/funciones/eventos/tablasCliente");
 const tablaEventoRepo = require("../automation/repo/tablaEvento");
-const { compartirTabla, verificarTokenImprimir } = require("../services/compartirTabla");
+const { compartirTabla, verificarTokenImprimirDetalle } = require("../services/compartirTabla");
+const { disenoDelEvento } = require("../sorteos/repo");
+const { normalizarConfigDiseno } = require("../sorteos/disenoTabla");
 
 // Mismo criterio real que frontend/services/tablas/obtenerEventoActivo.ts
 // (a lo sumo un evento "activo" por tabla+usuario) — reproducido aquí para
@@ -53,8 +55,10 @@ router.get("/imprimir-datos", async (req, res) => {
         const precio = Number(req.query.precio);
         const token = req.query.token;
 
-        // El dueño de la tabla sale del token firmado, nunca de la URL.
-        const usuarioId = precio ? verificarTokenImprimir(precio, token) : null;
+        // El dueño de la tabla (y el evento, si lo hay) salen del token
+        // firmado, nunca de la URL.
+        const firmado = precio ? verificarTokenImprimirDetalle(precio, token) : null;
+        const usuarioId = firmado?.usuarioId || null;
 
         if (!usuarioId) {
             return res.status(401).json({ error: "Token inválido o expirado." });
@@ -70,11 +74,33 @@ router.get("/imprimir-datos", async (req, res) => {
         // imagen se difunde a un grupo completo, no es una vista admin.
         const { numerosDisponibles, numerosOcupados } = await tablaEventoRepo.obtenerNumeros(config.tabla, usuarioId);
 
+        // Estilo: el guardado en el SORTEO programado de ese evento (el
+        // mismo que se vio en la vista previa); si el evento no viene de un
+        // sorteo programado, el diseño activo de la tabla de ese precio.
+        // Sin diseño o si no es válido: null (la página usa el de por defecto).
+        let diseno;
+
+        if (firmado.eventoId) {
+            const r = await disenoDelEvento(usuarioId, firmado.eventoId);
+            if (r.ok && r.data) diseno = r.data.config ?? null;
+        }
+
+        if (diseno === undefined) {
+            const { data: visual } = await supabase
+                .from("tabla_configuracion_visual")
+                .select("config")
+                .eq("usuario_id", usuarioId)
+                .eq("precio", precio)
+                .maybeSingle();
+            diseno = visual?.config;
+        }
+
         res.json({
             numerosDisponibles,
             numerosOcupados,
             cifras: config.cifras,
-            cantidad: config.cantidad
+            cantidad: config.cantidad,
+            diseno: normalizarConfigDiseno(diseno)
         });
 
     } catch (err) {
@@ -112,7 +138,15 @@ router.post("/compartir", exigirUsuario, async (req, res) => {
             return res.status(404).json({ enviado: false, motivo: "sin_evento_activo" });
         }
 
-        const resultado = await compartirTabla({ evento });
+        // Con el WhatsApp activo DE ESTE cliente (multisesión): nunca con el
+        // de otro cliente conectado al mismo proceso.
+        const sock = require("../services/baileys/manager").getSocketActivoDe(usuarioId);
+
+        if (!sock) {
+            return res.status(409).json({ enviado: false, motivo: "sin_sesion_activa" });
+        }
+
+        const resultado = await compartirTabla({ evento, sock });
 
         res.json(resultado);
 
@@ -149,5 +183,106 @@ router.post("/inicializar", exigirUsuario, async (req, res) => {
     }
 
 });
+
+// ==========================================================================
+// Intervención MANUAL sobre un número (services/reservaManual.js): buscar
+// contactos, ver el contexto del número, reservar, registrar el pago,
+// liberar y desbloquear. El cliente y el operador salen del token
+// (exigirUsuario); un usuarioId, operador o estado enviado por el navegador
+// se ignora. Ninguna de estas rutas envía mensajes de WhatsApp.
+// ==========================================================================
+
+const reservaManual = require("../services/reservaManual");
+
+const operadorDe = (req) => ({ id: req.usuarioId, email: req.usuarioEmail || null });
+
+const HTTP_RESERVA_MANUAL = {
+    tabla_no_configurada: 404, numero_inexistente: 404, contacto_no_existe: 404,
+    no_disponible: 409, estado_cambio: 409, no_reservado: 409, ya_libre: 409,
+    sin_sorteo: 409, sorteo_cerrado: 409, telefono_no_vinculable: 409, telefono_ambiguo: 409,
+    pago_sin_telefono: 409, grupo_no_autorizado: 403, sin_usuario: 401
+};
+
+function responderManual(res, r) {
+    if (r.ok) return res.json(r);
+    const status = HTTP_RESERVA_MANUAL[r.motivo] || (String(r.motivo).startsWith("error") ? 500 : 400);
+    return res.status(status).json(r);
+}
+
+const NUMERO_VALIDO = /^\d{1,4}$/;
+
+function manejar(nombre, fn) {
+    return async (req, res) => {
+        try {
+            if (req.params.numero !== undefined && !NUMERO_VALIDO.test(req.params.numero)) {
+                return res.status(400).json({ ok: false, motivo: "numero_invalido", mensaje: "Número inválido." });
+            }
+            responderManual(res, await fn(req));
+        } catch (err) {
+            console.error(`❌ [TABLAS] error en ${nombre}:`, err.message);
+            res.status(500).json({ ok: false, motivo: "error_interno", mensaje: "Error interno." });
+        }
+    };
+}
+
+// GET /tablas/contactos/buscar?q= — directorio del cliente, por nombre o teléfono.
+router.get("/contactos/buscar", exigirUsuario, manejar("buscar contactos", (req) =>
+    reservaManual.buscarContactos({ usuarioId: req.usuarioId, q: String(req.query.q || "").slice(0, 80) })
+));
+
+// GET /tablas/:precio/numeros/:numero — estado real, sorteo, grupos,
+// acciones permitidas e historial (auditoría) del número.
+router.get("/:precio/numeros/:numero", exigirUsuario, manejar("contexto de número", (req) =>
+    reservaManual.contextoNumero({ usuarioId: req.usuarioId, precio: req.params.precio, numero: req.params.numero })
+));
+
+// POST /tablas/:precio/numeros/:numero/reservar
+// { contactoId | nuevoContacto: { nombre, telefono }, eventoId, motivo, observaciones, solicitudId }
+router.post("/:precio/numeros/:numero/reservar", exigirUsuario, manejar("reserva manual", (req) => {
+    const b = req.body || {};
+    return reservaManual.reservarManual({
+        usuarioId: req.usuarioId,
+        operador: operadorDe(req),
+        precio: req.params.precio,
+        numero: req.params.numero,
+        contactoId: b.contactoId || null,
+        nuevoContacto: b.nuevoContacto || null,
+        eventoId: b.eventoId || null,
+        motivo: b.motivo,
+        observaciones: b.observaciones,
+        solicitudId: b.solicitudId
+    });
+}));
+
+// POST /tablas/:precio/numeros/:numero/pagar — { metodoPago, observaciones, motivo, solicitudId }
+router.post("/:precio/numeros/:numero/pagar", exigirUsuario, manejar("pago manual", (req) => {
+    const b = req.body || {};
+    return reservaManual.pagarManual({
+        usuarioId: req.usuarioId,
+        operador: operadorDe(req),
+        precio: req.params.precio,
+        numero: req.params.numero,
+        metodoPago: b.metodoPago,
+        observaciones: b.observaciones,
+        motivo: b.motivo,
+        solicitudId: b.solicitudId
+    });
+}));
+
+// POST /tablas/:precio/numeros/:numero/liberar — { confirmar: true, motivo, observaciones, solicitudId }
+// Libera una reserva, anula un pago o desbloquea, según el estado real.
+router.post("/:precio/numeros/:numero/liberar", exigirUsuario, manejar("liberar número", (req) => {
+    const b = req.body || {};
+    return reservaManual.liberarManual({
+        usuarioId: req.usuarioId,
+        operador: operadorDe(req),
+        precio: req.params.precio,
+        numero: req.params.numero,
+        confirmar: b.confirmar === true,
+        motivo: b.motivo,
+        observaciones: b.observaciones,
+        solicitudId: b.solicitudId
+    });
+}));
 
 module.exports = router;

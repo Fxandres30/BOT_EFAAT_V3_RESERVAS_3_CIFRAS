@@ -248,6 +248,8 @@ prueba("B5 acquire sin fila (respuesta vacía) no se toma como 'otro dueño'", a
 // C. Vigilante de bot/index.js
 // ==========================================================================
 
+const CLIENTE = "cliente-1";
+
 function montarBot() {
 
     const manager = new EventEmitter();
@@ -256,6 +258,9 @@ function montarBot() {
     manager.getActiveSession = () => manager.activa;
     manager.getActiveSocket = () => manager.socket;
     manager.esSocketVigenteActivo = s => !!s && s === manager.socket;
+    // API multisesión (una activa por cliente): aquí un solo cliente.
+    manager.getSesionesActivas = () => manager.activa ? [{ usuarioId: CLIENTE, sessionId: manager.activa, socket: manager.socket }] : [];
+    manager.getSocketActivoDe = (u) => (u === CLIENTE ? manager.socket : null);
 
     const listeners = new Map();
     const llamadas = [];
@@ -297,7 +302,7 @@ function montarBot() {
 
 function sockFalso(sessionId) {
     const ev = new EventEmitter();
-    return { ev, context: { sessionId } };
+    return { ev, context: { sessionId, usuarioId: CLIENTE } };
 }
 
 prueba("C1 todo alineado: el vigilante no hace nada", () => {

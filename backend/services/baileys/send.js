@@ -34,19 +34,18 @@ function esperar(ms) {
 
 }
 
-// Prioriza el socket que realmente recibió/originó la acción (ctx.sock /
-// llamador explícito). Fallback a la sesión activa solo por compatibilidad
-// — misma regla para cualquier tipo de envío (texto o imagen), un único
-// lugar que la decide.
+// Envía SIEMPRE con el socket que recibió/originó la acción (ctx.sock /
+// llamador explícito) — misma regla para cualquier tipo de envío (texto o
+// imagen), un único lugar que la decide. Multisesión (2026-10-21): ya no hay
+// fallback a "la sesión activa": con varios clientes conectados podía
+// enviar con el WhatsApp de otro cliente.
 function resolverSocketEnvio(sock) {
 
-    const socketActivo = sock || manager.getActiveSocket();
-
-    if (!socketActivo) {
-        throw new Error("No hay una sesión activa.");
+    if (!sock) {
+        throw new Error("Envío sin socket de la sesión: rechazado (nunca se usa el WhatsApp de otro cliente).");
     }
 
-    return socketActivo;
+    return sock;
 
 }
 
@@ -109,7 +108,7 @@ async function sendMessage({ sock, jid, text, quoted } = {}) {
             telefono: maskPhone(idSesion.telefono),
             sessionId: idSesion.sessionId,
             estadoSesion: idSesion.estado,
-            esSocketActivo: socketActivo === manager.getActiveSocket(),
+            esSocketActivo: manager.esSocketVigenteActivo?.(socketActivo) ?? null,
             usoFallbackSocketActivo: !sock,
             destino: tipoDestino(jid),
             jid: enmascararJid(jid),
@@ -125,7 +124,7 @@ async function sendMessage({ sock, jid, text, quoted } = {}) {
         // diagnóstico, pero se sigue esperando la promesa real y se
         // devuelve/lanza exactamente lo que Baileys resuelva o rechace —
         // el comportamiento del envío NO cambia.
-        const socketManagerActivo = manager.getActiveSocket();
+        const socketManagerActivo = manager.getSocketActivoDe?.(socketActivo?.context?.usuarioId) ?? null;
 
         console.log("[REAL SEND 1] antes de socketActivo.sendMessage", {
             jid: enmascararJid(jid),
@@ -159,7 +158,7 @@ async function sendMessage({ sock, jid, text, quoted } = {}) {
             console.log("[REAL SEND TIMEOUT] sendMessage no resolvió en 10s", {
                 jid: enmascararJid(jid),
                 sessionId: idSesion.sessionId,
-                ctxSockEsMismaReferenciaQueActiveSocket: socketActivo === manager.getActiveSocket()
+                ctxSockEsMismaReferenciaQueActiveSocket: socketActivo === socketManagerActivo
             });
 
         }

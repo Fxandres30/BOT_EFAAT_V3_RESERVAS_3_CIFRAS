@@ -61,7 +61,12 @@ const enVuelo = new Set();
 // clave -> true para mensajes ya decididos por este proceso (acotado).
 const recientes = new Map();
 
-function identidadMensaje(message) {
+// MULTICLIENTE (2026-10-21): el mismo mensaje de un grupo compartido llega a
+// la sesión de CADA cliente que está en el grupo, y cada cliente lo procesa
+// por su cuenta. La clave incluye al cliente dueño de la sesión receptora
+// (sock.context.usuarioId, nunca el participante): dentro de un cliente se
+// sigue descartando el duplicado; entre clientes, no.
+function identidadMensaje(message, clienteUsuarioId = null) {
 
     const remoteJid = message?.key?.remoteJid || null;
     const mensajeId = message?.key?.id || null;
@@ -69,9 +74,10 @@ function identidadMensaje(message) {
     if (!remoteJid || !mensajeId) return null;
 
     return {
-        clave: `${remoteJid}|${mensajeId}`,
+        clave: `${clienteUsuarioId || "-"}|${remoteJid}|${mensajeId}`,
         remoteJid,
         mensajeId,
+        clienteUsuarioId,
         esGrupo: remoteJid.endsWith("@g.us")
     };
 
@@ -142,20 +148,34 @@ function liberarEnMemoria(clave) {
 
 // ------------------------------------------------------------ persistente --
 
-// ¿Existe ya una fila de este mensaje en mensajes_grupos_sorteos?
+// ¿Existe ya una fila de este mensaje en mensajes_grupos_sorteos PARA ESTE
+// CLIENTE? Cuentan las filas del cliente receptor y las históricas sin
+// cliente (cliente_usuario_id NULL: anteriores a la migración 028, todas de
+// la única cuenta de entonces) — así un reenvío de un mensaje viejo no se
+// reprocesa, sin atribuirle a esa fila ningún dueño. Sin la columna (028 sin
+// aplicar) se usa la consulta de siempre, por (grupo_id, mensaje_id).
 // Ante un error de lectura se devuelve false (se sigue el flujo de
 // siempre): con Supabase caído el resto del pipeline tampoco puede
 // escribir reservas/eventos, y bloquear aquí haría perder mensajes nuevos.
-async function yaRegistrado({ remoteJid, mensajeId }) {
+async function yaRegistrado({ remoteJid, mensajeId, clienteUsuarioId = null }) {
 
     try {
 
-        const { data, error } = await supabase
-            .from("mensajes_grupos_sorteos")
-            .select("id")
-            .eq("grupo_id", remoteJid)
-            .eq("mensaje_id", mensajeId)
-            .limit(1);
+        const consulta = (conCliente) => {
+            let q = supabase
+                .from("mensajes_grupos_sorteos")
+                .select("id")
+                .eq("grupo_id", remoteJid)
+                .eq("mensaje_id", mensajeId);
+            if (conCliente) q = q.or(`cliente_usuario_id.eq.${clienteUsuarioId},cliente_usuario_id.is.null`);
+            return q.limit(1);
+        };
+
+        let { data, error } = await consulta(!!clienteUsuarioId);
+
+        if (error?.code === "42703" && clienteUsuarioId) {
+            ({ data, error } = await consulta(false));
+        }
 
         if (error) {
 

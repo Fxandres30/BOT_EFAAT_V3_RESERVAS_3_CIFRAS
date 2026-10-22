@@ -180,3 +180,12 @@
         flex-wrap: wrap;
     }
 }
+
+/* Tabla de la vista previa: su propio scroll, para no empujar ni ocultar
+   los botones del pie del modal. */
+.tablaVista {
+  max-height: min(60vh, 560px);
+  overflow: auto;
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-control);
+}

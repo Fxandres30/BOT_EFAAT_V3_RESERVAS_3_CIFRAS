@@ -56,6 +56,9 @@ const executionGuard = require("./executionGuard");
 // reservados pendientes, pagados, grupo cerrado) — ver
 // eventRules.decidirRecordatoriosSegunEstado.
 const { leerEstadoParaRecordatorios } = require("./repo/estadoSorteo");
+// Fecha de hoy en Colombia (mismo cálculo que fechaEventoHoy del bot; el
+// scheduler no requiere módulos de bot/).
+const fechaHoyColombia = (ahora) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit" }).format(ahora);
 
 // Diagnóstico del ciclo de vida (Paso 0) — solo observa.
 const cicloMensaje = require("../diagnostico/cicloMensaje");
@@ -415,6 +418,13 @@ async function evaluarRecordatorios(evento, eventSession, sock, opciones = {}) {
     if (!horaCierre) return;
 
     const ahora = opciones.ahora || new Date();
+
+    // Sorteo de un día POSTERIOR (publicado la víspera desde Sorteos
+    // programados): los minutos al cierre se cuentan solo por la hora del
+    // día, así que hoy saldrían los recordatorios de mañana. Se espera a su
+    // día (hora de Colombia).
+    if (evento.fecha_evento && String(evento.fecha_evento).slice(0, 10) > fechaHoyColombia(ahora)) return;
+
     const ahoraHHmm = eventRules.obtenerHoraMinuto(ahora);
     const minutosParaCierre = eventRules.minutosEntre(ahoraHHmm, horaCierre);
 

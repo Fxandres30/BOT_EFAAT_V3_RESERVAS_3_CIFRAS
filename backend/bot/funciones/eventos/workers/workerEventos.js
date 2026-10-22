@@ -1,4 +1,5 @@
 const supabase = require("../../../../lib/supabase");
+const politicaGrupos = require("../../grupos/politicaGrupos");
 const { procesarSorteo } = require("../lifecycle/procesarSorteo");
 const { claveSorteo } = require("../sorteoReal");
 const { reconciliarAperturaGrupo } = require("../grupos/reconciliarApertura");
@@ -12,10 +13,27 @@ async function workerEventos(sock) {
 
     try {
 
+        // Aislamiento por cliente: este socket solo actúa sobre los sorteos
+        // de SU tenant. Falla cerrado (multisesión, 2026-10-21): un socket
+        // sin tenant no actúa sobre nada y un evento sin usuario_id no lo
+        // toca ningún socket (antes los procesaban todos los sockets a la
+        // vez). Auditoría 14/10: 0 eventos sin usuario_id. El filtro va en
+        // la consulta: con N sesiones, cada una lee solo lo suyo.
+        const tenant = sock?.context?.usuarioId || null;
+
+        if (!tenant) {
+
+            console.error("❌ [WORKER EVENTOS] socket sin dueño (usuario_id): no se procesa ningún sorteo.");
+
+            return;
+
+        }
+
         const { data: eventos, error } = await supabase
             .from("eventos_bot")
             .select("*")
-            .eq("activo", true);
+            .eq("activo", true)
+            .eq("usuario_id", tenant);
 
         if (error) {
 
@@ -32,11 +50,20 @@ async function workerEventos(sock) {
 
         }
 
-        // Aislamiento por cliente: este socket solo actúa sobre los sorteos
-        // de SU tenant. Un evento sin usuario_id (dato antiguo) o un socket
-        // sin tenant conservan el comportamiento de siempre.
-        const tenant = sock?.context?.usuarioId || null;
-        const delTenant = eventos.filter(e => !tenant || !e.usuario_id || e.usuario_id === tenant);
+        // Solo sorteos de SUS grupos autorizados (politicaGrupos.js). Sin
+        // poder leer la autorización no se actúa sobre ninguno (falla cerrado).
+        const autorizados = await politicaGrupos.gruposAutorizadosDe(tenant);
+
+        if (!autorizados) {
+
+            console.error("❌ [WORKER EVENTOS] autorización de grupos desconocida: no se procesa ningún sorteo en este ciclo.");
+
+            return;
+
+        }
+
+        // Resguardo por si la consulta devolviera algo ajeno.
+        const delTenant = (eventos || []).filter(e => e.usuario_id === tenant && autorizados.has(e.grupo_id));
 
         // ============================================================
         // RECONCILIACIÓN DE APERTURA

@@ -345,7 +345,7 @@ async function main() {
             pushName: null
         };
 
-        const mensaje = await guardarMensajeGrupo({
+        const mensaje = await guardarMensajeGrupo({ clienteUsuarioId: "tenant-1",
             msg: msgFromMe,
             texto: "✅ Reserva realizada correctamente.",
             grupoId: "grupo1@g.us",
@@ -381,7 +381,7 @@ async function main() {
             const usuarioResuelto = await obtenerUsuario(ctx);
             assert.strictEqual(usuarioResuelto, null);
 
-            const mensaje = await guardarMensajeGrupo({
+            const mensaje = await guardarMensajeGrupo({ clienteUsuarioId: "tenant-1",
                 msg: ctx.message,
                 texto: `mensaje del bot #${i}`,
                 grupoId: "grupo1@g.us",
@@ -426,7 +426,7 @@ async function main() {
             pushName: "Otro Nombre"
         };
 
-        const fila = await guardarMensajeGrupo({
+        const fila = await guardarMensajeGrupo({ clienteUsuarioId: "tenant-1",
             msg,
             texto: "hola",
             grupoId: "grupo1@g.us",
@@ -458,7 +458,7 @@ async function main() {
         assert.strictEqual(usuario.telefono, null);
         assert.strictEqual(fake.tablas.usuarios.length, 1);
 
-        const fila = await guardarMensajeGrupo({
+        const fila = await guardarMensajeGrupo({ clienteUsuarioId: "tenant-1",
             msg: ctx.message,
             texto: "hola",
             grupoId: "grupo1@g.us",
@@ -489,7 +489,7 @@ async function main() {
         assert.strictEqual(usuario.lid, null);
         assert.strictEqual(fake.tablas.usuarios.length, 1);
 
-        const fila = await guardarMensajeGrupo({
+        const fila = await guardarMensajeGrupo({ clienteUsuarioId: "tenant-1",
             msg: ctx.message,
             texto: "hola",
             grupoId: "grupo1@g.us",
@@ -582,7 +582,7 @@ async function main() {
         assert.strictEqual(llamadasTrasResolucion.insert, 1);
         assert.strictEqual(llamadasTrasResolucion.update, 0);
 
-        const fila = await guardarMensajeGrupo({
+        const fila = await guardarMensajeGrupo({ clienteUsuarioId: "tenant-1",
             msg: ctx.message,
             texto: "hola",
             grupoId: "grupo1@g.us",

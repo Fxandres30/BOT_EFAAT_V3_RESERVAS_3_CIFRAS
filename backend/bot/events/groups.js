@@ -29,6 +29,7 @@ const {
 // la sesión activa puede actuar. Una sesión secundaria o un socket viejo
 // que siga vivo nunca sincroniza, escanea ni expulsa.
 const propiedadSesion = require("../../services/baileys/propiedadSesion");
+const politicaGrupos = require("../funciones/grupos/politicaGrupos");
 
 function puedeActuar(sock, evento, grupoId) {
 
@@ -142,15 +143,29 @@ function registerGroups(sock) {
             // evento de inmediato, en paralelo (fire-and-forget, uno por
             // participante para que uno lento/con error nunca bloquee a
             // los demás).
-            for (const participante of data.participants || []) {
+            // Expulsar es una acción sobre el grupo: solo en los grupos
+            // AUTORIZADOS del cliente dueño de este socket (politicaGrupos.js).
+            politicaGrupos.evaluarGrupo(sock?.context?.usuarioId, data.id).then(({ permitido, motivo }) => {
 
-                procesarIngresoParticipante(sock, data.id, participante).catch(err => {
+                if (!permitido) {
 
-                    console.error(`❌ [BLOQUEO] error evaluando participante entrante en ${data.id}:`, err?.message);
+                    console.log(`⏭️ [BLOQUEO] grupo ${data.id} no autorizado para este cliente (${motivo}) — no se evalúan expulsiones`);
 
-                });
+                    return;
 
-            }
+                }
+
+                for (const participante of data.participants || []) {
+
+                    procesarIngresoParticipante(sock, data.id, participante).catch(err => {
+
+                        console.error(`❌ [BLOQUEO] error evaluando participante entrante en ${data.id}:`, err?.message);
+
+                    });
+
+                }
+
+            });
 
         }
 

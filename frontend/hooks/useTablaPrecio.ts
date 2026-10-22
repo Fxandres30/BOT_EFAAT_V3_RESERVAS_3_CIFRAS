@@ -10,10 +10,18 @@ import { obtenerTabla } from "@/services/tablas/obtenerTabla";
 import { obtenerEventoActivo } from "@/services/tablas/obtenerEventoActivo";
 import { obtenerActividad } from "@/services/tablas/obtenerActividad";
 import { reiniciarTabla } from "@/services/tablas/reiniciarTabla";
-import { marcarPagado as marcarPagadoService } from "@/services/tablas/marcarPagado";
-import { liberarNumero as liberarNumeroService } from "@/services/tablas/liberarNumero";
-import { bloquearNumero as bloquearNumeroService } from "@/services/tablas/bloquearNumero";
-import { marcarEnProceso as marcarEnProcesoService } from "@/services/tablas/marcarEnProceso";
+// Reservar, registrar el pago, liberar y desbloquear pasan por el backend
+// (mismas reglas que el bot + auditoría): el navegador ya no escribe en la
+// tabla de números.
+import {
+    reservarNumeroManual,
+    pagarNumeroManual,
+    liberarNumeroManual,
+    type DatosReserva,
+    type DatosPago,
+    type DatosLiberar,
+    type Resultado
+} from "@/services/tablas/reservaManual";
 
 import { derivarPaquetes } from "@/components/tablas/derivarPaquetes";
 import { estadoEfectivo } from "@/components/tablas/estadoVisual";
@@ -30,7 +38,6 @@ export function useTablaPrecio(precio: number) {
     const [config, setConfig] = useState<TablaConfig | null>(null);
 
     const [usuarioId, setUsuarioId] = useState<string | null>(null);
-    const [realizadoPor, setRealizadoPor] = useState<string | null>(null);
 
     const [numeros, setNumeros] = useState<NumeroReserva[]>([]);
     const [eventoActivo, setEventoActivo] = useState<EventoActivo | null>(null);
@@ -95,7 +102,6 @@ export function useTablaPrecio(precio: number) {
 
             setConfig(cfg);
             setUsuarioId(data.user.id);
-            setRealizadoPor(data.user.email || data.user.id);
 
             await cargar(data.user.id, cfg);
 
@@ -191,16 +197,16 @@ export function useTablaPrecio(precio: number) {
 
     }, [numeros]);
 
-    const ejecutar = useCallback(async (numero: string, accion: () => Promise<unknown>) => {
-
-        if (!usuarioId) return;
+    const ejecutar = useCallback(async <T,>(numero: string, accion: () => Promise<T>): Promise<T> => {
 
         setAccionando(numero);
 
         try {
 
-            await accion();
-            await cargar(usuarioId, config);
+            const resultado = await accion();
+            // También tras un rechazo: el número pudo cambiar entretanto.
+            if (usuarioId) await cargar(usuarioId, config);
+            return resultado;
 
         } finally {
 
@@ -209,6 +215,9 @@ export function useTablaPrecio(precio: number) {
         }
 
     }, [usuarioId, config, cargar]);
+
+    // Sin sesión todavía: nada que operar.
+    const sinSesion: Resultado = { ok: false, motivo: "sin_sesion", mensaje: "Debes iniciar sesión." };
 
     return {
 
@@ -229,24 +238,20 @@ export function useTablaPrecio(precio: number) {
             if (usuarioId) await cargar(usuarioId, config);
         },
 
-        marcarPagado: async (numero: string) => {
-            if (!usuarioId) return;
-            await ejecutar(numero, () => marcarPagadoService({ precio, numero, usuarioId, realizadoPor }));
+        reservar: async (numero: string, datos: DatosReserva): Promise<Resultado> => {
+            if (!usuarioId) return sinSesion;
+            return ejecutar(numero, () => reservarNumeroManual(precio, numero, datos));
         },
 
-        liberar: async (numero: string) => {
-            if (!usuarioId) return;
-            await ejecutar(numero, () => liberarNumeroService({ precio, numero, usuarioId, realizadoPor }));
+        marcarPagado: async (numero: string, datos?: DatosPago): Promise<Resultado> => {
+            if (!usuarioId) return sinSesion;
+            return ejecutar(numero, () => pagarNumeroManual(precio, numero, datos));
         },
 
-        bloquear: async (numero: string, motivo?: string) => {
-            if (!usuarioId) return;
-            await ejecutar(numero, () => bloquearNumeroService({ precio, numero, usuarioId, motivo, realizadoPor }));
-        },
-
-        marcarEnProceso: async (numero: string, minutos?: number) => {
-            if (!usuarioId) return;
-            await ejecutar(numero, () => marcarEnProcesoService({ precio, numero, usuarioId, minutos, realizadoPor }));
+        // Libera una reserva, anula un pago o desbloquea, según el estado real.
+        liberar: async (numero: string, datos?: DatosLiberar): Promise<Resultado> => {
+            if (!usuarioId) return sinSesion;
+            return ejecutar(numero, () => liberarNumeroManual(precio, numero, datos));
         },
 
         reiniciar: async () => {

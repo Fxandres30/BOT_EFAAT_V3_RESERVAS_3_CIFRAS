@@ -176,6 +176,8 @@ export async function cargarSeguimiento(usuarioId: string, grupoIds: string[]): 
         const mensajesRes = await supabase
             .from("mensajes_grupos_sorteos")
             .select("grupo_id, grupo_nombre, timestamp_whatsapp")
+            // Solo lo que recibió el bot de ESTE cliente (migración 028).
+            .eq("cliente_usuario_id", usuarioId)
             .in("grupo_id", sinNombre)
             .not("grupo_nombre", "is", null)
             .order("timestamp_whatsapp", { ascending: false })

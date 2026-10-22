@@ -57,6 +57,12 @@ function crearFake() {
             eq(c, v) { q.filtros.push(f => f[c] === v); return b; },
             neq(c, v) { q.filtros.push(f => f[c] !== v); return b; },
             in(c, vs) { q.filtros.push(f => vs.includes(f[c])); return b; },
+            // not(col, "is", null) — la única forma que usa el backend.
+            not(c, op, v) {
+                if (op !== "is") throw new Error(`fake not(): operador no soportado ${op}`);
+                q.filtros.push(f => (v === null ? f[c] != null : f[c] !== v));
+                return b;
+            },
             lte(c, v) { q.filtros.push(f => f[c] != null && comparar(f[c], v) <= 0); return b; },
             lt(c, v) { q.filtros.push(f => f[c] != null && comparar(f[c], v) < 0); return b; },
             gte(c, v) { q.filtros.push(f => f[c] != null && comparar(f[c], v) >= 0); return b; },
@@ -164,8 +170,9 @@ function crearFake() {
     const client = {
         from,
         auth: {
+            // tokens[token]: el id del usuario, o { id, email }.
             getUser: async (token) => (tokens[token]
-                ? { data: { user: { id: tokens[token] } }, error: null }
+                ? { data: { user: typeof tokens[token] === "object" ? { ...tokens[token] } : { id: tokens[token] } }, error: null }
                 : { data: { user: null }, error: { message: "invalid JWT" } })
         }
     };

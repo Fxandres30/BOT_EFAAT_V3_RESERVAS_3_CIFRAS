@@ -12,7 +12,10 @@
 
 const repo = require("./repo");
 const loterias = require("./loterias");
-const { validarSorteo, validarPlantilla, partesBogota } = require("./validar");
+const { validarSorteo, validarPlantilla, fechaSorteoDe } = require("./validar");
+const { normalizarConfigDiseno } = require("./disenoTabla");
+const reinicioTabla = require("./reinicioTabla");
+const tablaEvento = require("../automation/repo/tablaEvento");
 const { mensajePublicacion, mensajeRecordatorio, mensajeAvisoCierre, VARIABLES } = require("./mensajes");
 const { revisarTabla, revisarGrupo } = require("./disponibilidad");
 const { crearIdentidadEventoReal } = require("../bot/funciones/eventos/identidadEventoReal");
@@ -33,8 +36,31 @@ function identidadDe(usuarioId, config) {
         nombre_evento: config.nombre,
         hora_fin: config.hora_fin,
         valor: config.valor,
-        fecha_evento: partesBogota(new Date(config.publicar_en)).fecha
+        // La fecha en que se JUEGA (puede ser posterior a la publicación).
+        fecha_evento: fechaSorteoDe(config)
     });
+}
+
+// Copia del diseño de tabla elegido (ver disenoTabla.js). "biblioteca" solo
+// acepta diseños DEL USUARIO; "actual" copia el diseño activo de esa tabla.
+async function resolverDiseno(usuarioId, eleccion, precio) {
+
+    const e = eleccion || { origen: "actual" };
+
+    if (e.origen === "preset") return { ok: true, diseno: e };
+
+    if (e.origen === "biblioteca") {
+        const d = await repo.obtenerDisenoPropio(usuarioId, e.diseno_id);
+        if (!d.ok && d.motivo !== "migracion_pendiente") return falla(d.motivo, { error: d.error });
+        const config = d.ok && d.data ? normalizarConfigDiseno(d.data.config) : null;
+        if (!config) return { ok: true, error: { campo: "diseno", mensaje: "Ese diseño no existe en tu biblioteca o no es válido." } };
+        return { ok: true, diseno: { ...e, nombre: d.data.nombre, config } };
+    }
+
+    const v = await repo.obtenerConfigVisual(usuarioId, precio);
+    const config = v.ok && v.data ? normalizarConfigDiseno(v.data.config) : null;
+    return { ok: true, diseno: { origen: "actual", diseno_id: v.ok && v.data ? v.data.diseno_origen_id : null, nombre: null, config } };
+
 }
 
 // Valida todo lo que depende de datos del cliente: grupos autorizados,
@@ -78,6 +104,10 @@ async function prepararSorteo(usuarioId, entrada) {
         else plantillaId = plantilla.data.id;
     }
 
+    const diseno = await resolverDiseno(usuarioId, v.config.diseno, v.config.valor);
+    if (!diseno.ok) return diseno;
+    if (diseno.error) errores.push(diseno.error);
+
     if (errores.length) return falla("validacion", { errores });
 
     // Las cuentas se COPIAN: editarlas después no altera este sorteo.
@@ -85,7 +115,7 @@ async function prepararSorteo(usuarioId, entrada) {
         .map(id => cuentas.data.find(c => c.id === id))
         .map(({ id, nombre, tipo, titular, numero, instrucciones }) => ({ id, nombre, tipo, titular, numero, instrucciones }));
 
-    const config = { ...v.config, cantidad_numeros: tablaCliente.cantidad };
+    const config = { ...v.config, diseno: diseno.diseno, cantidad_numeros: tablaCliente.cantidad };
 
     return {
         ok: true,
@@ -125,7 +155,8 @@ async function vistaPrevia(usuarioId, id) {
     if (!s.ok) return s;
 
     const sorteo = s.data;
-    const fecha = partesBogota(new Date(sorteo.publicar_en)).fecha;
+    // Fecha en que se JUEGA (variable {{fecha}}); la publicación puede ser antes.
+    const fecha = fechaSorteoDe(sorteo.config, sorteo.publicar_en);
 
     const publicacion = mensajePublicacion(sorteo.config, sorteo.cuentas_snapshot, { fecha });
     const recordatorios = (sorteo.config.recordatorios || []).map(r => ({
@@ -146,16 +177,46 @@ async function vistaPrevia(usuarioId, id) {
     ]);
     if (desconocidas.size) avisos.push(`Variables desconocidas que se enviarán tal cual: ${[...desconocidas].map(v => `{{${v}}}`).join(", ")}.`);
 
-    if (!sorteo.cuentas_snapshot?.length) avisos.push("El sorteo no tiene cuentas de pago.");
+    // Sin cuenta de pago los clientes no saben dónde pagar: no se programa.
+    if (!sorteo.cuentas_snapshot?.length) bloqueos.push("Selecciona al menos una cuenta de pago (puedes crearla desde el formulario del sorteo).");
     if (sorteo.config.reservas?.liberar_no_pagados) {
         avisos.push(`Las reservas no pagadas se liberarán automáticamente a los ${sorteo.config.reservas.vencimiento_minutos} minutos. Un cliente que ya transfirió pero cuyo pago no se ha confirmado podría perder su número.`);
     }
 
+    // Reinicio OPCIONAL de la tabla (solo si el sorteo lo pidió): qué se
+    // liberaría (se archiva, no se borra) o por qué no es posible.
+    let reinicio = null;
+
+    if (sorteo.config.tabla?.reiniciar) {
+        const rr = await reinicioTabla.revisarReinicio(usuarioId, sorteo);
+        if (!rr.ok) {
+            reinicio = { posible: false, huella: null, liberables: 0, protegidos: 0, conservados: 0, liberar_bloqueados: false, se_liberarian: [], se_conservan: [], bloqueos: [] };
+            bloqueos.push(rr.motivo === "migracion_pendiente"
+                ? "El reinicio seguro de la tabla todavía no está disponible (falta la migración 030). Edita el sorteo y elige «Conservar tabla», o espera a que se active."
+                : "No pudimos revisar la tabla para reiniciarla. Inténtalo de nuevo en unos minutos.");
+        } else {
+            reinicio = rr.data;
+            if (!reinicio.posible) {
+                bloqueos.push(`No se puede reiniciar la tabla: ${reinicio.bloqueos.join("; ")}. Nada se modificó. Espera a que ese sorteo cierre o edita el sorteo y elige «Conservar tabla».`);
+            }
+        }
+    }
+
+    const seReiniciara = !!reinicio?.posible;
+
     const tabla = await revisarTabla({
-        usuarioId, tabla: sorteo.tabla, cifras: sorteo.cifras, cantidad: sorteo.cantidad_numeros, identidad: sorteo.identidad_evento_real
+        usuarioId, tabla: sorteo.tabla, cifras: sorteo.cifras, cantidad: sorteo.cantidad_numeros, identidad: sorteo.identidad_evento_real, seReiniciara
     });
     bloqueos.push(...tabla.bloqueos);
     avisos.push(...tabla.avisos);
+
+    // Números para pintar la tabla de la vista previa: la MISMA fuente que la
+    // imagen que se comparte (tablaEvento.obtenerNumeros: solo número y si
+    // está libre). Con reinicio, como quedaría después de reiniciar.
+    const numeros = await tablaEvento.obtenerNumeros(sorteo.tabla, usuarioId);
+    const numerosVista = seReiniciara
+        ? { numerosDisponibles: [...numeros.numerosDisponibles, ...numeros.numerosOcupados].sort(), numerosOcupados: [] }
+        : numeros;
 
     const autorizados = await repo.gruposAutorizados(usuarioId);
     const setAutorizados = new Set((autorizados.data || []).map(g => g.grupo_id));
@@ -174,6 +235,15 @@ async function vistaPrevia(usuarioId, id) {
             version: sorteo.version,
             estado: sorteo.estado,
             publicar_en: sorteo.publicar_en,
+            fecha_sorteo: fecha,
+            hora_fin: sorteo.config.hora_fin,
+            hora_cierre: sorteo.config.hora_cierre,
+            diseno: sorteo.config.diseno || { origen: "actual", diseno_id: null, nombre: null, config: null },
+            numeros: numerosVista,
+            cantidad_numeros: sorteo.cantidad_numeros,
+            tabla_fisica: sorteo.tabla,
+            cuentas: sorteo.cuentas_snapshot || [],
+            reinicio,
             publicacion: publicacion.texto,
             recordatorios: recordatorios.map(r => ({ minutos_antes_cierre: r.minutos_antes_cierre, texto: r.texto })),
             aviso_cierre: avisoCierre?.texto || null,
@@ -190,7 +260,7 @@ async function vistaPrevia(usuarioId, id) {
 
 // Exige confirmación explícita y la MISMA versión que se vio en la vista
 // previa: si alguien editó entretanto, la confirmación no vale.
-async function confirmar(usuarioId, id, { version, confirmacion } = {}) {
+async function confirmar(usuarioId, id, { version, confirmacion, reinicio } = {}) {
 
     if (confirmacion !== true) return falla("confirmacion_requerida");
 
@@ -201,6 +271,17 @@ async function confirmar(usuarioId, id, { version, confirmacion } = {}) {
     if (previa.data.estado !== "borrador") return falla("estado_invalido", { estado: previa.data.estado });
     if (previa.data.bloqueos.length) return falla("bloqueado", { bloqueos: previa.data.bloqueos });
     if (new Date(previa.data.publicar_en).getTime() <= reloj.ahora().getTime()) return falla("validacion", { errores: [{ campo: "publicar_en", mensaje: "La hora de publicación ya pasó. Edita el sorteo." }] });
+
+    // Reinicio: SOLO con confirmación expresa y la MISMA huella de la vista
+    // previa. La base lo hace en una transacción (archiva y libera) o no hace
+    // nada; si la tabla cambió entretanto, se pide revisar otra vez.
+    if (previa.data.reinicio?.posible && previa.data.reinicio.liberables > 0) {
+        if (reinicio?.confirmado !== true || reinicio?.huella !== previa.data.reinicio.huella) {
+            return falla("confirmacion_reinicio_requerida");
+        }
+        const r = await reinicioTabla.aplicarReinicio(usuarioId, { id, tabla: previa.data.tabla_fisica, liberarBloqueados: previa.data.reinicio.liberar_bloqueados }, reinicio.huella);
+        if (!r.ok) return falla(r.motivo, { bloqueos: r.bloqueos || [] });
+    }
 
     const r = await repo.actualizarSorteoSi(usuarioId, id, { version: Number(version), estados: ["borrador"] }, {
         estado: "programado",

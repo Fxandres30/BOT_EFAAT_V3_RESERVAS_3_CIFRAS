@@ -51,7 +51,9 @@ function vueltaAtras(texto, marcador, hasta) {
         .join("\n");
 }
 
-const VUELTA_A = vueltaAtras(PARTE_A, "-- VUELTA ATRÁS (si el panel deja de mostrar datos)", "-- Las políticas creadas");
+// Reversión segura (2026-10-22): solo desactiva la RLS; NUNCA devuelve
+// permisos a anon ni a PUBLIC.
+const VUELTA_A = vueltaAtras(PARTE_A, "-- REVERSIÓN SEGURA", "-- Con la RLS desactivada");
 const VUELTA_D = vueltaAtras(PARTE_D, "-- VUELTA ATRÁS (una transacción");
 
 const BLOQUES_DIAGNOSTICO = DIAGNOSTICO.split("set transaction read only;").slice(1)
@@ -79,9 +81,10 @@ const ENTORNO = `
         id uuid primary key default gen_random_uuid(), usuario_id uuid, nombre text,
         estado text default 'desconectado', activa boolean default false, principal boolean default false,
         qr text, telefono text, created_at timestamptz default now());
-    create table public.reservas_dos_cifras (id serial primary key, numero text, estado text, usuario_id uuid, comprador text);
-    create table public."5k_15k_reservas_2_cifras" (id serial primary key, numero text, estado text, usuario_id uuid, comprador text);
+    create table public.reservas_dos_cifras (id serial primary key, numero text, estado text, usuario_id uuid, comprador text, identidad_evento_real text, evento_id text);
+    create table public."5k_15k_reservas_2_cifras" (id serial primary key, numero text, estado text, usuario_id uuid, comprador text, identidad_evento_real text, evento_id text);
     create table public.mensajes_grupos_sorteos (id serial primary key, grupo_id text, usuario_id uuid, texto text);
+    create table public.grupos_autorizados (id uuid primary key default gen_random_uuid(), usuario_id uuid not null, grupo_id text not null, activo boolean not null default true, unique (usuario_id, grupo_id));
 
     insert into public.eventos_bot (usuario_id, grupo_id, activo, hora_cierre) values ('${A}', 'gA', false, '14:00');
     insert into public.sesiones (id, usuario_id, nombre, estado, activa, principal) values
@@ -118,6 +121,14 @@ async function foto(db) {
     return rows;
 }
 
+// Lo que necesitan el panel y el bot: la foto sin anon ni PUBLIC.
+function sinAnon(filas) {
+    const fuera = x => !/^(anon|PUBLIC):/.test(x) && !/:(anon|PUBLIC|-):/.test(x);
+    return filas.map(f => ({ ...f,
+        tabla: (f.tabla || "").split(",").filter(fuera).join(","),
+        columnas: (f.columnas || "").split(",").filter(fuera).join(",") }));
+}
+
 async function bloque(db, sql) {
     const res = await db.exec(sql);
     return res[res.length - 1].rows;
@@ -128,15 +139,16 @@ const prueba = (n, fn) => pruebas.push({ n, fn });
 
 // ── 1. Vueltas atrás ─────────────────────────────────────────────────────
 
-prueba("vuelta atrás de A: RLS y permisos vuelven EXACTAMENTE al estado anterior (permisos por defecto)", async () => {
+prueba("vuelta atrás de A: sin RLS y con los permisos EXACTOS de panel y bot; anon sigue SIN acceso", async () => {
     const db = await crearDb();
-    assert.ok(VUELTA_A.includes("disable row level security") && VUELTA_A.includes("grant all"), "se extrajo el bloque");
+    assert.ok(VUELTA_A.includes("disable row level security") && !/grant/i.test(VUELTA_A), "se extrajo el bloque y no concede nada");
     const antes = await foto(db);
     await db.exec(PARTE_A);
     assert.notDeepStrictEqual(await foto(db), antes);
     await db.exec(VUELTA_A);
-    assert.deepStrictEqual(await foto(db), antes);
-    assert.strictEqual((await como(db, "anon", null, "select * from public.sesiones")).length, 2, "anon vuelve a leer como hoy");
+    assert.deepStrictEqual(sinAnon(await foto(db)), sinAnon(antes));
+    assert.ok((await foto(db)).every(f => f.rls === false));
+    await assert.rejects(como(db, "anon", null, "select * from public.sesiones"), /permission denied/i, "anon NO vuelve a leer");
 });
 
 prueba("vuelta atrás de A: deja sus políticas (inactivas) y NO toca políticas ajenas", async () => {
@@ -160,12 +172,13 @@ prueba("vuelta atrás de D: permisos de sesiones idénticos a tras-A (también l
     await como(db, "authenticated", B, `update public.sesiones set activa = true where id = '${SES_B}'`);
 });
 
-prueba("orden de vuelta atrás D -> A devuelve el estado original completo", async () => {
+prueba("orden de vuelta atrás D -> A devuelve el estado original de panel y bot (anon sigue cerrado)", async () => {
     const db = await crearDb();
     const antes = await foto(db);
     await db.exec(PARTE_A); await db.exec(PARTE_D);
     await db.exec(VUELTA_D); await db.exec(VUELTA_A);
-    assert.deepStrictEqual(await foto(db), antes);
+    assert.deepStrictEqual(sinAnon(await foto(db)), sinAnon(antes));
+    await assert.rejects(como(db, "anon", null, "select * from public.eventos_bot"), /permission denied/i);
 });
 
 // ── 2. Casos de producción ───────────────────────────────────────────────
@@ -176,9 +189,21 @@ prueba("D con un permiso por COLUMNA previo (update activa): Postgres lo revoca 
     await assert.rejects(como(db, "authenticated", B, `update public.sesiones set activa = true where id = '${SES_B}'`), /permission denied/i);
 });
 
-prueba("D con PUBLIC con escritura en sesiones -> ABORTA (authenticated lo heredaría) y no aplica nada", async () => {
+prueba("PUBLIC con escritura en sesiones: la Parte A (revisada 22/10) la retira y D se aplica sin herencia", async () => {
     const db = await crearDb(`grant update on public.sesiones to public;`);
     await db.exec(PARTE_A);
+    const publico = (await db.query(`select count(*)::int n from pg_class c cross join lateral aclexplode(c.relacl) a
+                                      where c.relname = 'sesiones' and a.grantee = 0`)).rows[0].n;
+    assert.strictEqual(publico, 0, "PUBLIC ya no tiene permisos tras A");
+    await db.exec(PARTE_D);
+    // Sin la herencia de PUBLIC, el panel no puede cambiar activa (lo impide D).
+    await assert.rejects(como(db, "authenticated", B, `update public.sesiones set activa = true where id = '${SES_B}'`), /permission denied/i);
+});
+
+prueba("D sigue abortando si PUBLIC conserva escritura (p. ej. aplicada sin la Parte A revisada)", async () => {
+    const db = await crearDb(`grant update on public.sesiones to public;`);
+    await db.exec(PARTE_A);
+    await db.exec(`grant update on public.sesiones to public;`);
     let error = null;
     try { await db.exec(PARTE_D); } catch (e) { error = e; }
     assert.ok(error && /PUBLIC tiene permisos de escritura/.test(error.message), String(error && error.message));

@@ -10,9 +10,11 @@
 
 const { obtenerConfiguracion } = require("../bot/funciones/eventos/configEvento");
 const { calcularCierre } = require("../bot/funciones/eventos/extractor/calcularCierre");
+const { normalizarEleccionDiseno } = require("./disenoTabla");
 
 const ZONA = "America/Bogota";
 const HORA = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LIMITES = {
     nombre: 80,
@@ -39,6 +41,23 @@ function partesBogota(fecha) {
     }).formatToParts(fecha);
     const v = Object.fromEntries(f.map(p => [p.type, p.value]));
     return { fecha: `${v.year}-${v.month}-${v.day}`, hora: `${v.hour}:${v.minute}` };
+}
+
+// "YYYY-MM-DD" + "HH:MM[:SS]" en hora de Colombia (UTC-5, sin horario de
+// verano) -> Date. Misma función para validar y para el publicador.
+function instanteBogota(fecha, hora) {
+    if (!fecha || !hora) return null;
+    const h = String(hora).length === 5 ? `${hora}:00` : String(hora).slice(0, 8);
+    const d = new Date(`${fecha}T${h}-05:00`);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Fecha en que se JUEGA el sorteo. Sorteos anteriores a este campo no la
+// traen: se juegan el día de su publicación (comportamiento de siempre).
+function fechaSorteoDe(config, publicarEn) {
+    if (config?.fecha_sorteo && FECHA.test(config.fecha_sorteo)) return config.fecha_sorteo;
+    const d = new Date(publicarEn || config?.publicar_en || "");
+    return Number.isNaN(d.getTime()) ? null : partesBogota(d).fecha;
 }
 
 const aMinutos = (hhmm) => {
@@ -113,16 +132,32 @@ function validarSorteo(entrada = {}, { ahora = new Date() } = {}) {
     const cuentas = idsUnicos(entrada.cuentas, LIMITES.cuentas);
 
     const publicarEn = new Date(entrada.publicar_en || "");
-    if (Number.isNaN(publicarEn.getTime())) {
+    const publicacionValida = !Number.isNaN(publicarEn.getTime());
+
+    // Fecha del sorteo: puede ser posterior a la publicación (p. ej. se
+    // anuncia la víspera). Sin ella, el mismo día de la publicación.
+    let fechaSorteo = entrada.fecha_sorteo ? texto(entrada.fecha_sorteo, 10) : "";
+    if (fechaSorteo && (!FECHA.test(fechaSorteo) || !instanteBogota(fechaSorteo, "00:00"))) {
+        error("fecha_sorteo", "Fecha del sorteo inválida.");
+        fechaSorteo = "";
+    }
+    if (!fechaSorteo && publicacionValida) fechaSorteo = partesBogota(publicarEn).fecha;
+
+    if (!publicacionValida) {
         error("publicar_en", "Fecha y hora de publicación inválidas.");
     } else {
         if (publicarEn.getTime() < ahora.getTime() + 60 * 1000) {
             error("publicar_en", "La publicación debe programarse al menos 1 minuto en el futuro.");
         }
-        // El cierre por hora compara solo la hora del día: publicar después
-        // de la hora de cierre cerraría el sorteo al instante.
-        if (HORA.test(horaCierre) && aMinutos(partesBogota(publicarEn).hora) >= aMinutos(horaCierre)) {
-            error("publicar_en", "La publicación debe ser antes de la hora de cierre de ese mismo día (hora de Colombia).");
+        // Se compara el INSTANTE real del cierre (fecha del sorteo + hora de
+        // cierre, Colombia): se puede publicar el día anterior o antes, pero
+        // nunca después del cierre (el sorteo se cerraría al publicarse).
+        const cierre = HORA.test(horaCierre) && fechaSorteo ? instanteBogota(fechaSorteo, horaCierre) : null;
+        if (cierre && publicarEn.getTime() >= cierre.getTime()) {
+            error("publicar_en", `La publicación debe ser antes del cierre de reservas (${fechaSorteo} ${horaCierre}, hora de Colombia). Adelanta la publicación o cambia la fecha del sorteo.`);
+        }
+        if (fechaSorteo && fechaSorteo < partesBogota(publicarEn).fecha) {
+            error("fecha_sorteo", "La fecha del sorteo no puede ser anterior a la publicación.");
         }
     }
 
@@ -148,6 +183,9 @@ function validarSorteo(entrada = {}, { ahora = new Date() } = {}) {
         error("reservas.vencimiento_minutos", "El vencimiento de las reservas va de 10 a 1440 minutos.");
     }
 
+    const diseno = normalizarEleccionDiseno(entrada.diseno);
+    errores.push(...diseno.errores);
+
     const config = {
         modalidad,
         nombre,
@@ -158,7 +196,17 @@ function validarSorteo(entrada = {}, { ahora = new Date() } = {}) {
         premios,
         grupos,
         cuentas,
-        publicar_en: Number.isNaN(publicarEn.getTime()) ? null : publicarEn.toISOString(),
+        publicar_en: publicacionValida ? publicarEn.toISOString() : null,
+        fecha_sorteo: fechaSorteo || null,
+        // Reinicio de la tabla: SOLO si se elige expresamente (y se confirma
+        // en la vista previa). Por defecto se conserva.
+        // Los bloqueados a mano se conservan; liberarlos exige elegirlo
+        // expresamente (y solo tiene sentido si se reinicia).
+        tabla: {
+            reiniciar: entrada.tabla?.reiniciar === true,
+            liberar_bloqueados: entrada.tabla?.reiniciar === true && entrada.tabla?.liberar_bloqueados === true
+        },
+        diseno: diseno.eleccion,
         mensajes,
         recordatorios: recordatorios.sort((a, b) => b.minutos_antes_cierre - a.minutos_antes_cierre),
         reservas: { liberar_no_pagados: liberar, vencimiento_minutos: liberar ? vencimiento : null }
@@ -190,10 +238,10 @@ function validarPlantilla(entrada = {}) {
         publicar_en: new Date(Date.now() + 3600 * 1000).toISOString()
     });
 
-    const ignorar = new Set(["grupos", "publicar_en"]);
+    const ignorar = new Set(["grupos", "publicar_en", "fecha_sorteo"]);
     errores.push(...base.errores.filter(e => !ignorar.has(e.campo)));
 
-    const { grupos, publicar_en, ...config } = base.config;
+    const { grupos, publicar_en, fecha_sorteo, tabla, ...config } = base.config;
 
     return { ok: errores.length === 0, errores, nombre, config };
 
@@ -203,5 +251,7 @@ module.exports = {
     validarSorteo,
     validarPlantilla,
     partesBogota,
+    instanteBogota,
+    fechaSorteoDe,
     MODALIDADES
 };

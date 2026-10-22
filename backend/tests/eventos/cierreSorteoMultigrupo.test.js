@@ -20,6 +20,8 @@ process.env.GROUP_QUEUE_BACKOFF_MS = "1";
 process.env.GROUP_QUEUE_BACKOFF_MAX_MS = "2";
 
 const assert = require("assert");
+// Suite anterior a la política de grupos autorizados (ver el ayudante).
+require("../utils/politicaGruposPermisiva");
 const path = require("path");
 
 const RAIZ = path.resolve(__dirname, "../..");

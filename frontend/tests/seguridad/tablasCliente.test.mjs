@@ -4,8 +4,11 @@
 //   1. services/tablas/tablasCliente.ts: configuración del cliente de la
 //      sesión; sin migración 027 / sin inicializar / con error -> los
 //      precios base; sin usuario -> nada.
-//   2. Acciones reales del panel (marcarPagado, obtenerTabla) con DOS
-//      clientes en la MISMA tabla física: cada uno solo toca su cuadrícula.
+//   2. Lectura real del panel (obtenerTabla) con DOS clientes en la MISMA
+//      tabla física: cada uno solo ve su cuadrícula. Las acciones sobre un
+//      número (reservar, pagar, liberar, desbloquear) ya no las escribe el
+//      navegador: pasan por el backend (backend/tests/reservas/
+//      reservaManual.test.js).
 //   3. Estático: ningún servicio de tablas usa ya el mapa fijo; la
 //      inicialización no envía ningún usuario.
 //
@@ -86,7 +89,6 @@ function cargarTs(rutaAbs, cache = new Map()) {
 const cache = new Map();
 const S = (p) => path.join(FRONT, "services/tablas", p);
 const tc = cargarTs(S("tablasCliente.ts"), cache);
-const { marcarPagado } = cargarTs(S("marcarPagado.ts"), cache);
 const { obtenerTabla } = cargarTs(S("obtenerTabla.ts"), cache);
 const leer = (rel) => fs.readFileSync(path.join(FRONT, rel), "utf8");
 
@@ -139,14 +141,6 @@ prueba("caché por usuario: una lectura; olvidar la renueva", async () => {
     assert.strictEqual(consultas.filter(q => q.tabla === "tablas_cliente").length, 2);
 });
 
-prueba("marcar pagado (A): solo la fila de A en la tabla física de su configuración", async () => {
-    reiniciar();
-    const antesB = JSON.stringify(db[T5K].filter(f => f.usuario_id === B));
-    await marcarPagado({ precio: 5000, numero: "07", usuarioId: A, realizadoPor: "admin@a" });
-    assert.strictEqual(db[T5K].find(f => f.usuario_id === A && f.numero === "07").estado, "pagado");
-    assert.strictEqual(JSON.stringify(db[T5K].filter(f => f.usuario_id === B)), antesB, "el 07 de B sigue reservado");
-});
-
 prueba("obtenerTabla (B): sus 100 números, ninguno de A", async () => {
     reiniciar();
     const filas = await obtenerTabla(5000, B);
@@ -154,16 +148,35 @@ prueba("obtenerTabla (B): sus 100 números, ninguno de A", async () => {
     assert.ok(filas.every(f => f.usuario_id === B));
 });
 
-prueba("precio desactivado en la cuenta: las acciones no tocan nada", async () => {
+prueba("precio desactivado en la cuenta: la lectura falla y no consulta la tabla física", async () => {
     reiniciar();
     db.tablas_cliente = [fila(A, 1000, "reservas_dos_cifras"), fila(A, 5000, T5K, false)];
-    const antes = JSON.stringify(db[T5K]);
-    await assert.rejects(marcarPagado({ precio: 5000, numero: "07", usuarioId: A, realizadoPor: "x" }), /Tabla no encontrada/);
-    assert.strictEqual(JSON.stringify(db[T5K]), antes);
+    await assert.rejects(obtenerTabla(5000, A), /Tabla no encontrada/);
+    assert.ok(!consultas.some(q => q.tabla === T5K));
+});
+
+prueba("estático: el navegador ya no escribe el estado de un número; las acciones van al backend", () => {
+    for (const f of ["marcarPagado.ts", "liberarNumero.ts", "bloquearNumero.ts", "marcarEnProceso.ts"]) {
+        assert.ok(!fs.existsSync(S(f)), `${f} eliminado`);
+    }
+    const servicio = leer("services/tablas/reservaManual.ts");
+    assert.ok(!servicio.includes("@/lib/supabase"), "sin acceso directo a Supabase");
+    const sinComentarios = (src) => src.replace(/\/\/.*$/gm, "");
+    assert.ok(!/usuarioId|realizadoPor/.test(sinComentarios(servicio)), "no envía cliente ni operador");
+    // Los datos que envía cada acción (interfaces Datos*) no llevan operador ni estado.
+    for (const m of servicio.matchAll(/export interface Datos\w+ \{[^}]*\}/g)) {
+        assert.ok(!/operador|estado/.test(m[0]), m[0]);
+    }
+    const hook = leer("hooks/useTablaPrecio.ts");
+    assert.ok(!/\.update\(|\.insert\(/.test(hook), "el hook no escribe en Supabase");
+    const modal = leer("components/tablas/NumeroDetalleModal.tsx");
+    assert.ok(!/Poner en proceso|"Bloquear"|No disponible todavía en el backend/.test(modal));
+    const proxy = leer("app/api/tablas/numero/route.ts");
+    assert.ok(!/usuarioId|operador|"estado"/.test(sinComentarios(proxy)), "el proxy no reenvía cliente, operador ni estado");
 });
 
 prueba("estático: los servicios de tablas usan la configuración del cliente, no el mapa fijo", () => {
-    for (const f of ["obtenerTabla.ts", "marcarPagado.ts", "bloquearNumero.ts", "liberarNumero.ts", "marcarEnProceso.ts", "reiniciarTabla.ts"]) {
+    for (const f of ["obtenerTabla.ts", "reiniciarTabla.ts"]) {
         const src = leer(`services/tablas/${f}`);
         assert.ok(src.includes("await obtenerTablaConfigCliente(precio, usuarioId)"), f);
         assert.ok(!/obtenerTablaConfig\(/.test(src), `${f} sin el mapa fijo`);

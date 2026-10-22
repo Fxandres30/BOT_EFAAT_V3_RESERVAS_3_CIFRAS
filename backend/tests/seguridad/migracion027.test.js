@@ -36,6 +36,7 @@ const leer = f => fs.readFileSync(path.join(RAIZ, f), "utf8");
 
 const PARTE_A = leer("docs/activacion/propuesta_rls_tablas_antiguas.sql");
 const M027 = leer("backend/supabase_migrations/027_tablas_cliente.sql");
+const M033 = leer("backend/supabase_migrations/033_cuadricula_por_cliente.sql");
 const { configuracionesBase } = require(path.join(RAIZ, "backend/bot/funciones/eventos/configEvento.js"));
 
 const PRINCIPAL = "aaaaaaaa-0000-4000-8000-00000000000a";
@@ -258,12 +259,22 @@ prueba("cuadrícula INCOMPLETA de un cliente: no se completa ni se toca; se info
     assert.strictEqual(await contar(db, `select count(*) as n from public.reservas_dos_cifras where usuario_id = '${A}'`), 2);
 });
 
-prueba("BLOQUEO: unicidad solo sobre numero -> la inicialización falla entera y la principal queda intacta", async () => {
-    const db = await crearDb({ unicoPorNumero: true });
+prueba("BLOQUEO: con unicidad solo sobre numero la 027 NO se aplica (exige la 033) y la principal queda intacta", async () => {
+    const db = await crearDb({ unicoPorNumero: true, m027: false });
     const antes = await cuadricula(db, PRINCIPAL);
-    await assert.rejects(inicializar(db, A), /duplicate|unique/i);
-    assert.strictEqual(await contar(db, `select count(*) as n from public.tablas_cliente where usuario_id = '${A}'`), 0, "ni las configuraciones quedan (una transacción)");
-    assert.strictEqual(await contar(db, `select count(*) as n from public.reservas_dos_cifras where usuario_id = '${A}'`), 0);
+    await assert.rejects(db.exec(M027), /Aplica antes la 033/);
+    await db.exec("rollback");
+    assert.strictEqual((await db.query("select to_regclass('public.tablas_cliente') as t")).rows[0].t, null, "nada creado");
+    assert.strictEqual(await cuadricula(db, PRINCIPAL), antes);
+});
+
+prueba("con la 033 aplicada, la misma base acepta la 027 y A recibe su cuadrícula con los números de la principal", async () => {
+    const db = await crearDb({ unicoPorNumero: true, m027: false });
+    const antes = await cuadricula(db, PRINCIPAL);
+    await db.exec(M033);
+    await db.exec(M027);
+    const r = await inicializar(db, A);
+    assert.ok(r.ok && r.cuadriculas.every(c => c.estado === "creada"), JSON.stringify(r));
     assert.strictEqual(await cuadricula(db, PRINCIPAL), antes);
 });
 

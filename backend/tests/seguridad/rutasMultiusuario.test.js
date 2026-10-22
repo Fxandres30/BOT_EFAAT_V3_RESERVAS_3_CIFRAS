@@ -64,16 +64,22 @@ const llamadas = [];
 const anotar = (nombre, extra = {}) => llamadas.push({ nombre, ...extra });
 const ultima = nombre => [...llamadas].reverse().find(l => l.nombre === nombre);
 
-const sockActivo = { context: { sessionId: SES_A }, updateBlockStatus: async (jid, accion) => anotar("bloqueoNativo", { accion }) };
+const sockActivo = { context: { sessionId: SES_A, usuarioId: A }, updateBlockStatus: async (jid, accion) => anotar("bloqueoNativo", { accion }) };
+// Multisesión: A tiene su sesión activa (SES_A); B, ninguna (salvo en la
+// prueba de compartir, que le da la suya).
+const activasFalsas = new Map([[A, { sessionId: SES_A, sock: sockActivo }]]);
 const managerFalso = {
     getActiveSession: () => SES_A,
     getActiveSocket: () => sockActivo,
+    getSesionActivaDe: u => activasFalsas.get(u)?.sessionId ?? null,
+    getSocketActivoDe: u => activasFalsas.get(u)?.sock ?? null,
+    isActive: id => [...activasFalsas.values()].some(a => a.sessionId === id),
     has: id => id === SES_A,
     get: id => (id === SES_A ? sockActivo : null)
 };
 inyectar("services/baileys/manager.js", managerFalso);
 
-const controlador = nombre => (req, res) => { anotar(nombre, { usuarioId: req.usuarioId, sessionId: req.body?.sessionId || req.params?.id }); res.json({ success: true, nombre }); };
+const controlador = nombre => (req, res) => { anotar(nombre, { usuarioId: req.usuarioId, sessionId: req.body?.sessionId || req.params?.id, activaPropia: req.sesionActivaPropia }); res.json({ success: true, nombre }); };
 inyectar("bot/controllers/sessionsController.js", {
     connect: controlador("connect"),
     disconnect: controlador("disconnect"),
@@ -110,7 +116,7 @@ inyectar("bot/funciones/eventos/configEvento.js", {
     configuracionesBase: () => [{ precio: 5000, tabla: "t_prueba", cifras: 2, cantidad: 100 }]
 });
 inyectar("automation/repo/tablaEvento.js", { obtenerNumeros: async () => ({}) });
-inyectar("services/compartirTabla.js", { compartirTabla: async ({ evento }) => { anotar("compartirTabla", { eventoId: evento.id }); return { enviado: true }; }, verificarTokenImprimir: () => false });
+inyectar("services/compartirTabla.js", { compartirTabla: async ({ evento, sock }) => { anotar("compartirTabla", { eventoId: evento.id, sock }); return { enviado: true }; }, verificarTokenImprimir: () => false, verificarTokenImprimirDetalle: () => null });
 
 const express = require("express");
 const app = express();
@@ -187,18 +193,23 @@ prueba("status y grupos-disponibles de una sesión ajena -> 404", async () => {
     assert.strictEqual((await pedir("GET", `/sessions/${SES_A}/grupos-disponibles`, { jwt: "jwt-A" })).status, 200);
 });
 
-prueba("GET /sessions/active: la sesión activa es de A -> B recibe null (nunca la fila ajena)", async () => {
-    const n = llamadas.length;
+// Multisesión: cada usuario recibe SU sesión activa (o ninguna); el
+// controlador real responde "sin sesión" a quien no tiene. Nunca le llega
+// la sesión de otro cliente.
+prueba("GET /sessions/active: B (sin activa) nunca recibe la de A; el controlador solo ve a B", async () => {
     const r = await pedir("GET", "/sessions/active", { jwt: "jwt-B" });
     assert.strictEqual(r.status, 200);
-    assert.strictEqual(r.json, null);
-    assert.strictEqual(llamadas.length, n);
+    assert.strictEqual(ultima("getActive").usuarioId, B);
+    assert.strictEqual(ultima("getActive").activaPropia, null);
 });
 
-prueba("/sessions/active/* (backfill, escáner) solo para el dueño de la sesión activa", async () => {
-    assert.strictEqual((await pedir("POST", "/sessions/active/backfill-contactos", { jwt: "jwt-B" })).status, 404);
-    assert.strictEqual((await pedir("POST", "/sessions/active/backfill-contactos", { jwt: "jwt-A" })).status, 200);
-    assert.strictEqual((await pedir("GET", "/sessions/active/escaner-identidades", { jwt: "jwt-B" })).status, 404);
+prueba("/sessions/active/* (backfill, escáner): cada usuario solo recibe su propia sesión activa", async () => {
+    await pedir("POST", "/sessions/active/backfill-contactos", { jwt: "jwt-B" });
+    assert.strictEqual(ultima("backfill").activaPropia, null, "B no recibe la sesión de A");
+    await pedir("POST", "/sessions/active/backfill-contactos", { jwt: "jwt-A" });
+    assert.deepStrictEqual(ultima("backfill").activaPropia, { sessionId: SES_A, sock: sockActivo });
+    await pedir("GET", "/sessions/active/escaner-identidades", { jwt: "jwt-B" });
+    assert.strictEqual(ultima("escaner").activaPropia, null);
 });
 
 prueba("eliminar sesión desde el panel: B NO puede eliminar la de A (404, sin ejecutar)", async () => {
@@ -338,9 +349,17 @@ prueba("bloqueo nativo de WhatsApp: solo con la sesión activa del MISMO cliente
 // ── /tablas/compartir ────────────────────────────────────────────────────
 
 prueba("/tablas/compartir comparte el evento del usuario del token, no el del usuarioId enviado", async () => {
+    const n = llamadas.length;
+    // B sin WhatsApp activo: 409, nunca con el socket de A.
+    assert.strictEqual((await pedir("POST", "/tablas/compartir", { jwt: "jwt-B", cuerpo: { precio: 5000, usuarioId: A } })).status, 409);
+    assert.ok(!llamadas.slice(n).some(l => l.nombre === "compartirTabla"));
+    const sockB = { context: { sessionId: "ses-b", usuarioId: B } };
+    activasFalsas.set(B, { sessionId: "ses-b", sock: sockB });
     const r = await pedir("POST", "/tablas/compartir", { jwt: "jwt-B", cuerpo: { precio: 5000, usuarioId: A } });
+    activasFalsas.delete(B);
     assert.strictEqual(r.status, 200);
     assert.strictEqual(ultima("compartirTabla").eventoId, "ev-b");
+    assert.strictEqual(ultima("compartirTabla").sock, sockB, "con el WhatsApp de B, nunca el de A");
     assert.strictEqual((await pedir("POST", "/tablas/compartir", { cuerpo: { precio: 5000, usuarioId: A } })).status, 401);
 });
 

@@ -71,8 +71,10 @@ function registerMessages(sock, sessionId) {
                 salud.marcarMensajeRecibido(sessionId);
 
                 // Mismo mensaje entregado dos veces a este proceso (en vuelo
-                // o ya decidido): se descarta antes de tocar nada.
-                const identidad = compuertaIngreso.identidadMensaje(message);
+                // o ya decidido) PARA ESTE CLIENTE: se descarta antes de tocar
+                // nada. La copia que recibe la sesión de otro cliente del mismo
+                // grupo es otra clave y se procesa por su cuenta.
+                const identidad = compuertaIngreso.identidadMensaje(message, context.usuarioId || null);
 
                 if (identidad && !compuertaIngreso.tomarEnMemoria(identidad.clave)) {
 

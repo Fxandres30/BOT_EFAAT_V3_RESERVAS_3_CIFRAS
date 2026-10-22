@@ -90,8 +90,7 @@ const ENTORNO = `
 
     insert into public.eventos_bot (usuario_id, grupo_id, tabla, activo, fecha_evento) values
         ('${A}', 'gA@g.us', '5k_15k_reservas_2_cifras', true, '2026-10-21'),
-        ('${B}', 'gB@g.us', '5k_15k_reservas_2_cifras', true, '2026-10-21'),
-        (null,   'gX@g.us', '5k_15k_reservas_2_cifras', true, '2026-10-21');
+        ('${B}', 'gB@g.us', '5k_15k_reservas_2_cifras', true, '2026-10-21');
     insert into public.sesiones (id, usuario_id, nombre, estado, activa, principal, telefono) values
         ('${SES_A}', '${A}', 'bot A', 'conectado', true, true, '573000000001'),
         ('${SES_B}', '${B}', 'bot B', 'desconectado', false, false, null);
@@ -99,8 +98,7 @@ const ENTORNO = `
         ('01', 'reservado', '${A}', 'Cliente de A', '3000000001'),
         ('02', 'pagado',    '${A}', 'Otro de A',    '3000000003'),
         ('03', 'libre',     '${A}', null, null),
-        ('01', 'reservado', '${B}', 'Cliente de B', '3000000002'),
-        ('09', 'reservado', null,   'Sin dueño',    '3000000009');
+        ('01', 'reservado', '${B}', 'Cliente de B', '3000000002');
     insert into public.reservas_dos_cifras (numero, estado, usuario_id) values ('05', 'reservado', '${A}');
     insert into public.mensajes_grupos_sorteos (mensaje_id, grupo_id, usuario_id, telefono, texto) values
         ('m1', 'gA@g.us', 'c0000000-0000-4000-8000-000000000001', '3000000001', 'quiero el 01'),
@@ -108,9 +106,18 @@ const ENTORNO = `
         ('m3', 'gV@g.us', null, null, 'mensaje antiguo sin dueño');
 `;
 
+// Filas SIN dueño. La Parte A revisada (22/10) aborta si existen al
+// aplicarla (P0): se insertan DESPUÉS, como si aparecieran más tarde, para
+// comprobar que siguen siendo invisibles e intocables para el panel.
+const SIN_DUENO = `
+    insert into public.eventos_bot (usuario_id, grupo_id, tabla, activo, fecha_evento) values
+        (null, 'gX@g.us', '5k_15k_reservas_2_cifras', true, '2026-10-21');
+    insert into public.${T5K} (numero, estado, usuario_id, comprador, contacto) values
+        ('09', 'reservado', null, 'Sin dueño', '3000000009');`;
+
 const abiertas = [];
 
-async function crearDb({ partes = ["A", "D", "E"] } = {}) {
+async function crearDb({ partes = ["A", "D", "E"], sinDueno = true } = {}) {
     const db = new PGlite();
     abiertas.push(db);
     await db.exec(ENTORNO);
@@ -123,6 +130,7 @@ async function crearDb({ partes = ["A", "D", "E"] } = {}) {
                        update public.mensajes_grupos_sorteos set cliente_usuario_id = '${B}' where mensaje_id = 'm2';`);
         await db.exec(PARTE_E_RLS);
     }
+    if (sinDueno) await db.exec(SIN_DUENO);
     return db;
 }
 
@@ -311,7 +319,7 @@ prueba("Parte D sin Parte A -> aborta y no aplica nada", async () => {
 });
 
 prueba("Partes A, D y E idempotentes: aplicarlas dos veces no falla", async () => {
-    const db = await crearDb();
+    const db = await crearDb({ sinDueno: false });
     await db.exec(PARTE_A);
     await db.exec(PARTE_D);
     await db.exec(PARTE_E_COLUMNA);
@@ -319,7 +327,7 @@ prueba("Partes A, D y E idempotentes: aplicarlas dos veces no falla", async () =
 });
 
 prueba("Parte A vuelve a aplicarse tras D sin reabrir permisos de columna en sesiones", async () => {
-    const db = await crearDb();
+    const db = await crearDb({ sinDueno: false });
     await db.exec(PARTE_A);
     await assert.rejects(como(db, "authenticated", B, `update public.sesiones set activa = true where id = '${SES_B}'`), /permission denied/i);
 });

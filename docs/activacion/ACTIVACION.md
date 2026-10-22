@@ -35,7 +35,13 @@ Cada paso es una transacción independiente. Si uno falla, se revierte entero y 
 
 **Antes de autorizar A y D (revisión Fase 2, 2026-10-21):**
 - Ejecuta a mano `diagnostico_rls_solo_lectura.sql` (bloques D0–D16, solo lectura) y guarda cada resultado. Cada bloque dice qué resultado se espera.
-- **Bloqueante 1: el enlace «Compartir» del QR** (`/conectar/<id>`) lee `sesiones` con la clave anon. Tras la Parte A deja de funcionar para quien no haya iniciado sesión como dueño. Decide antes si se acepta o se sustituye por un enlace firmado servido por el backend.
+- Semáforo previo (P0) y validación posterior (V1–V6, incluida la guardia de la 027 evaluada sin ejecutarla): `validacion_parte_a_solo_lectura.sql`. La 027 no se ejecuta hasta que V3 dé `027_podria_pasar` en las 2 tablas.
+- Diagnóstico específico de las 2 tablas de reservas (R0–R15, semáforo R15): `diagnostico_reservas_parte_a_solo_lectura.sql`. Cubre lo que las pruebas locales no pueden: el trigger heredado real (R9), las funciones SECURITY DEFINER (R10) y la ACL exacta para revertir (R3/R4).
+- **Bloqueante 1: el enlace «Compartir» del QR** (`/conectar/<id>`) lee `sesiones` con la clave anon. Tras la Parte A deja de funcionar para quien no haya iniciado sesión como dueño.
+  - **Solución preparada (21/10, sin aplicar):** `031_qr_sesion_publica.sql`. Devuelve solo `qr`, `estado` y `qr_expira_en` de **una** sesión, a partir de su id, que es el mismo dato que ya lleva el enlace. No lista sesiones ni devuelve teléfono, nombre o dueño, y no escribe.
+  - El panel local ya la usa y, si no existe, vuelve a la lectura de siempre.
+  - Orden: 031 → desplegar el panel → comprobar el enlace sin sesión → Parte A.
+  - Si la Parte A va antes que el despliegue, entre ambos pasos el enlace solo funciona para el dueño con sesión iniciada en ese navegador. En ese intervalo, no compartas enlaces de QR.
 - **Bloqueante 2: anon en la API.** Revisa en Logs → API si alguien usa anon en las 4 tablas (además de `/conectar`). Una app externa así dejaría de funcionar con la Parte A.
 - **Hallazgo aparte (A y D no lo corrigen):** las funciones de lease de la 004 no revocan `EXECUTE`. Con un `session_id`, anon puede leer el dueño del lease, liberarlo y quedárselo (bot sordo). Reproducido en local: `revisionActivacionRls.test.js`. Confírmalo con el bloque D10. Corrección preparada, sin aplicar: Parte F (`parteFLease.test.js`, 15/15).
 
@@ -77,6 +83,10 @@ Estado real (14/10): **023 y 024 ya están aplicadas**. Quedan **022** y **025**
 | 1 | `022_control_inactividad_miembros.sql` | **Pendiente** | Control de 15 días (en simulación) + trigger de compras en las 2 tablas de reservas. Verificación: `docs/inactividad/022_verificacion.sql`. Vuelta atrás: bloque `REVERSIÓN` (primero quitar los triggers). |
 | 2 | `025_calendario_loterias.sql` | **Pendiente** | Calendario de loterías (tabla nueva `loterias_catalogo`, RLS por propietario). Sin ella el panel funciona: el formulario acepta un nombre escrito a mano y el calendario muestra «Falta aplicar la migración 025». Verificación y reversión: al final del archivo. Prueba SQL: `calendarioLoterias.test.js`. |
 | 3 | `027_tablas_cliente.sql` | **Pendiente** (preparada 21/10) | Solo después de la Parte A validada. Orden completo y bloqueos en la sección 2b. |
+| 4 | `028_mensajes_por_cliente.sql` | **Pendiente** (preparada 21/10) | Después de desplegar el bot nuevo. Sección 2c. |
+| 5 | `029_rls_mensajes_por_cliente.sql` | **Pendiente** (preparada 21/10) | Después de la 028 y con el bot nuevo escribiendo `cliente_usuario_id`. Sección 2c. |
+| 6 | `030_reinicio_tabla_seguro.sql` | **Pendiente** (preparada 21/10) | Reinicio opcional de la tabla al programar un sorteo. Una sola transacción con las filas bloqueadas: archiva (copia completa, pagos incluidos) y libera solo los reservados o pagados atribuibles a un sorteo **terminado** del cliente.<br>Nunca toca un sorteo activo, los pagos en proceso, las reservas sin sorteo identificable ni los estados desconocidos: si hay alguno, no hace nada.<br>Los **bloqueados a mano se conservan**, salvo que el usuario elija liberarlos.<br>Si la tabla cambió desde la vista previa, no hace nada (`tabla_cambio`).<br>Independiente de las demás. Sin ella, «Reiniciar tabla antes de programar» aparece como no disponible.<br>Prueba SQL: `seguridad/migracion030.test.js` (14/14, PGlite) y concurrencia real en Postgres 17 local (9/9). |
+| 7 | `031_qr_sesion_publica.sql` | **Pendiente** (preparada 21/10) | QR de una sesión para `/conectar/<id>` sin la clave anon sobre `sesiones`. Aplicar **antes** de la Parte A (ver bloqueante 1). Prueba SQL: `seguridad/migracion031.test.js` (4/4). |
 
 La 022 es independiente de las Partes A/B/C. Su trigger es `SECURITY DEFINER` y atrapa sus propios errores, así que nunca bloquea un pago. Puede aplicarse antes o después de ellas, pero **en otra ventana**: así, si algo falla, sabrás cuál fue.
 
@@ -97,7 +107,7 @@ Si una falla a mitad de camino, la transacción del SQL Editor se revierte enter
 | 1 | Diagnóstico de solo lectura: D13, D15, **D17/D17b** (restricciones e índices de las 2 tablas físicas), **D18** (quién crea sorteos en cada tabla) y **D19** (027 aún no aplicada) | D17 muestra una unicidad solo sobre `numero` (o sin `usuario_id`). D15/D18 muestran otro `usuario_id` o filas sin dueño en las tablas de la cuenta principal |
 | 2 | **Parte A** aplicada **y validada** (sección 1) | Sin ella, cualquier sesión del panel o la clave anon pueden leer o modificar las cuadrículas de otros. La 027 **aborta sola** si falta |
 | 3 | `027_tablas_cliente.sql` | Aborta sola sin la Parte A. No toca filas existentes |
-| 4 | Desplegar **juntos** backend y panel con este código | — |
+| 4 | Desplegar **juntos** backend y panel con este código (**orden actualizado: el despliegue va antes de la Parte A, ver sección 2d**) | — |
 | 5 | Primer acceso de la cuenta principal: debe responder `cuadriculas: existente, existente` y D15 idéntico al guardado en el paso 1 | Cualquier diferencia en D15: detener y revisar |
 | 6 | Alta de un cliente de **prueba** propio: 8 configuraciones y 2 cuadrículas `creada`; comprobar con su sesión que no ve nada de la principal | — |
 
@@ -115,6 +125,221 @@ Si una falla a mitad de camino, la transacción del SQL Editor se revierte enter
 - `seguridad/tablasCliente.test.js` (8/8) y `frontend/tests/seguridad/tablasCliente.test.mjs` (8/8).
 
 Vuelta atrás: el bloque «Reversión» de la 027. Las cuadrículas ya creadas siguen siendo de su cliente y no afectan a nadie más.
+
+## 2c. Aislamiento integral multiusuario 🔐 — orden único de activación (2026-10-21)
+
+Integra las secciones 1, 2 y 2b con la multisesión (una sesión activa por cliente), los mensajes por cliente (028/029) y la política de grupos autorizados. Todo está preparado y probado **solo en local**. Cada paso requiere autorización, y si uno falla no se sigue.
+
+> **Sustituido por la sección 2d (auditoría del 2026-10-22)**, que adelanta el despliegue y la 028 a la Parte A. Esta tabla se conserva como referencia.
+
+| Orden | Paso | Dónde | Bloquea si… |
+|---|---|---|---|
+| 1 | Diagnóstico de solo lectura completo: D0–D23 y P0 | `diagnostico_rls_solo_lectura.sql`, `validacion_parte_a_solo_lectura.sql` | Ver cada bloque. Clave: **D21 = 0** (o autorizar antes esos grupos), D17 sin unicidad solo sobre `numero`, P0 todo en `true`, D23 para confirmar que las migraciones 001–026 con RLS están aplicadas |
+| 2 | **Parte A** (+ V1–V6 de la validación) | sección 1 | Una política no prevista o PUBLIC con permisos (P0). Decidir antes el enlace `/conectar/<id>` (bloqueante 1) |
+| 3 | Partes B1/B2, C, D y F | sección 1 | Ver la sección 1 |
+| 4 | `027_tablas_cliente.sql` | sección 2b | Aborta sola sin la Parte A |
+| 5 | **Desplegar juntos** backend y panel con el código de aislamiento | sección 4 | — |
+| 6 | `028_mensajes_por_cliente.sql` (después del paso 5) | migraciones | Al revés, durante el intervalo las filas del bot anterior no tendrían deduplicación única |
+| 7 | (Opcional, decisión del dueño) relleno del historial de chats: R1, después R2 | `relleno_cliente_mensajes.sql` | Revisar R1 antes de escribir |
+| 8 | `029_rls_mensajes_por_cliente.sql` (≥ 1 h después de los pasos 5 y 6, con tráfico) | migraciones | Aborta sola sin 028, sin mensajes en la última hora o con mensajes recientes sin cliente |
+| 9 | Comprobaciones con cuentas de **prueba** propias: dos clientes, cada uno con su WhatsApp, en un grupo de prueba compartido | — | Ver la lista de abajo |
+
+**Qué cambia al desplegar el código (paso 5):**
+- **Política de grupos autorizados.** Cada cliente solo actúa (historial, anuncios, reservas, pagos, worker de sorteos y expulsiones) en sus grupos de **Automatización → Autorizar grupo**. Un grupo con sorteo activo sin autorizar deja de atenderse (D21). Un grupo autorizado nuevo empieza a atenderse en ≤ 30 s.
+- **Sesiones.** Sin dueño (`sesiones.usuario_id` nulo) una sesión conecta pero no procesa nada.
+- **Chats del panel.** Muestran solo los mensajes con `cliente_usuario_id` del usuario. Hasta la 028 (y el relleno opcional) se ven **vacíos**: falla cerrado en lugar de mostrar los de todos.
+- **Colas de grupo por sesión.** El *rate-limit* de una cuenta ya no retrasa a las demás.
+
+**Comprobaciones del paso 9:**
+1. Un mensaje del grupo compartido lo procesa cada bot por separado (una fila por cliente).
+2. Una reserva en el sorteo de A no toca la cuadrícula de B.
+3. Desconectar la cuenta de B no afecta a A.
+4. Con su sesión, cada usuario del panel ve solo lo suyo.
+
+**Pruebas locales:**
+- `seguridad/aislamientoMensajesGrupo.test.js` (13)
+- `seguridad/migracion028y029.test.js` (8, PGlite)
+- `sesiones/groupQueuePorSesion.test.js` (7)
+- `sesiones/multisesion.test.js` (14)
+- `seguridad/multisesionDatos.test.js` (7)
+- `frontend/tests/seguridad/aislamientoPanel.test.mjs` (9)
+- Más las de las secciones 1 y 2b.
+
+## 2d. Secuencia final de activación (revisión del 2026-10-21) 🔐
+
+> **Sustituida por la sección 2e (2026-10-22)**, que incorpora el diagnóstico real de producción. Esta tabla se conserva como referencia de las comprobaciones de cada paso.
+
+**Ninguna migración posterior a la 024 consta como aplicada por completo** (la 026 constaba aplicada a medias el 16/10; falta `loterias_catalogo_ofrecidas`). Las 022, 025, 027, 028, 029, 030 y 031 y las Partes A–F están preparadas y probadas solo en local (PGlite y dobles en memoria). Antes de empezar, confírmalo con D19, D22, D23 y D24: que exista el archivo no significa que esté aplicada.
+
+**Reglas comunes a todos los pasos:**
+- Ventana sin sorteos activos (D0 = 0).
+- Guarda el resultado de las consultas `ANTES` de cada paso; son la vuelta atrás.
+- Un paso por ventana.
+- Si un paso falla o aborta solo, **no se sigue**: se revisa y se decide.
+
+**Auditoría previa del 2026-10-22: este orden sustituye a los de las secciones 2b y 2c.** Diferencia principal: el despliegue va **antes** de la Parte A. Motivos:
+- el enlace QR (`/conectar`) no queda cortado entre la Parte A y el despliegue;
+- la Parte D exige el panel restringido ya desplegado;
+- la 028 exige el bot nuevo ya desplegado.
+
+El código nuevo funciona sin la Parte A ni la 027 (usa los 8 precios base) y sin la 028 (guarda los mensajes sin cliente).
+
+Toda la secuencia, salvo B1/B2 y C, se ejecutó en un **Postgres 17 local** (copia de las tablas heredadas, con un dueño sin `bypassrls` como `postgres` en Supabase). Resultado: 29/29, y D0–D24, P0 y V1–V6 sin errores antes y después. No es la base real.
+
+| # | Paso | Depende de | Comprobación previa | Comprobación posterior | Seguir si… / Abortar si… | Riesgo y vuelta atrás |
+|---|---|---|---|---|---|---|
+| 0 | Commit en rama, revisión y copia de seguridad | — | `git diff` revisado | Copia descargada | Seguir: copia disponible | — |
+| 1 | Diagnóstico D0–D24, P0 (sustituyendo `<UUID_PRINCIPAL>`) y Logs → API. En **cada** instancia del bot: `node backend/scripts/verificarRolSupabase.js` | — | — | Resultados guardados | **Abortar si:** D0 > 0; D1 con `forzado = true` en `sesiones` o en las 2 tablas de reservas (la 027, la 030 y la 031 no verían filas); D17 con unicidad solo sobre `numero`; D21 > 0 sin decidir; P0 con algún `false`; peticiones anon distintas de `/conectar`; algún bot sin `service_role` | Solo lectura |
+| 2 | `031_qr_sesion_publica.sql` | — | D24: `hay_031 = false` | D24: `hay_031 = true`. `select public.qr_sesion_publica('<id>')` devuelve solo qr, estado y expiración | **Abortar si** da error (no se crea nada) | Ninguno: la página de producción todavía no la usa. Vuelta atrás: `drop function` |
+| 3 | Desplegar **juntos** backend (VPS) y panel (Vercel) con este código (secciones 3 y 4) | 1 (D21 = 0), variables de la sección 3 | `SESSIONS_API_TOKEN` en el VPS y `BOT_API_TOKEN` en Vercel, comprobadas sin mostrar valores | Logs de la sección 4, **sin** `ERROR GUARDANDO MENSAJE`. `/conectar/<id>` **sin sesión** muestra el QR. Sesiones, Tablas, Eventos y pagos como antes. Chats vacíos hasta el paso 4 (esperado) | **Abortar si:** 401/503 en el panel, mensajes sin guardar o un grupo autorizado sin atender → volver al commit anterior en los dos | Las migraciones pendientes no estorban al código anterior |
+| 4 | `028_mensajes_por_cliente.sql` y, si el dueño lo decide, relleno R1 → R2 | 3 (bot nuevo escribiendo `cliente_usuario_id`) | D22: `hay_columna_cliente = false` | D22: `true`. Un mensaje del grupo compartido genera una fila por cliente | Abortar si da error | Vuelta atrás: la de la propia 028 (recrear el índice de la 021) |
+| 5 | **Parte A** + validación V1–V6 | 1 (P0), 2 y 3 (para no cortar el QR) | P0 en `true` | V1–V6. Con la clave anon y sin sesión: 0 filas o permiso denegado. `/conectar/<id>` **sin sesión** sigue mostrando el QR. Panel con sesión igual. Una reserva y un pago por sticker de prueba funcionan | Aborta sola ante políticas no previstas. **Abortar** (vuelta atrás de A) si el panel deja de ver lo propio o el bot falla | Bloque `VUELTA ATRÁS` de la Parte A |
+| 6 | Partes B1 → B2, C, D y F (sección 1) | 5 (D exige A). F: todos los bots con `service_role` | Las de cada archivo | Las de cada archivo. Tras D, renombrar una sesión desde el panel funciona. Tras F, la sesión sigue «Saludable» | Cada archivo aborta solo si falta algo | Vuelta atrás en orden inverso (F → D → C → B2 → B1) |
+| 7 | `027_tablas_cliente.sql` | 5 validada | D19 = no aplicada. D15 guardado | D19 = aplicada. D15 idéntico. Primer acceso de la principal: `existente, existente` | Aborta sola sin la Parte A. **Abortar** si D15 cambia | Bloque «Reversión»: no toca cuadrículas |
+| 8 | `029_rls_mensajes_por_cliente.sql` | 4, con ≥ 1 h de tráfico del bot nuevo | D22 | Cada usuario del panel ve solo los chats de su bot | Aborta sola sin 028, sin mensajes recientes o con mensajes sin cliente | Bloque «Reversión» de la 029 |
+| 9 | `030_reinicio_tabla_seguro.sql` (cuando se quiera la opción) | Ninguna (no depende de A ni de 027) | D24: `hay_030_* = false`. Anota `sin_atribuir`, `bloqueados` y `en_proceso` | D24 `true`. Vista previa de un sorteo de prueba con «Reiniciar tabla», **sin** confirmarlo | Aborta sola si a una tabla le falta alguna columna que usa | Reinicio aplicado por error: plantilla de **recuperación** al final de la 030. Función: `drop function` |
+| 10 | Comprobaciones con dos cuentas de prueba (sección 2c, paso 9) y las de la sección 5 | Todo lo anterior | — | — | **Abortar** (volver atrás el último paso) si cualquier dato de un cliente se ve desde el otro | — |
+
+**Revisión de las funciones 030 y 031 (2026-10-22):**
+- **030.**
+  - La ejecuta solo `service_role`, con el usuario sacado del token. Solo se toca la tabla del cliente indicado y solo una de las 2 tablas permitidas.
+  - Corregido: antes leía los sorteos activos **antes** de bloquear las filas. Un sorteo reactivado justo en ese momento perdía sus reservas: reproducido en Postgres 17 local con dos sesiones simultáneas.
+  - Ahora bloquea las filas del cliente, después `eventos_bot` en modo SHARE (máximo 5 s; si no lo consigue, error y nada cambia) y solo entonces lee los sorteos.
+  - Un sorteo con `activo` nulo, o activo sin tabla registrada, protege sus reservas.
+  - Dos reinicios simultáneos: solo uno aplica. Una reserva concurrente provoca `tabla_cambio`.
+  - Coste: mientras dura (milisegundos), las **escrituras** en `eventos_bot` de todos los clientes esperan.
+- **031.**
+  - Sin la `id`, no devuelve nada. No lista sesiones, no expone teléfono ni dueño y no escribe.
+  - Quien tenga el enlace ve el QR, igual que hoy (hoy anon puede leer toda la tabla).
+  - Con `FORCE ROW LEVEL SECURITY` en `sesiones` devolvería `null`: lo controla D1 en el paso 1.
+- **Bot y 028 (corregido).** Antes de la 028, el bot nuevo intentaba guardar `cliente_usuario_id` y solo reintentaba sin ella ante el error `42703`. PostgREST responde `PGRST204` a una columna desconocida en un INSERT, así que todos los mensajes de grupo habrían fallado entre los pasos 3 y 4. Ahora reintenta ante cualquier error que nombre esa columna (salvo duplicado).
+
+**Qué cambia en los sorteos programados con este código (al desplegar el paso 5):**
+- **Fecha del sorteo.** Se puede programar la víspera: la publicación es en su día y el cierre automático, en la fecha y hora del sorteo **en Colombia**.
+  - El cierre por hora ya no usa la hora local del servidor (antes, en un VPS en UTC, cerraba 5 h antes).
+  - Los sorteos existentes sin `fecha_sorteo` usan el día de publicación, como antes.
+- **Estilo.** Se guarda en el sorteo y la imagen de WhatsApp lo lee de ese sorteo (el token de impresión firma el evento).
+  - Publicar **ya no cambia** el diseño global de la tabla del precio.
+  - Un evento sin sorteo programado usa el diseño de la tabla, como antes.
+- **Cuentas de pago.** Son obligatorias (al menos una, propia y activa) y pueden crearse desde el formulario.
+- **Reinicio.** Por defecto se elige «Conservar tabla». Reiniciar requiere la 030, elegirlo y confirmarlo en la vista previa con la misma huella.
+
+## 2e. Aislamiento multicliente — orden definitivo (2026-10-22) 🔐
+
+**La Parte A sigue BLOQUEADA** hasta cumplir todas las condiciones de la tabla «Condiciones de la Parte A». Este orden sustituye a los de las secciones 2b, 2c y 2d.
+
+### Estado real de producción (22/10, catálogo + API)
+
+- **Reservas.** `reservas_dos_cifras` y `5k_15k_reservas_2_cifras`:
+  - sin RLS, con `UNIQUE(numero)` y con políticas públicas antiguas abiertas;
+  - anon lee sus 100 + 100 filas.
+- **Pagos.** El trigger heredado `actualizar_compradores_semanales()` escribe en `compradores_semanales` al pagar:
+  - esa tabla no tiene columna de cliente;
+  - anon lee sus 1930 filas.
+- **Funciones.** Hay 4 funciones SECURITY DEFINER ejecutables desde el navegador.
+- **Sesión huérfana.** 1 sesión pertenece a una cuenta que ya no existe (`8b31d700…`, desconectada).
+- **Migraciones presentes:**
+
+  | Migración | Qué hay en producción |
+  |---|---|
+  | 022 | Tablas presentes |
+  | 028 | Columna `cliente_usuario_id` presente |
+  | 030 | `reservas_archivo` y `reiniciar_tabla_cliente` presentes |
+  | 031 | `qr_sesion_publica` presente |
+  | 027 | Ausente |
+  | 026 | Sigue a medias (falta `loterias_catalogo_ofrecidas`) |
+  | 001 | Ausente: no existe `configuracion_mensajes`, aunque el panel la usa |
+
+  **Que un objeto exista no prueba que su migración esté completa ni que sea la versión local.** Antes de seguir hay que comparar:
+  - la 030 de producción con la local, que es la versión corregida (bloquea las filas antes de leer `eventos_bot`). Bloque `D16_D19_D22_D24_migraciones`, campo `030_version_con_lock_share`;
+  - las ACL de la 031 y la 030, en `R10_D10_funciones`.
+- **0 sorteos activos.** D21 = 0.
+
+### Archivos nuevos o revisados (todos probados en local, ninguno aplicado)
+
+| Archivo | Qué hace |
+|---|---|
+| `limpieza_sesion_huerfana.sql` | Archiva (`efaat_admin.sesiones_archivadas`) y borra la sesión de la cuenta inexistente. Aborta si no es exactamente esa, si está activa o conectada, o si tiene sorteos o reservas |
+| `propuesta_rls_tablas_antiguas.sql` (**Parte A revisada**) | Ver detalle debajo de esta tabla |
+| `033_cuadricula_por_cliente.sql` | Cambia `UNIQUE(numero)` por `UNIQUE(usuario_id, numero)`. No toca filas. Aborta ante filas sin dueño, duplicados dentro de un cliente, claves foráneas dependientes o una clave primaria solo sobre `numero` |
+| `027_tablas_cliente.sql` | Guardia nueva: aborta si queda una unicidad sin `usuario_id` (exige la 033) |
+| `parte_b_compradores_semanales.sql` | Sin cambios. B2 pasa la función del trigger a SECURITY DEFINER y cierra la tabla al navegador |
+| `034_compradores_por_cliente.sql` | Ver detalle debajo de esta tabla |
+| `parte_g_funciones_definer.sql` | Ver detalle debajo de esta tabla |
+| `035_rls_tablas_cliente.sql` | Ver detalle debajo de esta tabla |
+
+**Parte A revisada:**
+- Elimina las políticas abiertas y guarda su definición en `efaat_admin.cambios_seguridad`.
+- Aborta ante cualquier otra política que no conozca.
+- Quita todo a anon y a PUBLIC.
+- Conserva (y concede explícitamente si venían de PUBLIC) los permisos de authenticated y service_role.
+- Aborta si hay filas sin dueño o de cuentas inexistentes.
+
+**034 (`compradores_semanales` por cliente):**
+- Añade `usuario_id`.
+- Cada compra nueva se marca con el cliente de la reserva pagada, sin tocar el código heredado ni desactivar el trigger.
+- Si una misma sentencia toca filas de dos clientes, la compra queda sin cliente («mixto»).
+- RLS sin políticas.
+- Exige la B2.
+- Las filas históricas quedan sin dueño.
+
+**Parte G (funciones SECURITY DEFINER):**
+- Todas pasan a solo `service_role`, salvo `qr_sesion_publica`.
+- Aborta si una función ejecutable desde el navegador depende de alguna de ellas.
+- Incluye la Parte F.
+
+**035 (red de seguridad RLS en las tablas de cliente):**
+- Revisa en el catálogo cada tabla con `usuario_id`.
+- Activa la RLS donde falte y elimina las políticas sin condición.
+- Crea las políticas «propietario» solo para lo que el panel hace en esa tabla.
+- Respeta los mensajes globales (`usuario_id` nulo) de `automation_messages`.
+- Cierra `usuarios` y `grupos` (globales, solo backend).
+- Aborta si una tabla del panel tiene filas sin dueño.
+
+**Registro común:** todas las piezas anotan lo que eliminan o conceden en `efaat_admin.cambios_seguridad`. Ese esquema no está expuesto por la API.
+
+### Orden
+
+Reglas: ventana sin sorteos activos (D0 = 0), un paso por ventana. Si un paso aborta, **no se sigue**.
+
+| # | Paso | Requisito previo | Validación posterior | Reversión segura |
+|---|---|---|---|---|
+| 0 | Commit en rama, revisión y copia de seguridad de la base | — | Copia descargada | — |
+| 1 | En **cada** bot (VPS y LOCAL): `node backend/scripts/verificarRolSupabase.js` = `service_role`. Logs → API: ninguna llamada anon salvo `/conectar` y `rpc/qr_sesion_publica` | — | — | Solo lectura |
+| 2 | Confirmar que la 030 y la 031 de producción coinciden con las locales (`030_version_con_lock_share = true`). Si no, reaplicar la 030 local 🔐 | 1 | D24 | La de la 030 |
+| 3 | Desplegar **juntos** backend y panel con este código (secciones 3 y 4) | 1 | `/conectar/<id>` sin sesión muestra el QR (usa la 031). Panel y bot como antes | Commit anterior en los dos |
+| 4 | `limpieza_sesion_huerfana.sql` (sustituir `<ID_SESION>`) | 3 | La consulta previa devuelve 0 filas | Bloque «Reversión» del archivo |
+| 5 | **Parte A** | 4, condiciones de abajo | V1–V6 (`validacion_parte_a_solo_lectura.sql`), V3 = `027_podria_pasar` salvo por la unicidad (paso 6). Anon: permiso denegado en las 4 tablas. Panel con sesión: igual. Una reserva, un pago desde el panel y uno por sticker de prueba | Desactivar la RLS de las 4 tablas (bloque del archivo). **Nunca** devolver permisos a anon |
+| 6 | `033_cuadricula_por_cliente.sql` | 5 | Solo `UNIQUE (usuario_id, numero)` en las 2 tablas. D15/R13 idénticos | Bloque «Reversión» (solo si ningún otro cliente tiene cuadrícula) |
+| 7 | `027_tablas_cliente.sql` | 5 y 6 | D19 aplicada. Primer acceso de la principal: `existente, existente`. Una cuenta de prueba recibe `creada, creada` | Bloque «Reversión» de la 027 |
+| 8 | Parte B (B1 y B2) | 5 | Pago desde el panel y por sticker. Anon sin acceso a `compradores_semanales` | Bloques de vuelta atrás B2 → B1 |
+| 9 | `034_compradores_por_cliente.sql` | 8 | Un pago de prueba crea o actualiza la fila de compradores; las nuevas, con `usuario_id` | Bloque «Reversión» de la 034 |
+| 10 | Parte G (incluye F) | 1 y 9 | El bot conecta y renueva el lease. `/conectar` sin sesión muestra el QR. Pagos como en el paso 9 | Conceder de nuevo solo la función que alguien legítimo necesite (ACL previa en `efaat_admin.cambios_seguridad`) |
+| 11 | `035_rls_tablas_cliente.sql` | 5 | Con dos cuentas: Automatización, Mensajes, Plantillas, Variables, Diseños, Stickers y Grupos autorizados, cada una solo lo suyo (más los mensajes globales) | Desactivar la RLS solo de la tabla afectada si estaba desactivada antes (`estado_previo`) |
+| 12 | Partes C y D; 028 (relleno opcional) y 029 si no están completas (D22) | 5 | Las de cada archivo | Las de cada archivo |
+| 13 | Prueba con dos cuentas reales (A con datos, B nueva) | Todo | B no ve nada de A en Tablas, Eventos, Sesiones, Chats ni Contactos; B tiene su cuadrícula con los mismos números; los pagos de cada uno solo cambian lo suyo | Volver atrás el último paso |
+
+### Condiciones de la Parte A (todas obligatorias)
+
+1. La sesión huérfana está archivada (paso 4). Si no, la Parte A aborta sola.
+2. Todos los bots usan `service_role` (paso 1).
+3. Logs → API no muestra escritores anon externos.
+4. El panel desplegado usa `qr_sesion_publica` (paso 3) y `/conectar` funciona sin sesión.
+5. Sin RLS forzada en las 4 tablas y sin políticas desconocidas. Si existieran, la Parte A aborta sola.
+6. 0 sorteos activos.
+
+### Lo que sigue pendiente aunque todo se aplique
+
+- **Contadores de `compradores_semanales`.** Son por teléfono. Si un mismo comprador paga a dos clientes, la función heredada actualiza la misma fila; queda un WARNING sin datos personales, pero nadie puede leer esa fila desde el navegador. Separarlos por cliente exige reescribir `actualizar_compradores_semanales()`, y su código no está en el repositorio.
+- **`configuracion_mensajes`** no existe en producción (falta la 001): esa pantalla del panel falla hoy, con o sin aislamiento.
+
+### Pruebas
+
+`seguridad/aislamientoMulticliente.test.js` (PGlite, 21) aplica los archivos reales en este orden sobre una base que reproduce producción:
+- `UNIQUE(numero)`, políticas públicas abiertas, trigger de pago heredado en modo invoker, funciones definer abiertas y la sesión huérfana;
+- dos clientes.
+
+Más las de las secciones 1, 2b y 2c.
 
 ## 3. Variables de entorno (en **cada** instancia: VPS y LOCAL)
 

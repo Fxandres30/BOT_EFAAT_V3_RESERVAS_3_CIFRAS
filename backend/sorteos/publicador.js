@@ -23,7 +23,7 @@
 const repo = require("./repo");
 const { revisarTabla, revisarGrupo } = require("./disponibilidad");
 const { mensajePublicacion, mensajeRecordatorio, mensajeAvisoCierre } = require("./mensajes");
-const { partesBogota } = require("./validar");
+const { partesBogota, instanteBogota, fechaSorteoDe } = require("./validar");
 const { decidirRecordatoriosSegunEstado } = require("../automation/eventRules");
 const { leerEstadoParaRecordatorios } = require("../automation/repo/estadoSorteo");
 
@@ -31,7 +31,7 @@ const MAX_INTENTOS_AUTOMATICOS = 5;
 const VENTANA_RECORDATORIO_MS = 10 * 60 * 1000;
 
 // Campos que limpia una liberación: los MISMOS que el botón "Liberar" del
-// panel (frontend/services/tablas/liberarNumero.ts).
+// panel (services/reservaManual.js, liberarManual).
 const CAMPOS_LIBERACION = {
     estado: "libre", comprador: null, contacto: null, contacto_lower: null, nombre: null, telefono: null,
     lib: null, grupo_id: null, grupo_nombre: null, evento_id: null, nombre_evento: null,
@@ -53,15 +53,6 @@ function dependenciasReales() {
     };
 }
 
-// "YYYY-MM-DD" + "HH:MM[:SS]" en hora de Colombia (UTC-5, sin horario de
-// verano) -> Date.
-function instanteBogota(fecha, hora) {
-    if (!fecha || !hora) return null;
-    const h = String(hora).length === 5 ? `${hora}:00` : String(hora).slice(0, 8);
-    const d = new Date(`${fecha}T${h}-05:00`);
-    return Number.isNaN(d.getTime()) ? null : d;
-}
-
 // ------------------------------------------------------------ publicar ---
 
 async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }) {
@@ -71,14 +62,18 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
     const config = sorteo.config;
     const programado = partesBogota(new Date(sorteo.publicar_en));
     const actual = partesBogota(ahora);
+    // Día en que se JUEGA: puede ser posterior al de la publicación (se
+    // anuncia la víspera). El evento se guarda con esa fecha, así el cierre
+    // por hora (verificarHoraCierre) no lo cierra antes de su día.
+    const fechaSorteo = fechaSorteoDe(config, sorteo.publicar_en);
+    const cierre = config.hora_cierre ? instanteBogota(fechaSorteo, config.hora_cierre) : null;
 
-    // Nunca se publica fuera de su día ni después de su hora de cierre: el
-    // cierre por hora compara solo la hora del día y lo cerraría al instante.
+    // Nunca se publica fuera de su día de publicación ni después del cierre.
     if (actual.fecha !== programado.fecha) {
         return { estado: "requiere_revision", ultimo_error: `La fecha programada (${programado.fecha}) ya pasó; no se publicó.` };
     }
-    if (config.hora_cierre && actual.hora >= config.hora_cierre) {
-        return { estado: "requiere_revision", ultimo_error: `La hora de cierre (${config.hora_cierre}) ya pasó; no se publicó.` };
+    if (cierre && ahora.getTime() >= cierre.getTime()) {
+        return { estado: "requiere_revision", ultimo_error: `El cierre (${fechaSorteo} ${config.hora_cierre}) ya pasó; no se publicó.` };
     }
 
     const rg = await revisarGrupo({ usuarioId, grupoId, identidad: sorteo.identidad_evento_real, autorizados });
@@ -87,7 +82,12 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
     const rt = await revisarTabla({ usuarioId, tabla: sorteo.tabla, cifras: sorteo.cifras, cantidad: sorteo.cantidad_numeros, identidad: sorteo.identidad_evento_real });
     if (rt.bloqueos.length) return { estado: "requiere_revision", ultimo_error: rt.bloqueos.join(" ") };
 
-    const eventoAnterior = await deps.consultarEvento(grupoId);
+    // El estilo elegido queda SOLO en el sorteo (config.diseno): nunca se
+    // escribe en el diseño global de la tabla del precio, que podrían usar
+    // otros sorteos del mismo cliente. La imagen de WhatsApp lo lee del
+    // sorteo a partir del evento firmado en el token (/tablas/imprimir-datos).
+
+    const eventoAnterior = await deps.consultarEvento(grupoId, usuarioId);
 
     const guardado = await deps.guardarEvento({
         sock,
@@ -103,7 +103,7 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
             cantidad_numeros: sorteo.cantidad_numeros
         },
         eventoAnterior,
-        sorteoVigente: { identidad_evento_real: sorteo.identidad_evento_real, fecha_evento: programado.fecha }
+        sorteoVigente: { identidad_evento_real: sorteo.identidad_evento_real, fecha_evento: fechaSorteo }
     });
 
     if (!guardado?.id) return { estado: "fallido", ultimo_error: "No se pudo guardar el evento; se reintentará." };
@@ -113,7 +113,7 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
     const abierto = await deps.abrirGrupo({ sock, grupoId });
     if (!abierto) await deps.supabase.from("eventos_bot").update({ abierto: false }).eq("id", guardado.id);
 
-    const { texto } = mensajePublicacion(config, sorteo.cuentas_snapshot, { fecha: programado.fecha });
+    const { texto } = mensajePublicacion(config, sorteo.cuentas_snapshot, { fecha: fechaSorteo });
 
     const envio = await deps.ejecutarUnaVez({
         claveIdempotencia: `sorteo:${sorteo.id}:grupo:${grupoId}:publicacion:${Number(grupo.reintentos_manuales) || 0}`,
@@ -260,7 +260,7 @@ async function procesarPublicados({ sock, deps, ahora }) {
         const { data: eventos } = await deps.supabase.from("eventos_bot")
             .select("*").in("id", publicados.map(g => g.evento_bot_id));
 
-        const fecha = partesBogota(new Date(sorteo.publicar_en)).fecha;
+        const fecha = fechaSorteoDe(sorteo.config, sorteo.publicar_en);
         const cierre = instanteBogota(fecha, sorteo.config.hora_cierre);
 
         for (const g of publicados) {

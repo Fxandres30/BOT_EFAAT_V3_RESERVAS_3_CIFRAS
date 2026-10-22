@@ -233,7 +233,8 @@ async function confirmarPagoPorSticker(ctx) {
         //    (consultarEvento.js), sin duplicar la consulta.
         // ==================================================================
 
-        const evento = await consultarEvento(ctx.chat.remoteJid);
+        // Del cliente dueño de la sesión que recibió el sticker.
+        const evento = await consultarEvento(ctx.chat.remoteJid, usuarioIdTenant);
 
         if (!evento || !evento.activo) {
 

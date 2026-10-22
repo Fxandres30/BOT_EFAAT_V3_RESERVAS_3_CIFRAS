@@ -38,46 +38,62 @@ const PLANTILLA_TEXTO_COMPARTIR =
 // "<expira>.<usuarioId>.<firma>" (un UUID no contiene puntos).
 const USUARIO_VALIDO = /^[0-9a-f-]{36}$/i;
 
-function firmarImprimir(precio, usuarioId, expira) {
-    return crypto.createHmac("sha256", SECRETO).update(`${precio}.${usuarioId}.${expira}`).digest("hex");
+// ESTILO POR SORTEO (2026-10-21): el token puede firmar además el EVENTO
+// ("<expira>.<usuarioId>.<eventoId>.<firma>") para que la imagen use el
+// estilo guardado en ESE sorteo programado y no el de la tabla del precio.
+// El formato sin evento sigue siendo válido.
+const EVENTO_VALIDO = /^[0-9A-Za-z-]{1,64}$/;
+
+function firmarImprimir(precio, usuarioId, expira, eventoId = null) {
+    const datos = eventoId ? `${precio}.${usuarioId}.${eventoId}.${expira}` : `${precio}.${usuarioId}.${expira}`;
+    return crypto.createHmac("sha256", SECRETO).update(datos).digest("hex");
 }
 
-function generarTokenImprimir(precio, usuarioId) {
+function generarTokenImprimir(precio, usuarioId, eventoId = null) {
 
     if (!usuarioId || !USUARIO_VALIDO.test(String(usuarioId))) {
         throw new Error("No se puede generar el enlace de impresión sin el dueño de la tabla.");
     }
 
+    const evento = eventoId != null && EVENTO_VALIDO.test(String(eventoId)) ? String(eventoId) : null;
     const expira = Date.now() + EXPIRACION_MS;
-    const firma = firmarImprimir(precio, usuarioId, expira);
+    const firma = firmarImprimir(precio, usuarioId, expira, evento);
 
-    return { token: `${expira}.${usuarioId}.${firma}`, expira };
+    return { token: evento ? `${expira}.${usuarioId}.${evento}.${firma}` : `${expira}.${usuarioId}.${firma}`, expira };
 
 }
 
-// Devuelve el usuarioId firmado en el token, o null si no es válido.
-function verificarTokenImprimir(precio, token) {
+// { usuarioId, eventoId|null } firmados en el token, o null si no es válido.
+function verificarTokenImprimirDetalle(precio, token) {
 
     if (!token || typeof token !== "string") return null;
 
     const partes = token.split(".");
-    if (partes.length !== 3) return null;
+    if (partes.length !== 3 && partes.length !== 4) return null;
 
-    const [expiraTexto, usuarioId, firma] = partes;
+    const [expiraTexto, usuarioId] = partes;
+    const eventoId = partes.length === 4 ? partes[2] : null;
+    const firma = partes[partes.length - 1];
     const expira = Number(expiraTexto);
 
     if (!Number.isFinite(expira) || !firma || !USUARIO_VALIDO.test(usuarioId)) return null;
+    if (eventoId !== null && !EVENTO_VALIDO.test(eventoId)) return null;
     if (Date.now() > expira) return null;
 
-    const firmaEsperada = firmarImprimir(precio, usuarioId, expira);
+    const firmaEsperada = firmarImprimir(precio, usuarioId, expira, eventoId);
 
     // Comparación en tiempo constante — mismo criterio de seguridad ya
     // usado en el proyecto para secretos de dispositivo (backend/pagos).
     const bufA = Buffer.from(firma);
     const bufB = Buffer.from(firmaEsperada);
 
-    return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB) ? usuarioId : null;
+    return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB) ? { usuarioId, eventoId } : null;
 
+}
+
+// Devuelve el usuarioId firmado en el token, o null si no es válido.
+function verificarTokenImprimir(precio, token) {
+    return verificarTokenImprimirDetalle(precio, token)?.usuarioId || null;
 }
 
 function construirTextoCompartir(evento) {
@@ -99,9 +115,9 @@ function construirTextoCompartir(evento) {
 // impresión solo pinta número+estado, igual que la celda cerrada del
 // panel real: el nombre/teléfono del cliente nunca aparece en la cara de
 // la celda, solo en el modal de detalle, que esta captura nunca abre).
-async function capturarImagenTabla(precio, usuarioId) {
+async function capturarImagenTabla(precio, usuarioId, eventoId = null) {
 
-    const { token } = generarTokenImprimir(precio, usuarioId);
+    const { token } = generarTokenImprimir(precio, usuarioId, eventoId);
     const url = `${FRONTEND_URL}/tablas/imprimir/${precio}?token=${token}`;
 
     // Flags defensivos estándar para Chromium headless en un VPS/entorno
@@ -172,7 +188,7 @@ async function compartirTabla({ evento, sock, idempotencia = null }) {
         const precio = Number(evento.valor);
 
         const [imagen, texto] = await Promise.all([
-            capturarImagenTabla(precio, evento.usuario_id),
+            capturarImagenTabla(precio, evento.usuario_id, evento.id ?? null),
             Promise.resolve(construirTextoCompartir(evento))
         ]);
 
@@ -220,5 +236,6 @@ module.exports = {
     capturarImagenTabla,
     construirTextoCompartir,
     generarTokenImprimir,
-    verificarTokenImprimir
+    verificarTokenImprimir,
+    verificarTokenImprimirDetalle
 };

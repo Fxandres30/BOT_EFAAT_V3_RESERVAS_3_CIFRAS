@@ -25,7 +25,6 @@ const {
 } = require("../bot/funciones/bloqueo/bloqueadosRepo");
 
 const manager = require("../services/baileys/manager");
-const { perteneceAlUsuario } = require("../middleware/autorizacionSesiones");
 
 // Bloqueo NATIVO de WhatsApp (sock.updateBlockStatus) — best-effort, NUNCA
 // del que depende el bloqueo real: el bloqueo EFAAT (tabla "bloqueados" +
@@ -49,12 +48,10 @@ async function aplicarBloqueoNativo(bloqueado, accion, usuarioId) {
         const jidNativo = construirJidNativo(bloqueado || {});
         if (!jidNativo) return;
 
-        const sock = manager.getActiveSocket();
+        // Solo con el WhatsApp activo del MISMO cliente (multisesión): nunca
+        // con el de otro cliente conectado al mismo proceso.
+        const sock = manager.getSocketActivoDe(usuarioId);
         if (!sock || typeof sock.updateBlockStatus !== "function") return;
-
-        // Solo con el WhatsApp del MISMO cliente: la sesión activa del
-        // proceso puede ser de otro cliente y no debe bloquear por él.
-        if (!(await perteneceAlUsuario(manager.getActiveSession(), usuarioId))) return;
 
         await sock.updateBlockStatus(jidNativo, accion);
 

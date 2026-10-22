@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import type { TablaDisenoConfig } from "@/components/tablas/disenoTypes";
 
 // Cliente del panel para sorteos programados, plantillas y cuentas de pago.
 // Cada petición lleva el access_token de la sesión de Supabase Auth; el
@@ -9,6 +10,18 @@ export type EstadoGrupo = "pendiente" | "publicando" | "publicado" | "fallido" |
 
 export interface Premio { tipo?: string; nombre: string; premio: number | null }
 export interface Recordatorio { minutos_antes_cierre: number; texto: string }
+
+/**
+ * Estilo de la tabla del sorteo. "actual" = el diseño que la tabla de ese
+ * precio ya tiene; "biblioteca" = un diseño guardado del usuario; "preset" =
+ * un estilo predefinido. El backend guarda una copia (config).
+ */
+export interface DisenoSorteo {
+    origen: "actual" | "biblioteca" | "preset";
+    diseno_id: string | null;
+    nombre: string | null;
+    config: TablaDisenoConfig | null;
+}
 
 export interface ConfigSorteo {
     modalidad: string;
@@ -22,6 +35,12 @@ export interface ConfigSorteo {
     grupos?: string[];
     cuentas: string[];
     publicar_en?: string | null;
+    /** Día en que se juega (YYYY-MM-DD, Colombia). Vacío = el de la publicación. */
+    fecha_sorteo?: string | null;
+    /** Reinicio de la tabla: solo si se elige expresamente. Los bloqueados a
+     *  mano se conservan salvo liberar_bloqueados (solo con reiniciar). */
+    tabla?: { reiniciar: boolean; liberar_bloqueados?: boolean };
+    diseno?: DisenoSorteo;
     mensajes: { publicacion: string; aviso_cierre: string };
     recordatorios: Recordatorio[];
     reservas: { liberar_no_pagados: boolean; vencimiento_minutos: number | null };
@@ -58,6 +77,15 @@ export interface VistaPrevia {
     version: number;
     estado: EstadoSorteo;
     publicar_en: string;
+    fecha_sorteo: string;
+    hora_fin: string;
+    hora_cierre: string | null;
+    diseno: DisenoSorteo;
+    /** Mismos datos que la imagen compartida (número + libre u ocupado). */
+    numeros: { numerosDisponibles: string[]; numerosOcupados: string[] };
+    cantidad_numeros: number;
+    cuentas: CuentaPago[];
+    reinicio: ReinicioTabla | null;
     publicacion: string;
     recordatorios: Recordatorio[];
     aviso_cierre: string | null;
@@ -67,6 +95,20 @@ export interface VistaPrevia {
     avisos: string[];
     variables: Record<string, string>;
     puede_confirmar: boolean;
+}
+
+export interface ReinicioTabla {
+    posible: boolean;
+    /** Lo que vio el usuario: la confirmación solo vale si la tabla sigue igual. */
+    huella: string | null;
+    liberables: number;
+    protegidos: number;
+    /** Bloqueados a mano que se conservan. */
+    conservados?: number;
+    liberar_bloqueados?: boolean;
+    se_liberarian: string[];
+    se_conservan?: string[];
+    bloqueos: string[];
 }
 
 export interface CuentaPago {
@@ -133,6 +175,9 @@ const MENSAJES: Record<string, string> = {
     ya_publicado: "Ya se publicó en algún grupo: no se puede editar.",
     bloqueado: "Hay bloqueos que impiden programarlo.",
     confirmacion_requerida: "Debes confirmar que revisaste la vista previa.",
+    confirmacion_reinicio_requerida: "Confirma el reinicio de la tabla que se muestra en la vista previa.",
+    tabla_cambio: "La tabla cambió desde la vista previa (alguien reservó o pagó). Revísala de nuevo; no se modificó nada.",
+    reinicio_bloqueado: "No se pudo reiniciar la tabla: hay números protegidos. No se modificó nada.",
     nombre_duplicado: "Ya existe una plantilla con ese nombre.",
     migracion_pendiente: "Esta función todavía no está disponible. Inténtalo más tarde.",
     validacion: "Revisa los campos marcados."
@@ -202,7 +247,8 @@ export const apiSorteos = {
     crear: (config: ConfigSorteo & { plantilla_id?: string | null }) => llamar<Sorteo>("POST", "", config),
     editar: (id: string, config: ConfigSorteo & { version: number; plantilla_id?: string | null }) => llamar<Sorteo>("PUT", `/${id}`, config),
     vistaPrevia: (id: string) => llamar<VistaPrevia>("GET", `/${id}/vista-previa`),
-    confirmar: (id: string, version: number) => llamar<Sorteo>("POST", `/${id}/confirmar`, { version, confirmacion: true }),
+    confirmar: (id: string, version: number, reinicio?: { confirmado: boolean; huella: string | null }) =>
+        llamar<Sorteo>("POST", `/${id}/confirmar`, { version, confirmacion: true, ...(reinicio ? { reinicio } : {}) }),
     cancelar: (id: string) => llamar<Sorteo>("POST", `/${id}/cancelar`),
     reintentarGrupo: (id: string, grupoId: string) => llamar<Sorteo>("POST", `/${id}/grupos/reintentar`, { grupo_id: grupoId }),
     grupos: () => llamar<GrupoAutorizado[]>("GET", "/grupos"),

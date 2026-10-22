@@ -42,19 +42,21 @@ function exigirSesionPropia(leerSessionId) {
     };
 }
 
-// La sesión ACTIVA del proceso es del usuario (rutas /active/*). Si no hay
-// sesión activa, el controlador responde como siempre.
+// Rutas /active/*: la sesión activa DEL USUARIO DEL TOKEN (multisesión,
+// 2026-10-21). Antes era la única activa del proceso, comprobando que fuera
+// suya; ahora cada cliente tiene la suya y nunca se ve ni usa la de otro.
+// Deja en req.sesionActivaPropia { sessionId, sock } (sock: solo si está
+// open) o null; sin activa, el controlador responde como siempre.
+// sinActivaComoVacio se mantiene por compatibilidad de la firma.
 function exigirActivaPropia({ sinActivaComoVacio = false } = {}) {
-    return async (req, res, next) => {
+    return (req, res, next) => {
         try {
             const manager = require("../services/baileys/manager");
-            const activa = manager.getActiveSession();
-            if (!activa) return next();
-            if (await perteneceAlUsuario(activa, req.usuarioId)) return next();
-            // La sesión activa es de OTRO cliente: para este usuario es como
-            // si no hubiera ninguna (nunca se devuelve la fila ajena).
-            if (sinActivaComoVacio) return res.json(null);
-            return noEncontrada(res);
+            const sessionId = manager.getSesionActivaDe(req.usuarioId);
+            req.sesionActivaPropia = sessionId
+                ? { sessionId, sock: manager.getSocketActivoDe(req.usuarioId) }
+                : null;
+            return next();
         } catch (err) {
             console.error("❌ [AUTH SESIONES]", err?.message);
             return noEncontrada(res);

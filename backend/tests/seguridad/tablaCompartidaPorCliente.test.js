@@ -112,6 +112,59 @@ prueba("no se genera enlace de impresión sin dueño válido", async () => {
     assert.throws(() => compartir.generarTokenImprimir(5000, "x.y"));
 });
 
+// ---- Estilo por sorteo (2026-10-21): la imagen usa el estilo guardado en
+// el sorteo programado del evento firmado, nunca el de otro cliente, y el
+// diseño global de la tabla del precio no se toca al publicar.
+function estilo(acento) {
+    const celda = { bg: "#ffffff", border: "#000000", text: "#111111" };
+    return { theme: { pageBg: "#ffffff", tableBg: "#ffffff", text: "#000000", border: "#000000", accent: acento },
+        cells: { available: celda, reserved: celda, pagado: celda }, numbers: { size: 20, weight: 700 }, grid: { radius: 4, spacing: 4, borderWidth: 1 } };
+}
+fake.tablas.tabla_configuracion_visual = [{ usuario_id: A, precio: 5000, config: estilo("#aaaaaa") }, { usuario_id: B, precio: 5000, config: estilo("#bbbbbb") }];
+fake.tablas.eventos_bot = [{ id: "101", usuario_id: A, identidad_evento_real: "ida" }, { id: "202", usuario_id: B, identidad_evento_real: "idb" }, { id: "303", usuario_id: A, identidad_evento_real: "manual" }];
+fake.tablas.sorteos_programados = [
+    { usuario_id: A, identidad_evento_real: "ida", creado_en: "2026-10-20T10:00:00Z", config: { diseno: { origen: "preset", config: estilo("#a1a1a1") } } },
+    { usuario_id: B, identidad_evento_real: "idb", creado_en: "2026-10-20T10:00:00Z", config: { diseno: { origen: "preset", config: estilo("#b1b1b1") } } },
+    // Mismo identificador en otro cliente: nunca debe usarse para A.
+    { usuario_id: B, identidad_evento_real: "ida", creado_en: "2026-10-21T10:00:00Z", config: { diseno: { origen: "preset", config: estilo("#b2b2b2") } } }
+];
+const acentoDe = r => r.json?.diseno?.theme?.accent;
+
+prueba("token sin evento -> diseño de la tabla del precio de ese cliente", async () => {
+    const { token } = compartir.generarTokenImprimir(5000, A);
+    assert.strictEqual(acentoDe(await get(`/tablas/imprimir-datos?precio=5000&token=${encodeURIComponent(token)}`)), "#aaaaaa");
+});
+
+prueba("token con evento de A -> estilo guardado en SU sorteo (no el de B con la misma identidad)", async () => {
+    const { token } = compartir.generarTokenImprimir(5000, A, "101");
+    assert.strictEqual(token.split(".").length, 4);
+    const r = await get(`/tablas/imprimir-datos?precio=5000&token=${encodeURIComponent(token)}`);
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(acentoDe(r), "#a1a1a1");
+    assert.deepStrictEqual([r.json.numerosDisponibles, r.json.numerosOcupados], [["00"], ["01"]]);
+});
+
+prueba("token de A firmado con el evento de B -> nunca el estilo de B (cae al diseño propio de A)", async () => {
+    const { token } = compartir.generarTokenImprimir(5000, A, "202");
+    assert.strictEqual(acentoDe(await get(`/tablas/imprimir-datos?precio=5000&token=${encodeURIComponent(token)}`)), "#aaaaaa");
+});
+
+prueba("evento cambiado en el token (misma firma) -> 401", async () => {
+    const { token } = compartir.generarTokenImprimir(5000, A, "101");
+    const [expira, usuario, , firma] = token.split(".");
+    assert.strictEqual((await get(`/tablas/imprimir-datos?precio=5000&token=${encodeURIComponent(`${expira}.${usuario}.303.${firma}`)}`)).status, 401);
+    assert.strictEqual((await get(`/tablas/imprimir-datos?precio=5000&token=${encodeURIComponent(`${expira}.${usuario}.${firma}`)}`)).status, 401);
+});
+
+prueba("evento sin sorteo programado -> diseño de la tabla del precio", async () => {
+    const { token } = compartir.generarTokenImprimir(5000, A, "303");
+    assert.strictEqual(acentoDe(await get(`/tablas/imprimir-datos?precio=5000&token=${encodeURIComponent(token)}`)), "#aaaaaa");
+});
+
+prueba("leer la imagen nunca modifica tabla_configuracion_visual", async () => {
+    assert.deepStrictEqual(fake.tablas.tabla_configuracion_visual.map(f => f.config.theme.accent), ["#aaaaaa", "#bbbbbb"]);
+});
+
 prueba("compartirTabla con un evento sin dueño -> no publica nada (evento_sin_propietario)", async () => {
     const antes = capturas;
     const r = await compartir.compartirTabla({ evento: { grupo_id: "g@g.us", valor: 5000, usuario_id: null } });

@@ -41,7 +41,6 @@ async function saludSesiones(req, res) {
         }
 
         const ahora = Date.now();
-        const activaProceso = manager.getActiveSession();
 
         const resultado = (sesiones || []).map(s => {
 
@@ -52,7 +51,8 @@ async function saludSesiones(req, res) {
                 sessionId: s.id,
                 sock,
                 abierto: !!sock && cicloSocket.estaAbierto(sock),
-                activa: activaProceso === s.id,
+                // Activa de SU cliente (multisesión: una por cliente).
+                activa: manager.isActive(s.id),
                 lease: filaLease,
                 leasePropio: !!filaLease && filaLease.owner_id === lease.OWNER_ID,
                 estadoLeasePropio: lease.estadoLease(s.id),

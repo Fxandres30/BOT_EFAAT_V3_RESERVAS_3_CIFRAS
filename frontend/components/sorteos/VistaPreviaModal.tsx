@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { Modal, Button, Badge } from "@/components/ui";
+import TablaImprimible from "@/components/tablas/TablaImprimible";
 import { apiSorteos, describirError, type VistaPrevia } from "@/services/sorteos/apiSorteos";
 import { mostrarFecha } from "./fechas";
 import styles from "./Sorteos.module.css";
@@ -13,11 +14,18 @@ interface Props {
     onConfirmado: () => void;
 }
 
+const fechaLegible = (yyyyMmDd: string) => yyyyMmDd.split("-").reverse().join("/");
+
+// Orden fijo: fecha y hora -> tabla (la MISMA que la imagen de WhatsApp) ->
+// anuncio -> cuentas -> grupos -> advertencias y validaciones. Los botones
+// van en el pie del modal, que no se desplaza: la tabla tiene su propio
+// scroll y nunca los oculta.
 export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Props) {
 
     const [vista, setVista] = useState<VistaPrevia | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [revisado, setRevisado] = useState(false);
+    const [reinicioConfirmado, setReinicioConfirmado] = useState(false);
     const [confirmando, setConfirmando] = useState(false);
 
     // La página remonta este modal (key) por cada sorteo: el estado empieza
@@ -36,6 +44,9 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
 
     }, [sorteoId]);
 
+    // Solo hay algo que confirmar si el reinicio es posible Y libera números.
+    const conReinicio = !!vista?.reinicio?.posible && (vista?.reinicio?.liberables || 0) > 0;
+
     async function confirmar() {
 
         if (!vista) return;
@@ -43,7 +54,11 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
         setConfirmando(true);
         setError(null);
 
-        const r = await apiSorteos.confirmar(vista.id, vista.version);
+        const r = await apiSorteos.confirmar(
+            vista.id,
+            vista.version,
+            conReinicio ? { confirmado: reinicioConfirmado, huella: vista.reinicio?.huella || null } : undefined
+        );
 
         setConfirmando(false);
 
@@ -62,13 +77,12 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
             onClose={onClose}
             size="lg"
             title="Vista previa"
-            description={vista ? `Se publicará el ${mostrarFecha(vista.publicar_en)} (hora de Colombia).` : undefined}
             footer={
                 <>
                     <Button variant="secondary" onClick={onClose} disabled={confirmando}>Cerrar</Button>
                     {vista?.estado === "borrador" && (
-                        <Button onClick={confirmar} loading={confirmando} disabled={!vista.puede_confirmar || !revisado}>
-                            Confirmar y programar
+                        <Button onClick={confirmar} loading={confirmando} disabled={!vista.puede_confirmar || !revisado || (conReinicio && !reinicioConfirmado)}>
+                            {conReinicio ? "Reiniciar tabla y programar" : "Confirmar y programar"}
                         </Button>
                     )}
                 </>
@@ -81,6 +95,79 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
 
                 {vista && (
                     <>
+                        <section className={styles.seccion} aria-label="Fecha y hora">
+                            <h3 className={styles.seccionTitulo}>Publicación</h3>
+                            <p>
+                                Se publica el <b>{mostrarFecha(vista.publicar_en)}</b> (hora de Colombia).
+                                {" "}Sorteo: <b>{fechaLegible(vista.fecha_sorteo)} a las {vista.hora_fin}</b>
+                                {vista.hora_cierre ? <> · cierre de reservas {vista.hora_cierre}</> : null}.
+                            </p>
+                        </section>
+
+                        <section className={styles.seccion} aria-label="Tabla de números">
+                            <h3 className={styles.seccionTitulo}>
+                                Tabla de números · {vista.diseno.config ? (vista.diseno.nombre || "diseño actual de la tabla") : "diseño por defecto"}
+                                {conReinicio ? " · como quedará tras el reinicio" : ""}
+                            </h3>
+                            <div className={styles.tablaVista}>
+                                <TablaImprimible
+                                    numerosDisponibles={vista.numeros.numerosDisponibles}
+                                    numerosOcupados={vista.numeros.numerosOcupados}
+                                    diseno={vista.diseno.config}
+                                />
+                            </div>
+                            <p className={styles.ayuda}>Es la misma tabla, con el mismo estilo, que se comparte como imagen en WhatsApp.</p>
+                        </section>
+
+                        <section className={styles.seccion}>
+                            <h3 className={styles.seccionTitulo}>Anuncio que se publicará</h3>
+                            <pre className={styles.mensaje}>{vista.publicacion}</pre>
+                        </section>
+
+                        <section className={styles.seccion}>
+                            <h3 className={styles.seccionTitulo}>Cuentas de pago de este sorteo</h3>
+                            {vista.cuentas.length === 0
+                                ? <p className={styles.ayuda}>Ninguna seleccionada.</p>
+                                : <ul>{vista.cuentas.map(c => <li key={c.id}>{c.nombre} · {c.numero}{c.titular ? ` · ${c.titular}` : ""}</li>)}</ul>}
+                        </section>
+
+                        <section className={styles.seccion}>
+                            <h3 className={styles.seccionTitulo}>Grupos</h3>
+                            <ul className={styles.grupos}>
+                                {vista.grupos.map(g => (
+                                    <li key={g.grupo_id} className={styles.grupo}>
+                                        <Badge tone={g.bloqueo ? "error" : "success"} dot>{g.bloqueo ? "Bloqueado" : "Listo"}</Badge>
+                                        {g.nombre || g.grupo_id}
+                                        {g.bloqueo && <span className={styles.error}>{g.bloqueo}</span>}
+                                    </li>
+                                ))}
+                            </ul>
+                        </section>
+
+                        {vista.reinicio && (
+                            <section className={styles.seccion} aria-label="Reinicio de la tabla">
+                                <h3 className={styles.seccionTitulo}>Reinicio de la tabla</h3>
+                                {vista.reinicio.posible ? (
+                                    vista.reinicio.liberables > 0 ? (
+                                        <>
+                                            <p>Se archivarán (no se borran) y quedarán libres {vista.reinicio.liberables} número(s):</p>
+                                            <ul>{vista.reinicio.se_liberarian.map((t, i) => <li key={i}>{t}</li>)}</ul>
+                                        </>
+                                    ) : <p className={styles.ayuda}>La tabla ya está libre: el reinicio no modificará nada.</p>
+                                ) : (
+                                    <p className={styles.ayuda}>No se puede reiniciar (ver los bloqueos de abajo). No se modificará nada.</p>
+                                )}
+                                {(vista.reinicio.se_conservan || []).map((t, i) => <p key={i} className={styles.ayuda}>{t}</p>)}
+                                {vista.reinicio.liberar_bloqueados && <p className={styles.ayuda}>Elegiste liberar también los números bloqueados a mano.</p>}
+                                {vista.estado === "borrador" && vista.reinicio.posible && vista.reinicio.liberables > 0 && (
+                                    <label className={styles.check}>
+                                        <input type="checkbox" checked={reinicioConfirmado} onChange={e => setReinicioConfirmado(e.target.checked)} />
+                                        Confirmo que se archiven y liberen estos números.
+                                    </label>
+                                )}
+                            </section>
+                        )}
+
                         {vista.bloqueos.length > 0 && (
                             <div className={`${styles.alerta} ${styles.alertaError}`}>
                                 <strong>No se puede programar todavía:</strong>
@@ -94,10 +181,12 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                             </div>
                         )}
 
-                        <section className={styles.seccion}>
-                            <h3 className={styles.seccionTitulo}>Anuncio que se publicará</h3>
-                            <pre className={styles.mensaje}>{vista.publicacion}</pre>
-                        </section>
+                        {vista.tabla && (
+                            <p className={styles.ayuda}>
+                                Tabla de números: {vista.tabla.presentes}/{vista.tabla.esperados} números
+                                {vista.tabla.retenidos ? ` · ${vista.tabla.retenidos} bloqueados o en proceso` : ""}
+                            </p>
+                        )}
 
                         {vista.recordatorios.length > 0 && (
                             <section className={styles.seccion}>
@@ -118,30 +207,10 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                             </section>
                         )}
 
-                        <section className={styles.seccion}>
-                            <h3 className={styles.seccionTitulo}>Grupos</h3>
-                            <ul className={styles.grupos}>
-                                {vista.grupos.map(g => (
-                                    <li key={g.grupo_id} className={styles.grupo}>
-                                        <Badge tone={g.bloqueo ? "error" : "success"} dot>{g.bloqueo ? "Bloqueado" : "Listo"}</Badge>
-                                        {g.nombre || g.grupo_id}
-                                        {g.bloqueo && <span className={styles.error}>{g.bloqueo}</span>}
-                                    </li>
-                                ))}
-                            </ul>
-                        </section>
-
-                        {vista.tabla && (
-                            <p className={styles.ayuda}>
-                                Tabla de números: {vista.tabla.presentes}/{vista.tabla.esperados} números
-                                {vista.tabla.retenidos ? ` · ${vista.tabla.retenidos} bloqueados o en proceso` : ""}
-                            </p>
-                        )}
-
                         {vista.estado === "borrador" && vista.puede_confirmar && (
                             <label className={styles.check}>
                                 <input type="checkbox" checked={revisado} onChange={e => setRevisado(e.target.checked)} />
-                                Revisé el anuncio, la fecha, los grupos, los premios, el valor y las cuentas.
+                                Revisé la fecha, la tabla, el anuncio, las cuentas, los grupos, los premios y el valor.
                             </label>
                         )}
                     </>

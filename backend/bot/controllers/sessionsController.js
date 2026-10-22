@@ -224,13 +224,14 @@ async function escanerIdentidadesDryRun(req, res) {
 
     try {
 
-        const sock = manager.getActiveSocket();
+        // La sesión activa DEL USUARIO DEL TOKEN (middleware exigirActivaPropia).
+        const sock = req.sesionActivaPropia?.sock || null;
 
         if (!sock) {
 
             return res.status(409).json({
                 success: false,
-                error: "No hay una sesión activa conectada (manager.getActiveSocket() es null)."
+                error: "No hay una sesión activa conectada (tu cuenta no tiene una sesión activa conectada)."
             });
 
         }
@@ -277,7 +278,7 @@ async function escanerIdentidadesDryRun(req, res) {
 // (auditoría de identidad, sección "por qué tan pocos teléfonos").
 //
 // Mismo patrón EXACTO que escanerIdentidadesDryRun() de arriba:
-// manager.getActiveSocket() (409 si no hay sesión), corre el diagnóstico,
+// la sesión activa del usuario del token (409 si no tiene), corre el diagnóstico,
 // guarda el reporte en reportes_identidad/, lo imprime en la consola de
 // ESTE proceso (que ya tiene el sock real) y responde el JSON.
 //
@@ -291,13 +292,14 @@ async function diagnosticoTelefonosLid(req, res) {
 
     try {
 
-        const sock = manager.getActiveSocket();
+        // La sesión activa DEL USUARIO DEL TOKEN (middleware exigirActivaPropia).
+        const sock = req.sesionActivaPropia?.sock || null;
 
         if (!sock) {
 
             return res.status(409).json({
                 success: false,
-                error: "No hay una sesión activa conectada (manager.getActiveSocket() es null)."
+                error: "No hay una sesión activa conectada (tu cuenta no tiene una sesión activa conectada)."
             });
 
         }
@@ -365,15 +367,15 @@ async function backfillContactos(req, res) {
 
     try {
 
-        const sessionId = manager.getActiveSession();
-        const sock = manager.getActiveSocket();
+        const sessionId = req.sesionActivaPropia?.sessionId || null;
+        const sock = req.sesionActivaPropia?.sock || null;
 
         if (!sock || !sessionId) {
 
             return res.status(409).json({
                 success: false,
                 estado: "sin_sesion",
-                error: "No hay una sesión activa conectada (manager.getActiveSocket() es null)."
+                error: "No hay una sesión activa conectada (tu cuenta no tiene una sesión activa conectada)."
             });
 
         }
@@ -454,7 +456,7 @@ async function backfillContactos(req, res) {
 // ==========================================================================
 function estadoBackfillContactos(req, res) {
 
-    const sessionId = manager.getActiveSession();
+    const sessionId = req.sesionActivaPropia?.sessionId || null;
 
     if (!sessionId) {
 

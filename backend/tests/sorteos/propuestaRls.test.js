@@ -129,13 +129,25 @@ prueba("el bot (service_role) no se ve afectado", async () => {
     assert.strictEqual((await como(db, "service_role", null, `update public.eventos_bot set activo = false returning id`)).length, 2);
 });
 
-prueba("guardia: con una política abierta previa (using true) aborta y NO aplica nada", async () => {
+prueba("política abierta previa (using true): se ELIMINA, queda registrada y anon deja de leer", async () => {
     const db = await crearDb({ conPropuesta: false });
     await db.exec(`alter table public.sesiones enable row level security;
         create policy "todos leen" on public.sesiones for select using (true);`);
+    await db.exec(PROPUESTA);
+    const quedan = (await db.query(`select count(*)::int n from pg_policies where policyname = 'todos leen'`)).rows[0].n;
+    assert.strictEqual(quedan, 0);
+    const log = (await db.query(`select detalle->>'politica' p from efaat_admin.cambios_seguridad where accion = 'politica_abierta_eliminada'`)).rows;
+    assert.deepStrictEqual(log.map(r => r.p), ["todos leen"]);
+    await assert.rejects(como(db, "anon", null, "select * from public.sesiones"), /permission denied/i);
+});
+
+prueba("guardia: con una política desconocida CON condición aborta y NO aplica nada", async () => {
+    const db = await crearDb({ conPropuesta: false });
+    await db.exec(`alter table public.sesiones enable row level security;
+        create policy "solo con nombre" on public.sesiones for select to authenticated using (nombre is not null);`);
     let error = null;
     try { await db.exec(PROPUESTA); } catch (e) { error = e; }
-    assert.ok(error && /Parte A abortada.*todos leen/.test(error.message), "debe abortar nombrando la política");
+    assert.ok(error && /Parte A abortada.*solo con nombre/.test(error.message), "debe abortar nombrando la política");
     await db.exec("rollback;");
     assert.strictEqual((await como(db, "anon", null, `select * from public."5k_15k_reservas_2_cifras"`)).length, 2, "nada aplicado");
     const rls = (await db.query(`select relrowsecurity from pg_class where relname = '5k_15k_reservas_2_cifras'`)).rows[0];

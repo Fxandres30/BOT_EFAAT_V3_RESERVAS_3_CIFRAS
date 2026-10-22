@@ -12,6 +12,7 @@ import {
     esSesionCaducada,
     type ConfigSorteo,
     type CuentaPago,
+    type DisenoSorteo,
     type ErrorCampo,
     type GrupoAutorizado,
     type HorarioLoteria,
@@ -21,6 +22,10 @@ import {
     type Sorteo
 } from "@/services/sorteos/apiSorteos";
 import { colombiaDesdeIso, isoDesdeColombia } from "./fechas";
+import { listarDisenos } from "@/services/tablas/disenos";
+import { TABLA_DISENO_PRESETS } from "@/services/tablas/disenoDefaults";
+import type { TablaDiseno } from "@/components/tablas/disenoTypes";
+import DisenoThumbnail from "@/components/tablas/DisenoThumbnail";
 import styles from "./Sorteos.module.css";
 
 interface Props {
@@ -47,6 +52,14 @@ const VACIO = {
     grupos: [] as string[],
     cuentas: [] as string[],
     publicarEn: "",
+    // Día en que se juega (YYYY-MM-DD). Vacío = el de la publicación.
+    fechaSorteo: "",
+    // Reinicio de la tabla: nunca por defecto.
+    reiniciarTabla: false,
+    // Bloqueados a mano: se conservan salvo que se elija liberarlos.
+    liberarBloqueados: false,
+    // Estilo: "actual" | "preset:<key>" | "biblioteca:<id>".
+    diseno: "actual",
     mensajePublicacion: "",
     avisoCierre: "",
     recordatorios: [] as RecordatorioForm[],
@@ -56,6 +69,26 @@ const VACIO = {
 };
 
 type Form = typeof VACIO;
+
+const CUENTA_VACIA = { nombre: "", tipo: "nequi", numero: "", titular: "" };
+
+// Elección guardada en el sorteo -> valor del selector.
+function disenoAForm(d?: DisenoSorteo): string {
+    if (!d || d.origen === "actual") return "actual";
+    if (d.origen === "biblioteca" && d.diseno_id) return `biblioteca:${d.diseno_id}`;
+    const preset = TABLA_DISENO_PRESETS.find(p => p.nombre === d.nombre);
+    return preset ? `preset:${preset.key}` : "actual";
+}
+
+// Valor del selector -> elección para el backend (que copia el diseño).
+function formADiseno(valor: string): DisenoSorteo {
+    if (valor.startsWith("biblioteca:")) return { origen: "biblioteca", diseno_id: valor.slice(11), nombre: null, config: null };
+    if (valor.startsWith("preset:")) {
+        const p = TABLA_DISENO_PRESETS.find(x => x.key === valor.slice(7));
+        if (p) return { origen: "preset", diseno_id: null, nombre: p.nombre, config: p.config };
+    }
+    return { origen: "actual", diseno_id: null, nombre: null, config: null };
+}
 
 type EstadoGrupos =
     | { tipo: "cargando" }
@@ -85,6 +118,10 @@ function desdeConfig(config: ConfigSorteo, extra: Partial<Form> = {}): Form {
         grupos: config.grupos || [],
         cuentas: config.cuentas || [],
         publicarEn: colombiaDesdeIso(config.publicar_en),
+        fechaSorteo: config.fecha_sorteo || colombiaDesdeIso(config.publicar_en).slice(0, 10),
+        reiniciarTabla: config.tabla?.reiniciar === true,
+        liberarBloqueados: config.tabla?.reiniciar === true && config.tabla?.liberar_bloqueados === true,
+        diseno: disenoAForm(config.diseno),
         mensajePublicacion: config.mensajes?.publicacion || "",
         avisoCierre: config.mensajes?.aviso_cierre || "",
         recordatorios: (config.recordatorios || []).map(r => ({ minutos: String(r.minutos_antes_cierre), texto: r.texto })),
@@ -106,6 +143,9 @@ function aConfig(f: Form): ConfigSorteo {
         grupos: f.grupos,
         cuentas: f.cuentas,
         publicar_en: isoDesdeColombia(f.publicarEn),
+        fecha_sorteo: f.fechaSorteo || (f.publicarEn ? f.publicarEn.slice(0, 10) : null),
+        tabla: { reiniciar: f.reiniciarTabla, liberar_bloqueados: f.reiniciarTabla && f.liberarBloqueados },
+        diseno: formADiseno(f.diseno),
         mensajes: { publicacion: f.mensajePublicacion, aviso_cierre: f.avisoCierre },
         recordatorios: f.recordatorios.map(r => ({ minutos_antes_cierre: Number(r.minutos), texto: r.texto })),
         reservas: { liberar_no_pagados: f.liberar, vencimiento_minutos: f.liberar ? Number(f.vencimiento) : null }
@@ -122,6 +162,10 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado, va
     const [cuentaSesion, setCuentaSesion] = useState<string | null>(null);
     const [cuentas, setCuentas] = useState<CuentaPago[]>([]);
     const [errorCuentas, setErrorCuentas] = useState(false);
+    const [nuevaCuenta, setNuevaCuenta] = useState<typeof CUENTA_VACIA | null>(null);
+    const [erroresCuenta, setErroresCuenta] = useState<ErrorCampo[]>([]);
+    const [guardandoCuenta, setGuardandoCuenta] = useState(false);
+    const [disenos, setDisenos] = useState<TablaDiseno[]>([]);
     const [plantillas, setPlantillas] = useState<Plantilla[]>([]);
     const [loterias, setLoterias] = useState<Loteria[]>([]);
     const [avisoLoterias, setAvisoLoterias] = useState<string | null>(null);
@@ -161,6 +205,9 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado, va
             }
             else { describirError(l); setAvisoLoterias("No pudimos cargar el calendario de loterías. Puedes escribir el nombre de la lotería a mano."); }
             setCuentaSesion(s.data.session?.user?.email || null);
+            // Biblioteca de diseños DEL USUARIO (RLS por propietario).
+            const uid = s.data.session?.user?.id;
+            if (uid) listarDisenos(uid).then(setDisenos).catch(() => setDisenos([]));
         }
 
         async function cargarTodo() {
@@ -171,9 +218,9 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado, va
 
     }, [open, cargarGrupos]);
 
-    // Horario habitual de la lotería elegida para la FECHA de publicación
-    // (el sorteo se juega ese mismo día). Solo sugiere: nunca programa nada.
-    const fechaSorteo = form.publicarEn ? form.publicarEn.slice(0, 10) : "";
+    // Horario habitual de la lotería elegida para la FECHA DEL SORTEO (puede
+    // ser posterior a la publicación). Solo sugiere: nunca programa nada.
+    const fechaSorteo = form.fechaSorteo || (form.publicarEn ? form.publicarEn.slice(0, 10) : "");
 
     useEffect(() => {
 
@@ -220,6 +267,44 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado, va
 
     const alternar = (clave: "grupos" | "cuentas", id: string) =>
         setForm(prev => ({ ...prev, [clave]: prev[clave].includes(id) ? prev[clave].filter(x => x !== id) : [...prev[clave], id] }));
+
+    // Al cambiar la publicación, la fecha del sorteo la sigue mientras el
+    // usuario no la haya cambiado a mano (o sea anterior a la publicación).
+    const cambiarPublicacion = (valor: string) => setForm(prev => {
+        const anteriorDia = prev.publicarEn.slice(0, 10);
+        const nuevoDia = valor.slice(0, 10);
+        const seguia = !prev.fechaSorteo || prev.fechaSorteo === anteriorDia || prev.fechaSorteo < nuevoDia;
+        return { ...prev, publicarEn: valor, fechaSorteo: seguia ? nuevoDia : prev.fechaSorteo };
+    });
+
+    // Cuenta de pago creada sin salir del formulario (titular = el usuario
+    // del token en el backend); queda seleccionada para este sorteo.
+    async function crearCuenta() {
+        if (!nuevaCuenta) return;
+        setGuardandoCuenta(true);
+        setErroresCuenta([]);
+        const r = await apiSorteos.crearCuenta({
+            nombre: nuevaCuenta.nombre,
+            tipo: nuevaCuenta.tipo,
+            numero: nuevaCuenta.numero,
+            titular: nuevaCuenta.titular || null,
+            instrucciones: null
+        });
+        setGuardandoCuenta(false);
+        if (!r.ok) {
+            setErroresCuenta(r.errores?.length ? r.errores : [{ campo: "*", mensaje: describirError(r) }]);
+            return;
+        }
+        setCuentas(prev => [...prev, r.data]);
+        setForm(prev => ({ ...prev, cuentas: [...prev.cuentas, r.data.id] }));
+        setNuevaCuenta(null);
+    }
+
+    const disenoElegido = form.diseno.startsWith("preset:")
+        ? TABLA_DISENO_PRESETS.find(p => p.key === form.diseno.slice(7))?.config || null
+        : form.diseno.startsWith("biblioteca:")
+            ? disenos.find(d => d.id === form.diseno.slice(11))?.config || null
+            : null;
 
     const usarPlantilla = (id: string) => {
         const p = plantillas.find(x => x.id === id);
@@ -314,7 +399,10 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado, va
                 </div>
                 {avisoLoterias && <p className={`${styles.alerta} ${styles.alertaAviso}`}>{avisoLoterias}</p>}
 
-                <Input label="Fecha y hora de publicación (hora de Colombia)" type="datetime-local" value={form.publicarEn} onChange={e => cambiar("publicarEn", e.target.value)} error={errorDe("publicar_en")} hint="El sorteo se juega ese mismo día." />
+                <div className={styles.fila}>
+                    <Input label="Fecha y hora de publicación (hora de Colombia)" type="datetime-local" value={form.publicarEn} onChange={e => cambiarPublicacion(e.target.value)} error={errorDe("publicar_en")} hint="Puede ser el día anterior al sorteo o antes." />
+                    <Input label="Fecha del sorteo" type="date" value={fechaSorteo} min={form.publicarEn ? form.publicarEn.slice(0, 10) : undefined} onChange={e => cambiar("fechaSorteo", e.target.value)} error={errorDe("fecha_sorteo")} hint="Día en que se juega. Se publica antes del cierre de reservas de ese día." />
+                </div>
 
                 {form.loteriaId && !fechaSorteo && (
                     <p className={styles.ayuda}>Elige la fecha de publicación para ver el horario habitual de esa lotería ese día.</p>
@@ -397,14 +485,76 @@ export default function FormularioSorteo({ open, sorteo, onClose, onGuardado, va
                     {cuentas.length === 0
                         ? <p className={styles.ayuda}>{errorCuentas
                             ? "No pudimos cargar tus cuentas de pago. Cierra y vuelve a abrir el formulario."
-                            : <>Todavía no tienes cuentas de pago. Crea una en <Link href="/sorteos">Sorteos programados</Link> → pestaña «Cuentas de pago» (nombre y número de la cuenta) y vuelve a crear el sorteo.</>}</p>
+                            : "Todavía no tienes cuentas de pago. Agrega al menos una: sin cuenta el sorteo no se puede programar."}</p>
                         : <div className={styles.checks}>{cuentas.map(c => (
                             <label key={c.id} className={styles.check}>
                                 <input type="checkbox" checked={form.cuentas.includes(c.id)} onChange={() => alternar("cuentas", c.id)} />
-                                {c.nombre}
+                                {c.nombre} · {c.numero}
                             </label>
                         ))}</div>}
-                    <p className={styles.ayuda}>Se copian al sorteo: editarlas después no cambia este sorteo.</p>
+                    {nuevaCuenta ? (
+                        <div className={styles.seccion} aria-label="Nueva cuenta de pago">
+                            {erroresCuenta.filter(e => e.campo === "*").map((e, i) => <p key={i} className={`${styles.alerta} ${styles.alertaError}`}>{e.mensaje}</p>)}
+                            <div className={styles.fila}>
+                                <Input label="Nombre de la cuenta" value={nuevaCuenta.nombre} onChange={e => setNuevaCuenta({ ...nuevaCuenta, nombre: e.target.value })} error={erroresCuenta.find(e => e.campo === "nombre")?.mensaje} maxLength={80} placeholder="Ej.: Nequi principal" />
+                                <Select label="Tipo" value={nuevaCuenta.tipo} onChange={e => setNuevaCuenta({ ...nuevaCuenta, tipo: e.target.value })}>
+                                    <option value="nequi">Nequi</option>
+                                    <option value="daviplata">Daviplata</option>
+                                    <option value="bancolombia">Bancolombia</option>
+                                    <option value="llave">Llave</option>
+                                    <option value="otro">Otro</option>
+                                </Select>
+                            </div>
+                            <div className={styles.fila}>
+                                <Input label="Número o llave" value={nuevaCuenta.numero} onChange={e => setNuevaCuenta({ ...nuevaCuenta, numero: e.target.value })} error={erroresCuenta.find(e => e.campo === "numero")?.mensaje} maxLength={60} />
+                                <Input label="Titular" optional value={nuevaCuenta.titular} onChange={e => setNuevaCuenta({ ...nuevaCuenta, titular: e.target.value })} maxLength={80} />
+                            </div>
+                            <div>
+                                <Button size="sm" onClick={crearCuenta} loading={guardandoCuenta}>Guardar cuenta</Button>
+                                {" "}<Button size="sm" variant="ghost" onClick={() => { setNuevaCuenta(null); setErroresCuenta([]); }} disabled={guardandoCuenta}>Cancelar</Button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div><Button size="sm" variant="ghost" leftIcon={<Plus size={14} />} onClick={() => setNuevaCuenta({ ...CUENTA_VACIA })} disabled={errorCuentas}>Agregar cuenta de pago</Button></div>
+                    )}
+                    <p className={styles.ayuda}>Solo las cuentas marcadas aparecen en el anuncio. Se copian al sorteo: editarlas después no cambia este sorteo.</p>
+                </section>
+
+                <section className={styles.seccion}>
+                    <h3 className={styles.seccionTitulo}>Tabla de números</h3>
+                    <Select label="Estilo de la tabla" value={form.diseno} onChange={e => cambiar("diseno", e.target.value)} error={errorDe("diseno")} hint="Es el diseño de la imagen que se comparte por WhatsApp. Lo verás en la vista previa.">
+                        <option value="actual">Diseño actual de esta tabla</option>
+                        <optgroup label="Predefinidos">
+                            {TABLA_DISENO_PRESETS.map(p => <option key={p.key} value={`preset:${p.key}`}>{p.nombre}</option>)}
+                        </optgroup>
+                        {disenos.length > 0 && (
+                            <optgroup label="Mis diseños">
+                                {disenos.map(d => <option key={d.id} value={`biblioteca:${d.id}`}>{d.nombre}</option>)}
+                            </optgroup>
+                        )}
+                    </Select>
+                    {disenoElegido && <DisenoThumbnail config={disenoElegido} />}
+                    <div className={styles.checks} role="radiogroup" aria-label="Tabla antes de programar">
+                        <label className={styles.check}>
+                            <input type="radio" name="reinicio" checked={!form.reiniciarTabla} onChange={() => cambiar("reiniciarTabla", false)} />
+                            Conservar tabla
+                        </label>
+                        <label className={styles.check}>
+                            <input type="radio" name="reinicio" checked={form.reiniciarTabla} onChange={() => cambiar("reiniciarTabla", true)} />
+                            Reiniciar tabla antes de programar
+                        </label>
+                    </div>
+                    {form.reiniciarTabla && (
+                        <>
+                            <p className={`${styles.alerta} ${styles.alertaAviso}`}>
+                                Los números reservados y pagados de sorteos <b>anteriores</b> se archivan (no se borran) y quedan libres. Nunca se tocan los de un sorteo activo, los pagos en proceso ni las reservas que no se puedan atribuir a un sorteo terminado. Los números <b>bloqueados a mano</b> se conservan. En la vista previa verás exactamente qué se modifica y tendrás que confirmarlo.
+                            </p>
+                            <label className={styles.check}>
+                                <input type="checkbox" checked={form.liberarBloqueados} onChange={e => cambiar("liberarBloqueados", e.target.checked)} />
+                                También liberar los números bloqueados a mano
+                            </label>
+                        </>
+                    )}
                 </section>
 
                 <section className={styles.seccion}>

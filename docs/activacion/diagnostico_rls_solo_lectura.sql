@@ -477,6 +477,130 @@ select to_regclass('public.tablas_cliente') is not null as hay_tablas_cliente,
 
 
 -- ==========================================================================
+-- D20. Multisesión: ¿eventos_bot admite un sorteo por grupo Y cliente?
+-- Con varios WhatsApp conectados, el de otro cliente puede estar en el mismo
+-- grupo. El código busca y actualiza el sorteo por (grupo_id, usuario_id).
+--   - Si hay una unicidad solo sobre grupo_id: un segundo cliente no puede
+--     crear sorteo en ese grupo (el insert falla y no toca el del primero).
+--     Seguro, pero ese grupo queda para un solo cliente.
+--   - Sin unicidad: pueden convivir; revisar D20b.
+-- D20b: grupos que hoy tienen sorteos de MÁS de un cliente (esperado: 0).
+-- ==========================================================================
+set transaction read only;
+select con.conname as restriccion, con.contype as tipo, pg_get_constraintdef(con.oid) as definicion
+from pg_constraint con
+where con.conrelid = 'public.eventos_bot'::regclass and con.contype in ('p', 'u', 'x')
+union all
+select indexname, 'i', indexdef
+from pg_indexes
+where schemaname = 'public' and tablename = 'eventos_bot' and indexdef ilike '%unique%'
+order by 1;
+
+set transaction read only;
+select grupo_id, count(distinct usuario_id) as clientes
+from public.eventos_bot
+group by grupo_id
+having count(distinct usuario_id) > 1;
+
+
+-- ==========================================================================
+-- D21. POLÍTICA DE GRUPOS AUTORIZADOS — antes de desplegar el bot nuevo.
+-- El bot nuevo solo actúa (mensajes, reservas, pagos, worker de sorteos,
+-- expulsiones) en los grupos de grupos_autorizados (activo) de cada cliente.
+-- Esperado: 0 filas. Cada fila es un grupo con sorteo ACTIVO que el bot
+-- dejaría de atender: autorizarlo en el panel (Automatización -> Autorizar
+-- grupo) ANTES de desplegar, o aceptar que deja de atenderse.
+-- D21b: grupos donde hubo sorteos (cualquiera) sin autorizar — solo
+-- informativo (historial de grupos que ya no se usarían).
+-- ==========================================================================
+set transaction read only;
+select e.usuario_id, e.grupo_id, count(*) as sorteos_activos
+from public.eventos_bot e
+where e.activo
+  and not exists (
+      select 1 from public.grupos_autorizados g
+      where g.usuario_id = e.usuario_id and g.grupo_id = e.grupo_id and g.activo
+  )
+group by 1, 2
+order by 1, 2;
+
+set transaction read only;
+select e.usuario_id, count(distinct e.grupo_id) as grupos_con_sorteos_sin_autorizar
+from public.eventos_bot e
+where not exists (
+    select 1 from public.grupos_autorizados g
+    where g.usuario_id = e.usuario_id and g.grupo_id = e.grupo_id and g.activo
+)
+group by 1
+order by 1;
+
+
+-- ==========================================================================
+-- D22. Mensajes por cliente (migraciones 028/029).
+-- Antes de la 028: hay_columna_cliente = false.
+-- Tras desplegar el bot nuevo y aplicar la 028: las filas de la última hora
+-- deben tener todas cliente (requisito de la 029).
+-- ==========================================================================
+set transaction read only;
+select exists (
+           select 1 from information_schema.columns
+           where table_schema = 'public' and table_name = 'mensajes_grupos_sorteos' and column_name = 'cliente_usuario_id'
+       ) as hay_columna_cliente,
+       exists (
+           select 1 from pg_indexes
+           where schemaname = 'public' and indexname = 'mensajes_grupos_sorteos_grupo_mensaje_unico_nuevos'
+       ) as hay_indice_unico_021,
+       (select relrowsecurity from pg_class where oid = 'public.mensajes_grupos_sorteos'::regclass) as rls_chats;
+
+
+-- ==========================================================================
+-- D23. Mapa completo: TODAS las tablas públicas, con RLS y permisos de anon
+-- y authenticated. Sirve para confirmar que las migraciones del repo con RLS
+-- por propietario (001, 002, 006, 007, 010, 011, 017, 018, 024-027) están
+-- realmente aplicadas, y para detectar tablas heredadas sin RLS.
+-- Esperado tras las Partes A/C, 027 y 029: rls = true en toda tabla con
+-- datos de clientes; anon_lee = false en todas salvo las de analítica
+-- pública (020).
+-- ==========================================================================
+set transaction read only;
+select c.relname as tabla,
+       c.relrowsecurity as rls,
+       has_table_privilege('anon', c.oid, 'select') as anon_lee,
+       has_table_privilege('anon', c.oid, 'insert, update, delete') as anon_escribe,
+       has_table_privilege('authenticated', c.oid, 'select') as auth_lee,
+       (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname) as politicas
+from pg_class c
+where c.relnamespace = 'public'::regnamespace and c.relkind in ('r', 'p')
+order by c.relrowsecurity, c.relname;
+
+
+-- ==========================================================================
+-- D24. Reinicio seguro (030) y QR de /conectar (031): ¿aplicadas? Y qué
+-- protegería hoy el reinicio, por cliente y tabla (solo conteos).
+-- Antes de aplicarlas: las 3 primeras columnas = false.
+--   - sin_atribuir: reservados/pagados sin identidad ni evento conocido. El
+--     reinicio NO los libera nunca (bloquean el reinicio de ese cliente).
+--   - bloqueados: se conservan salvo que el usuario elija liberarlos.
+-- ==========================================================================
+set transaction read only;
+select to_regclass('public.reservas_archivo') is not null as hay_030_archivo,
+       exists (select 1 from pg_proc where proname = 'reiniciar_tabla_cliente' and pronamespace = 'public'::regnamespace) as hay_030_funcion,
+       exists (select 1 from pg_proc where proname = 'qr_sesion_publica' and pronamespace = 'public'::regnamespace) as hay_031;
+
+set transaction read only;
+select 'reservas_dos_cifras' as tabla, usuario_id,
+       count(*) filter (where estado in ('reservado', 'pagado') and identidad_evento_real is null and evento_id is null) as sin_atribuir,
+       count(*) filter (where estado = 'bloqueado') as bloqueados,
+       count(*) filter (where estado = 'en_proceso') as en_proceso
+from public.reservas_dos_cifras group by usuario_id
+union all
+select '5k_15k_reservas_2_cifras', usuario_id,
+       count(*) filter (where estado in ('reservado', 'pagado') and identidad_evento_real is null and evento_id is null),
+       count(*) filter (where estado = 'bloqueado'),
+       count(*) filter (where estado = 'en_proceso')
+from public."5k_15k_reservas_2_cifras" group by usuario_id;
+
+-- ==========================================================================
 -- FUERA DEL SQL EDITOR — ¿alguien externo usa la clave anon contra estas
 -- tablas? (Supabase → Logs → API / Logs Explorer). También es solo lectura.
 -- Filtra las peticiones a:

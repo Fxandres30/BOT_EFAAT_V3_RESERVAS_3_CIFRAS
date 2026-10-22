@@ -58,17 +58,41 @@ export default function Conectar({
 
   useEffect(() => {
 
-    async function cargar() {
+    // Migración 031: qr_sesion_publica devuelve solo qr/estado/expiración de
+    // ESTA sesión y sigue funcionando sin la clave anon sobre `sesiones`
+    // (Parte A). Mientras no esté aplicada, la lectura directa de siempre.
+    let conFuncion = true;
+
+    async function leer() {
+
+      if (conFuncion) {
+
+        const { data, error } = await supabase.rpc("qr_sesion_publica", { p_id: id });
+
+        if (!error)
+          return data as { qr: string | null; estado: string; qr_expira_en: string | null } | null;
+
+        conFuncion = false;
+
+      }
 
       const { data } = await supabase
 
         .from("sesiones")
 
-        .select("qr,estado,nombre,telefono,qr_expira_en")
+        .select("qr,estado,qr_expira_en")
 
         .eq("id", id)
 
         .single();
+
+      return data;
+
+    }
+
+    async function cargar() {
+
+      const data = await leer();
 
       if (!data)
         return;

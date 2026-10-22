@@ -83,7 +83,8 @@ module.exports = async (ctx) => {
 
             ctx.chat.remoteJid;
 
-        ctx.evento = await consultarEvento(grupoId);
+        // Solo el sorteo del cliente dueño de la sesión que recibió el mensaje.
+        ctx.evento = await consultarEvento(grupoId, ctx.session?.usuarioId);
 
     }
 

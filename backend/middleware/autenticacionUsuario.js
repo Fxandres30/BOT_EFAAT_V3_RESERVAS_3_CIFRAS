@@ -45,6 +45,9 @@ async function autenticarUsuario(req, res, next) {
         }
 
         req.usuarioId = data.user.id;
+        // Solo para auditoría (operador que ejecutó la acción): también sale
+        // del token validado, nunca del cuerpo de la petición.
+        req.usuarioEmail = data.user.email || null;
 
         return next();
 

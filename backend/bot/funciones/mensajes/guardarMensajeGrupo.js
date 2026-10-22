@@ -1,10 +1,12 @@
 const supabase = require("../../../lib/supabase");
 const { obtenerContextInfo } = require("../../utils/obtenerContextInfo");
 
-// Resultado cuando la fila de este mensaje (grupo_id, mensaje_id) ya existe
-// y el índice único (migración 021) rechaza la segunda inserción (23505):
-// otra entrega del MISMO mensaje ya lo reclamó. El dispatcher lo usa para
-// no volver a ejecutar negocio sobre él.
+// Resultado cuando la fila de este mensaje ya existe y el índice único
+// rechaza la segunda inserción (23505): otra entrega del MISMO mensaje ya lo
+// reclamó. El dispatcher lo usa para no volver a ejecutar negocio sobre él.
+// Con la migración 028 la clave es (cliente_usuario_id, grupo_id,
+// mensaje_id): dos clientes en el mismo grupo procesan cada uno su copia;
+// sin ella sigue siendo (grupo_id, mensaje_id) de la 021.
 const MENSAJE_DUPLICADO = Object.freeze({ duplicado: true });
 
 async function guardarMensajeGrupo({
@@ -13,11 +15,21 @@ async function guardarMensajeGrupo({
     texto,
     grupoId,
     grupoNombre,
-    usuario = null
+    usuario = null,
+    // Cliente de EFAAT dueño de la SESIÓN que recibió el mensaje
+    // (sock.context.usuarioId). NO es el participante: ese va en usuario_id.
+    clienteUsuarioId = null
 
 }) {
 
     try {
+
+        // Sin cliente no se sabe de quién es el mensaje: no se guarda
+        // (falla cerrado; el dispatcher ya lo descarta antes).
+        if (!clienteUsuarioId) {
+            console.error(`❌ [MENSAJE] sin cliente dueño de la sesión — no se guarda [${msg?.key?.id}]`);
+            return null;
+        }
 
         // ==========================================
         // fromMe: el bot no es un cliente.
@@ -198,99 +210,112 @@ async function guardarMensajeGrupo({
         // Guardar
         // ==========================================
 
-        const { data, error } = await supabase
+        const fila = {
 
+            cliente_usuario_id: clienteUsuarioId,
+
+            mensaje_id: msg.key.id,
+
+            grupo_id: grupoId,
+
+            grupo_nombre: grupoNombre || null,
+
+            usuario_id: usuarioId,
+
+            telefono,
+
+            lid,
+
+            nombre: nombreUsuario,
+
+            push_name: msg.pushName || null,
+
+            from_me: msg.key.fromMe,
+
+            autor_jid: jidUsuario,
+
+            participant_jid:
+
+                msg.key.participant ||
+
+                null,
+
+            remote_jid:
+
+                msg.key.remoteJid ||
+
+                null,
+
+            tipo_mensaje: tipoMensaje,
+
+            texto:
+
+                texto?.trim() ||
+
+                null,
+
+            quoted_id: quotedId,
+
+            quoted_participant:
+
+                quotedParticipant,
+
+            timestamp_whatsapp:
+
+                timestampWhatsapp,
+
+            editado:
+
+                !!msg.message?.editedMessage,
+
+            eliminado:
+
+                !!msg.message?.protocolMessage,
+
+            mime_type:
+
+                media?.mimetype ||
+
+                null,
+
+            file_name:
+
+                media?.fileName ||
+
+                null,
+
+            file_size:
+
+                fileSize,
+
+            media_url: null,
+
+            procesado: false,
+
+            respondido: false,
+
+            estado: "nuevo"
+
+        };
+
+        const insertar = (datos) => supabase
             .from("mensajes_grupos_sorteos")
-
-            .insert({
-
-                mensaje_id: msg.key.id,
-
-                grupo_id: grupoId,
-
-                grupo_nombre: grupoNombre || null,
-
-                usuario_id: usuarioId,
-
-                telefono,
-
-                lid,
-
-                nombre: nombreUsuario,
-
-                push_name: msg.pushName || null,
-
-                from_me: msg.key.fromMe,
-
-                autor_jid: jidUsuario,
-
-                participant_jid:
-
-                    msg.key.participant ||
-
-                    null,
-
-                remote_jid:
-
-                    msg.key.remoteJid ||
-
-                    null,
-
-                tipo_mensaje: tipoMensaje,
-
-                texto:
-
-                    texto?.trim() ||
-
-                    null,
-
-                quoted_id: quotedId,
-
-                quoted_participant:
-
-                    quotedParticipant,
-
-                timestamp_whatsapp:
-
-                    timestampWhatsapp,
-
-                editado:
-
-                    !!msg.message?.editedMessage,
-
-                eliminado:
-
-                    !!msg.message?.protocolMessage,
-
-                mime_type:
-
-                    media?.mimetype ||
-
-                    null,
-
-                file_name:
-
-                    media?.fileName ||
-
-                    null,
-
-                file_size:
-
-                    fileSize,
-
-                media_url: null,
-
-                procesado: false,
-
-                respondido: false,
-
-                estado: "nuevo"
-
-            })
-
+            .insert(datos)
             .select()
-
             .single();
+
+        let { data, error } = await insertar(fila);
+
+        // Migración 028 sin aplicar (columna cliente_usuario_id inexistente):
+        // se guarda como siempre, sin el cliente. PostgREST responde a una
+        // columna desconocida en el cuerpo del INSERT con PGRST204 (caché del
+        // esquema), no con el 42703 de Postgres. Para no depender de la
+        // versión de PostgREST se acepta cualquier error que nombre esta
+        // columna, salvo el de duplicado (23505).
+        if (error && error.code !== "23505" && String(error.message || "").includes("cliente_usuario_id")) {
+            const { cliente_usuario_id, ...sinCliente } = fila;
+            ({ data, error } = await insertar(sinCliente));
+        }
 
         if (error?.code === "23505") {
 

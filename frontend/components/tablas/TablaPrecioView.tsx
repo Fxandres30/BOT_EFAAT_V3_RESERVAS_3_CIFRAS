@@ -39,12 +39,26 @@ export default function TablaPrecioView({ precio }: Props) {
         recientes,
         actividad,
         accionando,
+        reservar,
         marcarPagado,
         liberar,
-        bloquear,
-        marcarEnProceso,
         reiniciar
     } = useTablaPrecio(precio);
+
+    // «Reservas recientes»: mismas operaciones del backend; un rechazo se
+    // avisa (antes el error se perdía en una promesa sin capturar).
+    async function pagarDesdeLista(numero: string) {
+        const r = await marcarPagado(numero);
+        if (!r.ok) alert(r.mensaje);
+    }
+
+    async function liberarDesdeLista(numero: string) {
+        const pagado = numeros.find(n => n.numero === numero)?.estado === "pagado";
+        const motivo = pagado ? window.prompt(`Motivo para anular el pago del ${numero}:`) : undefined;
+        if (pagado && !motivo?.trim()) return;
+        const r = await liberar(numero, { motivo: motivo?.trim() || undefined });
+        if (!r.ok) alert(r.mensaje);
+    }
 
     const [busqueda, setBusqueda] = useState("");
     const [filtro, setFiltro] = useState<FiltroEstado>("todos");
@@ -191,6 +205,7 @@ export default function TablaPrecioView({ precio }: Props) {
             </div>
 
             <Grid
+                precio={precio}
                 numeros={numeros}
                 paquetes={paquetes}
                 eventoActivo={eventoActivo}
@@ -199,18 +214,17 @@ export default function TablaPrecioView({ precio }: Props) {
                 filtro={filtro}
                 accionando={accionando}
                 diseno={diseno}
+                onReservar={reservar}
                 onMarcarPagado={marcarPagado}
                 onLiberar={liberar}
-                onBloquear={bloquear}
-                onMarcarEnProceso={marcarEnProceso}
             />
 
             <ReservasRecientes
                 precio={precio}
                 numeros={recientes}
                 accionando={accionando}
-                onMarcarPagado={marcarPagado}
-                onLiberar={liberar}
+                onMarcarPagado={pagarDesdeLista}
+                onLiberar={liberarDesdeLista}
             />
 
             <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">

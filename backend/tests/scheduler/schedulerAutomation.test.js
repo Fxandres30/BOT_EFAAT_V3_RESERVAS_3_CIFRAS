@@ -248,6 +248,34 @@ async function main() {
     });
 
     // ---------------------------------------------------------------
+    // 3b) sorteo de MAÑANA (publicado la víspera desde Sorteos
+    //     programados): mismo offset alcanzado por la hora del día, pero
+    //     su día todavía no llegó -> no se envía ni se registra nada.
+    // ---------------------------------------------------------------
+    await test("3b) un recordatorio de un sorteo de MAÑANA no se envía hoy aunque la hora coincida", async () => {
+
+        const { fakeSupabase, scheduler, eventRules, crearFakeSock } = crearEntorno();
+
+        const ahoraHHmm = eventRules.obtenerHoraMinuto(AHORA);
+        const horaCierre = sumarMinutos(ahoraHHmm, 30);
+
+        const evento = crearEventoBot(fakeSupabase, { hora_cierre: horaCierre, fecha_evento: "2026-01-16" });
+        crearEventSession(fakeSupabase, evento);
+        crearConfig(fakeSupabase, { recordatorios: { "30": { activo: true, categoria: null } } });
+        crearMensaje(fakeSupabase, { tipo: "REMINDER_MESSAGE", texto: "Quedan pocos cupos de {nombre_evento}" });
+
+        const { sock, llamadas } = crearFakeSock({ sessionId: SESSION_ID });
+
+        acelerarTimers();
+        await scheduler.tick(sock, { ahora: AHORA });
+        restaurarTimers();
+
+        assert.strictEqual(llamadas.sendMessage.length, 0);
+        assert.strictEqual(fakeSupabase._filas("automation_actions").filter(a => a.tipo_accion === "REMINDER_30M").length, 0);
+
+    });
+
+    // ---------------------------------------------------------------
     // 4) recordatorio futuro NO se ejecuta
     // ---------------------------------------------------------------
     await test("4) un recordatorio cuyo offset todavía no se alcanzó NO se envía", async () => {

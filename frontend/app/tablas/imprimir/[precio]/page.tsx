@@ -3,18 +3,15 @@
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
-import Grid from "@/components/tablas/Grid";
-import type { NumeroReserva } from "@/components/tablas/types";
-import { DEFAULT_TABLA_DISENO_CONFIG } from "@/services/tablas/disenoDefaults";
+import TablaImprimible from "@/components/tablas/TablaImprimible";
+import type { TablaDisenoConfig } from "@/components/tablas/disenoTypes";
 
 // Vista de IMPRESIÓN — usada SOLO por Puppeteer (backend/services/compartirTabla.js)
-// para capturar la imagen real que se comparte por WhatsApp. Reutiliza el
-// mismo componente Grid que ve el admin (no se duplica ni se rediseña la
-// tabla visual); la diferencia es que aquí SOLO se pintan número+estado
-// (nunca nombre/teléfono real) y no hay ninguna interacción — nunca se
-// abre el modal de detalle, así que ningún dato personal llega a
-// aparecer en la imagen capturada. Grid va en modo `limpio`: sin leyenda
-// de estados ni modal — la imagen compartida es solo la cuadrícula.
+// para capturar la imagen real que se comparte por WhatsApp. La tabla es
+// components/tablas/TablaImprimible (la MISMA que la vista previa de Sorteos
+// programados): solo número+estado, nunca datos personales, Grid en modo
+// limpio, con el diseño ACTIVO de esa tabla que devuelve el backend (antes
+// siempre el de por defecto).
 //
 // Requiere un token firmado (?token=...) verificado por el backend en
 // /tablas/imprimir-datos — sin él no hay datos que mostrar. Esta página
@@ -27,7 +24,7 @@ export default function ImprimirTablaPage() {
     const token = searchParams.get("token");
     const precio = Number(params.precio);
 
-    const [datos, setDatos] = useState<{ numerosDisponibles: string[]; numerosOcupados: string[] } | null>(null);
+    const [datos, setDatos] = useState<{ numerosDisponibles: string[]; numerosOcupados: string[]; diseno?: TablaDisenoConfig | null } | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -78,59 +75,13 @@ export default function ImprimirTablaPage() {
         return <div style={{ padding: 24, fontFamily: "sans-serif" }}>Cargando…</div>;
     }
 
-    const numeros: NumeroReserva[] = construirNumerosParaImprimir(datos.numerosDisponibles, datos.numerosOcupados);
-
     return (
-
-        <div style={{ background: "#F6F8FC", padding: 24 }} data-tabla-imprimir>
-
-            <Grid
-                numeros={numeros}
-                paquetes={[]}
-                eventoActivo={null}
-                coincidePrecio={true}
-                busqueda=""
-                filtro="todos"
-                accionando={null}
-                diseno={DEFAULT_TABLA_DISENO_CONFIG}
-                onMarcarPagado={() => {}}
-                onLiberar={() => {}}
-                onBloquear={() => {}}
-                onMarcarEnProceso={() => {}}
-                limpio
-            />
-
-        </div>
-
+        <TablaImprimible
+            numerosDisponibles={datos.numerosDisponibles}
+            numerosOcupados={datos.numerosOcupados}
+            diseno={datos.diseno}
+            imprimir
+        />
     );
-
-}
-
-// Solo número + estado real (libre/ocupado) — el resto de campos de
-// NumeroReserva quedan null a propósito: esta vista nunca necesita ni
-// muestra datos personales del cliente.
-function construirNumerosParaImprimir(disponibles: string[], ocupados: string[]): NumeroReserva[] {
-
-    const base = {
-        comprador: null, contacto: null, nombre: null, telefono: null, lib: null,
-        grupo_id: null, grupo_nombre: null, evento_id: null, nombre_evento: null,
-        usuario_id: null, usuario_global_id: null, telefono_bot: null,
-        fecha_reserva: null, hora_reserva: null, fecha_pago: null, hora_pago: null,
-        temporal_por: null, bloqueado_hasta: null, ip_reserva: null, contacto_lower: null,
-        creado_en: new Date().toISOString()
-    };
-
-    const filas: NumeroReserva[] = [];
-    let id = 0;
-
-    for (const numero of disponibles) {
-        filas.push({ id: id++, numero, estado: "libre", ...base });
-    }
-
-    for (const numero of ocupados) {
-        filas.push({ id: id++, numero, estado: "reservado", ...base });
-    }
-
-    return filas.sort((a, b) => a.numero.localeCompare(b.numero));
 
 }

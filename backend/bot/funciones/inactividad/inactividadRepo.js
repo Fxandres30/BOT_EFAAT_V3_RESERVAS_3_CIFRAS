@@ -20,7 +20,7 @@ function migracionPendiente(error) {
 // Fecha de pago de una fila de la tabla dinámica -> Date (o null).
 // fecha_pago "YYYY-MM-DD" y hora_pago "HH:MM:SS" se guardan en hora de
 // Bogotá (UTC-5, sin horario de verano) — ver marcarReservasPagadasPorAdmin.js
-// y frontend/services/tablas/marcarPagado.ts. Sin fecha_pago NO se inventa
+// y services/reservaManual.js (pagarManual). Sin fecha_pago NO se inventa
 // ninguna fecha: la fila no cuenta como compra fechable.
 // ---------------------------------------------------------------------------
 function fechaCompraDeFila({ fecha_pago, hora_pago }) {

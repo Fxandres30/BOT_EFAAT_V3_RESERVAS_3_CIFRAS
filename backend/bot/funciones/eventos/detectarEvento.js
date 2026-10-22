@@ -162,7 +162,7 @@ async function detectarEvento(ctx) {
 
         };
 
-        const eventoAnterior = await consultarEvento(grupoId);
+        const eventoAnterior = await consultarEvento(grupoId, duenoSesion);
 
         console.log(
             "📋 Evento anterior:",

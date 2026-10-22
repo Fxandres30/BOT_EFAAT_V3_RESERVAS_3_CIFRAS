@@ -18,6 +18,9 @@ const supabase = require("./lib/supabase");
 const manager =
 require("./services/baileys/manager");
 
+// Restauración de TODAS las sesiones al arrancar (multisesión).
+const { restaurarSesiones } = require("./services/baileys/restaurarSesiones");
+
 // Al detener el proceso (PM2), suelta los leases de las sesiones de este
 // proceso para que el siguiente arranque las restaure sin esperar el TTL.
 require("./services/baileys/apagadoOrdenado").instalarApagadoOrdenado({
@@ -56,103 +59,3 @@ app.listen(4000, async () => {
     await restaurarSesiones();
 
 });
-
-async function restaurarSesiones() {
-
-    const { data, error } = await supabase
-        .from("sesiones")
-        .select("id, estado, activa");
-
-    if (error) {
-
-        console.log(error);
-
-        return;
-
-    }
-
-    const sesiones = data.filter(
-
-        s => s.estado === "conectado"
-
-    );
-
-    console.log(
-
-        `Restaurando ${sesiones.length} sesiones...`
-
-    );
-
-    // Fase 1: la sesión activa guardada en la BD se PIDE antes de crear los
-    // sockets, pero solo se activa cuando su socket llega realmente a open
-    // (manager.evaluarConexion). Antes se activaba aquí mismo con el socket
-    // todavía "connecting", y el listener de negocio quedaba registrado
-    // antes del handshake. Solo si esa sesión está entre las que se van a
-    // restaurar (si no, nunca llegaría a open y bloquearía el failover).
-    const activa = sesiones.find(
-
-        s => s.activa === true
-
-    );
-
-    if (activa) {
-
-        await manager.solicitarActivacion(activa.id, { permitirSinSocket: true });
-
-    }
-
-    for (const sesion of sesiones) {
-
-        try {
-
-            const resultado = await manager.start(
-
-                sesion.id
-
-            );
-
-            // La sesión sigue "conectado" en Supabase pero el lease
-            // distribuido (LOCAL/VPS) pertenece a la OTRA instancia — NO es
-            // una desconexión: puede estar funcionando correctamente ahí.
-            // No se toca su estado en Supabase ni se reintenta aquí.
-            if (resultado === manager.LEASE_NO_DISPONIBLE) {
-
-                console.log(
-
-                    "⏳ [LEASE] sigue conectada en otra instancia, no se restaura aquí:",
-
-                    sesion.id
-
-                );
-
-            } else {
-
-                console.log(
-
-                    "✅ Restaurada:",
-
-                    sesion.id
-
-                );
-
-            }
-
-        }
-
-        catch (err) {
-
-            console.log(
-
-                "❌",
-
-                sesion.id,
-
-                err.message
-
-            );
-
-        }
-
-    }
-
-}

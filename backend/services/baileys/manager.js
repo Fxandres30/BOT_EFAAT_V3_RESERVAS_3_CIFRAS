@@ -44,23 +44,77 @@ class SessionManager extends EventEmitter {
         super();
 
         this.sockets = sockets;
-        this.activeSession = null;
 
-        // Referencia al objeto socket que realmente está registrado ahora
-        // mismo como listener del BOT (ver evaluarConexion) — separado de
-        // this.activeSession (que solo guarda el sessionId) para poder
-        // detectar cuándo la MISMA sesión reconecta con una instancia de
-        // socket nueva (bug corregido: antes, en ese caso, nunca se
-        // volvía a emitir "activeChanged" y el listener quedaba colgado
-        // del socket viejo/muerto para siempre).
-        this.activeSocket = null;
+        // MULTISESIÓN (2026-10-21): UNA sesión activa POR DUEÑO
+        // (sesiones.usuario_id), no una por proceso. Cada cliente procesa con
+        // su propio WhatsApp a la vez que los demás; un cambio, una caída o
+        // un failover de un cliente nunca toca la sesión de otro.
+        //   usuarioId -> { sessionId, socket }
+        // "socket" es el objeto que el BOT tiene registrado como listener de
+        // esa sesión: separado del sessionId para detectar cuándo la MISMA
+        // sesión reconecta con una instancia de socket nueva (ver
+        // evaluarConexion: se re-emite "activeChanged" para mover listener y
+        // workers al socket nuevo).
+        this.activas = new Map();
 
-        // Fase 1 — activación diferida: sesión que el usuario (o el
-        // arranque del servidor) pidió como activa mientras su socket
-        // todavía NO estaba open. Se activa en evaluarConexion() cuando esa
-        // sesión llega realmente a open — nunca antes. { sessionId } | null
-        this.activacionPendiente = null;
+        // Activación diferida (Fase 1), también por dueño: sesión pedida como
+        // activa mientras su socket todavía NO estaba open. Se activa en
+        // evaluarConexion() cuando llega realmente a open — nunca antes.
+        //   usuarioId -> sessionId
+        this.pendientes = new Map();
 
+    }
+
+    // ---- Compatibilidad (consumidores de la época de una sola sesión) ----
+    // Devuelven la PRIMERA sesión activa registrada. Con varios clientes no
+    // identifican a ninguno en concreto: el código nuevo usa
+    // getSesionActivaDe(usuarioId) / getSocketActivoDe(usuarioId).
+    _primeraActiva() {
+        const primera = this.activas.values().next();
+        return primera.done ? null : primera.value;
+    }
+
+    get activeSession() {
+        return this._primeraActiva()?.sessionId ?? null;
+    }
+
+    get activeSocket() {
+        return this._primeraActiva()?.socket ?? null;
+    }
+
+    get activacionPendiente() {
+        const p = this.pendientes.values().next();
+        return p.done ? null : { sessionId: p.value };
+    }
+
+    // Dueño validado de una sesión: el del socket (socket.js lo lee de la
+    // fila de sesiones al crearlo, en el servidor) o, si aún no hay socket,
+    // el de la fila. Nunca se infiere de un mensaje. null = sin dueño.
+    async _duenioDe(sessionId) {
+
+        const desdeSocket = this.get(sessionId)?.context?.usuarioId;
+        if (desdeSocket) return desdeSocket;
+
+        try {
+            const { data, error } = await supabase
+                .from("sesiones")
+                .select("usuario_id")
+                .eq("id", sessionId)
+                .maybeSingle();
+            if (error) return null;
+            return data?.usuario_id || null;
+        } catch {
+            return null;
+        }
+
+    }
+
+    // Dueño para el que esta sesión es HOY la activa (o null).
+    _duenioActivoDe(sessionId) {
+        for (const [usuarioId, activa] of this.activas) {
+            if (activa.sessionId === sessionId) return usuarioId;
+        }
+        return null;
     }
 
     async start(sessionId) {
@@ -269,14 +323,14 @@ if (!sesion) {
                 // Solo si la sesión SIGUE debiendo estar conectada (mismo
                 // criterio que restaurarSesiones en server.js). Una sesión
                 // desconectada a propósito nunca se levanta sola.
-                const { data } = await supabase.from("sesiones").select("estado, activa").eq("id", sessionId).maybeSingle();
+                const { data } = await supabase.from("sesiones").select("estado, activa, usuario_id").eq("id", sessionId).maybeSingle();
 
                 if (!data || data.estado !== "conectado") return;
 
-                // Era la activa: se vuelve a pedir su activación (start() la
-                // canceló al no poder adquirir el lease); se activa al llegar
-                // a open, nunca antes.
-                if (data.activa === true && !this.activeSession) {
+                // Era la activa de SU dueño: se vuelve a pedir su activación
+                // (start() la canceló al no poder adquirir el lease); se
+                // activa al llegar a open, nunca antes.
+                if (data.activa === true && data.usuario_id && !this.activas.has(data.usuario_id)) {
                     await this.solicitarActivacion(sessionId, { permitirSinSocket: true });
                 }
 
@@ -328,9 +382,11 @@ if (!sesion) {
 
         await this._cancelarActivacionPendiente(sessionId, "parada manual");
 
-        if (this.activeSession === sessionId) {
+        const usuarioId = this._duenioActivoDe(sessionId);
 
-            this.activeSession = null;
+        if (usuarioId) {
+
+            this.activas.delete(usuarioId);
 
             const candidata = await this.selectFailoverSession({ excluir: sessionId });
 
@@ -359,7 +415,7 @@ if (!sesion) {
 
                 console.log("[FAILOVER] sin sesiones disponibles tras detener", sessionId);
 
-                this.emit("activeLost");
+                this.emit("activeLost", { sessionId, usuarioId });
 
             }
 
@@ -427,49 +483,48 @@ if (!sesion) {
 
     }
 
-    if (this.activacionPendiente?.sessionId === sessionId) {
+    // Dueño validado ANTES de activar nada: una sesión sin usuario_id nunca
+    // procesa mensajes ni ejecuta workers (falla cerrado).
+    const usuarioId = await this._duenioDe(sessionId);
 
-        this.activacionPendiente = null;
+    if (!usuarioId) {
+
+        console.error("❌ [SESSION] activación rechazada: la sesión no tiene dueño (usuario_id):", sessionId);
+
+        return false;
 
     }
 
-    if (this.activeSession === sessionId) {
+    if (this.pendientes.get(usuarioId) === sessionId) {
 
-        console.log("ℹ️ Ya era la sesión activa.");
+        this.pendientes.delete(usuarioId);
+
+    }
+
+    const socket = this.get(sessionId);
+    const actual = this.activas.get(usuarioId);
+
+    if (actual?.sessionId === sessionId) {
+
+        console.log("ℹ️ Ya era la sesión activa de su cliente.");
 
         // Mantener alineada la referencia de socket, por si esta sesión
         // reconectó con una instancia nueva entre medio (el camino normal
-        // para ese caso es evaluarConexion; esto es solo un resguardo
-        // para no dejar activeSocket desactualizado si setActive se
-        // llama directamente).
-        this.activeSocket = this.get(sessionId);
+        // para ese caso es evaluarConexion; esto es solo un resguardo).
+        actual.socket = socket;
 
         if (preferida) {
-            await this._marcarPreferida(sessionId);
+            await this._marcarPreferida(sessionId, usuarioId);
         }
 
         return true;
 
     }
 
-    // Actualizar memoria
-    this.activeSession = sessionId;
-    this.activeSocket = this.get(sessionId);
+    // Actualizar memoria: solo la entrada de ESTE dueño.
+    this.activas.set(usuarioId, { sessionId, socket });
 
-    // Buscar el usuario dueño de la sesión
-    const { data: sesion, error: errorSesion } = await supabase
-        .from("sesiones")
-        .select("usuario_id")
-        .eq("id", sessionId)
-        .single();
-
-    if (errorSesion) {
-
-        console.error("ERROR BUSCANDO SESIÓN:", errorSesion);
-
-        return false;
-
-    }
+    const sesion = { usuario_id: usuarioId };
 
     // Desactivar todas las sesiones de ese usuario
     const r1 = await supabase
@@ -496,7 +551,9 @@ if (!sesion) {
 
     this.emit("activeChanged", {
         sessionId,
-        socket: this.get(sessionId)
+        socket: this.get(sessionId),
+        usuarioId,
+        anterior: actual?.sessionId || null
     });
 
     return true;
@@ -569,6 +626,7 @@ if (!sesion) {
 
     }
 
+    // Compatibilidad: la primera sesión activa del proceso (ver _primeraActiva).
     getActiveSession() {
 
         return this.activeSession;
@@ -578,15 +636,49 @@ if (!sesion) {
     // Fase 1: nunca devuelve un socket que no esté open (p. ej. durante la
     // reconexión de la sesión activa) — así ningún fallback termina
     // actuando sobre un socket muerto o todavía conectando.
+    // Compatibilidad: el de la primera sesión activa; con varios clientes
+    // hay que usar getSocketActivoDe(usuarioId).
     getActiveSocket() {
 
-        if (!this.activeSession || !this.isConnected(this.activeSession)) {
+        const sessionId = this.activeSession;
+
+        if (!sessionId || !this.isConnected(sessionId)) {
 
             return null;
 
         }
 
-        return this.get(this.activeSession);
+        return this.get(sessionId);
+
+    }
+
+    // ---- API multisesión ----
+
+    // Sesión activa del cliente (aunque esté reconectando), o null.
+    getSesionActivaDe(usuarioId) {
+
+        if (!usuarioId) return null;
+
+        return this.activas.get(usuarioId)?.sessionId ?? null;
+
+    }
+
+    // Socket OPEN de la sesión activa del cliente, o null. Es el socket con
+    // el que se actúa en nombre de ese cliente (envíos, bloqueos, escáner…).
+    getSocketActivoDe(usuarioId) {
+
+        const sessionId = this.getSesionActivaDe(usuarioId);
+
+        if (!sessionId || !this.isConnected(sessionId)) return null;
+
+        return this.get(sessionId);
+
+    }
+
+    // Todas las sesiones activas del proceso: [{ usuarioId, sessionId, socket }].
+    getSesionesActivas() {
+
+        return [...this.activas].map(([usuarioId, a]) => ({ usuarioId, sessionId: a.sessionId, socket: a.socket }));
 
     }
 
@@ -595,21 +687,28 @@ if (!sesion) {
     // ============================================================
 
     // ¿Puede ESTE socket ejecutar acciones de negocio ahora mismo?
-    //   1. pertenece a la sesión activa del BOT,
-    //   2. sigue siendo el socket vigente de esa sesión (no reemplazado),
-    //   3. es el socket que el BOT tiene registrado como activo,
-    //   4. está open.
-    // Regla única, instalada en propiedadSesion.js por bot/index.js.
+    //   1. tiene dueño (sesiones.usuario_id, leído por socket.js),
+    //   2. su sesión es la activa DE ESE dueño,
+    //   3. sigue siendo el socket vigente de esa sesión (no reemplazado),
+    //   4. es el socket que el BOT tiene registrado para ese dueño,
+    //   5. está open.
+    // Regla única, instalada en propiedadSesion.js por bot/index.js. Varios
+    // sockets (de clientes distintos) pueden cumplirla a la vez.
     esSocketVigenteActivo(sock) {
 
         if (!sock) return false;
 
         const sessionId = sock.context?.sessionId;
+        const usuarioId = sock.context?.usuarioId;
 
-        return !!sessionId
-            && sessionId === this.activeSession
+        if (!sessionId || !usuarioId) return false;
+
+        const activa = this.activas.get(usuarioId);
+
+        return !!activa
+            && activa.sessionId === sessionId
+            && activa.socket === sock
             && this.sockets.get(sessionId) === sock
-            && this.activeSocket === sock
             && cicloSocket.estaAbierto(sock);
 
     }
@@ -644,13 +743,23 @@ if (!sesion) {
 
         }
 
-        if (preferida) {
-            await this._marcarPreferida(sessionId);
+        const usuarioId = await this._duenioDe(sessionId);
+
+        if (!usuarioId) {
+
+            console.error("❌ [SESSION] activación rechazada: la sesión no tiene dueño (usuario_id):", sessionId);
+
+            return false;
+
         }
 
-        const anterior = this.activeSession;
+        if (preferida) {
+            await this._marcarPreferida(sessionId, usuarioId);
+        }
 
-        this.activacionPendiente = { sessionId };
+        const anterior = this.activas.get(usuarioId)?.sessionId || null;
+
+        this.pendientes.set(usuarioId, sessionId);
 
         console.log("⏳ [SESSION] activación pendiente hasta que el socket esté open:", {
             sessionId,
@@ -660,14 +769,14 @@ if (!sesion) {
 
         if (anterior && anterior !== sessionId) {
 
-            // A deja de ser la activa ANTES de que B conecte: sus recursos
-            // de negocio se detienen ya, nada de A pasa a B.
-            this.activeSession = null;
-            this.activeSocket = null;
+            // A deja de ser la activa de SU cliente ANTES de que B conecte:
+            // sus recursos de negocio se detienen ya, nada de A pasa a B. Las
+            // sesiones de otros clientes no se tocan.
+            this.activas.delete(usuarioId);
 
             console.log("🔌 [SESSION] sesión anterior desactivada por cambio de sesión:", anterior);
 
-            this.emit("activeLost");
+            this.emit("activeLost", { sessionId: anterior, usuarioId });
 
         }
 
@@ -677,17 +786,23 @@ if (!sesion) {
 
     // Cancela la activación pendiente de ESA sesión (no llegó a open y ya no
     // lo va a hacer: parada manual, desconexión definitiva, lease ajeno,
-    // sesión inexistente). Si el BOT quedó sin sesión activa, se aplica el
-    // mismo failover de siempre entre las sesiones realmente conectadas.
+    // sesión inexistente). Si su cliente quedó sin sesión activa, se aplica
+    // el failover de siempre, solo entre sesiones de ese mismo cliente.
     async _cancelarActivacionPendiente(sessionId, motivo) {
 
-        if (this.activacionPendiente?.sessionId !== sessionId) return;
+        let usuarioId = null;
 
-        this.activacionPendiente = null;
+        for (const [u, pendiente] of this.pendientes) {
+            if (pendiente === sessionId) { usuarioId = u; break; }
+        }
+
+        if (!usuarioId) return;
+
+        this.pendientes.delete(usuarioId);
 
         console.log("🚫 [SESSION] activación pendiente cancelada:", { sessionId, motivo });
 
-        if (this.activeSession) return;
+        if (this.activas.has(usuarioId)) return;
 
         const candidata = await this.selectFailoverSession({ excluir: sessionId });
 
@@ -699,28 +814,31 @@ if (!sesion) {
 
         }
 
-        this.emit("activeLost");
+        this.emit("activeLost", { sessionId, usuarioId });
 
     }
 
     // Lo llama estados.js en CADA connection === "close" (antes de su
     // guardia de socket obsoleto). Si el socket que se cierra es
-    // exactamente el que usa el BOT, se avisa para detener ya sus
-    // listeners/workers/scheduler — no se toca activeSession: la decisión
+    // exactamente el que usa el BOT para su cliente, se avisa para detener
+    // ya sus listeners/workers/scheduler — no se toca la activa: la decisión
     // de reconectar o hacer failover sigue siendo de desconectado.js.
     notificarSocketCerrado(sessionId, sock) {
 
-        if (!sock || sock !== this.activeSocket) return;
+        const usuarioId = this._duenioActivoDe(sessionId);
+
+        if (!sock || !usuarioId || this.activas.get(usuarioId).socket !== sock) return;
 
         console.log("🔌 [SESSION] el socket activo se cerró — se detiene el procesamiento del BOT sobre él:", sessionId);
 
-        this.emit("activeSocketClosed", { sessionId, socket: sock });
+        this.emit("activeSocketClosed", { sessionId, socket: sock, usuarioId });
 
     }
 
+    // ¿Es la sesión activa de su cliente?
     isActive(sessionId) {
 
-        return this.activeSession === sessionId;
+        return !!this._duenioActivoDe(sessionId);
 
     }
 
@@ -729,8 +847,9 @@ if (!sesion) {
     // ============================================================
 
     // Llamado cuando CUALQUIER sesión termina de conectar/reconectar.
-    // Decide si debe convertirse en la sesión activa del BOT o si
-    // simplemente queda "disponible" sin robar el listener actual.
+    // Decide si debe convertirse en la sesión activa DE SU CLIENTE o si
+    // queda "disponible" (otra del mismo cliente ya está activa). Las
+    // sesiones de otros clientes no intervienen en la decisión.
     async evaluarConexion(sessionId) {
 
         const socketDeEstaConexion = this.get(sessionId);
@@ -749,23 +868,35 @@ if (!sesion) {
 
         }
 
-        // Fase 1: activación diferida (cambio de sesión / arranque).
-        if (this.activacionPendiente) {
+        const usuarioId = await this._duenioDe(sessionId);
 
-            if (this.activacionPendiente.sessionId !== sessionId) {
+        if (!usuarioId) {
 
-                console.log("[SESSION] sesión conectada, pero hay una activación pendiente para otra sesión — no se promueve:", {
+            console.error("❌ [SESSION] sesión conectada SIN dueño (usuario_id): no se activa ni procesa nada:", sessionId);
+
+            return;
+
+        }
+
+        // Fase 1: activación diferida (cambio de sesión / arranque) de ESTE cliente.
+        const pendiente = this.pendientes.get(usuarioId);
+
+        if (pendiente) {
+
+            if (pendiente !== sessionId) {
+
+                console.log("[SESSION] sesión conectada, pero su cliente tiene una activación pendiente para otra sesión — no se promueve:", {
                     sesionConectada: sessionId,
-                    pendiente: this.activacionPendiente.sessionId
+                    pendiente
                 });
 
                 return;
 
             }
 
-            this.activacionPendiente = null;
+            this.pendientes.delete(usuarioId);
 
-            if (this.activeSession !== sessionId) {
+            if (this.activas.get(usuarioId)?.sessionId !== sessionId) {
 
                 console.log("[SESSION] la sesión pendiente llegó a open -> se activa:", sessionId);
 
@@ -781,40 +912,34 @@ if (!sesion) {
 
         }
 
-        const activaValida =
-            !!this.activeSession && this.isConnected(this.activeSession);
+        const actual = this.activas.get(usuarioId);
+        const activaValida = !!actual && this.isConnected(actual.sessionId);
 
         console.log("[SESSION]", {
             evento: "conexion",
             sesionConectada: sessionId,
-            activaActual: this.activeSession,
+            activaDelCliente: actual?.sessionId || null,
             activaValida
         });
 
-        // B: ya es la sesión activa Y sigue siendo el mismo socket que ya
-        // tenía el listener del BOT -> nada que decidir aquí.
-        //
-        // BUG CORREGIDO: si el socket es DISTINTO (misma sesión, pero
-        // reconectada con una instancia de socket nueva — típico tras un
-        // "restartRequired" o una reconexión temporal), antes esta rama
-        // cortaba en seco y "activeChanged" nunca se volvía a emitir. El
-        // listener (bot/index.js) se quedaba escuchando el socket viejo
-        // y muerto para siempre, aunque activeSession y Supabase
-        // siguieran diciendo "conectado". Aquí se detecta ese caso y se
-        // re-emite "activeChanged" para mover el listener y el worker al
-        // socket nuevo — sin tocar Supabase ni la preferencia (no es un
-        // cambio real de sesión activa, solo de instancia de socket).
-        if (activaValida && this.activeSession === sessionId) {
+        // Ya es la activa de su cliente. Si el socket es DISTINTO (misma
+        // sesión reconectada con una instancia nueva — "restartRequired" o
+        // reconexión temporal) se re-emite "activeChanged" para mover el
+        // listener y los workers al socket nuevo, sin tocar Supabase ni la
+        // preferencia (no es un cambio real de sesión activa).
+        if (activaValida && actual.sessionId === sessionId) {
 
-            if (this.activeSocket !== socketDeEstaConexion) {
+            if (actual.socket !== socketDeEstaConexion) {
 
                 console.log("[SESSION] mismo sessionId activo, socket reemplazado -> re-emitiendo activeChanged:", sessionId);
 
-                this.activeSocket = socketDeEstaConexion;
+                actual.socket = socketDeEstaConexion;
 
                 this.emit("activeChanged", {
                     sessionId,
-                    socket: socketDeEstaConexion
+                    socket: socketDeEstaConexion,
+                    usuarioId,
+                    anterior: sessionId
                 });
 
             }
@@ -823,12 +948,11 @@ if (!sesion) {
 
         }
 
-        // A / C: no hay ninguna sesión activa válida -> esta sesión toma el control
-        // (cubre tanto el caso general como el caso "es la preferida" cuando la
-        // activa actual dejó de estar disponible).
+        // Su cliente no tiene ninguna sesión activa válida -> esta toma el
+        // control (también cubre "es la preferida y la activa cayó").
         if (!activaValida) {
 
-            console.log("[SESSION] sin sesión activa válida -> promoviendo:", sessionId);
+            console.log("[SESSION] su cliente no tiene sesión activa válida -> promoviendo:", sessionId);
 
             await this.setActive(sessionId);
 
@@ -836,8 +960,8 @@ if (!sesion) {
 
         }
 
-        // D: ya existe una activa saludable y esta es otra sesión -> no la reemplaza.
-        console.log("[SESSION] sesión secundaria conectada, se mantiene la activa actual:", this.activeSession);
+        // Su cliente ya tiene otra activa saludable -> no la reemplaza.
+        console.log("[SESSION] sesión secundaria conectada, se mantiene la activa de su cliente:", actual.sessionId);
 
     }
 
@@ -897,21 +1021,24 @@ if (!sesion) {
 
     // Llamado cuando una sesión se desconecta de forma DEFINITIVA (no en los
     // casos de reintento automático de la misma sesión). Si esa sesión era
-    // la activa del BOT, dispara el failover; si no lo era, no hace nada.
+    // la activa de su cliente, dispara el failover SOLO entre sesiones de
+    // ese cliente; si no lo era, no hace nada. Los demás clientes siguen.
     async manejarDesconexionActiva(sessionIdCaida) {
 
         await this._cancelarActivacionPendiente(sessionIdCaida, "desconexión definitiva");
 
-        if (this.activeSession !== sessionIdCaida) {
+        const usuarioId = this._duenioActivoDe(sessionIdCaida);
+
+        if (!usuarioId) {
             return;
         }
 
         console.log("[FAILOVER]", {
             sesionCaida: sessionIdCaida,
-            sesionAnterior: this.activeSession
+            cliente: usuarioId
         });
 
-        this.activeSession = null;
+        this.activas.delete(usuarioId);
 
         const candidata = await this.selectFailoverSession({ excluir: sessionIdCaida });
 
@@ -920,17 +1047,17 @@ if (!sesion) {
             console.log("[FAILOVER]", {
                 sesionCaida: sessionIdCaida,
                 nuevaSesion: null,
-                motivo: "sin sesiones disponibles"
+                motivo: "sin sesiones disponibles del mismo cliente"
             });
 
             console.log("🔄 [SESSION FAILOVER]", {
                 sesionAnterior: sessionIdCaida,
                 motivo: "desconexión definitiva",
                 nuevaSesionActivaId: null,
-                nuevaSesionActiva: "(ninguna — BOT sin sesión activa)"
+                nuevaSesionActiva: "(ninguna — su cliente queda sin sesión activa)"
             });
 
-            this.emit("activeLost");
+            this.emit("activeLost", { sessionId: sessionIdCaida, usuarioId });
 
             return;
 
