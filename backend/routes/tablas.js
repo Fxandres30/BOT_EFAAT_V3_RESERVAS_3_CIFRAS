@@ -14,7 +14,9 @@ const router = require("express").Router();
 const { exigirUsuario } = require("../middleware/autenticacionUsuario");
 
 const supabase = require("../lib/supabase");
-const { obtenerConfiguracion } = require("../bot/funciones/eventos/configEvento");
+// Precio -> tabla física SEGÚN EL CLIENTE (tablas_cliente, migración 027;
+// sin ella, la configuración base de siempre).
+const { obtenerConfiguracionCliente, inicializarCliente } = require("../bot/funciones/eventos/tablasCliente");
 const tablaEventoRepo = require("../automation/repo/tablaEvento");
 const { compartirTabla, verificarTokenImprimir } = require("../services/compartirTabla");
 
@@ -51,11 +53,14 @@ router.get("/imprimir-datos", async (req, res) => {
         const precio = Number(req.query.precio);
         const token = req.query.token;
 
-        if (!precio || !verificarTokenImprimir(precio, token)) {
+        // El dueño de la tabla sale del token firmado, nunca de la URL.
+        const usuarioId = precio ? verificarTokenImprimir(precio, token) : null;
+
+        if (!usuarioId) {
             return res.status(401).json({ error: "Token inválido o expirado." });
         }
 
-        const config = obtenerConfiguracion(precio);
+        const config = await obtenerConfiguracionCliente(usuarioId, precio);
 
         if (!config) {
             return res.status(404).json({ error: "No existe una tabla configurada para este precio." });
@@ -63,7 +68,7 @@ router.get("/imprimir-datos", async (req, res) => {
 
         // Solo número + estado — nunca nombre/teléfono/contacto real: esta
         // imagen se difunde a un grupo completo, no es una vista admin.
-        const { numerosDisponibles, numerosOcupados } = await tablaEventoRepo.obtenerNumeros(config.tabla);
+        const { numerosDisponibles, numerosOcupados } = await tablaEventoRepo.obtenerNumeros(config.tabla, usuarioId);
 
         res.json({
             numerosDisponibles,
@@ -95,7 +100,7 @@ router.post("/compartir", exigirUsuario, async (req, res) => {
             return res.status(400).json({ enviado: false, motivo: "faltan_parametros" });
         }
 
-        const config = obtenerConfiguracion(precio);
+        const config = await obtenerConfiguracionCliente(usuarioId, precio);
 
         if (!config) {
             return res.status(404).json({ enviado: false, motivo: "tabla_no_configurada" });
@@ -115,6 +120,31 @@ router.post("/compartir", exigirUsuario, async (req, res) => {
 
         console.error("❌ [TABLAS] error en /compartir:", err.message);
         res.status(500).json({ enviado: false, motivo: "error_interno", error: err.message });
+
+    }
+
+});
+
+// POST /tablas/inicializar — primer acceso del cliente al panel: crea sus
+// configuraciones (precios base del código) y su cuadrícula 00-99 en cada
+// tabla física, de forma idempotente. El cliente sale del token; el cuerpo
+// se ignora entero.
+const HTTP_INICIALIZAR = { migracion_pendiente: 503, parte_a_pendiente: 503, restriccion_unica: 409 };
+
+router.post("/inicializar", exigirUsuario, async (req, res) => {
+
+    try {
+
+        const r = await inicializarCliente(req.usuarioId);
+
+        if (r.ok) return res.json({ ok: true, data: r.data });
+
+        res.status(HTTP_INICIALIZAR[r.motivo] || 500).json({ ok: false, motivo: r.motivo, ...(r.migracion ? { migracion: r.migracion } : {}) });
+
+    } catch (err) {
+
+        console.error("❌ [TABLAS] error en /inicializar:", err.message);
+        res.status(500).json({ ok: false, motivo: "error_interno" });
 
     }
 

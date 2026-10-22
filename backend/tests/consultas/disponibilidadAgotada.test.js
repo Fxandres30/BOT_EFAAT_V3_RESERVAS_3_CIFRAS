@@ -33,7 +33,7 @@ const NUMEROS = Array.from({ length: 100 }, (_, i) => String(i).padStart(2, "0")
 const estado = { filas: [], error: null };
 
 function filas(asignar) {
-    return NUMEROS.map((numero, i) => ({ numero, estado: asignar(i), identidad_evento_real: "id-sorteo" }));
+    return NUMEROS.map((numero, i) => ({ usuario_id: "tenant-test", numero, estado: asignar(i), identidad_evento_real: "id-sorteo" }));
 }
 
 const fakeSupabase = {
@@ -105,7 +105,7 @@ inyectar(r("bot/funciones/reservas/detectarReserva.js"), {
 const { resolverConsulta } = require(r("bot/funciones/consultas/resolverConsulta.js"));
 const { responderResultado } = require(r("bot/ai/responderResultado.js"));
 
-const EVENTO = { id: "ev-1", nombre_evento: "Lotería De Manizales", tabla: TABLA, cifras: 2, identidad_evento_real: "id-sorteo", hora_fin: "22:30", valor: 3000 };
+const EVENTO = { id: "ev-1", usuario_id: "tenant-test", nombre_evento: "Lotería De Manizales", tabla: TABLA, cifras: 2, identidad_evento_real: "id-sorteo", hora_fin: "22:30", valor: 3000 };
 
 function reiniciar() {
     Object.assign(espias, { seleccionarPlantilla: 0, plantillasPedidas: 0, tiposPedidos: [], gemini: 0, enviados: [], detectarReserva: 0 });

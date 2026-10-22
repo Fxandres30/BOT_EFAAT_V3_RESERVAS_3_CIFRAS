@@ -126,7 +126,7 @@ function crearCompartirTablaFake({ tablaEventoRepo, construirTextoTablaInicial, 
 
         const ejecutar = async () => {
 
-            const { numerosDisponibles } = await tablaEventoRepo.obtenerNumeros(evento.tabla);
+            const { numerosDisponibles } = await tablaEventoRepo.obtenerNumeros(evento.tabla, evento.usuario_id);
             const texto = construirTextoTablaInicial(numerosDisponibles);
 
             await sock.sendMessage(evento.grupo_id, { text: texto });

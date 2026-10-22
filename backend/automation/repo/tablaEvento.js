@@ -15,19 +15,25 @@
 
 const supabase = require("../../lib/supabase");
 
-// obtenerNumeros(nombreTabla) -> { numerosDisponibles, numerosOcupados }
+// obtenerNumeros(nombreTabla, usuarioId) -> { numerosDisponibles, numerosOcupados }
 //
 // nombreTabla es SIEMPRE evento.tabla (el nombre real de la tabla de
 // reservas de ESTE evento) — nunca inventado, nunca hardcodeado aquí.
-async function obtenerNumeros(nombreTabla) {
+//
+// SEGURIDAD (2026-10-21): la tabla física la comparten todos los clientes
+// (100 filas por usuario_id). Antes se leía entera y la imagen de un
+// cliente mezclaba las cuadrículas de todos. usuarioId (el dueño del
+// evento, evento.usuario_id) es OBLIGATORIO: sin él no se devuelve nada.
+async function obtenerNumeros(nombreTabla, usuarioId) {
 
-    if (!nombreTabla) {
+    if (!nombreTabla || !usuarioId) {
         return { numerosDisponibles: [], numerosOcupados: [] };
     }
 
     const { data, error } = await supabase
         .from(nombreTabla)
         .select("numero, estado")
+        .eq("usuario_id", usuarioId)
         .order("numero", { ascending: true });
 
     if (error) throw error;

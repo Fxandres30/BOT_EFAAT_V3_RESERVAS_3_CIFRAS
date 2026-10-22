@@ -76,7 +76,19 @@ function obtenerTablasConocidas() {
 
 }
 
+// Las configuraciones con las que se inicializa cada cliente
+// (tablas_cliente, migración 027): exactamente los precios base de arriba,
+// sin añadir ni inventar ninguno. Ver tablasCliente.js.
+function configuracionesBase() {
+
+    return Object.entries(CONFIG_EVENTOS)
+        .map(([precio, c]) => ({ precio: Number(precio), tabla: c.tabla, cifras: c.cifras, cantidad: c.cantidad }))
+        .sort((a, b) => a.precio - b.precio);
+
+}
+
 module.exports = {
     obtenerConfiguracion,
-    obtenerTablasConocidas
+    obtenerTablasConocidas,
+    configuracionesBase
 };

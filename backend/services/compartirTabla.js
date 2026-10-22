@@ -32,33 +32,51 @@ const EXPIRACION_MS = 5 * 60 * 1000; // enlace de un solo uso conceptual, vida c
 const PLANTILLA_TEXTO_COMPARTIR =
     "🎰 {{evento}}\n💰 Número: ${{precio}}\n⏰ Cierra: {{hora}}\n🎟️ {{cantidad_disponibles}} números disponibles\n¡Aparta el tuyo! 👇";
 
-function generarTokenImprimir(precio) {
+// SEGURIDAD (2026-10-21): el token lleva y firma al DUEÑO de la tabla
+// (evento.usuario_id). Antes solo firmaba el precio y /tablas/imprimir-datos
+// devolvía la cuadrícula mezclada de todos los clientes. Formato:
+// "<expira>.<usuarioId>.<firma>" (un UUID no contiene puntos).
+const USUARIO_VALIDO = /^[0-9a-f-]{36}$/i;
+
+function firmarImprimir(precio, usuarioId, expira) {
+    return crypto.createHmac("sha256", SECRETO).update(`${precio}.${usuarioId}.${expira}`).digest("hex");
+}
+
+function generarTokenImprimir(precio, usuarioId) {
+
+    if (!usuarioId || !USUARIO_VALIDO.test(String(usuarioId))) {
+        throw new Error("No se puede generar el enlace de impresión sin el dueño de la tabla.");
+    }
 
     const expira = Date.now() + EXPIRACION_MS;
-    const firma = crypto.createHmac("sha256", SECRETO).update(`${precio}.${expira}`).digest("hex");
+    const firma = firmarImprimir(precio, usuarioId, expira);
 
-    return { token: `${expira}.${firma}`, expira };
+    return { token: `${expira}.${usuarioId}.${firma}`, expira };
 
 }
 
+// Devuelve el usuarioId firmado en el token, o null si no es válido.
 function verificarTokenImprimir(precio, token) {
 
-    if (!token || typeof token !== "string") return false;
+    if (!token || typeof token !== "string") return null;
 
-    const [expiraTexto, firma] = token.split(".");
+    const partes = token.split(".");
+    if (partes.length !== 3) return null;
+
+    const [expiraTexto, usuarioId, firma] = partes;
     const expira = Number(expiraTexto);
 
-    if (!Number.isFinite(expira) || !firma) return false;
-    if (Date.now() > expira) return false;
+    if (!Number.isFinite(expira) || !firma || !USUARIO_VALIDO.test(usuarioId)) return null;
+    if (Date.now() > expira) return null;
 
-    const firmaEsperada = crypto.createHmac("sha256", SECRETO).update(`${precio}.${expira}`).digest("hex");
+    const firmaEsperada = firmarImprimir(precio, usuarioId, expira);
 
     // Comparación en tiempo constante — mismo criterio de seguridad ya
     // usado en el proyecto para secretos de dispositivo (backend/pagos).
     const bufA = Buffer.from(firma);
     const bufB = Buffer.from(firmaEsperada);
 
-    return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
+    return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB) ? usuarioId : null;
 
 }
 
@@ -76,14 +94,14 @@ function construirTextoCompartir(evento) {
 
 }
 
-// capturarImagenTabla(precio) -> Buffer PNG de la tabla real (misma
+// capturarImagenTabla(precio, usuarioId) -> Buffer PNG de la tabla real (misma
 // cuadrícula que ve el admin, sin datos personales — la vista de
 // impresión solo pinta número+estado, igual que la celda cerrada del
 // panel real: el nombre/teléfono del cliente nunca aparece en la cara de
 // la celda, solo en el modal de detalle, que esta captura nunca abre).
-async function capturarImagenTabla(precio) {
+async function capturarImagenTabla(precio, usuarioId) {
 
-    const { token } = generarTokenImprimir(precio);
+    const { token } = generarTokenImprimir(precio, usuarioId);
     const url = `${FRONTEND_URL}/tablas/imprimir/${precio}?token=${token}`;
 
     // Flags defensivos estándar para Chromium headless en un VPS/entorno
@@ -143,12 +161,18 @@ async function compartirTabla({ evento, sock, idempotencia = null }) {
         return { enviado: false, motivo: "evento_invalido" };
     }
 
+    // Sin dueño no se sabe qué cuadrícula mostrar: nunca se publica la de
+    // otro cliente ni una mezcla.
+    if (!evento.usuario_id) {
+        return { enviado: false, motivo: "evento_sin_propietario" };
+    }
+
     const ejecutar = async () => {
 
         const precio = Number(evento.valor);
 
         const [imagen, texto] = await Promise.all([
-            capturarImagenTabla(precio),
+            capturarImagenTabla(precio, evento.usuario_id),
             Promise.resolve(construirTextoCompartir(evento))
         ]);
 

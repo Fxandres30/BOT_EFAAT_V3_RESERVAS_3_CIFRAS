@@ -17,6 +17,34 @@ const MOSTRAR_POR_VARIABLE: Record<string, string> = {
     precio: "mostrar_precio"
 };
 
+// Mismo criterio que backend/bot/ai/plantillaMensaje.js::quitarEmojis
+// ("Emojis activados" desmarcado): solo los emojis escritos en la
+// plantilla, nunca los de los datos.
+const EMOJI = "(?:\\p{Extended_Pictographic}|\\p{Regional_Indicator}|[\\u{1F3FB}-\\u{1F3FF}\\uFE0F\\u200D\\u20E3])";
+const RACHA_EMOJIS = new RegExp(`([ \\t]*)${EMOJI}+([ \\t]*)`, "gu");
+
+export function quitarEmojis(texto: string): string {
+
+    return texto.replace(RACHA_EMOJIS, (racha: string, antes: string, despues: string, posicion: number, total: string) => {
+
+        const inicioLinea = posicion === 0 || total[posicion - 1] === "\n";
+        const finLinea = posicion + racha.length === total.length || total[posicion + racha.length] === "\n";
+
+        if (inicioLinea || finLinea) return "";
+
+        return antes || despues ? " " : "";
+
+    });
+
+}
+
+// Visibilidad de un dato con el MISMO criterio que el backend: solo se
+// oculta si su casilla vale false. Una clave que falta (plantillas antiguas)
+// significa visible.
+export function datoVisible(mostrar: Record<string, boolean> | null | undefined, campo: string): boolean {
+    return mostrar?.[campo] !== false;
+}
+
 // catalogoExtra (opcional, Fase "Variables Globales"): variables dinámicas
 // del usuario — así el preview reconoce {{suyo_suyos}} igual que el
 // backend real. Soporta "{{variable|modificador}}" (lower/upper/
@@ -30,11 +58,19 @@ export function aplicarPlantillaPreview(
     catalogoExtra?: VariableGlobal[]
 ): string {
 
+    if (plantilla && mostrar.emojis === false) plantilla = quitarEmojis(plantilla);
+
     if (!plantilla || !plantilla.trim()) return "";
 
     return plantilla.replace(/\{\{\s*(\w+)(?:\|(\w+))?\s*\}\}/g, (_match, nombre, modificador) => {
 
-        const campoMostrar = MOSTRAR_POR_VARIABLE[nombre];
+        // Un alias ({{valor}}, {{loteria}}…) obedece la casilla de su
+        // variable canónica, igual que en el backend.
+        const claveReal = variables[nombre] !== undefined
+            ? nombre
+            : (resolverClaveCanonica(nombre, catalogoExtra)?.definicion.key ?? nombre);
+
+        const campoMostrar = MOSTRAR_POR_VARIABLE[nombre] || MOSTRAR_POR_VARIABLE[claveReal];
 
         if (campoMostrar && mostrar[campoMostrar] === false) {
             return "";
@@ -47,7 +83,7 @@ export function aplicarPlantillaPreview(
         // genérico del catálogo global en vez de mostrar vacío — sigue
         // siendo dato de ejemplo, nunca real (ver sección 15 de la fase de
         // implementación).
-        let valor = variables[nombre];
+        let valor = variables[claveReal];
 
         if (valor === undefined) {
 

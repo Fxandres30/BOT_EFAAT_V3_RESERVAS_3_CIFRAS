@@ -108,7 +108,7 @@ const { responderResultado } = require(r("bot/ai/responderResultado.js"));
 
 const TENANT_A = "tenant-A";
 const TENANT_B = "tenant-B";
-const EVENTO = { id: "ev-1", nombre_evento: "Lotería De Manizales", tabla: TABLA, cifras: 2, identidad_evento_real: "id", hora_fin: "22:30", valor: 3000 };
+const EVENTO = { id: "ev-1", usuario_id: "tenant-test", nombre_evento: "Lotería De Manizales", tabla: TABLA, cifras: 2, identidad_evento_real: "id", hora_fin: "22:30", valor: 3000 };
 
 let secuencia = 0;
 
@@ -123,7 +123,7 @@ function modo(usuario, tipo, modo_seleccion, extra = {}) {
 }
 
 function tabla(estadoDe) {
-    db[TABLA] = NUMEROS.map((numero, i) => ({ numero, estado: estadoDe(i) }));
+    db[TABLA] = NUMEROS.map((numero, i) => ({ usuario_id: "tenant-test", numero, estado: estadoDe(i) }));
 }
 
 function reiniciar() {

@@ -112,11 +112,11 @@ const eventHandler = require(r("bot/handlers/eventHandler.js"));
 
 const TENANT = "tenant-1";
 const USUARIO = { id: "cliente-1" };
-const CON_PRECIO = { id: "ev-1", nombre_evento: "Lotería De Manizales", tabla: TABLA, cifras: 2, valor: 5000 };
+const CON_PRECIO = { id: "ev-1", usuario_id: "tenant-test", nombre_evento: "Lotería De Manizales", tabla: TABLA, cifras: 2, valor: 5000 };
 const SIN_PRECIO = { ...CON_PRECIO, valor: null };
 
 function sembrar(filas) {
-    db[TABLA] = filas.map(([numero, estado, dueno = "cliente-1"]) => ({ numero, estado, usuario_global_id: dueno }));
+    db[TABLA] = filas.map(([numero, estado, dueno = "cliente-1"]) => ({ usuario_id: "tenant-test", numero, estado, usuario_global_id: dueno }));
 }
 
 const ESCENARIOS = {

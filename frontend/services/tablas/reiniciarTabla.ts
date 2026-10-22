@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { obtenerTablaConfig } from "@/lib/tablasConfig";
+import { obtenerTablaConfigCliente } from "./tablasCliente";
 import { registrarActividad } from "./registrarActividad";
 
 // Reinicia las 100 celdas (00-99) del usuario en la tabla física de este
@@ -8,7 +8,8 @@ import { registrarActividad } from "./registrarActividad";
 // tabla física.
 export async function reiniciarTabla(precio: number, usuarioId: string) {
 
-    const config = obtenerTablaConfig(precio);
+    // Tabla física según la configuración DEL CLIENTE (tablas_cliente).
+    const config = await obtenerTablaConfigCliente(precio, usuarioId);
 
     if (!config)
         throw new Error("Tabla no encontrada.");

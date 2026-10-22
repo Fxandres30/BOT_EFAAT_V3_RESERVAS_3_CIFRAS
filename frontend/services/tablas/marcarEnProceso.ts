@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { obtenerTablaConfig } from "@/lib/tablasConfig";
+import { obtenerTablaConfigCliente } from "./tablasCliente";
 import { registrarActividad } from "./registrarActividad";
 
 interface MarcarEnProcesoParams {
@@ -23,7 +23,8 @@ export async function marcarEnProceso({
     realizadoPor
 }: MarcarEnProcesoParams) {
 
-    const config = obtenerTablaConfig(precio);
+    // Tabla física según la configuración DEL CLIENTE (tablas_cliente).
+    const config = await obtenerTablaConfigCliente(precio, usuarioId);
 
     if (!config)
         throw new Error("Tabla no encontrada.");

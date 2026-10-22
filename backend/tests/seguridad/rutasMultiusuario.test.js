@@ -104,7 +104,11 @@ inyectar("bot/funciones/bloqueo/bloqueadosRepo.js", {
     desbloquear: async (id, usuarioId) => { anotar("desbloquear", { usuarioId }); return { ok: true, bloqueado: { telefono: "3000000000" } }; }
 });
 
-inyectar("bot/funciones/eventos/configEvento.js", { obtenerConfiguracion: () => ({ tabla: "t_prueba", cifras: 2, cantidad: 100 }) });
+inyectar("bot/funciones/eventos/configEvento.js", {
+    obtenerConfiguracion: () => ({ tabla: "t_prueba", cifras: 2, cantidad: 100 }),
+    // Configuración base del cliente (tablasCliente.js, sin tablas_cliente en el fake).
+    configuracionesBase: () => [{ precio: 5000, tabla: "t_prueba", cifras: 2, cantidad: 100 }]
+});
 inyectar("automation/repo/tablaEvento.js", { obtenerNumeros: async () => ({}) });
 inyectar("services/compartirTabla.js", { compartirTabla: async ({ evento }) => { anotar("compartirTabla", { eventoId: evento.id }); return { enviado: true }; }, verificarTokenImprimir: () => false });
 

@@ -118,6 +118,32 @@ function construirVariables(ctx, resultado, catalogoExtra) {
 
 }
 
+// Emojis (con sus modificadores de tono, selectores de variante, uniones
+// ZWJ, banderas y keycaps) y los espacios que los rodean. Constructor y no
+// literal: el espejo del panel (aplicarPlantillaPreview.ts) usa el mismo.
+const EMOJI = "(?:\\p{Extended_Pictographic}|\\p{Regional_Indicator}|[\\u{1F3FB}-\\u{1F3FF}\\uFE0F\\u200D\\u20E3])";
+const RACHA_EMOJIS = new RegExp(`([ \\t]*)${EMOJI}+([ \\t]*)`, "gu");
+
+// "Emojis activados" desmarcado (plantillas_mensaje.variables.emojis ===
+// false): quita los emojis que el admin ESCRIBIÓ en la plantilla. Se aplica
+// antes de sustituir variables, así que los datos reales (nombre del
+// cliente, variables globales) nunca se recortan. Al principio o al final
+// de una línea el emoji se va con sus espacios; entre palabras queda uno.
+function quitarEmojis(texto) {
+
+    return texto.replace(RACHA_EMOJIS, (racha, antes, despues, posicion, total) => {
+
+        const inicioLinea = posicion === 0 || total[posicion - 1] === "\n";
+        const finLinea = posicion + racha.length === total.length || total[posicion + racha.length] === "\n";
+
+        if (inicioLinea || finLinea) return "";
+
+        return antes || despues ? " " : "";
+
+    });
+
+}
+
 // Sustituye {{variable}} (o {{variable|modificador}}, Fase "Variables
 // Globales" — lower/upper/capitalize/title) por su valor real.
 // "opcionesMostrar" es el objeto JSONB de la columna
@@ -126,6 +152,10 @@ function construirVariables(ctx, resultado, catalogoExtra) {
 // ni se inventa un valor). catalogoExtra (opcional): variables dinámicas
 // del usuario, para que el fallback de alias también las reconozca.
 function aplicarPlantilla(plantilla, variables, opcionesMostrar = {}, catalogoExtra) {
+
+    if (typeof plantilla === "string" && opcionesMostrar?.emojis === false) {
+        plantilla = quitarEmojis(plantilla);
+    }
 
     if (typeof plantilla !== "string" || !plantilla.trim()) {
         return null;
@@ -231,6 +261,7 @@ function calcularTipoPresentacion(ctx, resultado) {
 module.exports = {
     construirVariables,
     aplicarPlantilla,
+    quitarEmojis,
     calcularTipoPresentacion,
     MOSTRAR_POR_VARIABLE
 };

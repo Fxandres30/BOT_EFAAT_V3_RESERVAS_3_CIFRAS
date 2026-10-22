@@ -1,26 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/EmptyState";
 
-import { formatHora12 } from "@/lib/formatHora";
-
 import { getUser } from "@/services/auth/getUser";
 import { AutomationConfig, listarConfiguraciones } from "@/services/automatizacion/automationConfigs";
-import { obtenerGruposConversacion, GrupoConversacion } from "@/services/chats/obtenerGruposConversacion";
-import { nombreCategoria } from "@/services/automatizacion/tiposCategorias";
+import { obtenerGruposDisponibles, SesionConGrupos } from "@/services/automatizacion/gruposDisponibles";
+import { cargarSeguimiento, SeguimientoProgramacion } from "@/services/automatizacion/seguimientoProgramacion";
+import { conexionDeGrupo, formatearMomento, frescuraDatos, resolverNombreGrupo } from "@/services/automatizacion/estadoProgramacion";
 
 import AutomatizacionHeader from "../AutomatizacionNav/AutomatizacionHeader";
+import TarjetaProgramacion from "./TarjetaProgramacion";
 
 import styles from "./ProgramacionAutomatizacion.module.css";
 
-// Vista de SOLO LECTURA: la fuente real de la programación sigue siendo
-// automation_configs por grupo (sin segunda fuente de verdad) — para
-// editarla, este tab enlaza a la misma página de configuración del grupo
-// que ya usa la sección "Grupos".
+// Estados de envío: cada minuto (el Scheduler revisa cada 30 s). La
+// conexión a WhatsApp consulta cada sesión en vivo, así que solo se pide
+// al entrar y con «Actualizar».
+const REFRESCO_MS = 60000;
+
+// La programación se edita en la página de cada grupo (automation_configs,
+// sin segunda fuente de verdad); aquí se muestra su estado real.
 export default function ProgramacionAutomatizacion() {
 
     const [usuarioId, setUsuarioId] = useState<string | null>(null);
@@ -28,7 +31,58 @@ export default function ProgramacionAutomatizacion() {
     const [error, setError] = useState<string | null>(null);
 
     const [configs, setConfigs] = useState<AutomationConfig[]>([]);
-    const [gruposConocidos, setGruposConocidos] = useState<GrupoConversacion[]>([]);
+
+    const [seguimiento, setSeguimiento] = useState<SeguimientoProgramacion | null>(null);
+    const [ultimaCarga, setUltimaCarga] = useState<Date | null>(null);
+    const [falloCarga, setFalloCarga] = useState(false);
+    const [actualizando, setActualizando] = useState(false);
+
+    // null = todavía comprobando
+    const [sesiones, setSesiones] = useState<SesionConGrupos[] | null>(null);
+
+    const [ahora, setAhora] = useState(() => new Date());
+
+    const enCurso = useRef(false);
+
+    const refrescarSeguimiento = useCallback(async (uid: string, grupoIds: string[]) => {
+
+        if (enCurso.current) return;
+
+        enCurso.current = true;
+        setActualizando(true);
+
+        try {
+
+            const res = await cargarSeguimiento(uid, grupoIds);
+
+            if (res.data) {
+                setSeguimiento(res.data);
+                setUltimaCarga(new Date());
+                setFalloCarga(false);
+            } else {
+                setFalloCarga(true);
+            }
+
+        } catch (err) {
+
+            console.warn("[programacion] error actualizando el seguimiento:", err);
+            setFalloCarga(true);
+
+        } finally {
+
+            enCurso.current = false;
+            setActualizando(false);
+
+        }
+
+    }, []);
+
+    const comprobarConexion = useCallback(async (uid: string) => {
+
+        setSesiones(null);
+        setSesiones(await obtenerGruposDisponibles(uid));
+
+    }, []);
 
     useEffect(() => {
 
@@ -44,32 +98,86 @@ export default function ProgramacionAutomatizacion() {
                 return;
             }
 
-            const [configsRes, conocidosRes] = await Promise.all([
-                listarConfiguraciones(uid),
-                obtenerGruposConversacion()
-            ]);
+            const configsRes = await listarConfiguraciones(uid);
 
             if (configsRes.error) {
-                setError(`No se pudo cargar la programación (${configsRes.error.message}).`);
-            } else {
-                setConfigs((configsRes.data as AutomationConfig[]) || []);
+                console.warn("[programacion] no se pudo cargar la programación:", configsRes.error.message);
+                setError("No pudimos cargar la programación. Intenta de nuevo en unos minutos.");
+                setCargando(false);
+                return;
             }
 
-            setGruposConocidos(conocidosRes.data);
+            const lista = (configsRes.data as AutomationConfig[]) || [];
+
+            setConfigs(lista);
             setCargando(false);
+
+            if (lista.length > 0) {
+                refrescarSeguimiento(uid, lista.map((c) => c.grupo_id));
+                comprobarConexion(uid);
+            }
 
         }
 
         cargar();
 
-    }, []);
+    }, [refrescarSeguimiento, comprobarConexion]);
 
-    function nombreDeGrupo(grupoId: string) {
-        return gruposConocidos.find((g) => g.grupo_id === grupoId)?.grupo_nombre || grupoId;
+    // Reloj de las cuentas regresivas y refresco periódico, solo con la
+    // pestaña visible (sin solicitudes en segundo plano).
+    useEffect(() => {
+
+        if (!usuarioId || configs.length === 0) return;
+
+        const grupoIds = configs.map((c) => c.grupo_id);
+        let ultimoRefresco = Date.now();
+
+        const reloj = setInterval(() => {
+
+            if (document.visibilityState !== "visible") return;
+
+            setAhora(new Date());
+
+            if (Date.now() - ultimoRefresco >= REFRESCO_MS) {
+                ultimoRefresco = Date.now();
+                refrescarSeguimiento(usuarioId, grupoIds);
+            }
+
+        }, 1000);
+
+        function alVolver() {
+            if (document.visibilityState === "visible" && Date.now() - ultimoRefresco >= REFRESCO_MS) {
+                ultimoRefresco = Date.now();
+                refrescarSeguimiento(usuarioId as string, grupoIds);
+            }
+        }
+
+        document.addEventListener("visibilitychange", alVolver);
+
+        return () => {
+            clearInterval(reloj);
+            document.removeEventListener("visibilitychange", alVolver);
+        };
+
+    }, [usuarioId, configs, refrescarSeguimiento]);
+
+    function actualizarAhora() {
+
+        if (!usuarioId) return;
+
+        refrescarSeguimiento(usuarioId, configs.map((c) => c.grupo_id));
+        comprobarConexion(usuarioId);
+
     }
 
-    function dot(activo?: boolean) {
-        return <span className={`${styles.dot} ${activo ? styles.dotOn : ""}`} aria-hidden="true" />;
+    const frescura = frescuraDatos(ultimaCarga, falloCarga, ahora);
+
+    function nombreEnVivo(grupoId: string) {
+        for (const sesion of sesiones || []) {
+            const grupo = sesion.grupos.find((g) => g.id === grupoId);
+            if (grupo?.nombre) return grupo.nombre;
+        }
+        return null;
     }
 
     return (
@@ -79,9 +187,8 @@ export default function ProgramacionAutomatizacion() {
             <AutomatizacionHeader />
 
             <p className={styles.lead}>
-                Programación de recordatorios y actualizaciones por grupo. Los offsets se calculan
-                siempre sobre la hora de cierre REAL del evento detectado — para editar, entra a
-                «Configurar» desde Grupos.
+                Estado real de los recordatorios de cada grupo. Las horas se calculan sobre el cierre
+                real del evento detectado. Para cambiar la programación, usa «Editar» en cada grupo.
             </p>
 
             {cargando ? (
@@ -108,67 +215,74 @@ export default function ProgramacionAutomatizacion() {
 
             ) : (
 
-                <div className={styles.grid}>
+                <>
 
-                    {configs.map((c) => {
+                    <div className={styles.barraEstado}>
 
-                        const recordatorios = Object.entries(c.recordatorios || {}).sort((a, b) => Number(a[0]) - Number(b[0]));
+                        <span className={styles.barraTexto}>
+                            {ultimaCarga
+                                ? <>Actualizado {formatearMomento(ultimaCarga, ahora)} · se actualiza cada minuto</>
+                                : actualizando ? "Consultando el estado de los envíos…" : "Sin datos de envíos todavía"}
+                        </span>
 
-                        return (
+                        <button
+                            type="button"
+                            className={styles.botonActualizar}
+                            onClick={actualizarAhora}
+                            disabled={actualizando}
+                        >
+                            <RefreshCw size={13} className={actualizando ? styles.girando : undefined} />
+                            Actualizar
+                        </button>
 
-                            <div key={c.id} className={styles.card}>
+                    </div>
 
-                                <div className={styles.cardHeader}>
-                                    <span className={styles.cardName}>{nombreDeGrupo(c.grupo_id)}</span>
-                                    <Link
-                                        href={`/automatizacion/grupos/${encodeURIComponent(c.grupo_id)}`}
-                                        className={styles.editLink}
-                                    >
-                                        Editar
-                                    </Link>
-                                </div>
+                    {frescura !== "al_dia" && !actualizando && (
+                        <p className={styles.error} role="status">
+                            <AlertTriangle size={15} />
+                            {frescura === "sin_respuesta"
+                                ? ultimaCarga
+                                    ? `No pudimos actualizar. Los estados son de ${formatearMomento(ultimaCarga, ahora)} y pueden no estar al día.`
+                                    : "No pudimos consultar el estado de los envíos. Los recordatorios se muestran sin confirmar."
+                                : "Los estados tienen más de 3 minutos y pueden no estar al día."}
+                        </p>
+                    )}
 
-                                <div className={styles.section}>
+                    <div className={styles.grid}>
 
-                                    {recordatorios.length === 0 && (
-                                        <p className={styles.nota}>Sin recordatorios configurados.</p>
+                        {configs.map((c) => {
+
+                            const evento = seguimiento?.eventos[c.grupo_id] || null;
+                            const cicloGrupo = seguimiento?.ciclos[c.grupo_id] || null;
+                            const ciclo = cicloGrupo && evento && (!cicloGrupo.evento_id || cicloGrupo.evento_id === evento.id) ? cicloGrupo : null;
+
+                            return (
+
+                                <TarjetaProgramacion
+                                    key={c.id}
+                                    config={c}
+                                    nombre={resolverNombreGrupo(
+                                        nombreEnVivo(c.grupo_id),
+                                        evento?.grupo_nombre,
+                                        seguimiento?.nombres[c.grupo_id],
+                                        cicloGrupo?.datos_evento_snapshot?.grupo_nombre
                                     )}
+                                    conexion={sesiones ? conexionDeGrupo(c.grupo_id, sesiones) : "comprobando"}
+                                    evento={evento}
+                                    ciclo={ciclo}
+                                    acciones={ciclo ? seguimiento?.acciones[ciclo.id] || [] : []}
+                                    datosDisponibles={!!seguimiento}
+                                    sesionesActivas={seguimiento ? seguimiento.sesionesActivas : null}
+                                    ahora={ahora}
+                                />
 
-                                    {recordatorios.map(([offset, cfg]) => (
-                                        <div key={offset} className={styles.row}>
-                                            <span>{offset} min antes</span>
-                                            <span className={styles.rowValue}>
-                                                {dot(cfg.activo)}
-                                                {nombreCategoria(cfg.categoria)}
-                                            </span>
-                                        </div>
-                                    ))}
+                            );
 
-                                </div>
+                        })}
 
-                                <div className={styles.row}>
-                                    <span>Tabla inicial</span>
-                                    <span className={styles.rowValue}>
-                                        {dot(c.publicacion_inicial_tabla?.activo)}
-                                        {c.publicacion_inicial_tabla?.activo
-                                            ? formatHora12(c.publicacion_inicial_tabla.hora)
-                                            : "desactivada"}
-                                    </span>
-                                </div>
+                    </div>
 
-                                <div className={styles.foot}>
-                                    <span>Actualización: {c.mensaje_actualizacion?.activo ? "sí" : "no"}</span>
-                                    <span>Umbral: {c.umbral_reservas}</span>
-                                    <span>Cooldown: {c.cooldown_minutos} min</span>
-                                </div>
-
-                            </div>
-
-                        );
-
-                    })}
-
-                </div>
+                </>
 
             )}
 

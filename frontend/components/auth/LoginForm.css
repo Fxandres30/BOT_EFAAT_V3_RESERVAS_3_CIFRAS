@@ -199,3 +199,29 @@
 
 .login-coincide.ok{ color:#15803d; }
 .login-coincide.mal{ color:#b91c1c; }
+
+/* Recuperación de contraseña */
+.login-olvido{
+    margin:-8px 0 18px;
+    text-align:right;
+    font-size:14px;
+}
+
+.login-exito{
+    margin:-6px 0 16px;
+    padding:10px 12px;
+    border-radius:10px;
+    background:#dcfce7;
+    color:#15803d;
+    font-size:14px;
+}
+
+.login-button-enlace{
+    display:block;
+    text-align:center;
+    text-decoration:none;
+}
+
+.login-button-enlace:hover{
+    color:white;
+}

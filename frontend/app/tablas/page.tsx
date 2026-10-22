@@ -1,11 +1,9 @@
-import Link from "next/link";
-
 import DashboardLayout from "@/components/layout/DashboardLayout/DashboardLayout";
-import { PRECIOS_VALIDOS } from "@/lib/tablasConfig";
+import IndiceTablas from "@/components/tablas/IndiceTablas";
 
-// Índice real de tablas de reservas: los precios y tablas físicas vienen
-// exactamente de frontend/lib/tablasConfig.ts (espejo de
-// backend/bot/funciones/eventos/configEvento.js), no de datos inventados.
+// Índice real de tablas de reservas: los precios de la cuenta de la sesión
+// (tablas_cliente, migración 027; sin ella, los precios base de
+// lib/tablasConfig.ts). Ver components/tablas/IndiceTablas.tsx.
 export default function TablasPage() {
 
     return (
@@ -21,26 +19,7 @@ export default function TablasPage() {
                     </p>
                 </div>
 
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3 sm:gap-4">
-
-                    {PRECIOS_VALIDOS.map((precio) => (
-
-                        <Link
-                            key={precio}
-                            href={`/tablas/${precio}`}
-                            className="bg-white border rounded-2xl p-4 sm:p-6 text-center shadow hover:shadow-lg hover:border-blue-500 transition min-w-0"
-                        >
-                            <div className="text-xl sm:text-2xl font-bold truncate">
-                                ${precio.toLocaleString("es-CO")}
-                            </div>
-                            <div className="text-sm text-gray-500 mt-1">
-                                Ver tabla
-                            </div>
-                        </Link>
-
-                    ))}
-
-                </div>
+                <IndiceTablas />
 
             </div>
 

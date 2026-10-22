@@ -31,6 +31,13 @@ export default function LoginForm() {
 
   const [error, setError] = useState<string | null>(null);
 
+  // Vuelta desde /restablecer-contrasena tras cambiar la contraseña. Solo se
+  // lee en el navegador; el formulario no se pinta hasta conocer la sesión,
+  // así que el valor del servidor (false) nunca llega a la pantalla.
+  const [claveActualizada] = useState(
+    () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("clave") === "actualizada"
+  );
+
   // Con sesión activa (también al volver del enlace de confirmación de
   // correo) no se muestra el login: se entra directo al área privada.
   useEffect(() => {
@@ -114,6 +121,14 @@ export default function LoginForm() {
           value={password}
           onChange={setPassword}
         />
+
+        <p className="login-olvido">
+          <Link className="login-link" href="/recuperar-contrasena">¿Olvidaste tu contraseña?</Link>
+        </p>
+
+        {claveActualizada && !error && (
+          <p className="login-exito" role="status">Tu contraseña se actualizó. Inicia sesión con la nueva.</p>
+        )}
 
         {error && <p className="login-error" role="alert">{error}</p>}
 

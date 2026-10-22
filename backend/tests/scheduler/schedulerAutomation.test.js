@@ -173,9 +173,11 @@ function autorizarGrupo(fakeSupabase, overrides = {}) {
 
 // Fila cruda de la tabla de reservas REAL del evento (evento.tabla) — el
 // mismo fake soporta "reservas_dos_cifras" (ver fakeSupabaseAutomation.js).
-function crearNumero(fakeSupabase, { tabla = "reservas_dos_cifras", numero, estado = "libre" }) {
+// usuario_id: la tabla física la comparten todos los clientes; cada fila
+// real tiene su dueño (INITIAL_TABLE solo publica la del dueño del evento).
+function crearNumero(fakeSupabase, { tabla = "reservas_dos_cifras", numero, estado = "libre", usuario_id = USUARIO }) {
 
-    return fakeSupabase._agregar(tabla, { numero, estado });
+    return fakeSupabase._agregar(tabla, { numero, estado, usuario_id });
 
 }
 
@@ -828,6 +830,8 @@ async function main() {
         crearNumero(fakeSupabase, { numero: 1, estado: "libre" });
         crearNumero(fakeSupabase, { numero: 2, estado: "libre" });
         crearNumero(fakeSupabase, { numero: 3, estado: "reservado" });
+        // Número libre de OTRO cliente en la misma tabla física: no se publica.
+        crearNumero(fakeSupabase, { numero: 4, estado: "libre", usuario_id: "otro-cliente" });
 
         const { sock, llamadas } = crearFakeSock({ sessionId: SESSION_ID });
 
@@ -840,6 +844,7 @@ async function main() {
         const texto = llamadas.sendMessage[0].contenido.text;
         assert.ok(texto.includes("( 1 - 2 )"), texto);
         assert.ok(!texto.includes("3"), texto);
+        assert.ok(!texto.includes("4"), texto);
 
         const acciones = fakeSupabase._filas("automation_actions");
         assert.strictEqual(acciones.length, 1);

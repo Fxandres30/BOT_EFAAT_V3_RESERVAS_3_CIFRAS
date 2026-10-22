@@ -71,18 +71,6 @@ export default function TablaPrecioView({ precio }: Props) {
     const [bibliotecaAbierta, setBibliotecaAbierta] = useState(false);
     const [disenoEnEdicion, setDisenoEnEdicion] = useState<TablaDiseno | null>(null);
 
-    if (!config) {
-
-        return (
-            <EstadoMensaje
-                icon={AlertTriangle}
-                titulo="Precio no válido"
-                descripcion={`No existe una tabla configurada para $${precio}.`}
-            />
-        );
-
-    }
-
     if (loading) {
 
         return (
@@ -91,6 +79,20 @@ export default function TablaPrecioView({ precio }: Props) {
                 titulo="Cargando tabla..."
                 descripcion="Obteniendo el estado real de las reservas."
                 animarIcono
+            />
+        );
+
+    }
+
+    // Tras cargar: la configuración del cliente puede no ofrecer este precio
+    // (sin sesión, se muestra el error de sesión de abajo).
+    if (!config && usuarioId) {
+
+        return (
+            <EstadoMensaje
+                icon={AlertTriangle}
+                titulo="Precio no válido"
+                descripcion={`No existe una tabla configurada para $${precio}.`}
             />
         );
 

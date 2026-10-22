@@ -56,10 +56,10 @@ function cargarModulos() {
 function sembrarEscenarioMixto(fake) {
 
     fake.tablas[TABLA] = [
-        { numero: "12", estado: "reservado", usuario_global_id: "cliente-1" },
-        { numero: "27", estado: "pagado", usuario_global_id: "cliente-1" },
-        { numero: "45", estado: "reservado", usuario_global_id: "cliente-1" },
-        { numero: "78", estado: "pagado", usuario_global_id: "cliente-1" }
+        { usuario_id: "tenant-test", numero: "12", estado: "reservado", usuario_global_id: "cliente-1" },
+        { usuario_id: "tenant-test", numero: "27", estado: "pagado", usuario_global_id: "cliente-1" },
+        { usuario_id: "tenant-test", numero: "45", estado: "reservado", usuario_global_id: "cliente-1" },
+        { usuario_id: "tenant-test", numero: "78", estado: "pagado", usuario_global_id: "cliente-1" }
     ];
 
 }
@@ -69,13 +69,13 @@ function sembrarEscenarioMixto(fake) {
 function sembrarEscenarioTotalmentePagado(fake) {
 
     fake.tablas[TABLA] = [
-        { numero: "10", estado: "pagado", usuario_global_id: "cliente-1" },
-        { numero: "20", estado: "pagado", usuario_global_id: "cliente-1" }
+        { usuario_id: "tenant-test", numero: "10", estado: "pagado", usuario_global_id: "cliente-1" },
+        { usuario_id: "tenant-test", numero: "20", estado: "pagado", usuario_global_id: "cliente-1" }
     ];
 
 }
 
-const EVENTO = { id: "evento-1", tabla: TABLA, valor: 5000 };
+const EVENTO = { id: "evento-1", usuario_id: "tenant-test", tabla: TABLA, valor: 5000 };
 const USUARIO = { id: "cliente-1" };
 
 const resultados = [];
@@ -248,8 +248,8 @@ async function ejecutarPruebas() {
         const { fake, resolverConsulta } = cargarModulos();
 
         fake.tablas[TABLA] = [
-            { numero: "10", estado: "reservado", usuario_global_id: "cliente-1" },
-            { numero: "20", estado: "reservado", usuario_global_id: "cliente-1" }
+            { usuario_id: "tenant-test", numero: "10", estado: "reservado", usuario_global_id: "cliente-1" },
+            { usuario_id: "tenant-test", numero: "20", estado: "reservado", usuario_global_id: "cliente-1" }
         ];
 
         const resultado = await resolverConsulta({ tipo: "consulta_pago", modo: "monto", bucket: "pendiente", evento: EVENTO, usuario: USUARIO });

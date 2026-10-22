@@ -25,6 +25,7 @@
 // ==========================================================================
 
 const supabase = require("../../../lib/supabase");
+const { soloDelCliente } = require("../reservas/filtroCliente");
 
 // ==========================================================================
 // CORRECCIÓN (auditoría "kellyJ🥰" / compradores_semanales.whatsapp=null,
@@ -119,10 +120,15 @@ async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) 
     // numero/estado): calcularCamposIdentidadARellenar() los necesita para
     // decidir qué puede completar sin sobrescribir nada — mismo SELECT,
     // sin ninguna consulta adicional a Supabase.
-    let querySelect = supabase
-        .from(evento.tabla)
-        .select("numero, estado, contacto, telefono, comprador, nombre, lid")
-        .eq("usuario_global_id", usuario.id);
+    // Solo la cuadrícula del dueño del evento (filtroCliente.js): sin
+    // usuario_id, ni esta lectura ni el UPDATE llegan a la base.
+    let querySelect = soloDelCliente(
+        supabase
+            .from(evento.tabla)
+            .select("numero, estado, contacto, telefono, comprador, nombre, lid")
+            .eq("usuario_global_id", usuario.id),
+        evento
+    );
 
     querySelect = evento.identidad_evento_real
         ? querySelect.eq("identidad_evento_real", evento.identidad_evento_real)
@@ -198,20 +204,22 @@ async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) 
 
     const camposIdentidad = calcularCamposIdentidadARellenar(filasAPagar, usuario);
 
-    let queryUpdate = supabase
-        .from(evento.tabla)
-        .update({
+    let queryUpdate = soloDelCliente(
+        supabase
+            .from(evento.tabla)
+            .update({
 
-            estado: "pagado",
-            fecha_pago: fechaPago,
-            hora_pago: horaPago,
+                estado: "pagado",
+                fecha_pago: fechaPago,
+                hora_pago: horaPago,
 
-            ...camposIdentidad
+                ...camposIdentidad
 
-        })
-        .eq("usuario_global_id", usuario.id)
-        .eq("usuario_id", evento.usuario_id)
-        .eq("estado", "reservado");
+            })
+            .eq("usuario_global_id", usuario.id)
+            .eq("estado", "reservado"),
+        evento
+    );
 
     queryUpdate = evento.identidad_evento_real
         ? queryUpdate.eq("identidad_evento_real", evento.identidad_evento_real)

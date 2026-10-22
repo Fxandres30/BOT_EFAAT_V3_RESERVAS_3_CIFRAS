@@ -11,10 +11,9 @@ import { TipoMensaje } from "@/services/mensajes/tiposMensaje";
 import {
     PlantillaMensaje,
     actualizarPlantilla,
-    crearPlantilla,
-    valoresPorDefectoVariables
+    crearPlantilla
 } from "@/services/mensajes/plantillas";
-import { aplicarPlantillaPreview } from "@/services/mensajes/aplicarPlantillaPreview";
+import { aplicarPlantillaPreview, datoVisible } from "@/services/mensajes/aplicarPlantillaPreview";
 import { listarCatalogo, extraerVariablesDesconocidas, normalizarVariableDinamica, VariableGlobal } from "@/services/mensajes/catalogoVariablesGlobal";
 import { listarVariablesActivas } from "@/services/variables/variablesGlobales";
 import VariableAutocomplete, { ItemAutocomplete } from "@/components/mensajes/VariableAutocomplete/VariableAutocomplete";
@@ -78,7 +77,9 @@ export default function EditorMensaje({ tipo, usuarioId, plantilla, onGuardada, 
     const [nombre, setNombre] = useState(plantilla.nombre);
     const [estilo, setEstilo] = useState(plantilla.estilo);
     const [contenido, setContenido] = useState(plantilla.contenido);
-    const [variables, setVariables] = useState(plantilla.variables || valoresPorDefectoVariables());
+    // Lo guardado tal cual. Sin configuración el bot muestra todo, y el
+    // editor también: guardar sin tocar las casillas no cambia el mensaje.
+    const [variables, setVariables] = useState(plantilla.variables || {});
 
     const [guardando, setGuardando] = useState(false);
     const [mensaje, setMensaje] = useState<string | null>(null);
@@ -174,7 +175,7 @@ export default function EditorMensaje({ tipo, usuarioId, plantilla, onGuardada, 
         setNombre(plantilla.nombre);
         setEstilo(plantilla.estilo);
         setContenido(plantilla.contenido);
-        setVariables(plantilla.variables || valoresPorDefectoVariables());
+        setVariables(plantilla.variables || {});
         setMensaje(null);
         setAutocompleteAbierto(false);
 
@@ -487,7 +488,7 @@ export default function EditorMensaje({ tipo, usuarioId, plantilla, onGuardada, 
                             <label key={v.variable} className={styles.check}>
                                 <input
                                     type="checkbox"
-                                    checked={!!(variables as Record<string, boolean>)[v.mostrarCampo]}
+                                    checked={datoVisible(variables as Record<string, boolean>, v.mostrarCampo)}
                                     onChange={(e) => actualizarMostrar(v.mostrarCampo, e.target.checked)}
                                 />
                                 {v.etiqueta}

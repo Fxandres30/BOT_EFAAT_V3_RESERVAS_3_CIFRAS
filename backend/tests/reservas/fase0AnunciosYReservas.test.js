@@ -94,7 +94,7 @@ const eventHandler = require(r("bot/handlers/eventHandler.js"));
 // ----------------------------------------------------------------- datos ---
 
 const USUARIO = { id: "cliente-1", nombre: "Ana" };
-const ABIERTO = { id: "ev-1", nombre_evento: "Lotería De Medellín", tabla: TABLA, cifras: 2, valor: 3000, activo: true, abierto: true, estado: "abierto", hora_cierre: null };
+const ABIERTO = { id: "ev-1", usuario_id: "tenant-test", nombre_evento: "Lotería De Medellín", tabla: TABLA, cifras: 2, valor: 3000, activo: true, abierto: true, estado: "abierto", hora_cierre: null };
 
 const ANUNCIOS = [
     "🎯 LOTERÍA DE MANIZALES 10:30 PM\n💰 Valor número: 5000\n🏆 Premio: $500.000",
@@ -236,7 +236,7 @@ async function test(nombre, fn) {
 
     await test("D. sorteo cerrado: las consultas siguen respondiendo (\"mis números\")", async () => {
         eventoActual = { ...ABIERTO, activo: false, estado: "cerrado" };
-        db[TABLA] = [{ numero: "25", estado: "reservado", usuario_global_id: "cliente-1" }];
+        db[TABLA] = [{ usuario_id: "tenant-test", numero: "25", estado: "reservado", usuario_global_id: "cliente-1" }];
         const { enviados, reservados } = await procesar("mis números");
         assert.strictEqual(enviados.length, 1);
         assert.match(enviados[0], /25/);
@@ -255,7 +255,7 @@ async function test(nombre, fn) {
     for (const texto of ANUNCIOS) {
         await test(`E. anuncio por el flujo real: 0 respuestas y 0 reservas — ${JSON.stringify(texto.slice(0, 30))}`, async () => {
             eventoActual = { ...ABIERTO };
-            db[TABLA] = NUMEROS.map(numero => ({ numero, estado: "libre" }));
+            db[TABLA] = NUMEROS.map(numero => ({ usuario_id: "tenant-test", numero, estado: "libre" }));
             const { enviados, reservados } = await procesar(texto);
             assert.deepStrictEqual(reservados, []);
             assert.strictEqual(enviados.length, 0, `respondió: ${enviados[0]}`);
@@ -274,7 +274,7 @@ async function test(nombre, fn) {
     for (const texto of ["¿Qué números quedan?", "tabla", "números disponibles"]) {
         await test(`E. disponibilidad por el flujo real: "${texto}" -> 1 respuesta, 0 reservas`, async () => {
             eventoActual = { ...ABIERTO, id: `ev-${Math.random()}` };
-            db[TABLA] = NUMEROS.map(numero => ({ numero, estado: numero === "25" ? "reservado" : "libre" }));
+            db[TABLA] = NUMEROS.map(numero => ({ usuario_id: "tenant-test", numero, estado: numero === "25" ? "reservado" : "libre" }));
             const { enviados, reservados } = await procesar(texto);
             assert.deepStrictEqual(reservados, []);
             assert.strictEqual(enviados.length, 1);

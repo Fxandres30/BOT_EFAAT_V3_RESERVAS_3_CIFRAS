@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { supabase } from "@/lib/supabase";
-import { obtenerTablaConfig } from "@/lib/tablasConfig";
+import type { TablaConfig } from "@/lib/tablasConfig";
+import { obtenerTablaConfigCliente } from "@/services/tablas/tablasCliente";
 import { getUser } from "@/services/auth/getUser";
 import { obtenerTabla } from "@/services/tablas/obtenerTabla";
 import { obtenerEventoActivo } from "@/services/tablas/obtenerEventoActivo";
@@ -24,7 +25,9 @@ import type { NumeroReserva, EventoActivo, ActividadReserva } from "@/components
 // por su cuenta ni mantiene su propia copia del estado.
 export function useTablaPrecio(precio: number) {
 
-    const config = useMemo(() => obtenerTablaConfig(precio), [precio]);
+    // Tabla física de este precio SEGÚN EL CLIENTE de la sesión
+    // (tablas_cliente); se resuelve al conocer el usuario.
+    const [config, setConfig] = useState<TablaConfig | null>(null);
 
     const [usuarioId, setUsuarioId] = useState<string | null>(null);
     const [realizadoPor, setRealizadoPor] = useState<string | null>(null);
@@ -37,7 +40,7 @@ export function useTablaPrecio(precio: number) {
     const [error, setError] = useState<string | null>(null);
     const [accionando, setAccionando] = useState<string | null>(null);
 
-    const cargar = useCallback(async (uid: string) => {
+    const cargar = useCallback(async (uid: string, config: TablaConfig | null) => {
 
         if (!config) {
             setError("No existe una tabla configurada para este precio.");
@@ -68,7 +71,7 @@ export function useTablaPrecio(precio: number) {
 
         }
 
-    }, [precio, config]);
+    }, [precio]);
 
     useEffect(() => {
 
@@ -86,10 +89,15 @@ export function useTablaPrecio(precio: number) {
                 return;
             }
 
+            const cfg = await obtenerTablaConfigCliente(precio, data.user.id);
+
+            if (!vivo) return;
+
+            setConfig(cfg);
             setUsuarioId(data.user.id);
             setRealizadoPor(data.user.email || data.user.id);
 
-            await cargar(data.user.id);
+            await cargar(data.user.id, cfg);
 
         }
 
@@ -97,7 +105,7 @@ export function useTablaPrecio(precio: number) {
 
         return () => { vivo = false; };
 
-    }, [cargar]);
+    }, [cargar, precio]);
 
     // Tiempo real: cualquier cambio en la tabla física del usuario, en su
     // evento activo o en su actividad recarga los datos. Mismo patrón que
@@ -113,7 +121,7 @@ export function useTablaPrecio(precio: number) {
                 .on(
                     "postgres_changes",
                     { event: "*", schema: "public", table: config.tabla, filter: `usuario_id=eq.${usuarioId}` },
-                    () => cargar(usuarioId)
+                    () => cargar(usuarioId, config)
                 )
                 .subscribe(),
 
@@ -122,7 +130,7 @@ export function useTablaPrecio(precio: number) {
                 .on(
                     "postgres_changes",
                     { event: "*", schema: "public", table: "eventos_bot", filter: `usuario_id=eq.${usuarioId}` },
-                    () => cargar(usuarioId)
+                    () => cargar(usuarioId, config)
                 )
                 .subscribe(),
 
@@ -131,7 +139,7 @@ export function useTablaPrecio(precio: number) {
                 .on(
                     "postgres_changes",
                     { event: "INSERT", schema: "public", table: "reservas_actividad", filter: `usuario_id=eq.${usuarioId}` },
-                    () => cargar(usuarioId)
+                    () => cargar(usuarioId, config)
                 )
                 .subscribe()
 
@@ -192,7 +200,7 @@ export function useTablaPrecio(precio: number) {
         try {
 
             await accion();
-            await cargar(usuarioId);
+            await cargar(usuarioId, config);
 
         } finally {
 
@@ -200,7 +208,7 @@ export function useTablaPrecio(precio: number) {
 
         }
 
-    }, [usuarioId, cargar]);
+    }, [usuarioId, config, cargar]);
 
     return {
 
@@ -218,7 +226,7 @@ export function useTablaPrecio(precio: number) {
         accionando,
 
         recargar: async () => {
-            if (usuarioId) await cargar(usuarioId);
+            if (usuarioId) await cargar(usuarioId, config);
         },
 
         marcarPagado: async (numero: string) => {

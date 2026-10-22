@@ -38,9 +38,9 @@ const NUMEROS = Array.from({ length: 100 }, (_, i) => String(i).padStart(2, "0")
 
 const TABLAS = {
     // Grupo A: solo 03, 07 y 99 libres.
-    tabla_a: NUMEROS.map(n => ({ numero: n, estado: ["03", "07", "99"].includes(n) ? "libre" : "reservado" })),
+    tabla_a: NUMEROS.map(n => ({ usuario_id: "tenant-test", numero: n, estado: ["03", "07", "99"].includes(n) ? "libre" : "reservado" })),
     // Grupo B: solo 50 y 51 libres.
-    tabla_b: NUMEROS.map(n => ({ numero: n, estado: ["50", "51"].includes(n) ? "libre" : "pagado" }))
+    tabla_b: NUMEROS.map(n => ({ usuario_id: "tenant-test", numero: n, estado: ["50", "51"].includes(n) ? "libre" : "pagado" }))
 };
 
 const consultasSupabase = [];
@@ -99,8 +99,8 @@ inyectar(r("bot/funciones/reservas/detectarReserva.js"), {
 });
 
 const EVENTOS = {
-    "grupoA@g.us": { id: "ev-a", grupo_id: "grupoA@g.us", nombre_evento: "Sorteo A", tabla: "tabla_a", cifras: 2, identidad_evento_real: "real-a", valor: 2000, activo: true },
-    "grupoB@g.us": { id: "ev-b", grupo_id: "grupoB@g.us", nombre_evento: "Sorteo B", tabla: "tabla_b", cifras: 2, identidad_evento_real: "real-b", valor: 5000, activo: true }
+    "grupoA@g.us": { id: "ev-a", usuario_id: "tenant-test", grupo_id: "grupoA@g.us", nombre_evento: "Sorteo A", tabla: "tabla_a", cifras: 2, identidad_evento_real: "real-a", valor: 2000, activo: true },
+    "grupoB@g.us": { id: "ev-b", usuario_id: "tenant-test", grupo_id: "grupoB@g.us", nombre_evento: "Sorteo B", tabla: "tabla_b", cifras: 2, identidad_evento_real: "real-b", valor: 5000, activo: true }
 };
 
 inyectar(r("bot/funciones/eventos/detectarEvento.js"), { detectarEvento: async () => null });

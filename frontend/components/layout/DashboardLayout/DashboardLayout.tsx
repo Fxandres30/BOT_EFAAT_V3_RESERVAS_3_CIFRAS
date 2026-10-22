@@ -8,6 +8,7 @@ import "./DashboardLayout.css";
 import Sidebar from "../Sidebar/Sidebar";
 import Topbar from "../Topbar/Topbar";
 import { useSesion } from "@/hooks/useSesion";
+import { inicializarCliente } from "@/services/tablas/inicializarCliente";
 
 interface Props{
 
@@ -34,6 +35,14 @@ export default function DashboardLayout({
         if(sesion==="sin_sesion"){
 
             router.replace("/login");
+
+        }
+
+        // Primer acceso: configuraciones de tablas y cuadrícula del cliente
+        // (idempotente, en segundo plano; el backend usa el token).
+        if(sesion==="con_sesion"){
+
+            inicializarCliente();
 
         }
 

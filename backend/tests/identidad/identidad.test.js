@@ -698,14 +698,14 @@ async function main() {
         const usuarioB = await obtenerUsuarioGlobalMod.obtenerUsuarioGlobal({ lid: "compradorB@lid" });
 
         fake.tablas["numeros_evento_test"] = [
-            { numero: 10, estado: "reservado", usuario_global_id: usuarioA.id },
-            { numero: 45, estado: "reservado", usuario_global_id: usuarioA.id },
-            { numero: 7, estado: "reservado", usuario_global_id: usuarioB.id },
-            { numero: 20, estado: "libre", usuario_global_id: usuarioA.id }
+            { usuario_id: "tenant-1", numero: 10, estado: "reservado", usuario_global_id: usuarioA.id },
+            { usuario_id: "tenant-1", numero: 45, estado: "reservado", usuario_global_id: usuarioA.id },
+            { usuario_id: "tenant-1", numero: 7, estado: "reservado", usuario_global_id: usuarioB.id },
+            { usuario_id: "tenant-1", numero: 20, estado: "libre", usuario_global_id: usuarioA.id }
         ];
 
         const numeros = await consultarMisNumeros({
-            evento: { tabla: "numeros_evento_test" },
+            evento: { usuario_id: "tenant-1", tabla: "numeros_evento_test" },
             usuario: usuarioA
         });
 
@@ -852,10 +852,10 @@ async function main() {
         const usuario = await obtenerUsuarioGlobalMod.obtenerUsuarioGlobal({ lid: "hist-lid@lid", telefono: "3001112222" });
 
         fake.tablas["tabla_hist_lid"] = [
-            { numero: 45, estado: "reservado", usuario_global_id: null, lid: "hist-lid@lid", telefono: null, contacto: null }
+            { usuario_id: "tenant-1", numero: 45, estado: "reservado", usuario_global_id: null, lid: "hist-lid@lid", telefono: null, contacto: null }
         ];
 
-        const resultado = await consultarNumero({ evento: { tabla: "tabla_hist_lid" }, usuario, numero: 45 });
+        const resultado = await consultarNumero({ evento: { usuario_id: "tenant-1", tabla: "tabla_hist_lid" }, usuario, numero: 45 });
 
         assert.strictEqual(resultado.estadoReal, "reservado_por_usuario", "debe reconocer la reserva histórica por LID aunque usuario_global_id sea NULL");
 
@@ -872,11 +872,11 @@ async function main() {
         const usuario = await obtenerUsuarioGlobalMod.obtenerUsuarioGlobal({ telefono: "3009998888" });
 
         fake.tablas["tabla_hist_tel"] = [
-            { numero: 12, estado: "reservado", usuario_global_id: null, lid: null, telefono: null, contacto: "3009998888" },
-            { numero: 13, estado: "libre", usuario_global_id: null, lid: null, telefono: null, contacto: null }
+            { usuario_id: "tenant-1", numero: 12, estado: "reservado", usuario_global_id: null, lid: null, telefono: null, contacto: "3009998888" },
+            { usuario_id: "tenant-1", numero: 13, estado: "libre", usuario_global_id: null, lid: null, telefono: null, contacto: null }
         ];
 
-        const numeros = await consultarMisNumeros({ evento: { tabla: "tabla_hist_tel" }, usuario });
+        const numeros = await consultarMisNumeros({ evento: { usuario_id: "tenant-1", tabla: "tabla_hist_tel" }, usuario });
 
         assert.deepStrictEqual(numeros, [12], "debe encontrar la reserva histórica por contacto=teléfono aunque usuario_global_id sea NULL");
 
@@ -895,11 +895,11 @@ async function main() {
         const usuarioB = await obtenerUsuarioGlobalMod.obtenerUsuarioGlobal({ lid: "userB@lid", telefono: "3002220000" });
 
         fake.tablas["tabla_aislamiento"] = [
-            { numero: 1, estado: "reservado", usuario_global_id: null, lid: "userB@lid", telefono: null, contacto: null },
-            { numero: 2, estado: "pagado", usuario_global_id: usuarioB.id, lid: null, telefono: null, contacto: "3002220000" }
+            { usuario_id: "tenant-1", numero: 1, estado: "reservado", usuario_global_id: null, lid: "userB@lid", telefono: null, contacto: null },
+            { usuario_id: "tenant-1", numero: 2, estado: "pagado", usuario_global_id: usuarioB.id, lid: null, telefono: null, contacto: "3002220000" }
         ];
 
-        const numerosDeA = await consultarMisNumeros({ evento: { tabla: "tabla_aislamiento" }, usuario: usuarioA });
+        const numerosDeA = await consultarMisNumeros({ evento: { usuario_id: "tenant-1", tabla: "tabla_aislamiento" }, usuario: usuarioA });
 
         assert.deepStrictEqual(numerosDeA, [], "Usuario A no debe ver ninguna reserva de Usuario B, ni por usuario_global_id ni por lid/contacto");
 
@@ -917,8 +917,8 @@ async function main() {
         const usuario = await obtenerUsuarioGlobalMod.obtenerUsuarioGlobal({ lid: "vr-lid@lid", telefono: "3005556666" });
 
         const reservas = [
-            { numero: 7, estado: "reservado", usuario_global_id: null, lid: "vr-lid@lid", contacto: null },
-            { numero: 8, estado: "reservado", usuario_global_id: null, lid: "otro@lid", contacto: null }
+            { usuario_id: "tenant-1", numero: 7, estado: "reservado", usuario_global_id: null, lid: "vr-lid@lid", contacto: null },
+            { usuario_id: "tenant-1", numero: 8, estado: "reservado", usuario_global_id: null, lid: "otro@lid", contacto: null }
         ];
 
         const resultado = validarReservas(reservas, usuario);

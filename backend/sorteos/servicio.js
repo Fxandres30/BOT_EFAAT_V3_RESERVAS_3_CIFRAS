@@ -16,6 +16,7 @@ const { validarSorteo, validarPlantilla, partesBogota } = require("./validar");
 const { mensajePublicacion, mensajeRecordatorio, mensajeAvisoCierre, VARIABLES } = require("./mensajes");
 const { revisarTabla, revisarGrupo } = require("./disponibilidad");
 const { crearIdentidadEventoReal } = require("../bot/funciones/eventos/identidadEventoReal");
+const tablasCliente = require("../bot/funciones/eventos/tablasCliente");
 
 const ESTADOS_EDITABLES = ["borrador", "programado"];
 
@@ -42,6 +43,14 @@ async function prepararSorteo(usuarioId, entrada) {
 
     const v = validarSorteo(entrada, { ahora: reloj.ahora() });
     const errores = [...v.errores];
+
+    // La tabla física sale de la configuración DE ESTE cliente
+    // (tablas_cliente); validarSorteo solo conoce los precios base.
+    let tablaCliente = null;
+    if (v.tabla) {
+        tablaCliente = await tablasCliente.obtenerConfiguracionCliente(usuarioId, v.config.valor);
+        if (!tablaCliente) errores.push({ campo: "valor", mensaje: "Ese valor no tiene una tabla de números configurada en tu cuenta." });
+    }
 
     const autorizados = await repo.gruposAutorizados(usuarioId);
     if (!autorizados.ok) return falla(autorizados.motivo, { error: autorizados.error });
@@ -76,7 +85,7 @@ async function prepararSorteo(usuarioId, entrada) {
         .map(id => cuentas.data.find(c => c.id === id))
         .map(({ id, nombre, tipo, titular, numero, instrucciones }) => ({ id, nombre, tipo, titular, numero, instrucciones }));
 
-    const config = { ...v.config, cantidad_numeros: v.cantidad };
+    const config = { ...v.config, cantidad_numeros: tablaCliente.cantidad };
 
     return {
         ok: true,
@@ -84,9 +93,9 @@ async function prepararSorteo(usuarioId, entrada) {
             config,
             cuentas_snapshot: cuentasSnapshot,
             plantilla_id: plantillaId,
-            tabla: v.tabla,
-            cifras: v.cifras,
-            cantidad_numeros: v.cantidad,
+            tabla: tablaCliente.tabla,
+            cifras: tablaCliente.cifras,
+            cantidad_numeros: tablaCliente.cantidad,
             publicar_en: config.publicar_en,
             identidad_evento_real: identidadDe(usuarioId, config)
         },

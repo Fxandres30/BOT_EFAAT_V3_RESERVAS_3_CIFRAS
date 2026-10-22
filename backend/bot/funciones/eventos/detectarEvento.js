@@ -2,7 +2,7 @@ const supabase = require("../../../lib/supabase");
 const { extraerEvento } = require("./extraerEvento");
 const { consultarEvento } = require("./consultarEvento");
 const { guardarEvento } = require("./guardarEvento");
-const { obtenerConfiguracion } = require("./configEvento");
+const { obtenerConfiguracionCliente } = require("./tablasCliente");
 const { abrirGrupo } = require("./grupos/abrirGrupo");
 const { esMismoSorteo, fechaSorteoAnunciado, buscarSorteoVigente } = require("./identidadEventoReal");
 const { consultarDisponibilidad } = require("../consultas/consultarDisponibilidad");
@@ -129,7 +129,19 @@ async function detectarEvento(ctx) {
 
         });
 
-        const config = obtenerConfiguracion(evento.valor);
+        // Tabla del precio SEGÚN EL DUEÑO de la sesión (tablas_cliente). Sin
+        // dueño no se crea el sorteo: sus reservas se rechazarían igual
+        // (filtroCliente.js) y nunca debe apuntar a la cuadrícula de nadie.
+        const duenoSesion = sock?.context?.usuarioId ?? null;
+
+        if (!duenoSesion) {
+
+            console.error("❌ Anuncio en una sesión sin usuario_id: no se crea el sorteo.");
+            return null;
+
+        }
+
+        const config = await obtenerConfiguracionCliente(duenoSesion, evento.valor);
 
         if (!config) {
 
