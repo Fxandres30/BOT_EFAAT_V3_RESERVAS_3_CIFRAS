@@ -4,21 +4,27 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { Button, PageHeader, Tabs } from "@/components/ui";
-import { apiSorteos, describirError, type CuentaPago, type Plantilla, type Sorteo } from "@/services/sorteos/apiSorteos";
+import { apiSorteos, describirError, type CuentaPago, type Plantilla, type Sorteo, type SorteoActivo } from "@/services/sorteos/apiSorteos";
 
 import FormularioSorteo from "./FormularioSorteo";
 import VistaPreviaModal from "./VistaPreviaModal";
 import ListaSorteos from "./ListaSorteos";
+import ListaActivos from "./ListaActivos";
+import EditarSorteoActivoModal from "./EditarSorteoActivoModal";
 import PlantillasPanel from "./PlantillasPanel";
 import CuentasPanel from "./CuentasPanel";
 import styles from "./Sorteos.module.css";
 
-type Pestana = "programados" | "plantillas" | "cuentas";
+type Pestana = "en_curso" | "programados" | "plantillas" | "cuentas";
 
 export default function SorteosPage() {
 
     const [pestana, setPestana] = useState<Pestana>("programados");
     const [sorteos, setSorteos] = useState<Sorteo[]>([]);
+    // Sorteos en curso de cualquier origen (bot o panel).
+    const [activos, setActivos] = useState<SorteoActivo[]>([]);
+    const [errorActivos, setErrorActivos] = useState<string | null>(null);
+    const [editandoActivo, setEditandoActivo] = useState<string | null>(null);
     const [plantillas, setPlantillas] = useState<Plantilla[]>([]);
     const [cuentas, setCuentas] = useState<CuentaPago[]>([]);
     const [error, setError] = useState<string | null>(null);
@@ -27,7 +33,10 @@ export default function SorteosPage() {
 
     const cargar = useCallback(async () => {
 
-        const [s, p, c] = await Promise.all([apiSorteos.listar(), apiSorteos.plantillas(), apiSorteos.cuentas()]);
+        const [s, p, c, a] = await Promise.all([apiSorteos.listar(), apiSorteos.plantillas(), apiSorteos.cuentas(), apiSorteos.activos()]);
+
+        if (a.ok) { setActivos(a.data); setErrorActivos(null); }
+        else setErrorActivos(describirError(a));
 
         if (!s.ok) { setError(describirError(s)); return; }
 
@@ -72,12 +81,18 @@ export default function SorteosPage() {
                 value={pestana}
                 onValueChange={v => setPestana(v as Pestana)}
                 items={[
+                    { value: "en_curso", label: `En curso (${activos.length})` },
                     { value: "programados", label: `Programados (${sorteos.length})` },
                     { value: "plantillas", label: `Plantillas (${plantillas.length})` },
                     { value: "cuentas", label: `Cuentas de pago (${cuentas.length})` }
                 ]}
             />
 
+            {pestana === "en_curso" && (
+                errorActivos
+                    ? <p className={`${styles.alerta} ${styles.alertaError}`} role="alert">No se pudieron cargar los sorteos en curso: {errorActivos}</p>
+                    : <ListaActivos activos={activos} onEditar={setEditandoActivo} />
+            )}
             {pestana === "programados" && (
                 <ListaSorteos
                     sorteos={sorteos}
@@ -100,6 +115,15 @@ export default function SorteosPage() {
                     cargar();
                 }}
             />
+
+            {editandoActivo && (
+                <EditarSorteoActivoModal
+                    key={editandoActivo}
+                    eventoId={editandoActivo}
+                    onClose={() => { setEditandoActivo(null); cargar(); }}
+                    onGuardado={() => { setEditandoActivo(null); cargar(); }}
+                />
+            )}
 
             <VistaPreviaModal
                 key={vistaPrevia || "sin-vista"}

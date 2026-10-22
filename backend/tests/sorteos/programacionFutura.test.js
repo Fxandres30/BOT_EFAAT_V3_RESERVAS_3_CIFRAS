@@ -300,7 +300,7 @@ prueba("R1. mismo precio sin reiniciar: la tabla seguirá ocupada al publicar ->
     const c = await servicio.crearSorteo(A, entrada({ valor: 5000 }));
     const v = await servicio.vistaPrevia(A, c.data.id);
     assert.strictEqual(v.data.estado_publicacion, "bloqueado");
-    assert.ok(v.data.bloqueos.some(b => /otro sorteo/.test(b) && /Reiniciar tabla/.test(b)));
+    assert.ok(v.data.bloqueos.some(b => /otro sorteo/.test(b) && /Reiniciar la tabla antes de publicar/.test(b)));
 });
 
 prueba("R2. mismo precio con «Reiniciar tabla»: hoy no toca nada, se confirma «al publicar» y se reinicia al publicar", async () => {

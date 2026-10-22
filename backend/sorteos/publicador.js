@@ -18,17 +18,23 @@
 //     sabe si llegó, el grupo queda en 'requiere_revision' y solo el
 //     administrador puede pedir reintentarlo (nunca un reenvío automático).
 //   - Nunca publica encima de otro sorteo activo ni sobre una tabla ocupada.
+//   - El reinicio de tabla elegido al programar se hace aquí, un minuto
+//     antes del anuncio, revalidado y UNA sola vez (prepararPublicacion).
 // ==========================================================================
 
 const repo = require("./repo");
 const { revisarTabla, revisarGrupo } = require("./disponibilidad");
 const { mensajePublicacion, mensajeRecordatorio, mensajeAvisoCierre } = require("./mensajes");
-const { partesBogota, instanteBogota, fechaSorteoDe } = require("./validar");
+const { partesBogota, instanteBogota, fechaSorteoDe, identidadDelSorteo } = require("./validar");
 const { decidirRecordatoriosSegunEstado } = require("../automation/eventRules");
 const { leerEstadoParaRecordatorios } = require("../automation/repo/estadoSorteo");
 
 const MAX_INTENTOS_AUTOMATICOS = 5;
 const VENTANA_RECORDATORIO_MS = 10 * 60 * 1000;
+// El reinicio de la tabla («Reiniciar la tabla antes de publicar») se hace
+// en el proceso de publicación, aproximadamente este tiempo antes del
+// anuncio; nunca al programar.
+const ANTICIPO_REINICIO_MS = 60 * 1000;
 
 // Conflicto REAL en el momento de publicar que se resuelve solo (el sorteo
 // actual del grupo todavía no cerró, o el reinicio diferido de la tabla
@@ -60,6 +66,7 @@ function dependenciasReales() {
         ejecutarUnaVez: require("../automation/executionGuard").ejecutarUnaVez,
         actualizarEvento: require("../bot/funciones/reservas/actualizarEvento").actualizarEvento,
         puedeActuar: require("../services/baileys/propiedadSesion").puedeActuar,
+        tablasCliente: require("../bot/funciones/eventos/tablasCliente"),
         leerEstadoParaRecordatorios
     };
 }
@@ -191,15 +198,46 @@ async function finalizarSorteo(usuarioId, sorteoId) {
 
 }
 
-// Reinicio DIFERIDO de la tabla (confirmado en la vista previa): se hace UNA
-// vez, antes del primer grupo, cuando el sorteo anterior ya cerró. La 030
-// vuelve a decidir con la tabla de este momento y nunca toca un sorteo
-// activo. Si todavía no es posible, el sorteo espera (no se pierde).
-// Devuelve { ok: true, sorteo } o { ok: false, espera }.
-async function prepararPublicacion({ usuarioId, sorteo, ahora, deps }) {
+// ¿El sorteo pidió reiniciar la tabla al publicar y todavía no se hizo? Las
+// DOS marcas son necesarias: la opción del formulario (tabla.reiniciar) y la
+// confirmación de la vista previa (tabla.reiniciar_al_publicar). Con
+// «Conservar la tabla actual» nunca se reinicia.
+function reinicioPendiente(sorteo) {
+    const t = sorteo.config?.tabla || {};
+    return t.reiniciar === true && t.reiniciar_al_publicar === true && !t.reiniciado_en;
+}
 
-    const tablaCfg = sorteo.config?.tabla || {};
-    if (!tablaCfg.reiniciar_al_publicar || tablaCfg.reiniciado_en) return { ok: true, sorteo };
+// Antes de tocar la tabla se vuelve a comprobar, con los datos de ESTE
+// momento, que el sorteo es del cliente del socket, que la programación es
+// la versión confirmada y corresponde al mismo evento, y que la tabla es la
+// configurada para ese precio en la cuenta del cliente.
+async function verificarParaReinicio({ usuarioId, sorteo, deps }) {
+
+    if (sorteo.usuario_id !== usuarioId) return "el sorteo no pertenece a esta cuenta.";
+    if (sorteo.confirmado_version !== sorteo.version) return "la programación cambió desde que se confirmó.";
+    if (sorteo.identidad_evento_real !== identidadDelSorteo(usuarioId, sorteo.config)) return "la programación no corresponde al evento confirmado.";
+
+    const tablas = deps.tablasCliente || require("../bot/funciones/eventos/tablasCliente");
+    const conf = await tablas.obtenerConfiguracionCliente(usuarioId, sorteo.config.valor);
+    if (!conf || conf.tabla !== sorteo.tabla) return "la tabla del sorteo ya no es la configurada para ese precio en tu cuenta.";
+
+    return null;
+
+}
+
+// Reinicio de la tabla elegido al programar: se hace UNA vez, en el proceso
+// de publicación (un minuto antes del anuncio o, si el bot no estaba, justo
+// antes), con la función segura de la 030 (transacción, filas bloqueadas,
+// archivo de respaldo; nunca toca un sorteo activo ni pagos en proceso). La
+// 030 vuelve a decidir con la tabla de ESTE momento.
+// Devuelve:
+//   { ok: true, sorteo }    listo (o no había nada que reiniciar)
+//   { ok: false, espera }   no se toca nada; se reintenta en el próximo ciclo
+//   { ok: false, abortar }  no se toca nada ni se publica: queda en revisión
+// estados: estados del sorteo en los que se puede anotar el reinicio hecho.
+async function prepararPublicacion({ usuarioId, sorteo, ahora, deps, estados = ["publicando"] }) {
+
+    if (!reinicioPendiente(sorteo)) return { ok: true, sorteo };
 
     // Pasado el cierre del sorteo nuevo no se reinicia nada: los grupos
     // quedarán en revisión por el cierre (publicarEnGrupo).
@@ -207,31 +245,55 @@ async function prepararPublicacion({ usuarioId, sorteo, ahora, deps }) {
     const cierre = sorteo.config.hora_cierre ? instanteBogota(fecha, sorteo.config.hora_cierre) : null;
     if (cierre && ahora.getTime() >= cierre.getTime()) return { ok: true, sorteo };
 
+    const problema = await verificarParaReinicio({ usuarioId, sorteo, deps });
+    if (problema) return { ok: false, abortar: `No se reinició la tabla ni se publicó: ${problema} No se modificó nada.` };
+
     const reinicio = deps.reinicioTabla || require("./reinicioTabla");
-    const revision = await reinicio.revisarReinicio(usuarioId, sorteo);
+    const tablaCfg = sorteo.config.tabla;
+    const datos = { id: sorteo.id, tabla: sorteo.tabla, liberarBloqueados: tablaCfg.liberar_bloqueados === true };
+
+    const revision = await reinicio.revisarReinicio(usuarioId, { ...datos, config: sorteo.config });
 
     if (!revision.ok) return { ok: false, espera: `${EN_ESPERA}no se pudo revisar la tabla para el reinicio programado; se reintentará.` };
 
     if (!revision.data.posible) {
-        return { ok: false, espera: `${EN_ESPERA}la tabla todavía tiene números protegidos (${revision.data.bloqueos.join("; ")}). Se reiniciará y publicará en cuanto ese sorteo cierre.` };
+        // Solo números de un sorteo ACTIVO (el actual todavía no cerró): se
+        // espera a que cierre. Cualquier otra protección (pago en proceso,
+        // reservas sin sorteo atribuible, estado desconocido) no se resuelve
+        // sola: no se reinicia ni se publica.
+        const protegidos = (revision.porSorteo || []).filter(g => String(g.clase).startsWith("protegido"));
+        const soloActivo = protegidos.length > 0 && protegidos.every(g => g.clase === "protegido_activo");
+        const detalle = revision.data.bloqueos.join("; ");
+        if (soloActivo) {
+            return { ok: false, espera: `${EN_ESPERA}la tabla todavía tiene números protegidos (${detalle}). Se reiniciará y publicará en cuanto ese sorteo cierre.` };
+        }
+        return { ok: false, abortar: `No se reinició la tabla ni se publicó: tiene números protegidos (${detalle}). No se modificó nada; el anuncio prometería números que no están libres.` };
     }
 
     if (revision.data.liberables > 0) {
-        const aplicado = await reinicio.aplicarReinicio(usuarioId, { id: sorteo.id, tabla: sorteo.tabla, liberarBloqueados: tablaCfg.liberar_bloqueados === true }, revision.data.huella);
-        if (!aplicado.ok) return { ok: false, espera: `${EN_ESPERA}la tabla cambió durante el reinicio programado; se reintentará.` };
+        const aplicado = await reinicio.aplicarReinicio(usuarioId, datos, revision.data.huella);
+        // La tabla cambió entre la revisión y la escritura (reserva o pago
+        // nuevo): la 030 no hizo nada. Se vuelve a decidir en el próximo ciclo.
+        if (!aplicado.ok) return { ok: false, espera: `${EN_ESPERA}la tabla cambió durante el reinicio programado; no se modificó nada y se volverá a revisar.` };
     }
 
+    // Marca de idempotencia: un reintento del publicador (o un segundo
+    // proceso) ya no vuelve a reiniciar. Si no se puede anotar, no se publica
+    // en este ciclo: el próximo verá la tabla ya libre y solo anotará.
     const config = { ...sorteo.config, tabla: { ...tablaCfg, reiniciado_en: ahora.toISOString() } };
-    const marcado = await repo.actualizarSorteoSi(usuarioId, sorteo.id, { estados: ["publicando"] }, { config, ultimo_error: null });
+    const marcado = await repo.actualizarSorteoSi(usuarioId, sorteo.id, { version: sorteo.version, estados }, { config, ultimo_error: null });
+    if (!marcado.ok) return { ok: false, espera: `${EN_ESPERA}no se pudo anotar el reinicio de la tabla; se volverá a revisar.` };
 
-    return { ok: true, sorteo: marcado.ok ? marcado.data : { ...sorteo, config } };
+    return { ok: true, sorteo: marcado.data };
 
 }
 
 async function publicarPendientes({ sock, deps, ahora }) {
 
     const usuarioId = sock.context.usuarioId;
-    const pendientes = await repo.sorteosParaPublicar(usuarioId, ahora);
+    // Incluye los que se publican dentro del próximo minuto: su reinicio de
+    // tabla (si lo eligieron) se hace antes del anuncio.
+    const pendientes = await repo.sorteosParaPublicar(usuarioId, new Date(ahora.getTime() + ANTICIPO_REINICIO_MS));
     if (!pendientes.ok) return { ok: false, motivo: pendientes.motivo };
 
     const autorizadosRes = await repo.gruposAutorizados(usuarioId);
@@ -243,6 +305,16 @@ async function publicarPendientes({ sock, deps, ahora }) {
 
         // Nunca una versión sin confirmar (p. ej. editada después de confirmar).
         if (sorteo.confirmado_version !== sorteo.version) continue;
+
+        // Todavía no es la hora del anuncio: solo el reinicio anticipado. Si
+        // no se puede, no se anota nada; la decisión final es al publicar.
+        if (new Date(sorteo.publicar_en).getTime() > ahora.getTime()) {
+            if (sorteo.estado === "programado" && reinicioPendiente(sorteo)) {
+                const previo = await prepararPublicacion({ usuarioId, sorteo, ahora, deps, estados: ["programado"] });
+                informe.push({ sorteo: sorteo.id, estado: previo.ok ? "tabla_reiniciada" : "reinicio_pendiente", error: previo.espera || previo.abortar || null });
+            }
+            continue;
+        }
 
         if (sorteo.estado === "programado") {
             const tomado = await repo.actualizarSorteoSi(usuarioId, sorteo.id, { version: sorteo.version, estados: ["programado"] }, { estado: "publicando" });
@@ -256,13 +328,18 @@ async function publicarPendientes({ sock, deps, ahora }) {
         const preparado = await prepararPublicacion({ usuarioId, sorteo, ahora, deps });
 
         if (!preparado.ok) {
-            // Espera: los grupos siguen pendientes con la explicación; nada
-            // se publica ni se reinicia en este ciclo.
+            // Nada se publica ni se reinicia en este ciclo. En espera: los
+            // grupos siguen pendientes con la explicación. Abortado: quedan
+            // en revisión (el administrador decide).
+            const cambios = preparado.abortar
+                ? { estado: "requiere_revision", ultimo_error: preparado.abortar }
+                : { ultimo_error: preparado.espera };
             for (const g of grupos.data) {
-                if (g.estado === "pendiente" || g.estado === "fallido") await repo.marcarGrupo(usuarioId, g.id, { ultimo_error: preparado.espera });
+                if (g.estado === "pendiente" || g.estado === "fallido") await repo.marcarGrupo(usuarioId, g.id, cambios);
             }
-            await repo.actualizarSorteoSi(usuarioId, sorteo.id, { estados: ["publicando"] }, { ultimo_error: preparado.espera });
-            informe.push({ sorteo: sorteo.id, estado: "en_espera", error: preparado.espera });
+            await repo.actualizarSorteoSi(usuarioId, sorteo.id, { estados: ["publicando"] }, { ultimo_error: cambios.ultimo_error });
+            informe.push({ sorteo: sorteo.id, estado: preparado.abortar ? "requiere_revision" : "en_espera", error: cambios.ultimo_error });
+            if (preparado.abortar) await finalizarSorteo(usuarioId, sorteo.id);
             continue;
         }
 
@@ -544,5 +621,6 @@ module.exports = {
     iniciarPublicadorSorteos,
     detenerPublicadorSorteos,
     instanteBogota,
-    MAX_INTENTOS_AUTOMATICOS
+    MAX_INTENTOS_AUTOMATICOS,
+    ANTICIPO_REINICIO_MS
 };

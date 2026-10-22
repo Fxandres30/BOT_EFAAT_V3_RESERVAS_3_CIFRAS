@@ -12,7 +12,7 @@
 
 const repo = require("./repo");
 const loterias = require("./loterias");
-const { validarSorteo, validarPlantilla, fechaSorteoDe, instanteBogota } = require("./validar");
+const { validarSorteo, validarPlantilla, fechaSorteoDe, instanteBogota, identidadDelSorteo } = require("./validar");
 const { normalizarConfigDiseno } = require("./disenoTabla");
 const reinicioTabla = require("./reinicioTabla");
 const tablaEvento = require("../automation/repo/tablaEvento");
@@ -41,8 +41,9 @@ async function reinicioDiferible(usuarioId, reinicio, porSorteo, publicarEn) {
     return { ...reinicio, diferido: true, cierra_antes: ultimo.toISOString() };
 
 }
-const { crearIdentidadEventoReal } = require("../bot/funciones/eventos/identidadEventoReal");
 const tablasCliente = require("../bot/funciones/eventos/tablasCliente");
+// Sorteo ACTIVO de una tabla, sea cual sea su origen (bot o panel).
+const sorteosActivos = require("./sorteosActivos");
 
 const ESTADOS_EDITABLES = ["borrador", "programado"];
 
@@ -51,17 +52,6 @@ const reloj = { ahora: () => new Date() };
 
 function falla(motivo, extra = {}) {
     return { ok: false, motivo, ...extra };
-}
-
-function identidadDe(usuarioId, config) {
-    return crearIdentidadEventoReal({
-        usuario_id: usuarioId,
-        nombre_evento: config.nombre,
-        hora_fin: config.hora_fin,
-        valor: config.valor,
-        // La fecha en que se JUEGA (puede ser posterior a la publicación).
-        fecha_evento: fechaSorteoDe(config)
-    });
 }
 
 // Copia del diseño de tabla elegido (ver disenoTabla.js). "biblioteca" solo
@@ -150,7 +140,7 @@ async function prepararSorteo(usuarioId, entrada) {
             cifras: tablaCliente.cifras,
             cantidad_numeros: tablaCliente.cantidad,
             publicar_en: config.publicar_en,
-            identidad_evento_real: identidadDe(usuarioId, config)
+            identidad_evento_real: identidadDelSorteo(usuarioId, config)
         },
         grupos: v.config.grupos.map(g => porId.get(g))
     };
@@ -206,8 +196,10 @@ async function vistaPrevia(usuarioId, id) {
         avisos.push(`Las reservas no pagadas se liberarán automáticamente a los ${sorteo.config.reservas.vencimiento_minutos} minutos. Un cliente que ya transfirió pero cuyo pago no se ha confirmado podría perder su número.`);
     }
 
-    // Reinicio OPCIONAL de la tabla (solo si el sorteo lo pidió): qué se
-    // liberaría (se archiva, no se borra) o por qué no es posible.
+    // Reinicio OPCIONAL de la tabla (solo si el sorteo lo pidió). Nunca se
+    // hace al programar: el publicador lo hace al publicar (un minuto antes
+    // del anuncio) volviendo a validar la tabla. Aquí solo se muestra qué se
+    // liberaría HOY (se archiva, no se borra) o por qué no sería posible.
     let reinicio = null;
 
     if (sorteo.config.tabla?.reiniciar) {
@@ -215,7 +207,7 @@ async function vistaPrevia(usuarioId, id) {
         if (!rr.ok) {
             reinicio = { posible: false, huella: null, liberables: 0, protegidos: 0, conservados: 0, liberar_bloqueados: false, se_liberarian: [], se_conservan: [], bloqueos: [] };
             bloqueos.push(rr.motivo === "migracion_pendiente"
-                ? "El reinicio seguro de la tabla todavía no está disponible (falta la migración 030). Edita el sorteo y elige «Conservar tabla», o espera a que se active."
+                ? "El reinicio seguro de la tabla todavía no está disponible (falta la migración 030). Edita el sorteo y elige «Conservar la tabla actual», o espera a que se active."
                 : "No pudimos revisar la tabla para reiniciarla. Inténtalo de nuevo en unos minutos.");
         } else {
             reinicio = rr.data;
@@ -226,8 +218,11 @@ async function vistaPrevia(usuarioId, id) {
                 reinicio = diferido;
                 avisos.push(`La tabla se reiniciará al publicar (${legible(new Date(sorteo.publicar_en))}), cuando el sorteo actual ya haya cerrado (${legible(new Date(diferido.cierra_antes))}). Hasta entonces sus reservas y pagos no se tocan; al publicar se archivan (no se borran).`);
             } else if (!reinicio.posible) {
-                bloqueos.push(`No se puede reiniciar la tabla: ${reinicio.bloqueos.join("; ")}. Nada se modificó. Espera a que ese sorteo cierre o edita el sorteo y elige «Conservar tabla».`);
+                bloqueos.push(`No se puede reiniciar la tabla: ${reinicio.bloqueos.join("; ")}. Nada se modificó. Espera a que ese sorteo cierre o edita el sorteo y elige «Conservar la tabla actual».`);
+            } else {
+                avisos.push(`La tabla se reiniciará al publicar (${legible(new Date(sorteo.publicar_en))}), no ahora: programar no modifica ningún número. En ese momento se vuelve a revisar la tabla; si hay reservas nuevas, pagos en proceso o un sorteo activo, no se reinicia ni se publica.`);
             }
+            if (reinicio.posible || reinicio.diferido) reinicio = { ...reinicio, al_publicar: true };
         }
     }
 
@@ -296,6 +291,13 @@ async function vistaPrevia(usuarioId, id) {
             tabla_fisica: sorteo.tabla,
             cuentas: sorteo.cuentas_snapshot || [],
             reinicio,
+            // Opción elegida en el formulario («Conservar la tabla actual» o
+            // «Reiniciar la tabla antes de publicar») y si ya se hizo.
+            tabla_al_publicar: {
+                reiniciar: sorteo.config.tabla?.reiniciar === true,
+                liberar_bloqueados: sorteo.config.tabla?.liberar_bloqueados === true,
+                reiniciado_en: sorteo.config.tabla?.reiniciado_en || null
+            },
             publicacion: publicacion.texto,
             recordatorios: recordatorios.map(r => ({ minutos_antes_cierre: r.minutos_antes_cierre, texto: r.texto })),
             aviso_cierre: avisoCierre?.texto || null,
@@ -325,31 +327,20 @@ async function confirmar(usuarioId, id, { version, confirmacion, reinicio } = {}
     if (previa.data.bloqueos.length) return falla("bloqueado", { bloqueos: previa.data.bloqueos });
     if (new Date(previa.data.publicar_en).getTime() <= reloj.ahora().getTime()) return falla("validacion", { errores: [{ campo: "publicar_en", mensaje: "La hora de publicación ya pasó. Edita el sorteo." }] });
 
-    // Reinicio: SOLO con confirmación expresa y la MISMA huella de la vista
-    // previa. La base lo hace en una transacción (archiva y libera) o no hace
-    // nada; si la tabla cambió entretanto, se pide revisar otra vez.
-    if (previa.data.reinicio?.posible && previa.data.reinicio.liberables > 0) {
-        if (reinicio?.confirmado !== true || reinicio?.huella !== previa.data.reinicio.huella) {
-            return falla("confirmacion_reinicio_requerida");
-        }
-        const r = await reinicioTabla.aplicarReinicio(usuarioId, { id, tabla: previa.data.tabla_fisica, liberarBloqueados: previa.data.reinicio.liberar_bloqueados }, reinicio.huella);
-        if (!r.ok) return falla(r.motivo, { bloqueos: r.bloqueos || [] });
-    }
-
-    // Reinicio DIFERIDO: hoy la tabla tiene números del sorteo actual (que
-    // cierra antes de la publicación). No se toca nada ahora; se confirma
-    // expresamente que se haga al publicar, y queda anotado en el sorteo.
     const cambios = {
         estado: "programado",
         confirmado_en: new Date().toISOString(),
         confirmado_version: Number(version)
     };
 
-    if (previa.data.reinicio?.diferido) {
-        if (reinicio?.confirmado !== true || reinicio?.diferido !== true) return falla("confirmacion_reinicio_requerida");
+    // Reinicio elegido: programar NUNCA modifica la tabla. Solo se anota,
+    // con la confirmación expresa del usuario, que el publicador lo haga al
+    // publicar (publicador.prepararPublicacion), donde se vuelve a validar.
+    if (previa.data.reinicio?.al_publicar) {
+        if (reinicio?.confirmado !== true) return falla("confirmacion_reinicio_requerida");
         const actual = await repo.obtenerSorteo(usuarioId, id);
         if (!actual.ok) return actual;
-        cambios.config = { ...actual.data.config, tabla: { ...actual.data.config.tabla, reiniciar_al_publicar: true } };
+        cambios.config = { ...actual.data.config, tabla: { ...actual.data.config.tabla, reiniciar_al_publicar: true, reiniciado_en: null } };
     }
 
     const r = await repo.actualizarSorteoSi(usuarioId, id, { version: Number(version), estados: ["borrador"] }, cambios);
@@ -526,7 +517,16 @@ async function actualizarCuenta(usuarioId, id, entrada) {
     return repo.actualizarCuenta(usuarioId, id, v.cuenta);
 }
 
+// Sorteos activos (eventos_bot) de cualquier origen: listar, abrir y editar
+// los campos seguros. Siempre con el usuario del token.
+const activos = {
+    listar: (usuarioId, opciones) => sorteosActivos.listar(usuarioId, opciones),
+    obtener: (usuarioId, id) => sorteosActivos.obtener(usuarioId, id),
+    editar: (usuarioId, id, entrada) => sorteosActivos.editar(usuarioId, id, entrada, { ahora: reloj.ahora(), resolverDiseno })
+};
+
 module.exports = {
+    activos,
     crearSorteo,
     vistaPrevia,
     confirmar,

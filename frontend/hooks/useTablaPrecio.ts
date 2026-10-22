@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { supabase } from "@/lib/supabase";
 import type { TablaConfig } from "@/lib/tablasConfig";
@@ -10,6 +10,7 @@ import { obtenerTabla } from "@/services/tablas/obtenerTabla";
 import { obtenerEventoActivo } from "@/services/tablas/obtenerEventoActivo";
 import { obtenerActividad } from "@/services/tablas/obtenerActividad";
 import { reiniciarTabla } from "@/services/tablas/reiniciarTabla";
+import { prepararCuadricula, diagnosticar, type DiagnosticoCuadricula } from "@/services/tablas/prepararCuadricula";
 // Reservar, registrar el pago, liberar y desbloquear pasan por el backend
 // (mismas reglas que el bot + auditoría): el navegador ya no escribe en la
 // tabla de números.
@@ -47,6 +48,13 @@ export function useTablaPrecio(precio: number) {
     const [error, setError] = useState<string | null>(null);
     const [accionando, setAccionando] = useState<string | null>(null);
 
+    // Sin filas visibles: qué dice el backend (cuadrícula creada, migración
+    // pendiente, RLS que oculta las filas...). null mientras haya filas.
+    const [diagnostico, setDiagnostico] = useState<DiagnosticoCuadricula | null>(null);
+    // Una consulta al backend por usuario y precio; cada recarga en tiempo
+    // real no la repite.
+    const preparado = useRef<string | null>(null);
+
     const cargar = useCallback(async (uid: string, config: TablaConfig | null) => {
 
         if (!config) {
@@ -57,11 +65,32 @@ export function useTablaPrecio(precio: number) {
 
         try {
 
-            const [nums, evt, act] = await Promise.all([
+            const [leidos, evt, act] = await Promise.all([
                 obtenerTabla(precio, uid),
                 obtenerEventoActivo(config.tabla, uid),
                 obtenerActividad(config.tabla, uid)
             ]);
+
+            let nums = leidos;
+
+            // Ninguna fila visible no significa "tabla vacía": puede que el
+            // cliente aún no tenga cuadrícula (se crea aquí si la base lo
+            // permite) o que la base la tenga y no deje leerla.
+            if (nums.length === 0 && preparado.current !== `${uid}:${precio}`) {
+
+                preparado.current = `${uid}:${precio}`;
+
+                const r = await prepararCuadricula(precio);
+                if (r.ok && r.estado === "completa") nums = await obtenerTabla(precio, uid);
+
+                const d = diagnosticar(r, nums.length);
+                setDiagnostico(d.tipo === "lista" ? null : d);
+
+            } else if (nums.length > 0) {
+
+                setDiagnostico(null);
+
+            }
 
             setNumeros(nums);
             setEventoActivo(evt);
@@ -224,6 +253,7 @@ export function useTablaPrecio(precio: number) {
         config,
         loading,
         error,
+        diagnostico,
         usuarioId,
         numeros,
         eventoActivo,

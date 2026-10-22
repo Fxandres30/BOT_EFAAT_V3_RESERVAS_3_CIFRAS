@@ -30,6 +30,7 @@ export default function TablaPrecioView({ precio }: Props) {
         config,
         loading,
         error,
+        diagnostico,
         usuarioId,
         numeros,
         eventoActivo,
@@ -125,6 +126,9 @@ export default function TablaPrecioView({ precio }: Props) {
 
     }
 
+    // Sin filas visibles: el estado real lo da el backend (useTablaPrecio).
+    // Nunca se sugiere reiniciar: no crearía la cuadrícula si la base no lo
+    // permite y no hace falta borrar nada.
     if (numeros.length === 0) {
 
         return (
@@ -133,20 +137,14 @@ export default function TablaPrecioView({ precio }: Props) {
 
                 <Cabecera precio={precio} eventoActivo={eventoActivo} coincidePrecio={coincidePrecio} />
 
-                <div className="border rounded-2xl p-6 sm:p-10 text-center bg-white">
-                    <h2 className="text-xl font-bold mb-2">Esta tabla está vacía</h2>
-                    <p className="text-gray-500 mb-6">
-                        Presiona <b>Reiniciar</b> para crear automáticamente los números del 00 al 99.
+                <div className="border border-red-200 rounded-2xl p-6 sm:p-10 text-center bg-white">
+                    <AlertTriangle size={28} className="mx-auto mb-3 text-red-500" />
+                    <h2 className="text-xl font-bold mb-2">
+                        {diagnostico?.titulo || "No se encontraron los números de esta tabla"}
+                    </h2>
+                    <p className="text-gray-500 max-w-xl mx-auto">
+                        {diagnostico?.mensaje || "No se pudo confirmar el estado de tu cuadrícula. No reinicies la tabla; vuelve a cargar la página o avisa al administrador."}
                     </p>
-                    <div className="flex justify-center">
-                        <AccionesTabla
-                            precio={precio}
-                            totalNumeros={0}
-                            disponibles={0}
-                            usuarioId={usuarioId}
-                            onReiniciar={reiniciar}
-                        />
-                    </div>
                 </div>
 
             </div>

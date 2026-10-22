@@ -85,6 +85,16 @@ router.get("/cuentas", seguro(async (req, res) => responder(res, await servicio.
 router.post("/cuentas", seguro(async (req, res) => responder(res, await servicio.crearCuenta(req.usuarioId, req.body || {}), 201)));
 router.patch("/cuentas/:id", conId(async (req, res) => responder(res, await servicio.actualizarCuenta(req.usuarioId, req.params.id, req.body || {}))));
 
+// ------------------------------------------------------ sorteos activos ---
+// El sorteo en curso de cada tabla, lo haya detectado el bot o creado el
+// panel (eventos_bot). Antes que "/:id". ?precio= limita a esa tabla.
+router.get("/activos", seguro(async (req, res) => {
+    const precio = Number(req.query.precio) || null;
+    responder(res, await servicio.activos.listar(req.usuarioId, { precio }));
+}));
+router.get("/activos/:id", conId(async (req, res) => responder(res, await servicio.activos.obtener(req.usuarioId, req.params.id))));
+router.put("/activos/:id", conId(async (req, res) => responder(res, await servicio.activos.editar(req.usuarioId, req.params.id, req.body || {}))));
+
 // -------------------------------------------------------------- sorteos ---
 router.get("/", seguro(async (req, res) => responder(res, await servicio.listarSorteos(req.usuarioId))));
 router.post("/", seguro(async (req, res) => responder(res, await servicio.crearSorteo(req.usuarioId, req.body || {}), 201)));

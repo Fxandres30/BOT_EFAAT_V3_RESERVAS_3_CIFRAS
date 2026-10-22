@@ -40,7 +40,7 @@ interface Props {
     valorInicial?: number;
 }
 
-interface PremioForm { nombre: string; premio: string; tipo: string }
+export interface PremioForm { nombre: string; premio: string; tipo: string }
 interface RecordatorioForm { minutos: string; texto: string }
 
 const VACIO = {
@@ -78,7 +78,7 @@ const CUENTA_VACIA = { nombre: "", tipo: "nequi", numero: "", titular: "" };
 // Elección guardada en el sorteo -> valor del selector. Un estilo que ya no
 // está en los predefinidos se conserva tal cual ("guardado"): editar el
 // sorteo nunca debe cambiarlo por el diseño actual sin que se elija.
-function disenoAForm(d?: DisenoSorteo): string {
+export function disenoAForm(d?: DisenoSorteo | null): string {
     if (!d || d.origen === "actual") return "actual";
     if (d.origen === "biblioteca" && d.diseno_id) return `biblioteca:${d.diseno_id}`;
     const preset = TABLA_DISENO_PRESETS.find(p => p.nombre === d.nombre);
@@ -86,7 +86,7 @@ function disenoAForm(d?: DisenoSorteo): string {
 }
 
 // Valor del selector -> elección para el backend (que copia el diseño).
-function formADiseno(valor: string, guardado?: DisenoSorteo | null): DisenoSorteo {
+export function formADiseno(valor: string, guardado?: DisenoSorteo | null): DisenoSorteo {
     if (valor === "guardado" && guardado) return guardado;
     if (valor.startsWith("biblioteca:")) return { origen: "biblioteca", diseno_id: valor.slice(11), nombre: null, config: null };
     if (valor.startsWith("preset:")) {
@@ -599,20 +599,23 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
                         )}
                     </Select>
                     {disenoElegido && <DisenoThumbnail config={disenoElegido} />}
-                    <div className={styles.checks} role="radiogroup" aria-label="Tabla antes de programar">
+                    <div className={styles.checks} role="radiogroup" aria-label="Tabla al publicar">
                         <label className={styles.check}>
                             <input type="radio" name="reinicio" checked={!form.reiniciarTabla} onChange={() => cambiar("reiniciarTabla", false)} />
-                            Conservar tabla
+                            Conservar la tabla actual
                         </label>
                         <label className={styles.check}>
                             <input type="radio" name="reinicio" checked={form.reiniciarTabla} onChange={() => cambiar("reiniciarTabla", true)} />
-                            Reiniciar tabla antes de programar
+                            Reiniciar la tabla antes de publicar
                         </label>
                     </div>
+                    <p className={styles.ayuda}>
+                        Si eliges reiniciar, los números se liberarán únicamente cuando llegue el momento de publicar el sorteo, no al programarlo. Antes de hacerlo, el sistema volverá a validar el estado de la tabla.
+                    </p>
                     {form.reiniciarTabla && (
                         <>
                             <p className={`${styles.alerta} ${styles.alertaAviso}`}>
-                                Los números reservados y pagados de sorteos <b>anteriores</b> se archivan (no se borran) y quedan libres. Nunca se tocan los de un sorteo activo, los pagos en proceso ni las reservas que no se puedan atribuir a un sorteo terminado. Los números <b>bloqueados a mano</b> se conservan. En la vista previa verás exactamente qué se modifica y tendrás que confirmarlo.
+                                Al publicar, los números reservados y pagados de sorteos <b>anteriores</b> se archivan (no se borran) y quedan libres. Nunca se tocan los de un sorteo activo, los pagos en proceso ni las reservas que no se puedan atribuir a un sorteo terminado; si en ese momento hay alguno, no se reinicia ni se publica el anuncio. Los números <b>bloqueados a mano</b> se conservan. En la vista previa verás qué se liberaría hoy y tendrás que confirmarlo.
                             </p>
                             <label className={styles.check}>
                                 <input type="checkbox" checked={form.liberarBloqueados} onChange={e => cambiar("liberarBloqueados", e.target.checked)} />

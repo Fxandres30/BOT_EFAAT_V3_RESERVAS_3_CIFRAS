@@ -129,6 +129,15 @@ async function detectarEvento(ctx) {
 
         });
 
+        // Anuncio reconocido pero sin un dato obligatorio (p. ej. "10:30"
+        // sin am/pm, o sin valor por número): no se inventa ni se guarda.
+        if (evento.faltantes?.length) {
+
+            console.log(`⚠️ Anuncio incompleto — falta: ${evento.faltantes.join(", ")}. No se crea el sorteo.`);
+            return null;
+
+        }
+
         // Tabla del precio SEGÚN EL DUEÑO de la sesión (tablas_cliente). Sin
         // dueño no se crea el sorteo: sus reservas se rechazarían igual
         // (filtroCliente.js) y nunca debe apuntar a la cuadrícula de nadie.
@@ -137,6 +146,17 @@ async function detectarEvento(ctx) {
         if (!duenoSesion) {
 
             console.error("❌ Anuncio en una sesión sin usuario_id: no se crea el sorteo.");
+            return null;
+
+        }
+
+        // El dueño validado por el dispatcher (ctx.session) y el del socket
+        // que guardará el evento deben ser el mismo cliente.
+        const duenoValidado = ctx.session?.usuarioId ?? null;
+
+        if (duenoValidado && duenoValidado !== duenoSesion) {
+
+            console.error("❌ El dueño de la sesión no coincide con el del socket: no se crea el sorteo.");
             return null;
 
         }

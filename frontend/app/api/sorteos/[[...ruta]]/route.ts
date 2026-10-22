@@ -42,12 +42,15 @@ function destino(metodo: Metodo, ruta: string[]): string | null {
 
     if (ruta.length === 1) {
         if (a === "grupos") return metodo === "GET" ? "/grupos" : null;
+        // Sorteos activos de cualquier origen (bot o panel).
+        if (a === "activos") return metodo === "GET" ? "/activos" : null;
         if (a === "plantillas" || a === "cuentas" || a === "loterias") return metodo === "GET" || metodo === "POST" ? `/${a}` : null;
         if (UUID.test(a)) return metodo === "GET" || metodo === "PUT" ? `/${a}` : null;
         return null;
     }
 
     if (ruta.length === 2) {
+        if (a === "activos" && UUID.test(b)) return metodo === "GET" || metodo === "PUT" ? `/activos/${b}` : null;
         if (a === "loterias" && UUID.test(b)) return metodo === "PATCH" || metodo === "DELETE" ? `/${a}/${b}` : null;
         if ((a === "plantillas" || a === "cuentas") && UUID.test(b)) return metodo === "PATCH" ? `/${a}/${b}` : null;
         if (UUID.test(a) && b === "vista-previa") return metodo === "GET" ? `/${a}/vista-previa` : null;
@@ -86,9 +89,14 @@ async function reenviar(metodo: Metodo, req: Request, params: Promise<{ ruta?: s
 
     try {
 
-        // Único parámetro de consulta reenviado: la fecha del horario.
-        const fecha = new URL(req.url).searchParams.get("fecha");
-        const consulta = camino.endsWith("/horario") && fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? `?fecha=${fecha}` : "";
+        // Parámetros reenviados: la fecha del horario y el precio de los
+        // sorteos activos (solo dígitos).
+        const params = new URL(req.url).searchParams;
+        const fecha = params.get("fecha");
+        const precio = params.get("precio");
+        const consulta = camino.endsWith("/horario") && fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)
+            ? `?fecha=${fecha}`
+            : camino === "/activos" && precio && /^\d{1,7}$/.test(precio) ? `?precio=${precio}` : "";
 
         const res = await fetch(`${API}/sorteos${camino}${consulta}`, {
             method: metodo,

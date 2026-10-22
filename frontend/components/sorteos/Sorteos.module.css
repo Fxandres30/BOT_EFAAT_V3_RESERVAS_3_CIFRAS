@@ -189,3 +189,13 @@
   border: 1px solid var(--efaat-border);
   border-radius: var(--efaat-radius-control);
 }
+
+/* Campo fijo de un sorteo en curso (no editable, con su motivo). */
+.fijo {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--efaat-border);
+}
+
+.fijo p {
+    margin: 2px 0;
+}

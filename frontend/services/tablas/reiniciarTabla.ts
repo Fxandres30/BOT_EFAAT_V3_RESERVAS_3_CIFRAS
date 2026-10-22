@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { obtenerTablaConfigCliente } from "./tablasCliente";
 import { registrarActividad } from "./registrarActividad";
+import { prepararCuadricula, diagnosticar } from "./prepararCuadricula";
 
 // Reinicia las 100 celdas (00-99) del usuario en la tabla física de este
 // precio, dejándolas todas "libre". Solo toca filas con
@@ -22,59 +23,31 @@ export async function reiniciarTabla(precio: number, usuarioId: string) {
     if (errorCount)
         throw errorCount;
 
-    // El usuario todavía no tiene su grilla creada: insertar 00-99.
+    // El panel no ve ninguna fila: puede que el cliente aún no tenga su
+    // cuadrícula o que la base no deje leerla (RLS). El navegador ya no
+    // inserta 00-99 por su cuenta (saltaba las guardias de la migración 027
+    // y chocaba con UNIQUE(numero)): lo decide el backend con las filas
+    // reales, sin tocar otra cuadrícula.
     if ((count ?? 0) === 0) {
 
-        const numeros = [];
+        const r = await prepararCuadricula(precio);
 
-        for (let i = 0; i < config.cantidad; i++) {
-
-            numeros.push({
-                numero: i.toString().padStart(2, "0"),
-                estado: "libre",
-
-                comprador: null,
-                contacto: null,
-                contacto_lower: null,
-
-                lib: null,
-
-                grupo_id: null,
-                grupo_nombre: null,
-
-                evento_id: null,
-                nombre_evento: null,
-
-                usuario_id: usuarioId,
-                telefono_bot: null,
-
-                fecha_reserva: null,
-                hora_reserva: null,
-
-                fecha_pago: null,
-                hora_pago: null,
-
-                temporal_por: null,
-                bloqueado_hasta: null,
-
-                ip_reserva: null
-
-            });
-
-        }
-
-        const { error } = await supabase
+        // Lo que la sesión ve ahora (si se acaba de crear, sus 100 filas).
+        const { count: vistas } = await supabase
             .from(config.tabla)
-            .insert(numeros);
+            .select("*", { count: "exact", head: true })
+            .eq("usuario_id", usuarioId);
 
-        if (error)
-            throw error;
+        const d = diagnosticar(r, vistas ?? 0);
+
+        if (d.tipo !== "lista")
+            throw new Error(d.mensaje);
 
         await registrarActividad({
             usuarioId,
             tabla: config.tabla,
             tipo: "tabla_reiniciada",
-            detalle: { precio, accion: "creada", filas: config.cantidad }
+            detalle: { precio, accion: "creada", filas: r.filas ?? config.cantidad }
         });
 
         return true;

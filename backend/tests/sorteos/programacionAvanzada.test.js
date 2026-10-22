@@ -5,8 +5,9 @@
 //      validación con el INSTANTE del cierre (Colombia), identidad y evento
 //      con la fecha del sorteo, publicador y cierre por hora.
 //   B. Reinicio opcional de la tabla: nunca por defecto; vista previa con lo
-//      que se modificaría; confirmación con la misma huella; solo el cliente
-//      del token; bloqueos explicados; migración 030 pendiente.
+//      que se modificaría; programar nunca lo aplica (se hace al publicar,
+//      ver reinicioAlPublicar.test.js); solo el cliente del token; bloqueos
+//      explicados; migración 030 pendiente.
 //   C. Cuentas de pago: obligatorias para programar, solo las propias, solo
 //      las seleccionadas en el anuncio y en la vista previa.
 //   D. Estilo de la tabla: copia guardada (preset, biblioteca propia, actual),
@@ -216,7 +217,9 @@ prueba("B1. reinicio NUNCA por defecto: sin elegirlo no se llama a la base y los
     const v = await servicio.vistaPrevia(A, c.data.id);
     assert.strictEqual(rpc.llamadas.length, 0);
     assert.strictEqual(v.data.reinicio, null);
-    assert.ok(v.data.bloqueos.some(b => /6 número\(s\) reservados o pagados de otro sorteo/.test(b) && /Reiniciar tabla antes de programar/.test(b)), v.data.bloqueos.join(" | "));
+    assert.ok(v.data.bloqueos.some(b => /6 número\(s\) reservados o pagados de otro sorteo/.test(b) && /Reiniciar la tabla antes de publicar/.test(b)), v.data.bloqueos.join(" | "));
+    assert.ok(!v.data.bloqueos.some(b => /antes de programar/.test(b)));
+    assert.strictEqual(v.data.tabla_al_publicar.reiniciar, false, "vista previa: «Conservar la tabla actual»");
     assert.strictEqual(v.data.puede_confirmar, false);
 });
 
@@ -231,15 +234,18 @@ prueba("B2. reinicio elegido: vista previa con qué se modifica y de qué sorteo
     assert.ok(v.data.reinicio.se_liberarian[0].includes("3 pagado(s), 3 reservado(s)") && v.data.reinicio.se_liberarian[0].includes("Manizales 14/10"));
     assert.deepStrictEqual(v.data.bloqueos, []);
     assert.ok(v.data.avisos.some(a => /se archivarán \(no se borran\)/.test(a)));
-    assert.strictEqual(v.data.numeros.numerosOcupados.length, 0, "vista: como quedará tras el reinicio");
+    assert.ok(v.data.avisos.some(a => /se reiniciará al publicar/.test(a) && /no ahora/.test(a)), v.data.avisos.join(" | "));
+    assert.strictEqual(v.data.reinicio.al_publicar, true);
+    assert.strictEqual(v.data.tabla_al_publicar.reiniciar, true, "vista previa: «Reiniciar la tabla antes de publicar»");
+    assert.strictEqual(v.data.numeros.numerosOcupados.length, 0, "vista: como quedará al publicar");
     assert.strictEqual(v.data.numeros.numerosDisponibles.length, 100);
 });
 
-prueba("B3. reinicio CANCELADO o sin la huella vista: no se programa y la base no escribe nada", async () => {
+prueba("B3. reinicio sin confirmar en la vista previa: no se programa y la base no escribe nada", async () => {
     escenario();
     rpc.respuesta = REINICIO_POSIBLE;
     const c = await servicio.crearSorteo(A, entrada({ tabla: { reiniciar: true } }));
-    for (const reinicio of [undefined, { confirmado: false, huella: "huella-1" }, { confirmado: true, huella: "otra" }]) {
+    for (const reinicio of [undefined, { confirmado: false }, { confirmado: "si" }]) {
         const r1 = await servicio.confirmar(A, c.data.id, { version: c.data.version, confirmacion: true, reinicio });
         assert.strictEqual(r1.motivo, "confirmacion_reinicio_requerida");
     }
@@ -247,16 +253,18 @@ prueba("B3. reinicio CANCELADO o sin la huella vista: no se programa y la base n
     assert.strictEqual(fake.tablas.sorteos_programados.find(s => s.id === c.data.id).estado, "borrador");
 });
 
-prueba("B4. reinicio CONFIRMADO: la base lo aplica con la huella vista, para el cliente del token y su tabla; queda programado", async () => {
+prueba("B4. reinicio CONFIRMADO: programar NO modifica la tabla; queda anotado para hacerlo al publicar", async () => {
     escenario();
     rpc.respuesta = REINICIO_POSIBLE;
     const c = await servicio.crearSorteo(A, entrada({ tabla: { reiniciar: true } }));
-    const r1 = await servicio.confirmar(A, c.data.id, { version: c.data.version, confirmacion: true, reinicio: { confirmado: true, huella: "huella-1" } });
+    const antes = JSON.stringify(fake.tablas[TABLA]);
+    const r1 = await servicio.confirmar(A, c.data.id, { version: c.data.version, confirmacion: true, reinicio: { confirmado: true } });
     assert.ok(r1.ok, JSON.stringify(r1));
-    const aplicada = rpc.llamadas.find(l => l.args.p_aplicar === true);
-    assert.deepStrictEqual([aplicada.args.p_usuario, aplicada.args.p_tabla, aplicada.args.p_huella, aplicada.args.p_sorteo], [A, TABLA, "huella-1", c.data.id]);
-    assert.strictEqual(aplicada.args.p_liberar_bloqueados, false, "los bloqueados a mano se conservan por defecto");
+    assert.ok(rpc.llamadas.every(l => l.args.p_aplicar === false), "programar nunca aplica el reinicio");
+    assert.strictEqual(JSON.stringify(fake.tablas[TABLA]), antes, "la tabla no cambió");
     assert.strictEqual(r1.data.estado, "programado");
+    assert.strictEqual(r1.data.config.tabla.reiniciar_al_publicar, true);
+    assert.strictEqual(r1.data.config.tabla.reiniciado_en, null);
 });
 
 prueba("B5. protegidos (sorteo activo, pago en proceso): bloqueado con explicación y sin escribir", async () => {
@@ -268,20 +276,23 @@ prueba("B5. protegidos (sorteo activo, pago en proceso): bloqueado con explicaci
     const c = await servicio.crearSorteo(A, entrada({ tabla: { reiniciar: true } }));
     const v = await servicio.vistaPrevia(A, c.data.id);
     const b = v.data.bloqueos.find(x => /No se puede reiniciar la tabla/.test(x));
-    assert.ok(b && /del sorteo activo «Boyacá hoy»/.test(b) && /con pago en proceso/.test(b) && /Nada se modificó/.test(b) && /Conservar tabla/.test(b), b);
+    assert.ok(b && /del sorteo activo «Boyacá hoy»/.test(b) && /con pago en proceso/.test(b) && /Nada se modificó/.test(b) && /Conservar la tabla actual/.test(b), b);
     const r1 = await servicio.confirmar(A, c.data.id, { version: c.data.version, confirmacion: true, reinicio: { confirmado: true, huella: "h" } });
     assert.strictEqual(r1.motivo, "bloqueado");
     assert.ok(rpc.llamadas.every(l => l.args.p_aplicar === false));
 });
 
-prueba("B6. la tabla cambió entre la vista previa y la confirmación: no se modifica nada", async () => {
+prueba("B6. la tabla cambia después de la vista previa: programar sigue sin tocarla (se vuelve a validar al publicar)", async () => {
     escenario();
-    let n = 0;
-    rpc.respuesta = (args) => (args.p_aplicar ? { data: { ok: false, motivo: "tabla_cambio", huella: "huella-2", por_sorteo: [] }, error: null } : (n++, REINICIO_POSIBLE(args)));
+    rpc.respuesta = (args) => (args.p_aplicar ? { data: { ok: false, motivo: "tabla_cambio", huella: "huella-2", por_sorteo: [] }, error: null } : REINICIO_POSIBLE(args));
     const c = await servicio.crearSorteo(A, entrada({ tabla: { reiniciar: true } }));
-    const r1 = await servicio.confirmar(A, c.data.id, { version: c.data.version, confirmacion: true, reinicio: { confirmado: true, huella: "huella-1" } });
-    assert.strictEqual(r1.motivo, "tabla_cambio");
-    assert.strictEqual(fake.tablas.sorteos_programados.find(s => s.id === c.data.id).estado, "borrador");
+    await servicio.vistaPrevia(A, c.data.id);
+    Object.assign(fake.tablas[TABLA].find(f => f.usuario_id === A && f.numero === "50"), { estado: "reservado", identidad_evento_real: "sorteo-anterior" });
+    const antes = JSON.stringify(fake.tablas[TABLA]);
+    const r1 = await servicio.confirmar(A, c.data.id, { version: c.data.version, confirmacion: true, reinicio: { confirmado: true } });
+    assert.ok(r1.ok, JSON.stringify(r1));
+    assert.ok(rpc.llamadas.every(l => l.args.p_aplicar === false));
+    assert.strictEqual(JSON.stringify(fake.tablas[TABLA]), antes);
 });
 
 prueba("B7. migración 030 sin aplicar: el reinicio no está disponible y se explica cómo seguir", async () => {
@@ -289,7 +300,7 @@ prueba("B7. migración 030 sin aplicar: el reinicio no está disponible y se exp
     rpc.respuesta = { data: null, error: { code: "PGRST202", message: "Could not find the function" } };
     const c = await servicio.crearSorteo(A, entrada({ tabla: { reiniciar: true } }));
     const v = await servicio.vistaPrevia(A, c.data.id);
-    assert.ok(v.data.bloqueos.some(b => /falta la migración 030/.test(b) && /Conservar tabla/.test(b)));
+    assert.ok(v.data.bloqueos.some(b => /falta la migración 030/.test(b) && /Conservar la tabla actual/.test(b)));
 });
 
 prueba("B8. bloqueados a mano: se conservan por defecto (se avisa) y solo se liberan eligiéndolo y reiniciando", async () => {
@@ -311,9 +322,14 @@ prueba("B8. bloqueados a mano: se conservan por defecto (se avisa) y solo se lib
     const v2 = await servicio.vistaPrevia(A, con.data.id);
     assert.strictEqual(rpc.llamadas.at(-1).args.p_liberar_bloqueados, true);
     assert.strictEqual(v2.data.reinicio.liberar_bloqueados, true);
-    const r1 = await servicio.confirmar(A, con.data.id, { version: con.data.version, confirmacion: true, reinicio: { confirmado: true, huella: "huella-1" } });
+    const r1 = await servicio.confirmar(A, con.data.id, { version: con.data.version, confirmacion: true, reinicio: { confirmado: true } });
     assert.ok(r1.ok, JSON.stringify(r1));
-    assert.strictEqual(rpc.llamadas.find(l => l.args.p_aplicar === true).args.p_liberar_bloqueados, true);
+    assert.ok(rpc.llamadas.every(l => l.args.p_aplicar === false), "al programar no se aplica");
+    // Al publicar: la 030 recibe la elección de liberar los bloqueados.
+    const log = console.log; console.log = () => {};
+    try { await publicador.tick(sock(A), { ahora: EN_PUBLICACION, deps: deps().d }); } finally { console.log = log; }
+    const aplicada = rpc.llamadas.find(l => l.args.p_aplicar === true);
+    assert.deepStrictEqual([aplicada.args.p_usuario, aplicada.args.p_tabla, aplicada.args.p_huella, aplicada.args.p_sorteo, aplicada.args.p_liberar_bloqueados], [A, TABLA, "huella-1", con.data.id, true]);
 });
 
 // ------------------------------------------------------------------- C ---

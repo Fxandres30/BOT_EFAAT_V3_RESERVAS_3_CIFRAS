@@ -66,6 +66,20 @@ function restEnMemoria(req, res, cuerpo) {
         return () => true;
     });
     const coinciden = () => filas.filter(f => filtros.every(fn => fn(f)));
+    // order=col.asc|desc y limit=N, como PostgREST (p. ej. el evento activo
+    // más reciente de una tabla con varios grupos: limit(1).maybeSingle()).
+    const ordenarYLimitar = (lista) => {
+        let salida = [...lista];
+        const orden = url.searchParams.get("order");
+        if (orden) {
+            const [col, dir] = orden.split(".");
+            const signo = dir === "desc" ? -1 : 1;
+            salida.sort((a, b) => (a[col] == null ? -1 : b[col] == null ? 1 : a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : 0) * signo);
+        }
+        const limite = Number(url.searchParams.get("limit"));
+        if (limite > 0) salida = salida.slice(0, limite);
+        return salida;
+    };
     const objeto = /vnd\.pgrst\.object/.test(req.headers.accept || "");
     const prefer = req.headers.prefer || "";
     const responder = (lista) => {
@@ -77,7 +91,7 @@ function restEnMemoria(req, res, cuerpo) {
         }
         res.end(JSON.stringify(lista));
     };
-    if (req.method === "GET" || req.method === "HEAD") return responder(coinciden());
+    if (req.method === "GET" || req.method === "HEAD") return responder(ordenarYLimitar(coinciden()));
     const datos = cuerpo ? JSON.parse(cuerpo) : {};
     if (req.method === "POST") {
         const conflicto = (url.searchParams.get("on_conflict") || "").split(",").filter(Boolean);

@@ -29,7 +29,16 @@ function precioDe(valor) {
 // Configuraciones ACTIVAS del cliente: [{ precio, tabla, cifras, cantidad }].
 async function listarConfiguracionesCliente(usuarioId) {
 
-    if (!usuarioId) return [];
+    return (await leerConfiguraciones(usuarioId)).lista;
+
+}
+
+// Igual, y de dónde salen: "cliente" (tablas_cliente), "base_sin_migracion"
+// (027 sin aplicar), "base_sin_inicializar" (027 aplicada, cliente sin
+// filas) o "base_error" (no se pudo leer).
+async function leerConfiguraciones(usuarioId) {
+
+    if (!usuarioId) return { lista: [], origen: null };
 
     let data, error;
 
@@ -44,16 +53,20 @@ async function listarConfiguracionesCliente(usuarioId) {
     }
 
     if (error) {
-        if (!faltaMigracion(error)) console.error("⚠️ [TABLAS CLIENTE] no se pudo leer la configuración (se usa la base):", error.code || error.message);
-        return configuracionesBase();
+        const sinMigracion = faltaMigracion(error);
+        if (!sinMigracion) console.error("⚠️ [TABLAS CLIENTE] no se pudo leer la configuración (se usa la base):", error.code || error.message);
+        return { lista: configuracionesBase(), origen: sinMigracion ? "base_sin_migracion" : "base_error" };
     }
 
     // Sin filas: aún no inicializado (primer acceso pendiente).
-    if (!data || data.length === 0) return configuracionesBase();
+    if (!data || data.length === 0) return { lista: configuracionesBase(), origen: "base_sin_inicializar" };
 
-    return data
-        .filter(f => f.activa !== false)
-        .map(f => ({ precio: Number(f.precio), tabla: f.tabla_fisica, cifras: f.cifras, cantidad: f.cantidad }));
+    return {
+        lista: data
+            .filter(f => f.activa !== false)
+            .map(f => ({ precio: Number(f.precio), tabla: f.tabla_fisica, cifras: f.cifras, cantidad: f.cantidad })),
+        origen: "cliente"
+    };
 
 }
 
@@ -104,8 +117,75 @@ async function inicializarCliente(usuarioId) {
 
 }
 
+// Estado REAL de la cuadrícula del cliente para un precio, contado con el
+// rol del backend (sin RLS de por medio): así el panel distingue "el cliente
+// no tiene filas" de "tiene filas pero su sesión no puede leerlas". Solo
+// lee; nunca crea, completa ni reinicia.
+//   { ok: true, precio, tabla, esperadas, filas, estado: "vacia" | "completa" | "incompleta" | "excedida", configuracion }
+//   { ok: false, motivo: "sin_usuario" | "tabla_no_configurada" | "error_lectura", codigo? }
+async function estadoCuadricula(usuarioId, valor) {
+
+    const precio = precioDe(valor);
+
+    if (!usuarioId) return { ok: false, motivo: "sin_usuario" };
+    if (!precio) return { ok: false, motivo: "tabla_no_configurada" };
+
+    const { lista, origen } = await leerConfiguraciones(usuarioId);
+    const c = lista.find(x => x.precio === precio);
+
+    if (!c) return { ok: false, motivo: "tabla_no_configurada" };
+
+    let count, error;
+
+    try {
+        ({ count, error } = await supabase
+            .from(c.tabla)
+            .select("numero", { count: "exact", head: true })
+            .eq("usuario_id", usuarioId));
+    } catch (e) {
+        error = { message: e?.message || String(e) };
+    }
+
+    if (error || typeof count !== "number") {
+        console.error("❌ [TABLAS CLIENTE] no se pudo contar la cuadrícula:", error?.code || error?.message || "sin conteo");
+        return { ok: false, motivo: "error_lectura", ...(error?.code ? { codigo: error.code } : {}) };
+    }
+
+    const estado =
+        count === 0 ? "vacia" :
+        count === c.cantidad ? "completa" :
+        count < c.cantidad ? "incompleta" : "excedida";
+
+    return { ok: true, precio, tabla: c.tabla, esperadas: c.cantidad, filas: count, estado, configuracion: origen };
+
+}
+
+// Deja lista la cuadrícula del cliente para un precio, SIN riesgo para
+// nadie: si ya tiene filas (completa, incompleta o de más) no se toca; si
+// no tiene ninguna, se pide la inicialización idempotente (027), que solo
+// inserta 00-99 del cliente cuando la base lo permite (Parte A + 033) y
+// nunca toca otra cuadrícula. Ante cualquier impedimento devuelve el motivo
+// real; nunca reinicia ni borra.
+async function prepararCuadricula(usuarioId, valor) {
+
+    const antes = await estadoCuadricula(usuarioId, valor);
+
+    if (!antes.ok || antes.estado !== "vacia") return antes;
+
+    const r = await inicializarCliente(usuarioId);
+
+    if (!r.ok) {
+        return { ...antes, ok: false, motivo: r.motivo, ...(r.migracion ? { migracion: r.migracion } : {}) };
+    }
+
+    return estadoCuadricula(usuarioId, valor);
+
+}
+
 module.exports = {
     listarConfiguracionesCliente,
     obtenerConfiguracionCliente,
-    inicializarCliente
+    inicializarCliente,
+    estadoCuadricula,
+    prepararCuadricula
 };

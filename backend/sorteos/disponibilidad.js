@@ -11,7 +11,8 @@
 //     números reservados/pagados de OTRO sorteo: nunca se reinicia sola. El
 //     sorteo puede pedir el reinicio seguro (reinicioTabla.js, migración
 //     030: archiva y libera, nunca toca un sorteo activo) y confirmarlo en la
-//     vista previa; entonces esos números dejan de bloquear (seReiniciara).
+//     vista previa; se hace al publicar, y esos números dejan de bloquear la
+//     programación (seReiniciara).
 //
 // Programación FUTURA (2026-10-22): el conflicto de grupo se decide con
 // FECHAS, no solo con activo=true. Hay dos momentos:
@@ -87,9 +88,9 @@ async function revisarTabla({ usuarioId, tabla, cifras, cantidad, identidad, seR
     }
 
     if (ocupadosOtro > 0 && seReiniciara) {
-        avisos.push(`Al confirmar se reiniciará la tabla: ${ocupadosOtro} número(s) reservados o pagados de sorteos anteriores se archivarán (no se borran) y quedarán libres.`);
+        avisos.push(`Al publicar se reiniciará la tabla (no ahora): ${ocupadosOtro} número(s) reservados o pagados de sorteos anteriores se archivarán (no se borran) y quedarán libres, si en ese momento sigue siendo seguro.`);
     } else if (ocupadosOtro > 0) {
-        bloqueos.push(`La tabla tiene ${ocupadosOtro} número(s) reservados o pagados de otro sorteo. Edita el sorteo y elige «Reiniciar tabla antes de programar» (se archivan, no se borran; nunca se tocan los de un sorteo activo).`);
+        bloqueos.push(`La tabla tiene ${ocupadosOtro} número(s) reservados o pagados de otro sorteo. Edita el sorteo y elige «Reiniciar la tabla antes de publicar» (se archivan al publicar, no se borran; nunca se tocan los de un sorteo activo).`);
     }
 
     if (retenidos > 0) {

@@ -1,5 +1,13 @@
 const { normalizarTexto } = require("../../../utils/normalizarTexto");
-const { LOTERIAS } = require("./loterias");
+const { LOTERIAS, LOTERIAS_TRADICIONALES } = require("./loterias");
+const { limpiarDecoracion } = require("./normalizarAnuncio");
+
+// Lotería tradicional nombrada en el texto (ya normalizado), o null.
+function loteriaTradicional(normalizada = "") {
+
+    return LOTERIAS_TRADICIONALES.find(l => l.patron.test(normalizada)) || null;
+
+}
 
 function extraerNombreEvento(lineaEvento = "") {
 
@@ -27,25 +35,27 @@ function extraerNombreEvento(lineaEvento = "") {
 
     }
 
+    const tradicional = loteriaTradicional(normalizada);
+
+    if (tradicional) {
+        return tradicional.nombre;
+    }
+
     // Fallback si no encuentra una conocida
-    return lineaEvento
-
-        .replace(/[🎰⭐🎲🎯]/gu, "")
-
-        .replace(/\*/g, "")
+    return limpiarDecoracion(lineaEvento
 
         .replace(/[–—-]/g, " ")
 
-        .replace(/\d{1,2}:\d{2}\s*(am|pm)/i, "")
+        .replace(/\d{1,2}\s*[:.]\s*\d{2}\s*(?:[ap]\s*\.?\s*m\.?)?/i, " ")
 
-        .replace(/\s+/g, " ")
-
-        .trim();
+        .replace(/\b\d{1,2}\s*[ap]\s*\.?\s*m\b\.?/i, " "));
 
 }
 
 module.exports = {
 
-    extraerNombreEvento
+    extraerNombreEvento,
+
+    loteriaTradicional
 
 };

@@ -94,13 +94,16 @@ prueba("vista previa: orden fecha -> tabla -> anuncio -> cuentas -> grupos -> ad
     assert.ok(vista.includes("styles.tablaVista"), "la tabla tiene su propio scroll (no oculta los botones del pie)");
 });
 
-prueba("vista previa: el reinicio exige su propia confirmación y envía la huella vista", () => {
+prueba("vista previa: el reinicio se confirma para hacerse AL PUBLICAR; programar no reinicia", () => {
     const vista = leer("components/sorteos/VistaPreviaModal.tsx");
-    // Reinicio inmediato o diferido a la publicación: los dos se confirman.
-    assert.ok(vista.includes("const pideConfirmarReinicio = conReinicio || reinicioDiferido;"));
+    assert.ok(vista.includes("const pideConfirmarReinicio = !!vista?.reinicio?.al_publicar;"));
     assert.ok(vista.includes("(pideConfirmarReinicio && !reinicioConfirmado)"));
-    assert.ok(vista.includes("{ confirmado: reinicioConfirmado, huella: vista.reinicio?.huella || null }"));
-    assert.ok(vista.includes("{ confirmado: reinicioConfirmado, huella: null, diferido: true }"));
+    assert.ok(vista.includes("pideConfirmarReinicio ? { confirmado: reinicioConfirmado } : undefined"));
+    assert.ok(!vista.includes("Reiniciar tabla y programar"), "el botón ya no promete reiniciar al programar");
+    assert.ok(vista.includes("Confirmo que la tabla se reinicie al publicar"));
+    // Muestra la opción guardada en los dos casos.
+    assert.ok(vista.includes("Conservar la tabla actual.") && vista.includes("Reiniciar la tabla antes de publicar."));
+    assert.ok(vista.includes("vista.tabla_al_publicar?.reiniciado_en"));
     assert.ok(/se_liberarian\.map/.test(vista), "muestra qué se liberaría");
 });
 
@@ -129,6 +132,10 @@ prueba("formulario de edición: carga por id desde el backend, título y botón 
 prueba("formulario: reinicio NUNCA por defecto; fecha del sorteo; cuentas sin salir; estilo de tabla", () => {
     const f = leer("components/sorteos/FormularioSorteo.tsx");
     assert.ok(/reiniciarTabla: false,/.test(f), "por defecto se conserva la tabla");
+    assert.ok(f.includes("Conservar la tabla actual") && f.includes("Reiniciar la tabla antes de publicar"));
+    assert.ok(!f.includes("antes de programar"), "sin la etiqueta antigua");
+    assert.ok(f.includes("los números se liberarán únicamente cuando llegue el momento de publicar el sorteo, no al programarlo"), "explicación visible");
+    assert.ok(f.includes("reiniciarTabla: config.tabla?.reiniciar === true"), "al editar se conserva la opción guardada");
     assert.ok(f.includes("tabla: { reiniciar: f.reiniciarTabla, liberar_bloqueados: f.reiniciarTabla && f.liberarBloqueados }"));
     assert.ok(/liberarBloqueados: false,/.test(f) && f.includes("También liberar los números bloqueados a mano"), "bloqueados conservados salvo elección expresa");
     assert.ok(leer("components/sorteos/VistaPreviaModal.tsx").includes("vista.reinicio.se_conservan"), "la vista previa dice qué se conserva");

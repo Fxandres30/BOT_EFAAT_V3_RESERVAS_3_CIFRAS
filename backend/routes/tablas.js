@@ -16,7 +16,7 @@ const { exigirUsuario } = require("../middleware/autenticacionUsuario");
 const supabase = require("../lib/supabase");
 // Precio -> tabla física SEGÚN EL CLIENTE (tablas_cliente, migración 027;
 // sin ella, la configuración base de siempre).
-const { obtenerConfiguracionCliente, inicializarCliente } = require("../bot/funciones/eventos/tablasCliente");
+const { obtenerConfiguracionCliente, inicializarCliente, prepararCuadricula } = require("../bot/funciones/eventos/tablasCliente");
 const tablaEventoRepo = require("../automation/repo/tablaEvento");
 const { compartirTabla, verificarTokenImprimirDetalle } = require("../services/compartirTabla");
 const { disenoDelEvento } = require("../sorteos/repo");
@@ -178,6 +178,37 @@ router.post("/inicializar", exigirUsuario, async (req, res) => {
     } catch (err) {
 
         console.error("❌ [TABLAS] error en /inicializar:", err.message);
+        res.status(500).json({ ok: false, motivo: "error_interno" });
+
+    }
+
+});
+
+// POST /tablas/:precio/preparar — el panel no ve ninguna fila de su
+// cuadrícula. El backend cuenta las filas REALES del cliente del token y,
+// solo si no tiene ninguna, pide la inicialización segura (027). Responde
+// el estado real o el motivo por el que no se pudo (migración pendiente,
+// unicidad sobre numero, error de lectura...) para que el panel no lo
+// muestre como "tabla vacía, reinicia". Nunca reinicia ni borra.
+const HTTP_PREPARAR = { ...HTTP_INICIALIZAR, sin_usuario: 401, tabla_no_configurada: 404, error_lectura: 500 };
+
+router.post("/:precio/preparar", exigirUsuario, async (req, res) => {
+
+    try {
+
+        if (!/^\d{1,7}$/.test(String(req.params.precio))) {
+            return res.status(400).json({ ok: false, motivo: "parametros_invalidos" });
+        }
+
+        const r = await prepararCuadricula(req.usuarioId, req.params.precio);
+
+        if (r.ok) return res.json(r);
+
+        res.status(HTTP_PREPARAR[r.motivo] || 500).json(r);
+
+    } catch (err) {
+
+        console.error("❌ [TABLAS] error en /preparar:", err.message);
         res.status(500).json({ ok: false, motivo: "error_interno" });
 
     }

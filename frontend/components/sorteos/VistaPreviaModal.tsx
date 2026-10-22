@@ -52,11 +52,9 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
 
     }, [sorteoId]);
 
-    // Solo hay algo que confirmar si el reinicio es posible Y libera números.
-    const conReinicio = !!vista?.reinicio?.posible && (vista?.reinicio?.liberables || 0) > 0;
-    // Reinicio al publicar (el sorteo actual cierra antes): también se confirma.
-    const reinicioDiferido = !!vista?.reinicio?.diferido;
-    const pideConfirmarReinicio = conReinicio || reinicioDiferido;
+    // «Reiniciar la tabla antes de publicar»: programar nunca toca la tabla;
+    // se confirma que el publicador la reinicie al publicar (revalidándola).
+    const pideConfirmarReinicio = !!vista?.reinicio?.al_publicar;
 
     async function confirmar() {
 
@@ -68,9 +66,7 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
         const r = await apiSorteos.confirmar(
             vista.id,
             vista.version,
-            conReinicio
-                ? { confirmado: reinicioConfirmado, huella: vista.reinicio?.huella || null }
-                : reinicioDiferido ? { confirmado: reinicioConfirmado, huella: null, diferido: true } : undefined
+            pideConfirmarReinicio ? { confirmado: reinicioConfirmado } : undefined
         );
 
         setConfirmando(false);
@@ -95,7 +91,7 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                     <Button variant="secondary" onClick={onClose} disabled={confirmando}>Cerrar</Button>
                     {vista?.estado === "borrador" && (
                         <Button onClick={confirmar} loading={confirmando} disabled={!vista.puede_confirmar || !revisado || (pideConfirmarReinicio && !reinicioConfirmado)}>
-                            {conReinicio ? "Reiniciar tabla y programar" : "Confirmar y programar"}
+                            Confirmar y programar
                         </Button>
                     )}
                 </>
@@ -125,7 +121,7 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                         <section className={styles.seccion} aria-label="Tabla de números">
                             <h3 className={styles.seccionTitulo}>
                                 Tabla de números · {vista.diseno.config ? (vista.diseno.nombre || "diseño actual de la tabla") : "diseño por defecto"}
-                                {conReinicio ? " · como quedará tras el reinicio" : ""}
+                                {pideConfirmarReinicio ? " · como quedará al publicar" : ""}
                             </h3>
                             <div className={styles.tablaVista}>
                                 <TablaImprimible
@@ -162,22 +158,35 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                             </ul>
                         </section>
 
+                        {vista.tabla_al_publicar && !vista.tabla_al_publicar.reiniciar && (
+                            <section className={styles.seccion} aria-label="Tabla al publicar">
+                                <h3 className={styles.seccionTitulo}>Tabla al publicar</h3>
+                                <p><b>Conservar la tabla actual.</b> No se reiniciará ni al programar ni al publicar.</p>
+                            </section>
+                        )}
+
                         {vista.reinicio && (
-                            <section className={styles.seccion} aria-label="Reinicio de la tabla">
-                                <h3 className={styles.seccionTitulo}>Reinicio de la tabla</h3>
+                            <section className={styles.seccion} aria-label="Tabla al publicar">
+                                <h3 className={styles.seccionTitulo}>Tabla al publicar</h3>
+                                <p>
+                                    <b>Reiniciar la tabla antes de publicar.</b>
+                                    {vista.tabla_al_publicar?.reiniciado_en
+                                        ? <> Ya se reinició el {mostrarFecha(vista.tabla_al_publicar.reiniciado_en)}.</>
+                                        : <> Programar no modifica ningún número: el reinicio se hace al publicar ({mostrarFecha(vista.publicar_en)}), después de volver a validar la tabla. Si en ese momento hay reservas nuevas, pagos en proceso o un sorteo activo, no se reinicia ni se publica el anuncio.</>}
+                                </p>
                                 {vista.reinicio.diferido ? (
                                     <p>
                                         Hoy la tabla tiene números del sorteo actual, que cierra el <b>{mostrarFecha(vista.reinicio.cierra_antes || "")}</b>.
-                                        {" "}No se tocan ahora: al publicar ({mostrarFecha(vista.publicar_en)}) se archivarán (no se borran) los de sorteos ya terminados y la tabla quedará libre.
+                                        {" "}Al publicar se archivarán (no se borran) los de sorteos ya terminados y la tabla quedará libre.
                                         {" "}Si en ese momento el sorteo sigue abierto, la publicación espera.
                                     </p>
                                 ) : vista.reinicio.posible ? (
                                     vista.reinicio.liberables > 0 ? (
                                         <>
-                                            <p>Se archivarán (no se borran) y quedarán libres {vista.reinicio.liberables} número(s):</p>
+                                            <p>Con la tabla de hoy, al publicar se archivarían (no se borran) y quedarían libres {vista.reinicio.liberables} número(s):</p>
                                             <ul>{vista.reinicio.se_liberarian.map((t, i) => <li key={i}>{t}</li>)}</ul>
                                         </>
-                                    ) : <p className={styles.ayuda}>La tabla ya está libre: el reinicio no modificará nada.</p>
+                                    ) : <p className={styles.ayuda}>Hoy la tabla ya está libre; al publicar se volverá a revisar.</p>
                                 ) : (
                                     <p className={styles.ayuda}>No se puede reiniciar (ver los bloqueos de abajo). No se modificará nada.</p>
                                 )}
@@ -186,7 +195,7 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                                 {vista.estado === "borrador" && pideConfirmarReinicio && (
                                     <label className={styles.check}>
                                         <input type="checkbox" checked={reinicioConfirmado} onChange={e => setReinicioConfirmado(e.target.checked)} />
-                                        {reinicioDiferido ? "Confirmo que la tabla se reinicie al publicar." : "Confirmo que se archiven y liberen estos números."}
+                                        Confirmo que la tabla se reinicie al publicar, si en ese momento sigue siendo seguro.
                                     </label>
                                 )}
                             </section>

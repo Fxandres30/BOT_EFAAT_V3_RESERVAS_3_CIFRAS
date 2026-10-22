@@ -11,6 +11,7 @@
 const { obtenerConfiguracion } = require("../bot/funciones/eventos/configEvento");
 const { calcularCierre } = require("../bot/funciones/eventos/extractor/calcularCierre");
 const { normalizarEleccionDiseno } = require("./disenoTabla");
+const { crearIdentidadEventoReal } = require("../bot/funciones/eventos/identidadEventoReal");
 
 const ZONA = "America/Bogota";
 const HORA = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -60,6 +61,20 @@ function fechaSorteoDe(config, publicarEn) {
     return Number.isNaN(d.getTime()) ? null : partesBogota(d).fecha;
 }
 
+// Identidad del sorteo REAL que se programa (la misma que usa el detector).
+// Se calcula al guardar y se vuelve a calcular al publicar para comprobar
+// que la programación sigue correspondiendo a ese evento.
+function identidadDelSorteo(usuarioId, config) {
+    return crearIdentidadEventoReal({
+        usuario_id: usuarioId,
+        nombre_evento: config.nombre,
+        hora_fin: config.hora_fin,
+        valor: config.valor,
+        // La fecha en que se JUEGA (puede ser posterior a la publicación).
+        fecha_evento: fechaSorteoDe(config)
+    });
+}
+
 const aMinutos = (hhmm) => {
     const [h, m] = hhmm.split(":").map(Number);
     return h * 60 + m;
@@ -73,6 +88,23 @@ function texto(valor, max) {
 function idsUnicos(lista, max) {
     if (!Array.isArray(lista)) return [];
     return [...new Set(lista.map(x => String(x || "").trim()).filter(Boolean))].slice(0, max);
+}
+
+// Mismo formato que guarda el detector en eventos_bot.premios
+// (extractor/extraerPremios.js): { tipo, nombre, premio }. También lo usa la
+// edición de un sorteo activo (servicio.editarSorteoActivo).
+function normalizarPremios(lista) {
+    return (Array.isArray(lista) ? lista : [])
+        .map(p => {
+            const monto = Number(String(p?.premio ?? "").replace(/[^0-9]/g, ""));
+            return {
+                tipo: TIPOS_PREMIO.has(p?.tipo) ? p.tipo : "otro",
+                nombre: texto(p?.nombre, LIMITES.premioTexto),
+                premio: monto > 0 ? monto : null
+            };
+        })
+        .filter(p => p.nombre)
+        .slice(0, LIMITES.premios);
 }
 
 // validarSorteo(entrada, { ahora }) -> { ok, errores, config, tabla, cifras, cantidad }
@@ -110,19 +142,7 @@ function validarSorteo(entrada = {}, { ahora = new Date() } = {}) {
     if (!valor) error("valor", "Indica el valor por número.");
     else if (!tablaConfig) error("valor", "Ese valor no tiene una tabla de números configurada.");
 
-    // Mismo formato que guarda el detector en eventos_bot.premios
-    // (extractor/extraerPremios.js): { tipo, nombre, premio }.
-    const premios = (Array.isArray(entrada.premios) ? entrada.premios : [])
-        .map(p => {
-            const monto = Number(String(p?.premio ?? "").replace(/[^0-9]/g, ""));
-            return {
-                tipo: TIPOS_PREMIO.has(p?.tipo) ? p.tipo : "otro",
-                nombre: texto(p?.nombre, LIMITES.premioTexto),
-                premio: monto > 0 ? monto : null
-            };
-        })
-        .filter(p => p.nombre)
-        .slice(0, LIMITES.premios);
+    const premios = normalizarPremios(entrada.premios);
     if (!premios.length) error("premios", "Agrega al menos un premio.");
 
     const grupos = idsUnicos(entrada.grupos, LIMITES.grupos);
@@ -199,7 +219,8 @@ function validarSorteo(entrada = {}, { ahora = new Date() } = {}) {
         publicar_en: publicacionValida ? publicarEn.toISOString() : null,
         fecha_sorteo: fechaSorteo || null,
         // Reinicio de la tabla: SOLO si se elige expresamente (y se confirma
-        // en la vista previa). Por defecto se conserva.
+        // en la vista previa). Por defecto se conserva. Nunca se hace al
+        // guardar ni al confirmar: el publicador lo hace al publicar.
         // Los bloqueados a mano se conservan; liberarlos exige elegirlo
         // expresamente (y solo tiene sentido si se reinicia).
         tabla: {
@@ -253,5 +274,8 @@ module.exports = {
     partesBogota,
     instanteBogota,
     fechaSorteoDe,
+    identidadDelSorteo,
+    normalizarPremios,
+    HORA,
     MODALIDADES
 };

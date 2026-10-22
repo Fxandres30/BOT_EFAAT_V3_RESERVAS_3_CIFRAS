@@ -72,6 +72,47 @@ export interface Sorteo {
     grupos?: GrupoSorteo[];
 }
 
+/** Campo de un sorteo activo: si se puede editar con el sorteo en curso y por qué. */
+export interface CampoActivo { editable: boolean; motivo?: string }
+
+/**
+ * Sorteo ACTIVO de una tabla (eventos_bot), lo haya detectado el bot o
+ * creado el panel. `id` es el evento por el que se abre y se guarda.
+ * cuentas/diseno/mensajes son null en los detectados (no los guardan).
+ */
+export interface SorteoActivo {
+    id: string;
+    origen: "detectado" | "panel";
+    sorteo_programado_id: string | null;
+    nombre: string | null;
+    fecha_evento: string | null;
+    hora_fin: string | null;
+    hora_cierre: string | null;
+    valor: number | null;
+    premios: Premio[];
+    tabla: string | null;
+    cantidad_numeros: number | null;
+    estado: string | null;
+    grupos: { evento_id: string; grupo_id: string; grupo_nombre: string | null; abierto: boolean }[];
+    reservados: number;
+    pagados: number;
+    cuentas: CuentaPago[] | null;
+    cuentas_ids: string[] | null;
+    diseno: DisenoSorteo | null;
+    mensajes: { publicacion: string; aviso_cierre: string } | null;
+    recordatorios: Recordatorio[] | null;
+    campos: Record<"nombre" | "fecha_evento" | "hora_fin" | "valor" | "tabla" | "grupos" | "premios" | "hora_cierre" | "cuentas" | "diseno" | "mensajes", CampoActivo>;
+}
+
+/** Lo que se puede cambiar de un sorteo activo; `base` = lo que se vio al abrirlo. */
+export interface EdicionActivo {
+    premios?: Premio[];
+    hora_cierre?: string;
+    cuentas?: string[];
+    diseno?: DisenoSorteo;
+    base: { premios: Premio[]; hora_cierre: string | null };
+}
+
 export interface VistaPrevia {
     id: string;
     version: number;
@@ -86,6 +127,9 @@ export interface VistaPrevia {
     cantidad_numeros: number;
     cuentas: CuentaPago[];
     reinicio: ReinicioTabla | null;
+    /** Opción del formulario: «Conservar la tabla actual» (reiniciar=false) o
+     *  «Reiniciar la tabla antes de publicar»; reiniciado_en si ya se hizo. */
+    tabla_al_publicar?: { reiniciar: boolean; liberar_bloqueados: boolean; reiniciado_en: string | null };
     publicacion: string;
     recordatorios: Recordatorio[];
     aviso_cierre: string | null;
@@ -115,7 +159,10 @@ export interface ReinicioTabla {
      *  ese sorteo cierra antes (cierra_antes). Se hace al publicar. */
     diferido?: boolean;
     cierra_antes?: string;
-    /** Lo que vio el usuario: la confirmación solo vale si la tabla sigue igual. */
+    /** Se reiniciará al publicar (programar nunca toca la tabla): pide
+     *  confirmarlo en la vista previa. */
+    al_publicar?: boolean;
+    /** Huella de la tabla de hoy (informativa: al publicar se vuelve a revisar). */
     huella: string | null;
     liberables: number;
     protegidos: number;
@@ -180,7 +227,7 @@ export interface ErrorCampo { campo: string; mensaje: string }
 
 export type Respuesta<T> =
     | { ok: true; data: T; aviso?: string; meta?: ResumenGrupos }
-    | { ok: false; motivo: string; errores?: ErrorCampo[]; bloqueos?: string[]; error?: string; migracion?: string; status?: number };
+    | { ok: false; motivo: string; errores?: ErrorCampo[]; bloqueos?: string[]; error?: string; migracion?: string; status?: number; mensaje?: string };
 
 const MENSAJES: Record<string, string> = {
     sin_sesion: "Tu sesión expiró. Vuelve a iniciar sesión.",
@@ -191,7 +238,7 @@ const MENSAJES: Record<string, string> = {
     ya_publicado: "Ya se publicó en algún grupo: no se puede editar.",
     bloqueado: "Hay bloqueos que impiden programarlo.",
     confirmacion_requerida: "Debes confirmar que revisaste la vista previa.",
-    confirmacion_reinicio_requerida: "Confirma el reinicio de la tabla que se muestra en la vista previa.",
+    confirmacion_reinicio_requerida: "Confirma en la vista previa que la tabla se reinicie al publicar.",
     tabla_cambio: "La tabla cambió desde la vista previa (alguien reservó o pagó). Revísala de nuevo; no se modificó nada.",
     reinicio_bloqueado: "No se pudo reiniciar la tabla: hay números protegidos. No se modificó nada.",
     nombre_duplicado: "Ya existe una plantilla con ese nombre.",
@@ -259,11 +306,14 @@ async function llamar<T>(metodo: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", ru
 
 export const apiSorteos = {
     listar: () => llamar<Sorteo[]>("GET", ""),
+    activos: (precio?: number) => llamar<SorteoActivo[]>("GET", `/activos${precio ? `?precio=${precio}` : ""}`),
+    obtenerActivo: (id: string) => llamar<SorteoActivo>("GET", `/activos/${id}`),
+    editarActivo: (id: string, cambios: EdicionActivo) => llamar<SorteoActivo>("PUT", `/activos/${id}`, cambios),
     obtener: (id: string) => llamar<Sorteo>("GET", `/${id}`),
     crear: (config: ConfigSorteo & { plantilla_id?: string | null }) => llamar<Sorteo>("POST", "", config),
     editar: (id: string, config: ConfigSorteo & { version: number; plantilla_id?: string | null }) => llamar<Sorteo>("PUT", `/${id}`, config),
     vistaPrevia: (id: string) => llamar<VistaPrevia>("GET", `/${id}/vista-previa`),
-    confirmar: (id: string, version: number, reinicio?: { confirmado: boolean; huella: string | null; diferido?: boolean }) =>
+    confirmar: (id: string, version: number, reinicio?: { confirmado: boolean }) =>
         llamar<Sorteo>("POST", `/${id}/confirmar`, { version, confirmacion: true, ...(reinicio ? { reinicio } : {}) }),
     cancelar: (id: string) => llamar<Sorteo>("POST", `/${id}/cancelar`),
     reintentarGrupo: (id: string, grupoId: string) => llamar<Sorteo>("POST", `/${id}/grupos/reintentar`, { grupo_id: grupoId }),

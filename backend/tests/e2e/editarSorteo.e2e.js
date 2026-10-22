@@ -140,6 +140,8 @@ async function main() {
         assert.strictEqual(await marcada(page, "Nequi Prueba"), false);
         assert.strictEqual(await marcada(page, "Liberar automáticamente"), true);
         assert.strictEqual(await valorDe(page, "Minutos hasta liberar"), "90");
+        assert.strictEqual(await marcada(page, "Conservar la tabla actual"), true);
+        assert.strictEqual(await marcada(page, "Reiniciar la tabla antes de publicar"), false);
         const recordatorio = await page.$eval('[aria-label="Texto del recordatorio"]', e => e.value);
         assert.strictEqual(recordatorio, "Quedan 30 minutos");
         paso("«Editar» abre «Editar sorteo» con lotería, modalidad, fechas, horas, valor, premios, grupos, cuentas, estilo, mensajes, recordatorios y reservas");
@@ -165,14 +167,20 @@ async function main() {
         await pulsarEnModal(page, "Cerrar");
         await page.waitForFunction(() => !document.querySelector('[role="dialog"]'));
         await esperarTexto(page, "Versión 2");
+        // Opción de tabla guardada como «Reiniciar la tabla antes de publicar».
+        const fila = t.sorteos_programados.find(s => s.id === ID);
+        fila.config = { ...fila.config, tabla: { reiniciar: true, liberar_bloqueados: false } };
         await pulsar(page, "Editar");
         await esperarTexto(page, "Editar sorteo");
         await page.waitForFunction(() => [...document.querySelectorAll("label")].some(l => l.textContent.includes("Hora del sorteo")));
         assert.strictEqual(await valorDe(page, "Hora del sorteo"), "22:40");
         assert.strictEqual(await valorDe(page, "Fecha del sorteo"), FECHA_SORTEO);
+        assert.strictEqual(await marcada(page, "Reiniciar la tabla antes de publicar"), true, "se conserva la opción guardada");
+        assert.strictEqual(await marcada(page, "Conservar la tabla actual"), false);
+        assert.ok((await textoPagina(page)).includes("no al programarlo"), "explicación visible");
         await pulsarEnModal(page, "Cancelar");
         await page.waitForFunction(() => !document.querySelector('[role="dialog"]'));
-        paso("Cancelar y volver a editar conserva los valores guardados");
+        paso("Cancelar y volver a editar conserva los valores guardados (también la opción de la tabla)");
 
         // 4. Fallo al cargar el sorteo: error, sin campos, sin guardar.
         fake.control.fallarTabla = "sorteos_programados_grupos";
@@ -193,14 +201,14 @@ async function main() {
         paso("Si el sorteo no carga: error claro, sin formulario vacío ni «Guardar cambios»; «Reintentar» lo carga");
 
         // 5. Tablas → «Editar» en un precio sin sorteo programado.
-        servirTablas(["reservas_dos_cifras", "eventos_bot", "reservas_actividad", "tablas_cliente", "tabla_configuracion_visual", "tabla_disenos"]);
+        servirTablas(["reservas_dos_cifras", "5k_15k_reservas_2_cifras", "eventos_bot", "reservas_actividad", "tablas_cliente", "tabla_configuracion_visual", "tabla_disenos"]);
         await page.goto(`${PANEL}/tablas/1000`, { waitUntil: "domcontentloaded" });
         await pulsar(page, "Editar");
-        await esperarTexto(page, "no tiene sorteos programados");
+        await esperarTexto(page, "no tiene ningún sorteo activo ni programado");
         const tablasTexto = await textoPagina(page);
         assert.ok(!tablasTexto.includes("Hora del sorteo"), "no abre un formulario vacío por su cuenta");
         assert.strictEqual(await botonHabilitado(page, "Crear sorteo nuevo"), true);
-        paso("Tablas → «Editar» sin sorteo programado: lo explica y solo crea uno nuevo si se pide");
+        paso("Tablas → «Editar» sin sorteo activo ni programado: lo explica y solo crea uno nuevo si se pide");
 
         // 6. Tablas → «Editar» en el precio del sorteo: edición del MISMO sorteo.
         await page.goto(`${PANEL}/tablas/5000`, { waitUntil: "domcontentloaded" });

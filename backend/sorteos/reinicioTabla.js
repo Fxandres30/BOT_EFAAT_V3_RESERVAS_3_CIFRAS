@@ -1,9 +1,11 @@
 // ==========================================================================
 // sorteos/reinicioTabla.js — reinicio OPCIONAL y seguro de la tabla de
-// números al programar un sorteo (migración 030: reiniciar_tabla_cliente).
+// números de un sorteo programado (migración 030: reiniciar_tabla_cliente).
 //
-// Nunca automático: el sorteo lo pide (config.tabla.reiniciar) y el usuario
-// lo confirma en la vista previa con la huella de lo que vio. Toda la
+// Nunca automático: el sorteo lo pide (config.tabla.reiniciar), el usuario
+// lo confirma en la vista previa y el PUBLICADOR lo aplica al publicar (un
+// minuto antes del anuncio) con la huella revisada en ese momento; al
+// programar solo se consulta (revisarReinicio). Toda la
 // decisión y la escritura ocurren en la base, en UNA transacción y solo
 // sobre las filas del cliente del token: nada se borra (lo liberado queda en
 // reservas_archivo) y nunca se tocan pagos ni reservas de un sorteo activo.

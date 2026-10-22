@@ -1,4 +1,4 @@
-const { buscarLineaEvento } = require("./buscarLineaEvento");
+const { buscarLineaEvento, buscarLineaLoteria, buscarHoraEtiquetada } = require("./buscarLineaEvento");
 const { extraerNombreEvento } = require("./extraerNombreEvento");
 const { extraerHoraEvento } = require("./extraerHoraEvento");
 const { extraerHoraLiberacion } = require("./extraerHoraLiberacion");
@@ -9,6 +9,10 @@ const { calcularCierre } = require("./calcularCierre");
 module.exports = {
 
     buscarLineaEvento,
+
+    buscarLineaLoteria,
+
+    buscarHoraEtiquetada,
 
     extraerNombreEvento,
 
