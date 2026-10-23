@@ -229,6 +229,17 @@
   line-height: 1.5;
 }
 
+.linkButton {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: var(--efaat-weight-semibold);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .contenido {
   display: grid;
   grid-template-columns: minmax(0, 340px) minmax(0, 1fr);

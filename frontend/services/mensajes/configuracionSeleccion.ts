@@ -43,31 +43,63 @@ export async function obtenerEstadosHabilitados(usuarioId: string) {
 
 }
 
-// Activa/desactiva un TIPO DE RESPUESTA completo. upsert por
-// (usuario_id, tipo_respuesta) — mismo unique constraint que usa
-// guardarModoSeleccion. Al no incluir modo_seleccion/plantilla_fija_id/
-// rotacion_indice, un upsert sobre una fila EXISTENTE nunca los toca
-// (PostgREST solo actualiza las columnas enviadas); si la fila no existe
-// todavía, se crea con los DEFAULT de la tabla (aleatorio, sin fija, 0).
+// Tipos retirados del panel que el bot sigue consultando con su propia
+// fila: "mis_reservas" responde con «Mis números» solo si AMBAS filas
+// están activas (backend/bot/handlers/eventHandler.js::
+// interruptorPrevioHabilitado). Pulsar el interruptor visible guarda el
+// mismo valor en la fila antigua; nunca se toca sin esa acción.
+const INTERRUPTORES_VINCULADOS: Record<string, string[]> = {
+    mis_numeros: ["mis_reservas"]
+};
+
+export function tiposDelInterruptor(tipoRespuesta: string): string[] {
+    return [tipoRespuesta, ...(INTERRUPTORES_VINCULADOS[tipoRespuesta] ?? [])];
+}
+
+// Filas antiguas guardadas como desactivadas mientras el interruptor
+// visible está activo (sin fila = activo, mismo DEFAULT SEGURO).
+export function vinculadosDesactivados(tipoRespuesta: string, estados: Record<string, boolean>): string[] {
+
+    if ((estados[tipoRespuesta] ?? true) === false) {
+        return [];
+    }
+
+    return (INTERRUPTORES_VINCULADOS[tipoRespuesta] ?? []).filter((t) => estados[t] === false);
+
+}
+
+// Activa/desactiva un TIPO DE RESPUESTA completo (y sus vinculados, en
+// la misma petición). upsert por (usuario_id, tipo_respuesta) — mismo
+// unique constraint que usa guardarModoSeleccion. Al no incluir
+// modo_seleccion/plantilla_fija_id/rotacion_indice, un upsert sobre una
+// fila EXISTENTE nunca los toca (PostgREST solo actualiza las columnas
+// enviadas); si la fila no existe todavía, se crea con los DEFAULT de la
+// tabla (aleatorio, sin fija, 0).
 export async function guardarTipoHabilitado(
     usuarioId: string,
     tipoRespuesta: string,
     habilitada: boolean
 ) {
 
-    return await supabase
+    const ahora = new Date().toISOString();
+
+    const { data, error } = await supabase
         .from("configuracion_seleccion_mensajes")
         .upsert(
-            {
+            tiposDelInterruptor(tipoRespuesta).map((tipo) => ({
                 usuario_id: usuarioId,
-                tipo_respuesta: tipoRespuesta,
+                tipo_respuesta: tipo,
                 habilitada,
-                updated_at: new Date().toISOString()
-            },
+                updated_at: ahora
+            })),
             { onConflict: "usuario_id,tipo_respuesta" }
         )
-        .select()
-        .maybeSingle();
+        .select();
+
+    return {
+        data: (data as ConfiguracionSeleccion[] | null)?.find((f) => f.tipo_respuesta === tipoRespuesta) ?? null,
+        error
+    };
 
 }
 

@@ -317,11 +317,14 @@ async function ejecutarPruebas() {
 
         const r = await resolverConsulta({ tipo: "multiple", intenciones: intencion.intenciones, evento: EVENTO, usuario: USUARIO });
 
+        // Los pagados ya van en la respuesta general: no se repiten aparte
+        // (intencionesMisNumeros.test.js).
         const facetaMisNumeros = r.resultados.find(x => x.tipo === "mis_numeros");
-        const facetaPagados = r.resultados.find(x => x.bucket === "pagado");
 
+        assert.strictEqual(r.resultados.length, 1);
         assert.deepStrictEqual(facetaMisNumeros.numerosDelUsuario, ["12", "27", "45", "78"]);
-        assert.deepStrictEqual(facetaPagados.numerosDelUsuario, ["27", "78"]);
+        assert.deepStrictEqual(facetaMisNumeros.pagados, ["27", "78"]);
+        assert.ok(/Pagados: .*27.*78/.test(r.mensaje), r.mensaje);
 
     });
 

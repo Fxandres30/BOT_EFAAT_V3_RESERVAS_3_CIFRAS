@@ -261,6 +261,12 @@ function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, p
 // solo un monto.
 function modoBucketImplicitos(tipo, modo, bucket) {
 
+    // La respuesta general es la misma sola o combinada: todos sus números
+    // con su estado (ver caso mis_numeros más abajo).
+    if (!modo && (tipo === "mis_numeros" || tipo === "mis_reservas")) {
+        return { modo: "resumen", bucket: "numeros" };
+    }
+
     return {
         modo: modo || (tipo === "cantidad_reservas" ? "cantidad" : tipo === "consulta_pago" ? "resumen" : "lista"),
         bucket: bucket || (tipo === "consulta_pago" ? "pendiente" : "total")
@@ -285,7 +291,18 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
             const datos = await consultarMisNumerosPorEstado({ evento, usuario });
             const valorUnidad = Number(evento.valor) || 0;
 
-            const resultados = (intenciones || []).map(sub => {
+            // La respuesta general (mis_numeros/mis_reservas: todos, pagados
+            // y pendientes) ya contiene cualquier LISTA de la familia
+            // ("mis números y cuáles ya pagué"): no se repite. Solo cuando
+            // la general sigue habilitada — eventHandler ya quitó las
+            // apagadas — y nunca cantidades ni montos, que sí aportan.
+            const incluyeGeneral = (intenciones || []).some(s => s.tipo === "mis_numeros" || s.tipo === "mis_reservas");
+
+            const sinRepetir = (intenciones || []).filter(sub =>
+                !(incluyeGeneral && sub.tipo === "consulta_pago" && sub.modo === "lista")
+            );
+
+            const resultados = sinRepetir.map(sub => {
 
                 const { modo: modoSub, bucket: bucketSub } = modoBucketImplicitos(sub.tipo, sub.modo, sub.bucket);
 

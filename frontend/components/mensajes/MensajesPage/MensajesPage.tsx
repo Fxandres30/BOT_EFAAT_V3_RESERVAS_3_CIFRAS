@@ -23,6 +23,8 @@ import {
     obtenerConfiguracionSeleccion,
     obtenerEstadosHabilitados,
     guardarTipoHabilitado,
+    tiposDelInterruptor,
+    vinculadosDesactivados,
     ModoSeleccion as TipoModo
 } from "@/services/mensajes/configuracionSeleccion";
 
@@ -111,22 +113,33 @@ export default function MensajesPage() {
         return estadosHabilitados[tipoId] ?? true;
     }
 
-    async function alternarTipoHabilitado(tipoId: string) {
+    async function alternarTipoHabilitado(tipoId: string, forzar?: boolean) {
 
         if (!usuarioId) return;
 
         const actual = estaHabilitado(tipoId);
-        const nuevo = !actual;
+        const nuevo = forzar ?? !actual;
 
         // Optimista: refleja el cambio de inmediato en el panel; revierte
         // si Supabase no confirma el guardado. El comportamiento real del
         // BOT siempre depende de Supabase, nunca de este estado local.
-        setEstadosHabilitados((prev) => ({ ...prev, [tipoId]: nuevo }));
+        // Incluye las filas vinculadas (p. ej. mis_reservas), que se
+        // guardan con el mismo valor.
+        const previos = { ...estadosHabilitados };
+        const tipos = tiposDelInterruptor(tipoId);
+        setEstadosHabilitados((prev) => ({ ...prev, ...Object.fromEntries(tipos.map((t) => [t, nuevo])) }));
 
         const { error } = await guardarTipoHabilitado(usuarioId, tipoId, nuevo);
 
         if (error) {
-            setEstadosHabilitados((prev) => ({ ...prev, [tipoId]: actual }));
+            setEstadosHabilitados((prev) => {
+                const restaurado = { ...prev };
+                for (const t of tipos) {
+                    if (t in previos) restaurado[t] = previos[t];
+                    else delete restaurado[t];
+                }
+                return restaurado;
+            });
             console.warn("[mensajes] no se pudo guardar el interruptor:", tipoId, error.message);
             if (tipoId === TIPO_REACCIONES) setErrorReacciones("No pudimos guardar el cambio. Inténtalo de nuevo.");
         } else if (tipoId === TIPO_REACCIONES) {
@@ -535,6 +548,16 @@ export default function MensajesPage() {
                                 {obtenerModalidad(tipoSeleccionado.id) && (
                                     <p className={styles.note}>
                                         <strong>Cuándo se usa:</strong> {obtenerModalidad(tipoSeleccionado.id)!.cuandoSeUsa}
+                                    </p>
+                                )}
+
+                                {vinculadosDesactivados(tipoSeleccionado.id, estadosHabilitados).includes("mis_reservas") && (
+                                    <p className={styles.note}>
+                                        Las preguntas «mis reservas» y «¿qué tengo reservado?» siguen sin
+                                        respuesta por una configuración anterior.{" "}
+                                        <button type="button" className={styles.linkButton} onClick={() => alternarTipoHabilitado(tipoSeleccionado.id, true)}>
+                                            Responderlas también con «Mis números»
+                                        </button>
                                     </p>
                                 )}
 

@@ -15,7 +15,7 @@ const PREGUNTAS_DE_PAGO = "«¿qué debo?», «¿cuánto debo?», «¿qué me fa
 export const MODALIDADES_NUMEROS_PAGOS: ModalidadNumerosPagos[] = [
     {
         tipoId: "mis_numeros",
-        cuandoSeUsa: "«Mis números», «¿cuáles son mis números?», «¿qué números tengo?». Muestra todos sus números y cuáles están pagados y pendientes."
+        cuandoSeUsa: "Respuesta principal: «Mis números», «¿cuáles son mis números?», «¿qué números tengo?», «mis reservas», «¿qué tengo reservado?». Muestra todos sus números y cuáles están pagados y pendientes. Las preguntas puntuales («¿cuáles ya pagué?», «¿cuánto debo?») tienen su propia respuesta y no la repiten."
     },
     {
         tipoId: "consulta_pago_sin_pago",

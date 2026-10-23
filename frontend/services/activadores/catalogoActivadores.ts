@@ -413,15 +413,15 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
             {
                 id: "preguntas-puntuales-pago",
                 nombre: "Preguntas puntuales de pago",
-                resumen: "«¿Cuáles están pagados?», «¿cuántos debo?», «¿cuánto he pagado?», «¿cuánto es todo?».",
+                resumen: "«¿Cuáles están pagados?», «¿qué números cancelé?», «¿cuántos debo?», «¿cuánto he pagado?», «¿cuánto es todo?».",
                 estado: "funciona",
                 activadores: [{
                     tipo: "frase",
                     descripcion: "Frases completas de lista, cantidad o monto.",
-                    ejemplos: ["cuales estan pagados", "cuantos debo", "cuanto he pagado", "cuanto es todo"],
+                    ejemplos: ["cuales estan pagados", "cuales pague", "que numeros cancele", "cuantos debo", "cuanto he pagado", "cuanto es todo"],
                     fuente: "backend/bot/funciones/consultas/detectarIntencion.js"
                 }],
-                condiciones: [],
+                condiciones: ["«Cancelé» = pagué: responde con los números pagados. La tabla no conserva las reservas liberadas, así que nunca se muestra un historial de cancelaciones.", "Junto a «Mis números» en el mismo mensaje, una lista no se repite: ya va en esa respuesta."],
                 accion: "Misma lectura única; responde con un mensaje fijo.",
                 lee: ["tabla de números del sorteo"],
                 escribe: [],

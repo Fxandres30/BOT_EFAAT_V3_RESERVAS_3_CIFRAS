@@ -170,6 +170,19 @@ const PAGO_FRASES_EXPLICITAS = [
     { frase: "cuales tengo cancelados", modo: "lista", bucket: "pagado" },
     { frase: "cuales estan cancelados", modo: "lista", bucket: "pagado" },
     { frase: "cuales ya cancele", modo: "lista", bucket: "pagado" },
+    // Sin "ya" caían en la respuesta de pago (lo PENDIENTE): se preguntaba
+    // por lo pagado. "cancelé" = pagué; las reservas liberadas no dejan
+    // rastro del dueño en la tabla (reservaManual.js::CAMPOS_LIBRE), así
+    // que nunca se responde con un historial de cancelaciones.
+    { frase: "cuales pague", modo: "lista", bucket: "pagado" },
+    { frase: "que numeros pague", modo: "lista", bucket: "pagado" },
+    { frase: "cuales he pagado", modo: "lista", bucket: "pagado" },
+    { frase: "que numeros he pagado", modo: "lista", bucket: "pagado" },
+    { frase: "cuales cancele", modo: "lista", bucket: "pagado" },
+    { frase: "que numeros cancele", modo: "lista", bucket: "pagado" },
+    { frase: "que numeros ya cancele", modo: "lista", bucket: "pagado" },
+    { frase: "cuales he cancelado", modo: "lista", bucket: "pagado" },
+    { frase: "que numeros he cancelado", modo: "lista", bucket: "pagado" },
     { frase: "cuales tengo pendientes", modo: "lista", bucket: "pendiente" },
 
     // cantidad (cuántos)
@@ -371,8 +384,12 @@ function dividirEnSegmentos(texto) {
 
 }
 
+// mis_reservas y mis_numeros son la MISMA respuesta (resolverConsulta.js):
+// "mis números y mis reservas" es una sola pregunta, no dos respuestas
+// iguales seguidas.
 function claveIntencion(i) {
-    return `${i.tipo}|${i.modo || ""}|${i.bucket || ""}`;
+    const tipo = i.tipo === "mis_reservas" ? "mis_numeros" : i.tipo;
+    return `${tipo}|${i.modo || ""}|${i.bucket || ""}`;
 }
 
 // Punto de entrada público: primero clasifica el mensaje COMPLETO con la
@@ -628,8 +645,9 @@ function detectarIntencionUnica(texto = "", cifras = 2) {
         }
 
         // 4. Mis números / mis reservas — misma fuente de datos real
-        // (consultarMisNumeros, ver resolverConsulta.js), la única
-        // diferencia es qué PLANTILLAS se usan para redactar. Regla de
+        // (consultarMisNumeros, ver resolverConsulta.js) y misma respuesta
+        // (plantillas de mis_numeros, ver calcularTipoPresentacion); la
+        // etiqueta mis_reservas solo conserva el interruptor antiguo. Regla de
         // desempate, para casos ambiguos ("qué tengo", "cuáles
         // reservé"), donde ambas lecturas son igual de válidas:
         //   a) si menciona "número(s)" explícitamente -> mis_numeros
