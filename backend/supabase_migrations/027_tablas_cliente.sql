@@ -57,7 +57,9 @@ begin
             raise exception '027 abortada: % no tiene RLS. Aplica y valida antes la Parte A.', t;
         end if;
 
-        foreach p in array array['panel lee sus reservas', 'panel crea su tabla', 'panel modifica sus reservas'] loop
+        -- (La Parte A revisada ya no crea "panel crea su tabla": la cuadrícula
+        -- la crea esta función desde el backend, nunca el navegador.)
+        foreach p in array array['panel lee sus reservas', 'panel modifica sus reservas'] loop
             if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = t and policyname = p) then
                 raise exception '027 abortada: falta la política "%" de la Parte A en %', p, t;
             end if;
@@ -120,7 +122,8 @@ create policy "propietario crea" on public.tablas_cliente for insert to authenti
 create policy "propietario modifica" on public.tablas_cliente for update to authenticated using (usuario_id = auth.uid()) with check (usuario_id = auth.uid());
 create policy "propietario borra" on public.tablas_cliente for delete to authenticated using (usuario_id = auth.uid());
 
-revoke all on table public.tablas_cliente from anon;
+revoke all on table public.tablas_cliente from anon, public;
+revoke truncate, references, trigger on table public.tablas_cliente from authenticated;
 grant select, insert, update, delete on table public.tablas_cliente to authenticated, service_role;
 
 -- -------------------------------------------- inicializar_tablas_cliente ---

@@ -75,11 +75,15 @@ select
 -- V1. Estado de RLS y políticas tras la Parte A.
 -- Esperado: 4 filas, rls_activo = true, rls_forzado = false, y en
 --   politicas exactamente:
---     reservas_dos_cifras / 5k_15k: panel crea su tabla, panel lee sus
---       reservas, panel modifica sus reservas                       (3)
+--     reservas_dos_cifras / 5k_15k: panel lee sus reservas, panel
+--       modifica sus reservas                                       (2)
 --     eventos_bot: panel lee sus eventos                             (1)
---     sesiones: panel borra/crea/lee/modifica sus sesiones           (4)
+--     sesiones: panel crea/lee/modifica sus sesiones                 (3)
 --   Todas con roles {authenticated}. Ninguna con roles public/anon.
+--   (Auditoría integral 2026-10-22: la Parte A ya no crea "panel crea su
+--   tabla" ni "panel borra sus sesiones". Puede haber además políticas
+--   solo de service_role o de propietario conservadas: ver el bloque
+--   "politicas" de validacion_final_aislamiento_solo_lectura.sql.)
 -- ==========================================================================
 set transaction read only;
 select c.relname as tabla, c.relrowsecurity as rls_activo, c.relforcerowsecurity as rls_forzado,
@@ -122,7 +126,7 @@ select t.tabla,
            when not (select relrowsecurity from pg_class where oid = to_regclass(format('public.%I', t.tabla))) then 'sin_rls'
            when (select count(*) from pg_policies p
                    where p.schemaname = 'public' and p.tablename = t.tabla
-                     and p.policyname in ('panel lee sus reservas', 'panel crea su tabla', 'panel modifica sus reservas')) <> 3
+                     and p.policyname in ('panel lee sus reservas', 'panel modifica sus reservas')) <> 2
                then 'faltan_politicas'
            when has_table_privilege('anon', format('public.%I', t.tabla), 'select, insert, update, delete') then 'anon_conserva_permisos'
            else '027_podria_pasar'

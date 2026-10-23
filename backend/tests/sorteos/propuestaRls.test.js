@@ -107,10 +107,14 @@ prueba("flujo del panel intacto: marcar pagado (con el trigger heredado), reinic
     const pagadas = await como(db, "authenticated", A, `update public."5k_15k_reservas_2_cifras" set estado = 'pagado' where numero = '01' and usuario_id = '${A}' and estado = 'reservado' returning id`);
     assert.strictEqual(pagadas.length, 1, "el pago desde el panel funciona");
     assert.strictEqual((await db.query("select count(*)::int n from public.compradores_semanales")).rows[0].n, 1, "el trigger heredado sigue escribiendo");
-    await como(db, "authenticated", A, `insert into public.reservas_dos_cifras (numero, estado, usuario_id) values ('06', 'libre', '${A}')`);
+    // Crear la cuadrícula y borrar sesiones va por el backend (service_role):
+    // la Parte A revisada ya no da al navegador insert en reservas ni delete
+    // en sesiones (permisos mínimos).
+    await assert.rejects(como(db, "authenticated", A, `insert into public.reservas_dos_cifras (numero, estado, usuario_id) values ('06', 'libre', '${A}')`), /row-level security/i);
     await como(db, "authenticated", A, `update public.reservas_dos_cifras set estado = 'libre' where usuario_id = '${A}'`);
     await como(db, "authenticated", A, `insert into public.sesiones (usuario_id, nombre) values ('${A}', 'bot A2')`);
-    await como(db, "authenticated", A, `delete from public.sesiones where nombre = 'bot A2'`);
+    assert.strictEqual((await como(db, "authenticated", A, `delete from public.sesiones where nombre = 'bot A2' returning id`)).length, 0);
+    assert.strictEqual((await como(db, "service_role", null, `delete from public.sesiones where nombre = 'bot A2' returning id`)).length, 1);
 });
 
 prueba("un cliente NO puede modificar, crear ni borrar datos de otro", async () => {

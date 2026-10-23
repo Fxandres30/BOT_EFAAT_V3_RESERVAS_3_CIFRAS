@@ -37,6 +37,13 @@ function bloques(sql) {
 const [B1, B2] = bloques(PARTE_B);
 const [C1, C2] = bloques(PARTE_C);
 
+// B2 exige el md5 del cuerpo revisado de la función heredada (lo da el
+// bloque B_funcion_heredada del diagnóstico): aquí se lee de la base de prueba.
+async function conMd5(db, sql) {
+    const { rows } = await db.query("select md5(prosrc) m from pg_proc where proname = 'legado_comprador'");
+    return sql.replaceAll("cceca089f72b33a12832eaf6c9f438c5", rows[0].m);
+}
+
 const A = "aaaaaaaa-0000-4000-8000-00000000000a";
 
 const LEGADO_INSERT = `
@@ -197,7 +204,7 @@ prueba("B2 (tras A y B1): anon y authenticated ya no leen compradores; el panel 
     await db.exec(PARTE_A);
     await db.exec(B1);
     assert.strictEqual((await como(db, "anon", null, "select * from public.compradores_semanales")).length, 1, "hoy anon lee");
-    await db.exec(B2);
+    await db.exec(await conMd5(db, B2));
     await rechaza(como(db, "anon", null, "select * from public.compradores_semanales"), /permission denied/);
     await rechaza(como(db, "authenticated", A, "select * from public.compradores_semanales"), /permission denied/);
     assert.deepStrictEqual(await pagar(db, "authenticated", "01"), [{ numero: "01" }], "panel paga");
@@ -212,8 +219,8 @@ prueba("B2 idempotente", async () => {
     const db = await crearDb();
     await db.exec(PARTE_A);
     await db.exec(B1);
-    await db.exec(B2);
-    await db.exec(B2);
+    await db.exec(await conMd5(db, B2));
+    await db.exec(await conMd5(db, B2));
     await pagar(db, "authenticated", "01");
     assert.strictEqual(await estado(db, "01"), "pagado");
 });
@@ -231,7 +238,27 @@ prueba("B2 aborta SIN cambiar nada si hay más de una función heredada que escr
     assert.strictEqual(f.prosecdef, false);
 });
 
-prueba("C1/C2: anon pierde las tablas y RPC heredadas; tablas inexistentes se omiten; nada más cambia", async () => {
+prueba("B2 aborta SIN cambiar nada si el cuerpo de la función heredada no es el de producción (md5)", async () => {
+    const db = await crearDb();
+    await db.exec(PARTE_A);
+    // Tal cual (md5 de producción) sobre una función de cuerpo distinto: aborta.
+    await rechaza(db.exec(B2), /no es el revisado/);
+    await db.exec("rollback;");
+    await rechaza(db.exec(B2.replaceAll("cceca089f72b33a12832eaf6c9f438c5", "0".repeat(32))), /no es el revisado/);
+    await db.exec("rollback;");
+    assert.strictEqual((await db.query(`select prosecdef from pg_proc where proname = 'legado_comprador'`)).rows[0].prosecdef, false);
+    assert.strictEqual((await como(db, "authenticated", A, "select * from public.compradores_semanales")).length, 1, "nada cambiado");
+});
+
+prueba("B2 aborta si el dueño de la función heredada no es el de la tabla ni salta la RLS (la 034 lo dejaría sin filas)", async () => {
+    const db = await crearDb();
+    await db.exec(`create role legado_dueno nologin; grant all on public.compradores_semanales to legado_dueno;
+                   alter function public.legado_comprador() owner to legado_dueno;`);
+    await rechaza(db.exec(await conMd5(db, B2)), /no es el de compradores_semanales ni salta la RLS/);
+    await db.exec("rollback;");
+});
+
+prueba("C1/C2: anon, authenticated y PUBLIC pierden las tablas y RPC heredadas; tablas inexistentes se omiten; el bot no cambia", async () => {
     const db = await crearDb();
     assert.strictEqual((await como(db, "anon", null, "select * from public.registro_usuarios")).length, 1, "hoy anon lee");
     await db.exec(C1);
@@ -239,7 +266,10 @@ prueba("C1/C2: anon pierde las tablas y RPC heredadas; tablas inexistentes se om
     await rechaza(como(db, "anon", null, "select * from public.registro_usuarios"), /permission denied/);
     await rechaza(como(db, "anon", null, "select public.sumar_entregados_tres_cifras('3000000099', 1)"), /permission denied/);
     assert.strictEqual((await como(db, "service_role", null, "select * from public.registro_usuarios")).length, 1);
-    assert.strictEqual((await como(db, "authenticated", A, "select * from public.registro_usuarios")).length, 1);
+    // Antes de la auditoría integral authenticated seguía leyendo: cualquier
+    // cliente con cuenta veía los datos personales heredados.
+    await rechaza(como(db, "authenticated", A, "select * from public.registro_usuarios"), /permission denied/);
+    await rechaza(como(db, "authenticated", A, "select public.sumar_entregados_tres_cifras('3000000099', 1)"), /permission denied/);
     await db.exec(C1);
 });
 

@@ -51,9 +51,10 @@ function vueltaAtras(texto, marcador, hasta) {
         .join("\n");
 }
 
-// Reversión segura (2026-10-22): solo desactiva la RLS; NUNCA devuelve
-// permisos a anon ni a PUBLIC.
-const VUELTA_A = vueltaAtras(PARTE_A, "-- REVERSIÓN SEGURA", "-- Con la RLS desactivada");
+// Reversión segura de A (auditoría integral 2026-10-22): archivo propio.
+// Desactiva la RLS; NUNCA devuelve permisos a anon ni a PUBLIC, y con más de
+// una cuenta retira también a authenticated (sin RLS vería lo de todos).
+const VUELTA_A = leer("docs/activacion/reversion_parte_a.sql");
 const VUELTA_D = vueltaAtras(PARTE_D, "-- VUELTA ATRÁS (una transacción");
 
 const BLOQUES_DIAGNOSTICO = DIAGNOSTICO.split("set transaction read only;").slice(1)
@@ -121,9 +122,12 @@ async function foto(db) {
     return rows;
 }
 
-// Lo que necesitan el panel y el bot: la foto sin anon ni PUBLIC.
+// Lo que necesitan el panel y el bot: la foto sin anon ni PUBLIC. La Parte A
+// retira además TRUNCATE/REFERENCES/TRIGGER a authenticated (TRUNCATE salta
+// la RLS) y la reversión no los devuelve: tampoco cuentan.
 function sinAnon(filas) {
-    const fuera = x => !/^(anon|PUBLIC):/.test(x) && !/:(anon|PUBLIC|-):/.test(x);
+    const fuera = x => !/^(anon|PUBLIC):/.test(x) && !/:(anon|PUBLIC|-):/.test(x)
+        && !/^authenticated:(TRUNCATE|REFERENCES|TRIGGER)$/.test(x);
     return filas.map(f => ({ ...f,
         tabla: (f.tabla || "").split(",").filter(fuera).join(","),
         columnas: (f.columnas || "").split(",").filter(fuera).join(",") }));
@@ -139,9 +143,19 @@ const prueba = (n, fn) => pruebas.push({ n, fn });
 
 // ── 1. Vueltas atrás ─────────────────────────────────────────────────────
 
-prueba("vuelta atrás de A: sin RLS y con los permisos EXACTOS de panel y bot; anon sigue SIN acceso", async () => {
+prueba("vuelta atrás de A con VARIAS cuentas: sin RLS, y ni anon ni otro cliente leen lo ajeno (el panel pierde el acceso directo)", async () => {
     const db = await crearDb();
-    assert.ok(VUELTA_A.includes("disable row level security") && !/grant/i.test(VUELTA_A), "se extrajo el bloque y no concede nada");
+    assert.ok(VUELTA_A.includes("disable row level security") && !/grant/i.test(VUELTA_A), "la reversión no concede nada");
+    await db.exec(PARTE_A);
+    await db.exec(VUELTA_A);
+    assert.ok((await foto(db)).every(f => f.rls === false && !/(anon|authenticated|PUBLIC):/.test(f.tabla || "")), JSON.stringify(await foto(db)));
+    await assert.rejects(como(db, "anon", null, "select * from public.sesiones"), /permission denied/i, "anon NO vuelve a leer");
+    await assert.rejects(como(db, "authenticated", B, `select * from public."5k_15k_reservas_2_cifras"`), /permission denied/i, "B no lee lo de A");
+    assert.strictEqual((await como(db, "service_role", null, "select * from public.sesiones")).length, 2, "el bot sigue");
+});
+
+prueba("vuelta atrás de A con UNA cuenta: sin RLS y con los permisos de panel y bot; anon sigue SIN acceso", async () => {
+    const db = await crearDb(`delete from auth.users where id = '${B}'; delete from public.sesiones where usuario_id = '${B}';`);
     const antes = await foto(db);
     await db.exec(PARTE_A);
     assert.notDeepStrictEqual(await foto(db), antes);
@@ -172,8 +186,8 @@ prueba("vuelta atrás de D: permisos de sesiones idénticos a tras-A (también l
     await como(db, "authenticated", B, `update public.sesiones set activa = true where id = '${SES_B}'`);
 });
 
-prueba("orden de vuelta atrás D -> A devuelve el estado original de panel y bot (anon sigue cerrado)", async () => {
-    const db = await crearDb();
+prueba("orden de vuelta atrás D -> A (una cuenta) devuelve el estado original de panel y bot (anon sigue cerrado)", async () => {
+    const db = await crearDb(`delete from auth.users where id = '${B}'; delete from public.sesiones where usuario_id = '${B}';`);
     const antes = await foto(db);
     await db.exec(PARTE_A); await db.exec(PARTE_D);
     await db.exec(VUELTA_D); await db.exec(VUELTA_A);

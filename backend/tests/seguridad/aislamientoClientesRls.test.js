@@ -276,7 +276,10 @@ prueba("reservas: el flujo legítimo de B sobre lo suyo funciona (pagar, liberar
     const liberada = await como(db, "authenticated", B, `update public.${T5K} set estado = 'libre', comprador = null where numero = '01' and usuario_id = '${B}' returning id`);
     assert.strictEqual(liberada.length, 1);
     await como(db, "authenticated", B, `update public.${T5K} set estado = 'libre' where usuario_id = '${B}'`);
-    await como(db, "authenticated", B, `insert into public.reservas_dos_cifras (numero, estado, usuario_id) values ('00', 'libre', '${B}')`);
+    // La cuadrícula la crea el backend (POST /tablas/preparar -> 027); el
+    // navegador ya no inserta filas (Parte A revisada, permisos mínimos).
+    await assert.rejects(como(db, "authenticated", B, `insert into public.reservas_dos_cifras (numero, estado, usuario_id) values ('00', 'libre', '${B}')`), /row-level security/i);
+    await como(db, "service_role", null, `insert into public.reservas_dos_cifras (numero, estado, usuario_id) values ('00', 'libre', '${B}')`);
 });
 
 prueba("filas sin dueño (usuario_id NULL): invisibles e intocables para A y B; el bot sí las ve", async () => {

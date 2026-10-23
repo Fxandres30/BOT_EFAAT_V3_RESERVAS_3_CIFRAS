@@ -75,8 +75,48 @@ drop policy if exists "panel lee los chats de su bot" on public.mensajes_grupos_
 create policy "panel lee los chats de su bot" on public.mensajes_grupos_sorteos
     for select to authenticated using (cliente_usuario_id = auth.uid());
 
-revoke all on table public.mensajes_grupos_sorteos from anon;
-revoke insert, update, delete on table public.mensajes_grupos_sorteos from authenticated;
+-- anon hereda de PUBLIC: se quitan los dos (auditoría integral, 2026-10-22).
+-- Si la lectura del panel (authenticated) venía de PUBLIC, se concede explícita.
+create temporary table m029_antes on commit drop as
+select has_table_privilege('authenticated', 'public.mensajes_grupos_sorteos', 'SELECT') as auth_lee,
+       has_table_privilege('service_role', 'public.mensajes_grupos_sorteos', 'SELECT') as srv_lee,
+       has_table_privilege('service_role', 'public.mensajes_grupos_sorteos', 'INSERT') as srv_crea,
+       has_table_privilege('service_role', 'public.mensajes_grupos_sorteos', 'UPDATE') as srv_modifica,
+       has_table_privilege('service_role', 'public.mensajes_grupos_sorteos', 'DELETE') as srv_borra;
+revoke all on table public.mensajes_grupos_sorteos from anon, public;
+do $$
+declare
+    a record;
+begin
+    select * into a from m029_antes;
+    if a.auth_lee and not has_table_privilege('authenticated', 'public.mensajes_grupos_sorteos', 'SELECT') then
+        grant select on table public.mensajes_grupos_sorteos to authenticated;
+    end if;
+    if a.srv_lee and not has_table_privilege('service_role', 'public.mensajes_grupos_sorteos', 'SELECT') then
+        grant select on table public.mensajes_grupos_sorteos to service_role;
+    end if;
+    if a.srv_crea and not has_table_privilege('service_role', 'public.mensajes_grupos_sorteos', 'INSERT') then
+        grant insert on table public.mensajes_grupos_sorteos to service_role;
+    end if;
+    if a.srv_modifica and not has_table_privilege('service_role', 'public.mensajes_grupos_sorteos', 'UPDATE') then
+        grant update on table public.mensajes_grupos_sorteos to service_role;
+    end if;
+    if a.srv_borra and not has_table_privilege('service_role', 'public.mensajes_grupos_sorteos', 'DELETE') then
+        grant delete on table public.mensajes_grupos_sorteos to service_role;
+    end if;
+end $$;
+revoke insert, update, delete, truncate, references, trigger on table public.mensajes_grupos_sorteos from authenticated;
+
+do $$
+begin
+    if has_table_privilege('anon', 'public.mensajes_grupos_sorteos', 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE')
+       or has_any_column_privilege('anon', 'public.mensajes_grupos_sorteos', 'SELECT, INSERT, UPDATE') then
+        raise exception '029 abortada: anon conserva acceso a mensajes_grupos_sorteos (¿hereda de otro rol?)';
+    end if;
+    if has_table_privilege('authenticated', 'public.mensajes_grupos_sorteos', 'INSERT, UPDATE, DELETE, TRUNCATE') then
+        raise exception '029 abortada: authenticated conserva escritura en mensajes_grupos_sorteos (¿hereda de otro rol?)';
+    end if;
+end $$;
 
 commit;
 

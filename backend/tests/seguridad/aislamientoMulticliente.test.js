@@ -44,6 +44,14 @@ const M034 = leer("backend/supabase_migrations/034_compradores_por_cliente.sql")
 const PARTE_G = leer("docs/activacion/parte_g_funciones_definer.sql");
 const M035 = leer("backend/supabase_migrations/035_rls_tablas_cliente.sql");
 const LIMPIEZA = leer("docs/activacion/limpieza_sesion_huerfana.sql");
+const REVERSION_A = leer("docs/activacion/reversion_parte_a.sql");
+
+// La B2 lleva el md5 de la función de PRODUCCIÓN (cceca089f72b33a12832eaf6c9f438c5); la de
+// prueba tiene otro cuerpo, así que se sustituye por el suyo.
+async function conMd5(db, sql) {
+    const { rows } = await db.query("select md5(prosrc) m from pg_proc where proname = 'actualizar_compradores_semanales'");
+    return sql.replaceAll("cceca089f72b33a12832eaf6c9f438c5", rows[0].m);
+}
 
 const A = "aaaaaaaa-0000-4000-8000-00000000000a";
 const B = "bbbbbbbb-0000-4000-8000-00000000000b";
@@ -189,7 +197,7 @@ async function activar(db) {
     await aplicarOk(db, PARTE_A, "Parte A");
     await aplicarOk(db, M033, "033");
     await aplicarOk(db, M027, "027");
-    await aplicarOk(db, PARTE_B, "Parte B");
+    await aplicarOk(db, await conMd5(db, PARTE_B), "Parte B");
     await aplicarOk(db, M034, "034");
     await aplicarOk(db, PARTE_G, "Parte G");
     await aplicarOk(db, M035, "035");
@@ -210,13 +218,20 @@ prueba("ESTADO ACTUAL reproducido: anon lee reservas, B lee las de A y B no pued
 });
 
 // ------------------------------------------------------------ Parte A
-prueba("Parte A BLOQUEADA mientras exista la sesión huérfana (y no cambia nada)", async () => {
+prueba("Parte A con la sesión huérfana: se aplica, la CONSERVA (no borra) y la registra; nadie la ve en el panel, el bot sí", async () => {
     const db = await crearDb();
     await aplicarOk(db, M031, "031");
-    const e = await aplicar(db, PARTE_A);
-    assert.ok(e && /Parte A abortada.*sesiones: 1 de cuentas inexistentes/.test(e.message), e && e.message);
-    assert.strictEqual((await db.query(`select relrowsecurity r from pg_class where relname = 'reservas_dos_cifras'`)).rows[0].r, false);
-    assert.strictEqual((await como(db, "anon", null, `select * from public.sesiones`)).length, 3, "nada aplicado");
+    await aplicarOk(db, PARTE_A, "Parte A");
+    for (const u of [A, B]) assert.strictEqual((await como(db, "authenticated", u, `select * from public.sesiones where id = '${SES_H}'`)).length, 0);
+    assert.strictEqual((await como(db, "service_role", null, `select * from public.sesiones where id = '${SES_H}'`)).length, 1);
+    const reg = (await db.query(`select detalle from efaat_admin.cambios_seguridad where accion = 'sesiones_sin_dueno_conservadas'`)).rows;
+    assert.strictEqual(reg.length, 1);
+    assert.deepStrictEqual(reg[0].detalle.ids, [SES_H]);
+    // Reservas de una cuenta inexistente SÍ bloquean (no se asignan por suposición).
+    const db2 = await crearDb();
+    await db2.exec(`insert into public.reservas_dos_cifras (numero, estado, usuario_id) values ('h1', 'libre', '${HUERFANO}')`);
+    const e = await aplicar(db2, PARTE_A);
+    assert.ok(e && /reservas_dos_cifras: 1 de cuentas inexistentes/.test(e.message), e && e.message);
 });
 
 prueba("limpieza de la sesión huérfana: archiva la fila, borra el lease en cascada y no toca a A ni a B", async () => {
@@ -310,8 +325,10 @@ prueba("cuadrículas: B recibe su 00-99 en las 2 tablas con los MISMOS números 
     assert.ok(rA.cuadriculas.every(c => c.estado === "existente"), JSON.stringify(rA));
     const n = (await db.query(`select count(*)::int n from public.${T5K} where numero = '05'`)).rows[0].n;
     assert.strictEqual(n, 2, "el 05 existe una vez por cliente");
-    // Dentro de un mismo cliente sigue siendo único.
-    await assert.rejects(como(db, "authenticated", B, `insert into public.${T5K} (numero, estado, usuario_id) values ('05', 'libre', '${B}')`), /duplicate key|unique/i);
+    // Dentro de un mismo cliente sigue siendo único (incluso para el bot), y
+    // el navegador ya no inserta filas.
+    await assert.rejects(como(db, "service_role", null, `insert into public.${T5K} (numero, estado, usuario_id) values ('05', 'libre', '${B}')`), /duplicate key|unique/i);
+    await assert.rejects(como(db, "authenticated", B, `insert into public.${T5K} (numero, estado, usuario_id) values ('105', 'libre', '${B}')`), /row-level security/i);
 });
 
 prueba("reservas: cada cliente ve solo las suyas; B no lee, modifica, paga, libera ni se apropia de las de A", async () => {
@@ -413,6 +430,7 @@ prueba("Parte G: las definer heredadas y el lease ya no se ejecutan desde el nav
 
 prueba("Parte G aborta si una función invoker ejecutable por el panel llama a una definer que se cierra", async () => {
     const db = await crearDb();
+    await aplicarOk(db, M031, "031");
     await db.exec(`create function public.puente() returns bigint language sql as $$ select public.asignar_numeros_gratis() $$;`);
     const e = await aplicar(db, PARTE_G);
     assert.ok(e && /Parte G abortada.*puente/.test(e.message), e && e.message);
@@ -447,24 +465,29 @@ prueba("035 aborta si una tabla del panel sin RLS tiene filas sin dueño", async
     assert.ok(e && /035 abortada.*variables_globales: 1 filas sin dueño/.test(e.message), e && e.message);
 });
 
-prueba("reversión segura de la Parte A: el panel funciona sin RLS y anon SIGUE sin acceso", async () => {
+prueba("reversión segura de la Parte A: con dos cuentas NI anon NI el otro cliente leen lo ajeno; el bot sigue", async () => {
     const db = await crearDb();
     await activar(db);
-    await db.exec(`begin;
-        alter table public.reservas_dos_cifras disable row level security;
-        alter table public.${T5K} disable row level security;
-        alter table public.eventos_bot disable row level security;
-        alter table public.sesiones disable row level security;
-        commit;`);
-    assert.strictEqual((await como(db, "authenticated", A, `select * from public.${T5K} where usuario_id = '${A}'`)).length, 100);
+    // Lo que hacía la reversión anterior (solo "disable row level security")
+    // dejaba a B leer las 100 reservas de A: se comprueba primero ese hueco.
+    await db.exec(`begin; alter table public.${T5K} disable row level security; commit;`);
+    assert.strictEqual((await como(db, "authenticated", B, `select * from public.${T5K} where usuario_id = '${A}'`)).length, 100, "hueco reproducido");
+    await db.exec(`begin; alter table public.${T5K} enable row level security; commit;`);
+    await aplicarOk(db, REVERSION_A, "reversión A");
+    await assert.rejects(como(db, "authenticated", B, `select * from public.${T5K} where usuario_id = '${A}'`), /permission denied/i);
     await assert.rejects(como(db, "anon", null, `select * from public.${T5K}`), /permission denied/i);
+    assert.strictEqual((await como(db, "service_role", null, `select * from public.${T5K} where usuario_id = '${A}'`)).length, 100);
+    // Volver a aplicar la Parte A restaura el panel aislado.
+    await aplicarOk(db, PARTE_A, "Parte A otra vez");
+    assert.strictEqual((await como(db, "authenticated", A, `select * from public.${T5K}`)).length, 100);
+    assert.strictEqual((await como(db, "authenticated", B, `select * from public.${T5K} where usuario_id = '${A}'`)).length, 0);
 });
 
 prueba("idempotencia: toda la secuencia se puede volver a aplicar sin errores ni cambios en los datos", async () => {
     const db = await crearDb();
     await activar(db);
     const antes = await huella(db, T5K, A);
-    for (const [n, sql] of [["031", M031], ["A", PARTE_A], ["033", M033], ["027", M027], ["034", M034], ["G", PARTE_G], ["035", M035]]) {
+    for (const [n, sql] of [["031", M031], ["A", PARTE_A], ["033", M033], ["027", M027], ["B", await conMd5(db, PARTE_B)], ["034", M034], ["G", PARTE_G], ["035", M035]]) {
         await aplicarOk(db, sql, `${n} (2.ª vez)`);
     }
     assert.deepStrictEqual(await huella(db, T5K, A), antes);

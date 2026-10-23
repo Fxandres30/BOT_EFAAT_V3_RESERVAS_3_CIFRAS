@@ -226,6 +226,8 @@ Toda la secuencia, salvo B1/B2 y C, se ejecutó en un **Postgres 17 local** (cop
 
 ## 2e. Aislamiento multicliente — orden definitivo (2026-10-22) 🔐
 
+> **Sustituida por la sección 2f (auditoría integral, 2026-10-22)**, que corrige las piezas de esta sección y fija el orden definitivo. Se conserva como referencia.
+
 **La Parte A sigue BLOQUEADA** hasta cumplir todas las condiciones de la tabla «Condiciones de la Parte A». Este orden sustituye a los de las secciones 2b, 2c y 2d.
 
 ### Estado real de producción (22/10, catálogo + API)
@@ -340,6 +342,162 @@ Reglas: ventana sin sorteos activos (D0 = 0), un paso por ventana. Si un paso ab
 - dos clientes.
 
 Más las de las secciones 1, 2b y 2c.
+
+## 2f. Auditoría integral y secuencia definitiva (2026-10-22) 🔐
+
+**Este orden sustituye a los de las secciones 2b, 2c, 2d y 2e.** Nada de esta sección está aplicado en producción. Todo está corregido en local y probado:
+
+- en PGlite (Postgres 17 en memoria);
+- en un **PostgreSQL 17 real local**, con un dueño sin superusuario ni `bypassrls` (como `postgres` en Supabase) y con conexiones simultáneas reales.
+
+Ninguna de las dos es la base de producción.
+
+### Qué se puede afirmar y qué no
+
+| Fuente | Qué dice |
+|---|---|
+| **Código local (confirmado)** | Las piezas de esta sección y sus pruebas (ver «Pruebas»). |
+| **Producción, leído antes (22/10, API con service_role, solo GET/HEAD; y lo que el dueño leyó con el diagnóstico)** | Existen 022, la columna de la 028, `reservas_archivo` + `reiniciar_tabla_cliente` (030) y `qr_sesion_publica` (031). No existen 027 ni `configuracion_mensajes` (001). La 026 está a medias. anon lee reservas, sorteos, sesiones y `compradores_semanales`. Hay 1 sesión de una cuenta inexistente. **4 sorteos con `activo` = true o NULL**. `md5(prosrc)` de `actualizar_compradores_semanales()` = `cceca089f72b33a12832eaf6c9f438c5`. |
+| **Producción, NO verificable sin el catálogo** | Políticas y ACL reales; código y md5 de la función heredada del pago; unicidades de `compradores_semanales`; vistas; esquemas expuestos por la API; RLS forzada; si la 030 y la 031 de producción son las versiones locales; columnas NOT NULL sin valor por defecto en las tablas de reservas. Lo da `validacion_final_aislamiento_solo_lectura.sql` (paso 1). Lo que no pueda verificar sale como **BLOQUEO**, nunca como OK. |
+
+### Causas raíz encontradas (todas reproducidas con las versiones anteriores de los archivos)
+
+1. **La reversión de la Parte A reabría los datos a todos los clientes.** Solo desactivaba la RLS, pero `authenticated` conservaba SELECT/UPDATE. Cualquier cuenta, incluida una prueba gratuita, habría leído las reservas, sorteos y sesiones de todos. Corregido en `reversion_parte_a.sql`: con más de una cuenta retira también a `authenticated` (el panel falla cerrado). Reaplicar la Parte A devuelve exactamente lo que la reversión quitó.
+2. **La 035 conservaba cualquier política «con condición».** Una como `using (usuario_id is not null)` dejaba a cada cliente leer lo de todos (reproducido: B leía los contactos de A). Ahora la 035 y la Parte A clasifican cada política con la misma regla:
+   - abierta o solo para anon: se elimina y se registra;
+   - de propietario (`usuario_id = auth.uid()`): se conserva;
+   - restrictiva o con otra condición: **aborta** y la nombra;
+   - la forma «global» (`usuario_id is null or …`) solo se acepta para **leer** `automation_messages`. Para insertar, permitiría a un cliente crear mensajes que ven todos.
+3. **La Parte C y la 029 solo revocaban a anon.** anon hereda de PUBLIC y seguía leyendo. `authenticated` (cualquier cliente) seguía leyendo los ~20 datos personales heredados de la cuenta principal. Ahora se revoca a anon, authenticated (en C) y PUBLIC, con comprobación final, conservando de forma explícita lo que el panel heredaba de PUBLIC.
+4. **La 035 y la Parte C se contradecían.** Las 6 tablas `reservas_2_cifras_*` estaban en las dos listas. Sin `usuario_id`, la 035 abortaba («usuario_id no es uuid»). Ahora solo las trata la C.
+5. **Las vueltas atrás de la B2 y de la C hacían `grant … to anon`.** Ninguna reversión concede ya nada a anon ni a PUBLIC.
+6. **TRUNCATE.** La RLS no lo filtra y `authenticated` lo conservaba (permisos por defecto de Supabase). Se retira, junto con REFERENCES y TRIGGER, en las tablas de cliente.
+7. **Contadores de compradores compartidos por teléfono.** Ahora la 034 hace que la función heredada solo actualice la fila del cliente que cobra; si ese cliente no tenía fila, la función crea una con su dueño. Así, el mismo comprador queda con una fila por cliente, sin reescribir ni desactivar el código heredado. Las filas **históricas** (sin dueño) solo las sigue actualizando el único cliente con actividad cuando se aplicó la 034 (la cuenta principal, que las generó). Ningún otro cliente cambia esos contadores, y nadie los reasigna (probado).
+8. **B2 y 034 cambiaban a ciegas una función cuyo código no se conoce.** Ahora:
+   - la B2 exige el `md5(prosrc)` revisado (`<MD5_FUNCION_HEREDADA>`, sale del diagnóstico);
+   - la 034 comprueba que el cuerpo no cambió desde la B2;
+   - las dos abortan si el dueño de la función no puede escribir con la RLS activa;
+   - la 034 aborta si existe `UNIQUE(whatsapp)`, porque la fila por cliente haría fallar el pago.
+9. **Parte G.** Habría dado acceso desde el navegador a cualquier versión de `qr_sesion_publica`. Ahora exige exactamente la de la 031 (firma, tipo, `search_path` y cuerpo), aborta si falta (sin ella `/conectar` se queda sin QR) y no toca a ciegas las funciones de extensiones.
+10. **Permisos de más en la Parte A.** Creaba «panel crea su tabla» y «panel borra sus sesiones», pero el panel ya no inserta cuadrículas ni borra sesiones (van por el backend). Se eliminan.
+11. **Sesión huérfana.** La Parte A exigía borrarla. Ya no: la conserva intacta (ni borrada ni reasignada) y la registra. El panel siempre filtró por su `usuario_id`, así que nunca la veía, y el bot (service_role) no cambia. La limpieza queda como opción del dueño y solo revisaba sorteos y reservas. Ahora:
+    - busca en el catálogo todas las claves foráneas hacia `sesiones` y las columnas `session_id`/`sesion_id` sin clave (p. ej. `inactividad_*` de la 022), y aborta si alguna la referencia;
+    - bloquea la fila;
+    - archiva también el lease;
+    - tiene una reversión exacta.
+12. **033 sin NOT NULL.** Con `UNIQUE (usuario_id, numero)`, dos filas sin dueño podían repetir número. `usuario_id` pasa a NOT NULL en las 2 tablas físicas (antes se comprueba que hay 0 filas sin dueño).
+13. **Vistas.** Una vista sin `security_invoker` legible desde el navegador saltaría la RLS. La Parte A aborta si existe y el diagnóstico la marca como BLOQUEO.
+14. **Registro `efaat_admin`.** Ahora:
+    - bloque común idéntico en todas las piezas (una prueba lo compara);
+    - RLS activa;
+    - sin permisos ni para service_role, también en su secuencia;
+    - aborta si el esquema pertenece a otro rol o si la API lo expone.
+
+### Archivos
+
+| Archivo | Estado |
+|---|---|
+| `propuesta_rls_tablas_antiguas.sql` (Parte A) | Revisado (causas 1, 2, 6, 10, 13, 14) |
+| `reversion_parte_a.sql` | **Nuevo** |
+| `limpieza_sesion_huerfana.sql` | Revisado (11) |
+| `033_cuadricula_por_cliente.sql` | Revisado (12, 14) |
+| `027_tablas_cliente.sql` | Guardia ajustada a la Parte A revisada; PUBLIC y TRUNCATE fuera de `tablas_cliente` |
+| `parte_b_compradores_semanales.sql` | B2 revisada (5, 8); B1 sin cambios |
+| `034_compradores_por_cliente.sql` | Revisada (7, 8) |
+| `asignacion_compradores_historicos.sql` | **Nuevo**, opcional: asigna las filas históricas a la cuenta principal solo si la evidencia que guardó la 034 muestra un único dueño con actividad. Reversible fila por fila |
+| `parte_g_funciones_definer.sql` | Revisada (9, 14) |
+| `035_rls_tablas_cliente.sql` | Revisada (2, 4, 6, 14); añade `tablas_cliente`, `reservas_auditoria`, `loterias_catalogo_ofrecidas` y `sesiones_lease` |
+| `parte_c_tablas_legado.sql` | Revisada (3, 5) |
+| `029_rls_mensajes_por_cliente.sql` | Revisada (3) |
+| `validacion_final_aislamiento_solo_lectura.sql` | **Nuevo**: semáforo por bloque, una sola consulta de solo lectura |
+
+Las migraciones 027, 029, 033, 034 y 035 constan como **no aplicadas**: se corrigieron en su sitio. La 028, la 030 y la 031 constan en producción y **no se han modificado**.
+
+### Requisitos de despliegue ANTES de la Parte A (paso 3)
+
+El código local ya hace lo siguiente y producción todavía no:
+- `/conectar/<id>` usa `qr_sesion_publica`;
+- crear la cuadrícula va por `POST /tablas/preparar`;
+- pagar, liberar y reservar a mano van por `/api/tablas/numero` (service_role);
+- renombrar envía solo `nombre`;
+- el bot escribe `cliente_usuario_id`.
+
+Si se aplica la Parte A con el panel antiguo:
+- un cliente nuevo no puede crear su cuadrícula;
+- pagar desde el panel antiguo sigue funcionando (actualiza sus propias filas);
+- `/conectar` deja de mostrar el QR a quien no tenga sesión.
+
+Hay que desplegar **juntos** backend y panel, con `SESSIONS_API_TOKEN` en el VPS igual a `BOT_API_TOKEN` en Vercel (sección 3).
+
+### Orden exacto
+
+Reglas:
+- ventana sin sorteos **activos**: `activo = true`, los que atienden el bot y el worker (`.eq("activo", true)`). Los de `activo` NULL son inertes para el bot y no bloquean. Solo la 030 los trata como activos, para no reiniciar su tabla. No se cambia ningún estado a mano;
+- un paso por ventana;
+- antes y después de cada paso, `validacion_final_aislamiento_solo_lectura.sql`, guardando el resultado;
+- si un paso aborta, **no se sigue**.
+
+| # | Paso | Requisito | Antes (debe cumplirse) | Después (debe cumplirse) | Reversión segura |
+|---|---|---|---|---|---|
+| 0 | Commit en rama, revisión y copia de seguridad de la base | — | — | Copia descargada | — |
+| 1 | Diagnóstico: `validacion_final_aislamiento_solo_lectura.sql` y `sorteos_pendientes_solo_lectura.sql`. En **cada** bot: `node backend/scripts/verificarRolSupabase.js` = `service_role`. Logs → API: sin llamadas anon salvo `/conectar` y `rpc/qr_sesion_publica`. Dashboard → API → Exposed schemas: **sin** `efaat_admin` | — | — | Guardado. Revisar `politicas` (ninguna `abortar`), `exposicion` (ninguna `desconocida`) y `B_funcion_heredada` (`md5_cuerpo` = `cceca089…`). Sorteos: `esperar_cierre` bloquea la ventana; `inerte_para_el_bot` (activo NULL) no; `revisar_dueno` bloquea la Parte A | Solo lectura |
+| 2 | Si `funciones.qr_sesion_publica_es_031 = false`: reaplicar la 031 local. Si `030_version_con_lock_share = false`: reaplicar la 030 local | 1 | — | `es_031 = true` | `drop function` / la de la 030 |
+| 3 | Desplegar **juntos** backend y panel | 1 | Tokens comprobados (sección 3) | `/conectar/<id>` sin sesión muestra el QR. Panel, pagos y bot como antes. Chats vacíos hasta el paso 13 (esperado) | Commit anterior en los dos |
+| 4 | (**Opcional**, decisión del dueño) `limpieza_sesion_huerfana.sql` (sustituir `<ID_SESION>`). Ya **no** es requisito de la Parte A: la sesión huérfana se conserva intacta e invisible para todos los paneles | 3 | 1 sesión huérfana | `precondiciones.filas_sin_dueno_o_huerfanas.sesiones` en 0 | Bloque «Reversión» del archivo |
+| 5 | **Parte A** | 3 | `precondiciones = OK` (0 sorteos con `activo = true`; reservas y sorteos con dueño existente) | V1–V6 (`validacion_parte_a_solo_lectura.sql`); `politicas = OK`. anon: permiso denegado en las 4 tablas. Panel con sesión: igual. Pago (backend) y pago por sticker de prueba. `select detalle from efaat_admin.cambios_seguridad where accion = 'sesiones_sin_dueno_conservadas'` lista la huérfana | `reversion_parte_a.sql` |
+| 6 | **Parte D** | 5 | — | Renombrar y «Nueva sesión» funcionan; activar o eliminar por el backend | Su bloque «Vuelta atrás» |
+| 7 | `033_cuadricula_por_cliente.sql` | 5 | `unicidades_sin_usuario` con `UNIQUE(numero)` | `pasos.033 = true`. Las cuadrículas no cambian | Bloque «Reversión» (solo si ningún otro cliente tiene cuadrícula) |
+| 8 | `027_tablas_cliente.sql` | 5 y 7 | `pasos.027 = false` | Cuenta principal: `existente, existente`. Cuenta de prueba: `creada, creada` | Bloque «Reversión» de la 027 |
+| 9 | Parte B: B1 y después B2 (ya lleva el md5 de producción `cceca089f72b33a12832eaf6c9f438c5`; si el cuerpo cambió, aborta sin tocar nada) | 5 | `B_funcion_heredada` con 1 función y ese md5 | `pasos.b2 = true`; anon y clientes sin acceso a `compradores_semanales`; pagos como antes | B2: restaurar `search_path` (nunca grant a anon). B1: su bloque |
+| 10 | `034_compradores_por_cliente.sql` y, si el dueño lo decide, `asignacion_compradores_historicos.sql` | 9 | `unicidades_compradores` sin `UNIQUE(whatsapp)` y `usa_on_conflict = false` (si no, la 034 aborta o no separa: revisar el código heredado) | Compras nuevas con dueño; mismo teléfono en dos clientes = dos filas; `historico_actualizable_por` = cuenta principal | Bloques «Reversión» (no reabren la tabla) |
+| 11 | **Parte G** (incluye la F) | 1 (todos los bots con service_role) y 2 | `funciones.qr_sesion_publica_es_031 = true` | `funciones = OK`. El bot conecta y renueva el lease; `/conectar` sin sesión muestra el QR | Conceder de nuevo solo la función concreta que alguien legítimo necesite, al rol de esa aplicación (ACL previa en `efaat_admin`) |
+| 12 | `035_rls_tablas_cliente.sql` y después la **Parte C** (C1, y C2 si se decide) | 5 | `politicas` sin `abortar` | `exposicion = OK` (salvo chats hasta el 13). Con dos cuentas: Automatización, Mensajes, Plantillas, Variables, Diseños, Stickers, Grupos y Contactos, cada una solo lo suyo (+ mensajes globales) | 035: crear la política de propietario que falte (no desactivar la RLS). C: ver su bloque |
+| 13 | (Opcional) relleno R1 → R2 y después `029_rls_mensajes_por_cliente.sql` | 3, con ≥ 1 h de tráfico del bot nuevo | `pasos.028 = true` | Cada panel ve solo los chats de su bot | Bloque «Reversión» de la 029 |
+| 14 | Validación final + prueba con dos cuentas reales | Todo | — | Los 4 bloques en **OK**. B no ve nada de A en Tablas, Eventos, Sesiones, Chats, Contactos ni Grupos. B tiene su 00–99. Reservar, pagar y liberar el 13 de B no cambia nada de A | Revertir el último paso |
+
+**Abortos seguros comprobados** (no cambian nada):
+- 027 sin la Parte A ni la 033;
+- 034 sin la B2, con el cuerpo cambiado o con `UNIQUE(whatsapp)`;
+- G sin la 031 o con otra versión;
+- D sin la A;
+- A con reservas o sorteos de una cuenta inexistente (o sin dueño), con una política restrictiva, desconocida o de propietario para una operación que el panel no hace, o con una vista que salta la RLS;
+- 033 con filas sin dueño;
+- 035 con una política que no aísla;
+- limpieza si algo referencia la sesión;
+- B2 sin el md5 o con un dueño que no puede escribir con la RLS.
+
+### Lo que sigue pendiente aunque todo se aplique
+
+- **Código real de la función heredada del pago.** La separación por cliente de la 034 supone que la función «busca por teléfono y, si no encuentra, inserta». Si usa `ON CONFLICT`, la 034 aborta. Si elige la fila por id, una compra de un cliente sin fila propia no suma en ninguna (nunca en la de otro cliente). Se ve en `B_funcion_heredada.codigo`.
+- **Permisos por defecto de Supabase.** Toda tabla o función nueva nace abierta a anon y authenticated. No se han cambiado: afectaría a todos los módulos. Hay que repetir la validación final tras cada migración futura.
+- **Tiempo real de `/conectar`** sin sesión: deja de recibir cambios tras la Parte A. La página ya consulta la RPC cada segundo, así que el QR se sigue actualizando.
+- **Reiniciar la tabla desde el panel** sigue actualizando directamente las filas propias (también las pagadas). No afecta a otros clientes, pero no pasa por las guardias del backend.
+- **No revisado:** Storage (buckets) y funciones en esquemas distintos de `public`.
+- **`configuracion_mensajes`** (001) no existe en producción: esa pantalla falla con o sin aislamiento.
+
+### Pruebas
+
+| Prueba | Motor | Resultado |
+|---|---|---|
+| `seguridad/auditoriaIntegral.test.js` (nueva) | PostgreSQL 17 real local, dueño sin superusuario | 26/26 |
+| `seguridad/auditoriaIntegral.test.js` (nueva) | PGlite | 25/25 (+1 solo con servidor real: concurrencia) |
+| `seguridad/aislamientoMulticliente.test.js` | PGlite | 21/21 (reversión segura nueva) |
+| `seguridad/aislamientoClientesRls.test.js` | PGlite | 19/19 |
+| `seguridad/revisionActivacionRls.test.js` | PGlite | 17/17 (reversión con 1 y 2 cuentas) |
+| `seguridad/migracion027.test.js` | PGlite | 16/16 |
+| `seguridad/migracion028y029.test.js` | PGlite | 8/8 |
+| `sorteos/parteBCompradores.test.js` | PGlite | 12/12 (md5, dueño) |
+| `sorteos/propuestaRls.test.js` | PGlite | 9/9 |
+| `migracion030`, `migracion031`, `parteFLease` | PGlite | 14/14, 4/4, 15/15 (sin cambios) |
+| Regresión: todas las suites de `backend/tests` y `frontend/tests` salvo e2e (108 archivos) | — | 107 pasan. Falla `eventos/cierrePorPagos.test.js` 6a, que es ajena: compara un archivo con `git show HEAD:` desde antes de que ese cambio se incorporara a un commit |
+| Panel: `tsc --noEmit`, `npm run build` y ESLint | — | TypeScript sin errores; build correcto. ESLint: 11 errores y 7 avisos **previos** (no hay ningún cambio en `frontend/`) |
+
+Servidor real:
+```
+EFAAT_PG_ADMIN_URL=postgres://postgres@127.0.0.1:<puerto>/postgres PG_MODULE=<carpeta>/node_modules/pg \
+    node backend/tests/seguridad/auditoriaIntegral.test.js
+```
+La prueba se niega a ejecutarse si la URL no es local.
 
 ## 3. Variables de entorno (en **cada** instancia: VPS y LOCAL)
 

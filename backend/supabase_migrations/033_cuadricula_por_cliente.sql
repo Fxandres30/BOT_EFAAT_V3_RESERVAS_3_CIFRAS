@@ -21,6 +21,7 @@
 --   3. Quita las restricciones o índices ÚNICOS cuyas columnas son
 --      exactamente (numero). Su definición queda en
 --      efaat_admin.cambios_seguridad para la reversión.
+--   4. usuario_id pasa a NOT NULL (0 filas sin dueño, comprobado en 1).
 --   No toca filas: no borra, no reinicia, no mueve reservas ni pagos.
 --
 -- Código dependiente (revisado 2026-10-22): ningún upsert/onConflict usa
@@ -38,8 +39,12 @@ begin;
 
 set local lock_timeout = '5s';
 
+-- >>> efaat_admin (bloque común: idéntico en todas las piezas) >>>
+-- Registro de lo que cada pieza elimina o concede (respaldo para revertir).
+-- Esquema fuera de la API: PostgREST solo publica "public". Nadie salvo el
+-- dueño (postgres) lo usa: ni anon, ni authenticated, ni service_role.
 create schema if not exists efaat_admin;
-revoke all on schema efaat_admin from public, anon, authenticated;
+revoke all on schema efaat_admin from public, anon, authenticated, service_role;
 create table if not exists efaat_admin.cambios_seguridad (
     id bigserial primary key,
     paso text not null,
@@ -48,7 +53,31 @@ create table if not exists efaat_admin.cambios_seguridad (
     detalle jsonb,
     en timestamptz not null default now()
 );
-revoke all on table efaat_admin.cambios_seguridad from public, anon, authenticated;
+alter table efaat_admin.cambios_seguridad enable row level security;
+revoke all on table efaat_admin.cambios_seguridad from public, anon, authenticated, service_role;
+do $$
+declare
+    seq text := pg_get_serial_sequence('efaat_admin.cambios_seguridad', 'id');
+    r text;
+begin
+    if (select nspowner from pg_namespace where nspname = 'efaat_admin') <> (select oid from pg_roles where rolname = current_user) then
+        raise exception 'efaat_admin pertenece a otro rol: revisarlo antes de seguir';
+    end if;
+    if seq is not null then
+        execute format('revoke all on sequence %s from public, anon, authenticated, service_role', seq);
+    end if;
+    if exists (select 1 from pg_roles x cross join lateral unnest(coalesce(x.rolconfig, '{}'::text[])) c
+               where x.rolname = 'authenticator' and c ilike 'pgrst.db_schemas=%efaat_admin%') then
+        raise exception 'efaat_admin está expuesto por la API (pgrst.db_schemas): quitarlo antes de seguir';
+    end if;
+    foreach r in array array['anon', 'authenticated', 'service_role'] loop
+        if has_schema_privilege(r, 'efaat_admin', 'USAGE')
+           or has_table_privilege(r, 'efaat_admin.cambios_seguridad', 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE') then
+            raise exception 'efaat_admin.cambios_seguridad accesible para %', r;
+        end if;
+    end loop;
+end $$;
+-- <<< efaat_admin <<<
 
 do $$
 declare
@@ -154,6 +183,15 @@ begin
             raise notice '033: eliminada la unicidad global % de %', coalesce(u.conname, u.indice), t;
         end loop;
 
+        -- 4. Sin dueño no hay unicidad: con usuario_id NULL dos filas podrían
+        -- repetir número. Ya se comprobó que no hay ninguna; desde aquí la base
+        -- rechaza cualquier fila nueva sin dueño (el bot ya las rechaza).
+        if exists (select 1 from pg_attribute where attrelid = rel and attnum = att_usuario and not attnotnull) then
+            execute format('alter table public.%I alter column usuario_id set not null', t);
+            insert into efaat_admin.cambios_seguridad (paso, objeto, accion, detalle)
+            values ('033', t, 'usuario_id_not_null', jsonb_build_object('antes', 'nullable'));
+        end if;
+
     end loop;
 end $$;
 
@@ -181,6 +219,9 @@ commit;
 --               if n > 0 then raise exception 'Reversión imposible: % ya tiene números de varios clientes', t; end if;
 --               execute format('alter table public.%I add constraint %I unique (numero)', t, t || '_numero_key');
 --               execute format('alter table public.%I drop constraint if exists %I', t, left(t || '_usuario_numero_key', 63));
+--           end if;
+--           if exists (select 1 from efaat_admin.cambios_seguridad where paso = '033' and objeto = t and accion = 'usuario_id_not_null') then
+--               execute format('alter table public.%I alter column usuario_id drop not null', t);
 --           end if;
 --       end loop;
 --   end $$;
