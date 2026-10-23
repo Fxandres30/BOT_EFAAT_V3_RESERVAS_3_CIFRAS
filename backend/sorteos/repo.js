@@ -243,10 +243,21 @@ async function marcarGrupo(usuarioId, filaId, cambios) {
     return resultado(true, error);
 }
 
+// Estados de un sorteo programado cuya fila de eventos_bot ya puede existir.
+const ESTADOS_CON_EVENTO = ["publicando", "publicado", "publicado_parcial", "fallido"];
+
 // ¿Esta fila de eventos_bot nació de un sorteo programado vigente? Lo usa
 // el detector para no reemplazar un sorteo manual activo.
-async function esEventoDeSorteoProgramado(eventoBotId) {
+//
+// `evento`: la fila (o solo su id, como antes). Con la fila se reconoce por
+// su IDENTIDAD en sorteos_programados del mismo cliente, no solo por el
+// enlace evento_bot_id de un grupo en estado 'publicado': ese enlace se
+// escribe DESPUÉS del envío y un anuncio con resultado incierto deja el
+// grupo en 'requiere_revision'. En ambos casos el anuncio ya puede estar en
+// el grupo y volver a leerse.
+async function esEventoDeSorteoProgramado(evento) {
 
+    const eventoBotId = typeof evento === "object" ? evento?.id : evento;
     if (!eventoBotId) return false;
 
     // La detección de sorteos NUNCA puede fallar por esta consulta auxiliar:
@@ -255,11 +266,20 @@ async function esEventoDeSorteoProgramado(eventoBotId) {
     try {
 
         const { data, error } = await supabase.from("sorteos_programados_grupos")
-            .select("id, estado").eq("evento_bot_id", eventoBotId).eq("estado", "publicado").limit(1);
+            .select("id, estado").eq("evento_bot_id", eventoBotId).neq("estado", "cancelado").limit(1);
 
         if (error) return false;
+        if ((data || []).length > 0) return true;
 
-        return (data || []).length > 0;
+        if (typeof evento !== "object" || !evento?.usuario_id || !evento?.identidad_evento_real) return false;
+
+        const porIdentidad = await supabase.from("sorteos_programados")
+            .select("id").eq("usuario_id", evento.usuario_id).eq("identidad_evento_real", evento.identidad_evento_real)
+            .in("estado", ESTADOS_CON_EVENTO).limit(1);
+
+        if (porIdentidad.error) return false;
+
+        return (porIdentidad.data || []).length > 0;
 
     } catch (err) {
 

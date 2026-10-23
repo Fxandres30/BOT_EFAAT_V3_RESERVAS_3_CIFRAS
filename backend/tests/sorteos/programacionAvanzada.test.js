@@ -52,6 +52,7 @@ const { guardarEvento } = require(r("bot/funciones/eventos/guardarEvento.js"));
 const { consultarEvento } = require(r("bot/funciones/eventos/consultarEvento.js"));
 const { abrirGrupo } = require(r("bot/funciones/eventos/grupos/abrirGrupo.js"));
 const { actualizarEvento } = require(r("bot/funciones/reservas/actualizarEvento.js"));
+const { depsCompartir } = require("./compartirSimulado");
 
 // 15/10 10:00 Colombia. Se publica el 15/10 a las 20:00; el sorteo es el 16/10.
 const T0 = new Date("2026-10-15T15:00:00Z");
@@ -122,15 +123,15 @@ function entrada(extra = {}) {
 
 function deps() {
     const enviados = [];
-    return {
-        enviados,
-        d: {
-            supabase: { from: (t) => fake.client.from(t) },
-            guardarEvento, consultarEvento, abrirGrupo, ejecutarUnaVez, actualizarEvento,
-            puedeActuar: () => true,
-            sendMessage: async ({ jid, text }) => { enviados.push({ jid, text }); }
-        }
+    const d = {
+        supabase: { from: (t) => fake.client.from(t) },
+        guardarEvento, consultarEvento, abrirGrupo, ejecutarUnaVez, actualizarEvento,
+        puedeActuar: () => true,
+        sendMessage: async ({ jid, text }) => { enviados.push({ jid, text }); }
     };
+    // El anuncio sale por «Compartir» (imagen + pie) hacia el mismo registro.
+    Object.assign(d, depsCompartir(() => d.sendMessage));
+    return { enviados, d };
 }
 
 const sock = (usuarioId) => ({

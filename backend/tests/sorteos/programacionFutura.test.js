@@ -47,6 +47,7 @@ const { guardarEvento } = require(r("bot/funciones/eventos/guardarEvento.js"));
 const { consultarEvento } = require(r("bot/funciones/eventos/consultarEvento.js"));
 const { abrirGrupo } = require(r("bot/funciones/eventos/grupos/abrirGrupo.js"));
 const { actualizarEvento } = require(r("bot/funciones/reservas/actualizarEvento.js"));
+const { depsCompartir } = require("./compartirSimulado");
 
 // Hoy: 15/10 10:00 Colombia. El sorteo futuro se publica el 22/10 08:00
 // (siete días después) y se juega ese día a las 22:30 (cierre 22:26).
@@ -115,15 +116,15 @@ function entrada(extra = {}) {
 
 function deps() {
     const enviados = [];
-    return {
-        enviados,
-        d: {
-            supabase: { from: (t) => fake.client.from(t) },
-            guardarEvento, consultarEvento, abrirGrupo, ejecutarUnaVez, actualizarEvento,
-            puedeActuar: () => true,
-            sendMessage: async ({ jid, text }) => { enviados.push({ jid, text }); }
-        }
+    const d = {
+        supabase: { from: (t) => fake.client.from(t) },
+        guardarEvento, consultarEvento, abrirGrupo, ejecutarUnaVez, actualizarEvento,
+        puedeActuar: () => true,
+        sendMessage: async ({ jid, text }) => { enviados.push({ jid, text }); }
     };
+    // El anuncio sale por «Compartir» (imagen + pie) hacia el mismo registro.
+    Object.assign(d, depsCompartir(() => d.sendMessage));
+    return { enviados, d };
 }
 
 const sock = (usuarioId = A) => ({

@@ -255,8 +255,9 @@ async function detectarEvento(ctx) {
         // El evento activo de este grupo nació de un sorteo programado (con
         // su configuración, cuentas y mensajes revisados y confirmados por
         // el administrador). Un anuncio escrito en el grupo nunca lo
-        // reemplaza ni lo reabre: se trata como un re-anuncio.
-        if (eventoAnterior?.activo && await esEventoDeSorteoProgramado(eventoAnterior.id)) {
+        // reemplaza ni lo reabre: se trata como un re-anuncio. Se reconoce
+        // por su identidad, aunque el envío del anuncio quedara incierto.
+        if (eventoAnterior?.activo && await esEventoDeSorteoProgramado(eventoAnterior)) {
 
             console.log(`⏭️ Anuncio detectado en un grupo con un sorteo programado activo (${eventoAnterior.nombre_evento} ${eventoAnterior.hora_fin}) — no se reemplaza.`);
 

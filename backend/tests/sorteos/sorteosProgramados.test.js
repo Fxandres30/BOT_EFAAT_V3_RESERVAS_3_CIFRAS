@@ -38,6 +38,7 @@ const { guardarEvento } = require(r("bot/funciones/eventos/guardarEvento.js"));
 const { consultarEvento } = require(r("bot/funciones/eventos/consultarEvento.js"));
 const { abrirGrupo } = require(r("bot/funciones/eventos/grupos/abrirGrupo.js"));
 const { actualizarEvento } = require(r("bot/funciones/reservas/actualizarEvento.js"));
+const { depsCompartir } = require("./compartirSimulado");
 const { workerEventos } = require(r("bot/funciones/eventos/workers/workerEventos.js"));
 
 // --------------------------------------------------------------- tiempo ---
@@ -111,18 +112,18 @@ function crearSock(usuarioId = A, { falla = new Set() } = {}) {
 // Dependencias del publicador: todo real salvo el envío (espía).
 function deps({ fallaEnvio = () => false } = {}) {
     const enviados = [];
-    return {
-        enviados,
-        d: {
-            supabase: { from: (t) => fake.client.from(t) },
-            guardarEvento, consultarEvento, abrirGrupo, ejecutarUnaVez, actualizarEvento,
-            puedeActuar: () => true,
-            sendMessage: async ({ jid, text }) => {
-                if (fallaEnvio(jid)) throw new Error("Connection Closed (simulado)");
-                enviados.push({ jid, text });
-            }
+    const d = {
+        supabase: { from: (t) => fake.client.from(t) },
+        guardarEvento, consultarEvento, abrirGrupo, ejecutarUnaVez, actualizarEvento,
+        puedeActuar: () => true,
+        sendMessage: async ({ jid, text }) => {
+            if (fallaEnvio(jid)) throw new Error("Connection Closed (simulado)");
+            enviados.push({ jid, text });
         }
     };
+    // El anuncio sale por «Compartir» (imagen + pie) hacia el mismo registro.
+    Object.assign(d, depsCompartir(() => d.sendMessage));
+    return { enviados, d };
 }
 
 async function creadoYConfirmado(extra = {}, usuario = A) {

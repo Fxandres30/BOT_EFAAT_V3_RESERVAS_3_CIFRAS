@@ -84,6 +84,7 @@ const { guardarEvento } = require(r("bot/funciones/eventos/guardarEvento.js"));
 const { consultarEvento, consultarEventoDelSorteo } = require(r("bot/funciones/eventos/consultarEvento.js"));
 const { abrirGrupo } = require(r("bot/funciones/eventos/grupos/abrirGrupo.js"));
 const { actualizarEvento } = require(r("bot/funciones/reservas/actualizarEvento.js"));
+const { depsCompartir } = require("../sorteos/compartirSimulado");
 const { reservarNumeros } = require(r("bot/funciones/reservas/reservarNumeros.js"));
 const { marcarReservasPagadasPorAdmin } = require(r("bot/funciones/pagos/marcarReservasPagadasPorAdmin.js"));
 const { consultarDisponibilidad } = require(r("bot/funciones/consultas/consultarDisponibilidad.js"));
@@ -183,12 +184,16 @@ async function programar(datos = entrada(), { usuario = A, reinicio } = {}) {
     return conf.data;
 }
 
-const deps = () => ({
-    supabase: { from: (t) => fake.client.from(t) },
-    guardarEvento, consultarEventoDelSorteo, abrirGrupo, ejecutarUnaVez, actualizarEvento,
-    puedeActuar: () => true,
-    sendMessage: async () => { envios++; }
-});
+const deps = () => {
+    const d = {
+        supabase: { from: (t) => fake.client.from(t) },
+        guardarEvento, consultarEventoDelSorteo, abrirGrupo, ejecutarUnaVez, actualizarEvento,
+        puedeActuar: () => true,
+        sendMessage: async () => { envios++; }
+    };
+    // El anuncio sale por «Compartir» (imagen + pie) hacia el mismo contador.
+    return Object.assign(d, depsCompartir(() => d.sendMessage));
+};
 
 const sock = (u = A) => ({
     context: { usuarioId: u, sessionId: `ses-${u.slice(0, 4)}`, telefono: "573000000000" },

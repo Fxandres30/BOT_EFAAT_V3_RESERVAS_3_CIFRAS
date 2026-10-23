@@ -5,7 +5,12 @@
 //   1. PUBLICA los sorteos confirmados cuya hora llegó, grupo por grupo:
 //      guarda el evento con guardarEvento.js (la MISMA fila de eventos_bot
 //      que crea el detector: reservas, pagos, cierre automático y contadores
-//      funcionan igual), abre el grupo y envía el anuncio.
+//      funcionan igual), abre el grupo y lo COMPARTE con las mismas
+//      funciones del botón «Compartir» en el servidor: la imagen de su tabla
+//      con su diseño (compartirTabla.capturarImagenTabla), su anuncio como
+//      pie (destinosCompartir.textoParaCompartir) y el envío protegido
+//      contra duplicados (compartirTabla.compartirEnGrupos). Sin imagen no
+//      se publica: nunca se envía solo el texto.
 //   2. Envía los RECORDATORIOS y el AVISO DE CIERRE configurados.
 //   3. Libera reservas vencidas SOLO si el sorteo lo activó explícitamente.
 //
@@ -24,7 +29,7 @@
 
 const repo = require("./repo");
 const { revisarTabla, revisarGrupo } = require("./disponibilidad");
-const { mensajePublicacion, mensajeRecordatorio, mensajeAvisoCierre } = require("./mensajes");
+const { mensajeRecordatorio, mensajeAvisoCierre } = require("./mensajes");
 const { partesBogota, instanteBogota, fechaSorteoDe, identidadDelSorteo } = require("./validar");
 const { decidirRecordatoriosSegunEstado } = require("../automation/eventRules");
 const { leerEstadoParaRecordatorios } = require("../automation/repo/estadoSorteo");
@@ -63,6 +68,12 @@ function dependenciasReales() {
         consultarEventoDelSorteo: require("../bot/funciones/eventos/consultarEvento").consultarEventoDelSorteo,
         abrirGrupo: require("../bot/funciones/eventos/grupos/abrirGrupo").abrirGrupo,
         sendMessage: require("../services/baileys/send").sendMessage,
+        // «Compartir» en el servidor (routes/tablas.js): imagen de la tabla
+        // del precio con el diseño guardado en el sorteo, texto del anuncio y
+        // envío de imagen + pie con ExecutionGuard.
+        capturarImagen: require("../services/compartirTabla").capturarImagenTabla,
+        textoParaCompartir: require("../services/destinosCompartir").textoParaCompartir,
+        compartirEnGrupos: require("../services/compartirTabla").compartirEnGrupos,
         ejecutarUnaVez: require("../automation/executionGuard").ejecutarUnaVez,
         actualizarEvento: require("../bot/funciones/reservas/actualizarEvento").actualizarEvento,
         puedeActuar: require("../services/baileys/propiedadSesion").puedeActuar,
@@ -108,6 +119,15 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
     }
     if (rg.bloqueo) return { estado: rg.tipo === "error_lectura" ? "fallido" : "requiere_revision", ultimo_error: rg.bloqueo };
 
+    // El evento usa la tabla GUARDADA en el sorteo, y la imagen (como
+    // «Compartir») la tabla configurada HOY para ese precio: deben ser la
+    // misma. Si la configuración cambió desde que se programó, no se publica.
+    const tablas = deps.tablasCliente || require("../bot/funciones/eventos/tablasCliente");
+    const confPrecio = await tablas.obtenerConfiguracionCliente(usuarioId, config.valor);
+    if (!confPrecio || confPrecio.tabla !== sorteo.tabla) {
+        return { estado: "requiere_revision", ultimo_error: `La tabla configurada para $${config.valor} ya no es la del sorteo (${sorteo.tabla}); no se publicó. Revisa la configuración de Tablas o vuelve a programar el sorteo.` };
+    }
+
     const rt = await revisarTabla({ usuarioId, tabla: sorteo.tabla, cifras: sorteo.cifras, cantidad: sorteo.cantidad_numeros, identidad: sorteo.identidad_evento_real });
     if (rt.bloqueos.length) return { estado: "requiere_revision", ultimo_error: rt.bloqueos.join(" ") };
 
@@ -148,24 +168,52 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
     // (anticipadas desde el panel); la fila nueva nace en cero.
     try { if (deps.actualizarEvento) await deps.actualizarEvento(guardado); } catch { /* best-effort */ }
 
-    // Si WhatsApp no confirma la apertura, el worker de eventos la reintenta
-    // (abierto=false, mismo mecanismo que la detección).
-    const abierto = await deps.abrirGrupo({ sock, grupoId });
-    if (!abierto) await deps.supabase.from("eventos_bot").update({ abierto: false }).eq("id", guardado.id);
-
-    const { texto } = mensajePublicacion(config, sorteo.cuentas_snapshot, { fecha: fechaSorteo });
-
-    const envio = await deps.ejecutarUnaVez({
-        claveIdempotencia: `sorteo:${sorteo.id}:grupo:${grupoId}:publicacion:${Number(grupo.reintentos_manuales) || 0}`,
-        grupoId,
-        usuarioId,
-        tipoAccion: "SORTEO_PUBLICACION",
-        ejecutar: () => deps.sendMessage({ sock, jid: grupoId, text: texto })
-    });
-
     const base = { evento_bot_id: guardado.id };
 
-    if (envio.ejecutada || envio.motivo === "ya_ok") {
+    // Lo que publica «Compartir» para este sorteo: la imagen de la tabla del
+    // precio con el diseño guardado en el sorteo (por su evento) y el anuncio
+    // del sorteo como pie. La imagen es obligatoria: si no se puede generar,
+    // no se abre el grupo ni se envía nada; se reintenta.
+    let imagen;
+    try {
+        imagen = await deps.capturarImagen(Number(config.valor), usuarioId, guardado.id);
+    } catch (err) {
+        return { ...base, estado: "fallido", ultimo_error: `No se pudo generar la imagen de la tabla (${err?.message || err}); no se envió nada. Se reintentará.` };
+    }
+
+    const texto = await deps.textoParaCompartir(usuarioId, guardado);
+    if (texto?.origen !== "sorteo" || !texto.texto) {
+        return { ...base, estado: "fallido", ultimo_error: "No se pudo preparar el texto del anuncio del sorteo; no se envió nada. Se reintentará." };
+    }
+
+    // Sin el grupo abierto los clientes no pueden reservar: el anuncio no se
+    // envía y el grupo no cuenta como publicado. Se reintenta (misma fila,
+    // por identidad); entretanto el worker de eventos también intenta
+    // abrirlo (abierto=false, mismo mecanismo que la detección).
+    const abierto = await deps.abrirGrupo({ sock, grupoId });
+    if (!abierto) {
+        await deps.supabase.from("eventos_bot").update({ abierto: false }).eq("id", guardado.id);
+        return { ...base, estado: "fallido", ultimo_error: "WhatsApp no confirmó la apertura del grupo: no se envió el anuncio. Se reintentará." };
+    }
+
+    // Solicitud FIJA por sorteo, grupo y reintento manual: los reintentos
+    // automáticos usan la misma clave del ExecutionGuard y nunca duplican el
+    // anuncio; solo el administrador abre una nueva (reintentos_manuales).
+    const r = await deps.compartirEnGrupos({
+        evento: guardado,
+        sock,
+        grupos: [{ grupo_id: grupoId, nombre: guardado.grupo_nombre || null }],
+        caption: texto.texto,
+        solicitudId: `sorteo-${sorteo.id}-publicacion-${Number(grupo.reintentos_manuales) || 0}`,
+        imagen
+    });
+
+    // Rechazado antes de enviar (sin sesión, imagen inválida...).
+    if (!r?.ok) return { ...base, estado: "fallido", ultimo_error: `No se envió el anuncio (${r?.motivo || "error"}); se reintentará.` };
+
+    const envio = r.resultados[0] || { estado: "fallido", motivo: "sin_resultado" };
+
+    if (envio.estado === "enviado" || envio.estado === "ya_enviado") {
         return { ...base, estado: "publicado", version_publicada: sorteo.version, publicado_en: ahora.toISOString(), ultimo_error: null };
     }
 
@@ -180,7 +228,7 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
         ...base,
         estado: "requiere_revision",
         ultimo_error: envio.motivo === "fallo_ejecucion"
-            ? `El anuncio no se pudo enviar: ${envio.error?.message || envio.error}`
+            ? `El anuncio no se pudo enviar: ${envio.error}`
             : `Estado del anuncio incierto (${envio.motivo}); revisa el grupo antes de reintentar.`
     };
 

@@ -92,6 +92,7 @@ const { guardarEvento } = require(r("bot/funciones/eventos/guardarEvento.js"));
 const { consultarEvento, consultarEventoDelSorteo } = require(r("bot/funciones/eventos/consultarEvento.js"));
 const { abrirGrupo } = require(r("bot/funciones/eventos/grupos/abrirGrupo.js"));
 const { actualizarEvento } = require(r("bot/funciones/reservas/actualizarEvento.js"));
+const { depsCompartir } = require("./compartirSimulado");
 const { reservarNumeros } = require(r("bot/funciones/reservas/reservarNumeros.js"));
 const { marcarReservasPagadasPorAdmin } = require(r("bot/funciones/pagos/marcarReservasPagadasPorAdmin.js"));
 const { consultarDisponibilidad } = require(r("bot/funciones/consultas/consultarDisponibilidad.js"));
@@ -174,16 +175,16 @@ function entrada(extra = {}) {
 
 function deps(cambios = {}) {
     const enviados = [];
-    return {
-        enviados,
-        d: {
-            supabase: { from: (t) => fake.client.from(t) },
-            guardarEvento, consultarEventoDelSorteo, abrirGrupo, ejecutarUnaVez, actualizarEvento,
-            puedeActuar: () => true,
-            sendMessage: async ({ jid, text }) => { enviados.push({ jid, text }); },
-            ...cambios
-        }
+    const d = {
+        supabase: { from: (t) => fake.client.from(t) },
+        guardarEvento, consultarEventoDelSorteo, abrirGrupo, ejecutarUnaVez, actualizarEvento,
+        puedeActuar: () => true,
+        sendMessage: async ({ jid, text }) => { enviados.push({ jid, text }); },
+        ...cambios
     };
+    // El anuncio sale por «Compartir» (imagen + pie) hacia el mismo registro.
+    Object.assign(d, depsCompartir(() => d.sendMessage), cambios);
+    return { enviados, d };
 }
 
 const sock = (usuarioId = A) => ({

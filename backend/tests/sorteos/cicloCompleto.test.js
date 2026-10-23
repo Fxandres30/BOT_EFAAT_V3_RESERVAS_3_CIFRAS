@@ -37,6 +37,7 @@ const { guardarEvento } = require(r("bot/funciones/eventos/guardarEvento.js"));
 const { consultarEvento } = require(r("bot/funciones/eventos/consultarEvento.js"));
 const { abrirGrupo } = require(r("bot/funciones/eventos/grupos/abrirGrupo.js"));
 const { actualizarEvento } = require(r("bot/funciones/reservas/actualizarEvento.js"));
+const { depsCompartir } = require("./compartirSimulado");
 const { reservarNumeros } = require(r("bot/funciones/reservas/reservarNumeros.js"));
 const { marcarReservasPagadasPorAdmin } = require(r("bot/funciones/pagos/marcarReservasPagadasPorAdmin.js"));
 const { workerEventos } = require(r("bot/funciones/eventos/workers/workerEventos.js"));
@@ -81,6 +82,8 @@ const deps = {
     puedeActuar: () => true,
     sendMessage: async ({ jid, text }) => { enviados.push({ jid, text }); }
 };
+// El anuncio sale por «Compartir» (imagen + pie) hacia el mismo registro.
+Object.assign(deps, depsCompartir(() => deps.sendMessage));
 
 const pasos = [];
 const paso = (nombre, fn) => pasos.push({ nombre, fn });

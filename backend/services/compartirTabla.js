@@ -270,8 +270,11 @@ async function compartirTabla({ evento, sock, idempotencia = null }) {
 // Cada envío pasa por el ExecutionGuard con la clave de ESTA solicitud
 // (solicitudId, generado por el panel al pulsar): reintentar la misma
 // petición nunca reenvía a un grupo ya hecho; una pulsación nueva sí
-// publica de nuevo. Nunca lanza.
-// -> { ok, motivo?, resultados: [{ grupo_id, nombre, estado: enviado|ya_enviado|en_curso|fallido, error? }] }
+// publica de nuevo. Nunca lanza. También lo usa la publicación de sorteos
+// programados (sorteos/publicador.js), con una solicitud fija por sorteo y
+// grupo: `motivo` (el del ExecutionGuard, o "excepcion") le dice si el
+// anuncio seguro NO salió o si su estado es incierto.
+// -> { ok, motivo?, resultados: [{ grupo_id, nombre, estado: enviado|ya_enviado|en_curso|fallido, motivo, error? }] }
 async function compartirEnGrupos({ evento, sock, grupos, caption, solicitudId, imagen }) {
 
     if (!evento?.valor || !evento.usuario_id) return { ok: false, motivo: "evento_invalido", resultados: [] };
@@ -292,15 +295,17 @@ async function compartirEnGrupos({ evento, sock, grupos, caption, solicitudId, i
                 ejecutar: () => sendImage({ sock, jid: g.grupo_id, image: imagen, caption })
             });
 
-            if (r.ejecutada) resultados.push({ ...g, estado: "enviado" });
-            else if (r.motivo === "ya_ok") resultados.push({ ...g, estado: "ya_enviado" });
-            else if (r.motivo === "ya_en_progreso") resultados.push({ ...g, estado: "en_curso" });
-            else if (r.motivo === "ya_error") resultados.push({ ...g, estado: "fallido", error: "Este envío ya falló antes; pulsa «Compartir» otra vez para reintentarlo." });
-            else if (r.motivo === "fallo_ejecucion") resultados.push({ ...g, estado: "fallido", error: r.error?.message || "WhatsApp rechazó el envío." });
-            else resultados.push({ ...g, estado: "fallido", error: r.motivo === "error_insert" ? "No se pudo registrar el envío: no se envió." : `No se envió (${r.motivo}).` });
+            const motivo = r.ejecutada ? "ejecutada" : r.motivo;
+
+            if (r.ejecutada) resultados.push({ ...g, estado: "enviado", motivo });
+            else if (r.motivo === "ya_ok") resultados.push({ ...g, estado: "ya_enviado", motivo });
+            else if (r.motivo === "ya_en_progreso") resultados.push({ ...g, estado: "en_curso", motivo });
+            else if (r.motivo === "ya_error") resultados.push({ ...g, estado: "fallido", motivo, error: "Este envío ya falló antes; pulsa «Compartir» otra vez para reintentarlo." });
+            else if (r.motivo === "fallo_ejecucion") resultados.push({ ...g, estado: "fallido", motivo, error: r.error?.message || "WhatsApp rechazó el envío." });
+            else resultados.push({ ...g, estado: "fallido", motivo, error: r.motivo === "error_insert" ? "No se pudo registrar el envío: no se envió." : `No se envió (${r.motivo}).` });
 
         } catch (err) {
-            resultados.push({ ...g, estado: "fallido", error: err?.message || "Error desconocido." });
+            resultados.push({ ...g, estado: "fallido", motivo: "excepcion", error: err?.message || "Error desconocido." });
         }
 
     }

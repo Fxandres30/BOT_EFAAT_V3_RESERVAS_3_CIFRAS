@@ -10,8 +10,11 @@
 //     037: una fila por usuario_id + precio). Sin la migración la selección
 //     no se guarda y el panel la pide en cada envío;
 //   - qué texto acompaña a la imagen: el «Mensaje de publicación» del
-//     sorteo activo (el de «Editar sorteo activo»), con sus variables; si
-//     no hay ninguno guardado, el texto habitual de «Compartir».
+//     sorteo activo (el de «Editar sorteo activo»), con sus variables. Un
+//     sorteo programado desde el panel usa SIEMPRE el mismo anuncio que su
+//     publicación automática (sorteos/mensajes.js::anuncioDelEvento; sin
+//     texto propio, la plantilla por defecto). Un sorteo detectado sin
+//     texto guardado: el texto habitual de «Compartir».
 //
 // El cliente sale SIEMPRE del token (routes/tablas.js); nada de aquí envía.
 // ==========================================================================
@@ -19,7 +22,7 @@
 const supabase = require("../lib/supabase");
 const repoSorteos = require("../sorteos/repo");
 const sorteosActivos = require("../sorteos/sorteosActivos");
-const { mensajePublicacion } = require("../sorteos/mensajes");
+const { mensajePublicacion, anuncioDelEvento } = require("../sorteos/mensajes");
 const { construirTextoCompartir } = require("./compartirTabla");
 
 const TABLA = "destinos_compartir_tabla";
@@ -118,6 +121,10 @@ async function textoParaCompartir(usuarioId, evento) {
 
     const activo = evento?.id ? await sorteosActivos.obtener(usuarioId, evento.id) : null;
     const s = activo?.ok ? activo.data : null;
+
+    if (s?.origen === "panel") {
+        return { texto: anuncioDelEvento(evento, { publicacion: s.publicacion, cuentas: s.cuentas }).texto, origen: "sorteo" };
+    }
 
     if (s?.publicacion) {
         const config = {

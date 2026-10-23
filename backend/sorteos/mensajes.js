@@ -80,6 +80,24 @@ function mensajePublicacion(config, cuentas, opciones) {
     return aplicar(config.mensajes?.publicacion || PLANTILLA_PUBLICACION, valoresDe(config, cuentas, opciones));
 }
 
+// Anuncio de un sorteo programado a partir de SU fila de eventos_bot: el
+// MISMO texto para la publicación automática (publicador.js) y para el
+// botón «Compartir» (destinosCompartir.textoParaCompartir). publicacion: el
+// texto guardado en el sorteo (vacío = plantilla por defecto).
+function anuncioDelEvento(evento, { publicacion = "", cuentas = [] } = {}) {
+    const config = {
+        nombre: evento.nombre_evento,
+        hora_fin: evento.hora_fin,
+        hora_cierre: evento.hora_cierre,
+        valor: evento.valor,
+        premios: Array.isArray(evento.premios) ? evento.premios : [],
+        cantidad_numeros: evento.cantidad_numeros,
+        mensajes: { publicacion }
+    };
+    const fecha = evento.fecha_evento ? String(evento.fecha_evento).slice(0, 10) : "";
+    return mensajePublicacion(config, cuentas || [], { fecha });
+}
+
 function mensajeRecordatorio(config, recordatorio, cuentas, opciones) {
     return aplicar(recordatorio.texto, valoresDe(config, cuentas, opciones));
 }
@@ -93,6 +111,7 @@ module.exports = {
     PLANTILLA_PUBLICACION,
     PLANTILLA_CIERRE,
     mensajePublicacion,
+    anuncioDelEvento,
     mensajeRecordatorio,
     mensajeAvisoCierre
 };
