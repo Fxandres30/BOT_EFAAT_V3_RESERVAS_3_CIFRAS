@@ -499,6 +499,41 @@ prueba("8. D3: con anticipadas no se cambia identidad, tabla, fecha, precio, gru
     assert.ok(cancelado.ok, JSON.stringify(cancelado));
 });
 
+// Lo que envía el formulario de edición (FormularioSorteo: desdeConfig ->
+// aConfig) a partir del sorteo guardado, con «Conservar la tabla actual».
+function comoFormulario(config, cambios = {}) {
+    return {
+        modalidad: config.modalidad, nombre: config.nombre, loteria_id: config.loteria_id || null,
+        hora_fin: config.hora_fin, hora_cierre: config.hora_cierre || null, valor: Number(config.valor),
+        premios: config.premios, grupos: config.grupos, cuentas: config.cuentas,
+        publicar_en: config.publicar_en, fecha_sorteo: config.fecha_sorteo,
+        tabla: { reiniciar: false, liberar_bloqueados: false },
+        diseno: config.diseno || { origen: "actual", diseno_id: null, nombre: null, config: null },
+        mensajes: config.mensajes, recordatorios: config.recordatorios || [],
+        reservas: { liberar_no_pagados: false, vencimiento_minutos: null },
+        ...cambios
+    };
+}
+
+prueba("8b. caso de producción: «Conservar» y solo cambia la hora de publicación -> se guarda; las anticipadas siguen igual", async () => {
+    sembrar();
+    const s = await programar(entrada({ hora_cierre: "22:26" }));
+    for (const n of ["03", "09", "24", "27", "36"]) await reservar(n, { sorteoProgramadoId: s.id, grupoId: "g1@g.us" });
+    const antes = JSON.stringify(fake.tablas[T5K].filter(f => f.usuario_id === A && f.estado !== "libre"));
+    const actual = () => fake.tablas.sorteos_programados.find(x => x.id === s.id);
+
+    // Mismo día, otra hora de publicación (lo que hizo el usuario).
+    const nuevaHora = new Date(PUBLICAR.getTime() + 41 * 60000).toISOString();
+    const res = await servicio.editar(A, s.id, { ...comoFormulario(actual().config, { publicar_en: nuevaHora }), version: actual().version });
+    assert.ok(res.ok, JSON.stringify(res));
+    assert.strictEqual(actual().identidad_evento_real, s.identidad_evento_real, "misma identidad");
+
+    // Reenviar el formulario sin cambiar nada también se guarda.
+    const igual = await servicio.editar(A, s.id, { ...comoFormulario(actual().config), version: actual().version });
+    assert.ok(igual.ok, JSON.stringify(igual));
+    assert.strictEqual(JSON.stringify(fake.tablas[T5K].filter(f => f.usuario_id === A && f.estado !== "libre")), antes, "las 5 reservas no se tocan");
+});
+
 prueba("9. aislamiento: B no ve ni usa el sorteo de A; sorteos distintos no se mezclan; históricos intactos", async () => {
     sembrar();
     const antes = historicos();
