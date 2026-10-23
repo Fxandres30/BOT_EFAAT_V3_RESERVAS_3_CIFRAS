@@ -6,9 +6,8 @@ import { Loader2, AlertTriangle, Info, Palette, LibraryBig, Filter } from "lucid
 import { useTablaPrecio } from "@/hooks/useTablaPrecio";
 import { useTablaDiseno } from "@/hooks/useTablaDiseno";
 import { useSeccionesPanel } from "@/hooks/useSeccionesPanel";
-import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import AccionesTabla from "./AccionesTabla";
+import AccionesTabla, { BotonIcono } from "./AccionesTabla";
 import StatsBar from "./StatsBar";
 import Grid from "./Grid";
 import HistorialNumeros from "./HistorialNumeros";
@@ -175,41 +174,35 @@ export default function TablaPrecioView({ precio }: Props) {
 
             <Cabecera precio={precio} eventoActivo={eventoActivo} coincidePrecio={coincidePrecio} />
 
-            <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3 sm:gap-4">
-                <div className="flex-1 min-w-0">
-                    <StatsBar stats={stats} />
-                </div>
-                <div className="lg:shrink-0">
-                    <AccionesTabla
-                        precio={precio}
-                        totalNumeros={stats.total}
-                        disponibles={stats.disponibles}
-                        usuarioId={usuarioId}
-                        onReiniciar={reiniciar}
-                        capturarTabla={() => capturarTabla(tablaRef.current)}
-                    />
-                </div>
-            </div>
+            <StatsBar stats={stats} />
 
-            <div className="flex flex-wrap items-center gap-2">
-                {personalizada && <Badge tone="primary" size="sm">Diseño personalizado</Badge>}
-                <Button
-                    size="sm"
-                    variant="secondary"
-                    leftIcon={<Palette size={14} />}
-                    onClick={() => setPersonalizarAbierto(true)}
-                >
-                    Personalizar
-                </Button>
-                <Button
-                    size="sm"
-                    variant="secondary"
-                    leftIcon={<LibraryBig size={14} />}
-                    onClick={() => setBibliotecaAbierta(true)}
-                >
-                    Diseños
-                </Button>
-            </div>
+            <AccionesTabla
+                precio={precio}
+                totalNumeros={stats.total}
+                disponibles={stats.disponibles}
+                usuarioId={usuarioId}
+                onReiniciar={reiniciar}
+                capturarTabla={() => capturarTabla(tablaRef.current)}
+                segundaFila={
+                    <>
+                        <BotonIcono
+                            icon={Palette}
+                            label="Personalizar"
+                            color="text-gray-600 hover:bg-gray-50 hover:border-gray-300"
+                            mostrarTexto
+                            onClick={() => setPersonalizarAbierto(true)}
+                        />
+                        <BotonIcono
+                            icon={LibraryBig}
+                            label="Diseños"
+                            color="text-gray-600 hover:bg-gray-50 hover:border-gray-300"
+                            mostrarTexto
+                            onClick={() => setBibliotecaAbierta(true)}
+                        />
+                        {personalizada && <Badge tone="primary" size="sm">Diseño personalizado</Badge>}
+                    </>
+                }
+            />
 
             {coincidentes && (
                 <div className="flex flex-wrap items-center justify-between gap-2 bg-blue-50 border border-blue-100 text-blue-800 text-sm rounded-xl px-3 py-2 min-w-0">

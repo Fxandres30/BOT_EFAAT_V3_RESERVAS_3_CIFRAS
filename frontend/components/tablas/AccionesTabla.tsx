@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { RotateCcw, Pencil, Share2, Users, type LucideIcon } from "lucide-react";
 
 import ConfirmDialog from "./ConfirmDialog";
@@ -16,6 +16,9 @@ interface Props {
     onReiniciar: () => Promise<void> | void;
     /** PNG (data URL) del `div` de la tabla visible. */
     capturarTabla: () => Promise<string>;
+    /** Acciones de la vista (Personalizar, Diseños…) que van en la segunda
+     *  fila, después de «Cambiar grupos». */
+    segundaFila?: ReactNode;
 }
 
 export default function AccionesTabla({
@@ -24,7 +27,8 @@ export default function AccionesTabla({
     disponibles,
     usuarioId,
     onReiniciar,
-    capturarTabla
+    capturarTabla,
+    segundaFila
 }: Props) {
 
     const [confirmandoReinicio, setConfirmandoReinicio] = useState(false);
@@ -110,38 +114,50 @@ export default function AccionesTabla({
 
         <>
 
-            <div className="flex flex-wrap gap-2">
+            {/* Dos filas centradas: Reiniciar · Editar · Compartir /
+                Cambiar grupos · Personalizar · Diseños. */}
+            <div className="flex flex-col items-center gap-2 min-w-0">
 
-                <BotonIcono
-                    icon={RotateCcw}
-                    label="Reiniciar"
-                    color="text-rose-600 hover:bg-rose-50 hover:border-rose-200"
-                    onClick={() => setConfirmandoReinicio(true)}
-                />
+                <div className="flex flex-wrap justify-center gap-2 min-w-0">
 
-                <BotonIcono
-                    icon={Pencil}
-                    label="Editar"
-                    color="text-gray-600 hover:bg-gray-50 hover:border-gray-300"
-                    onClick={() => setEditandoAnuncio(true)}
-                />
+                    <BotonIcono
+                        icon={RotateCcw}
+                        label="Reiniciar"
+                        color="text-rose-600 hover:bg-rose-50 hover:border-rose-200"
+                        onClick={() => setConfirmandoReinicio(true)}
+                    />
 
-                <BotonIcono
-                    icon={Share2}
-                    label={compartiendo ? "Compartiendo…" : "Compartir"}
-                    color="text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200"
-                    destacado
-                    disabled={compartiendo}
-                    onClick={compartir}
-                />
+                    <BotonIcono
+                        icon={Pencil}
+                        label="Editar"
+                        color="text-gray-600 hover:bg-gray-50 hover:border-gray-300"
+                        onClick={() => setEditandoAnuncio(true)}
+                    />
 
-                <BotonIcono
-                    icon={Users}
-                    label="Cambiar grupos"
-                    color="text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200"
-                    disabled={compartiendo}
-                    onClick={() => setPanelCompartir({ tipo: "configurar" })}
-                />
+                    <BotonIcono
+                        icon={Share2}
+                        label={compartiendo ? "Compartiendo…" : "Compartir"}
+                        color="text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200"
+                        destacado
+                        disabled={compartiendo}
+                        onClick={compartir}
+                    />
+
+                </div>
+
+                <div className="flex flex-wrap items-center justify-center gap-2 min-w-0">
+
+                    <BotonIcono
+                        icon={Users}
+                        label="Cambiar grupos"
+                        color="text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200"
+                        disabled={compartiendo}
+                        onClick={() => setPanelCompartir({ tipo: "configurar" })}
+                    />
+
+                    {segundaFila}
+
+                </div>
 
             </div>
 
@@ -178,12 +194,13 @@ export default function AccionesTabla({
 
 }
 
-function BotonIcono({
+export function BotonIcono({
     icon: Icon,
     label,
     color,
     destacado = false,
     disabled = false,
+    mostrarTexto = false,
     onClick
 }: {
     icon: LucideIcon;
@@ -191,6 +208,8 @@ function BotonIcono({
     color: string;
     destacado?: boolean;
     disabled?: boolean;
+    /** El texto se ve también en pantallas pequeñas. */
+    mostrarTexto?: boolean;
     onClick: () => void;
 }) {
 
@@ -208,7 +227,7 @@ function BotonIcono({
             }`}
         >
             <Icon size={16} className="shrink-0" />
-            <span className="hidden sm:inline">{label}</span>
+            <span className={mostrarTexto ? undefined : "hidden sm:inline"}>{label}</span>
         </button>
 
     );

@@ -50,14 +50,14 @@ export default function StatsBar({ stats }: Props) {
 
                 return (
 
-                    <div key={t.label} className={`min-w-0 rounded-xl sm:rounded-2xl border p-3 sm:p-4 ${t.meta.badge}`}>
+                    <div key={t.label} className={`min-w-0 rounded-xl border px-3 py-2 sm:px-3.5 sm:py-2.5 ${t.meta.badge}`}>
 
                         <div className="flex items-center justify-between gap-2">
                             <p className="text-xs font-medium opacity-80 truncate">{t.label}</p>
                             <Icon size={15} className="opacity-70 shrink-0" />
                         </div>
 
-                        <p className="text-xl sm:text-2xl font-bold mt-1 truncate">{t.valor}</p>
+                        <p className="text-lg sm:text-xl font-bold leading-tight mt-0.5 truncate">{t.valor}</p>
 
                     </div>
 
@@ -65,14 +65,14 @@ export default function StatsBar({ stats }: Props) {
 
             })}
 
-            <div className="min-w-0 rounded-xl sm:rounded-2xl border border-indigo-200 bg-indigo-50 text-indigo-700 p-3 sm:p-4">
+            <div className="min-w-0 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 px-3 py-2 sm:px-3.5 sm:py-2.5">
 
                 <div className="flex items-center justify-between gap-2">
                     <p className="text-xs font-medium opacity-80 truncate">Ocupación</p>
                     <Percent size={15} className="opacity-70 shrink-0" />
                 </div>
 
-                <p className="text-xl sm:text-2xl font-bold mt-1 truncate">{stats.ocupacion}%</p>
+                <p className="text-lg sm:text-xl font-bold leading-tight mt-0.5 truncate">{stats.ocupacion}%</p>
 
             </div>
 
