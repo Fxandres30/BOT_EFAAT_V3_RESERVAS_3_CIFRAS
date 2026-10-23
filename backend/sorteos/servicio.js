@@ -15,6 +15,7 @@ const loterias = require("./loterias");
 const { validarSorteo, validarPlantilla, fechaSorteoDe, instanteBogota, identidadDelSorteo } = require("./validar");
 const { normalizarConfigDiseno } = require("./disenoTabla");
 const reinicioTabla = require("./reinicioTabla");
+const reservasAnticipadas = require("./reservasAnticipadas");
 const tablaEvento = require("../automation/repo/tablaEvento");
 const { mensajePublicacion, mensajeRecordatorio, mensajeAvisoCierre, VARIABLES } = require("./mensajes");
 const { revisarTabla, revisarGrupo, cierresDeIdentidades, legible } = require("./disponibilidad");
@@ -362,6 +363,17 @@ async function gruposParaFormulario(usuarioId) {
 
 }
 
+// Reservas anticipadas del sorteo (D3). mensaje(n) decide si la operación
+// las afecta: devuelve el texto del rechazo, o null si no. Si no se pueden
+// contar, se rechaza igual (falla cerrado).
+async function bloqueoPorAnticipadas(usuarioId, sorteo, mensaje) {
+    const r = await reservasAnticipadas.anticipadasDelSorteo(usuarioId, sorteo);
+    if (!r.ok) return falla("error_supabase");
+    if (!r.total) return null;
+    const texto = mensaje(r.total);
+    return texto ? falla("reservas_anticipadas", { mensaje: texto, cantidad: r.total }) : null;
+}
+
 async function editar(usuarioId, id, entrada = {}) {
 
     const actual = await repo.obtenerSorteo(usuarioId, id);
@@ -373,6 +385,22 @@ async function editar(usuarioId, id, entrada = {}) {
 
     const p = await prepararSorteo(usuarioId, entrada);
     if (!p.ok) return p;
+
+    // Con reservas anticipadas, nada que cambie a qué sorteo o tabla
+    // pertenecen (identidad = nombre, hora, valor y fecha; tabla; grupos;
+    // reinicio al publicar): quedarían huérfanas sin aviso (D3).
+    const bloqueoAnticipadas = await bloqueoPorAnticipadas(usuarioId, actual.data, (anteriores) => {
+        const gruposAntes = actual.data.grupos.filter(g => g.estado !== "cancelado").map(g => g.grupo_id).sort().join(",");
+        const gruposDespues = p.grupos.map(g => g.grupo_id).sort().join(",");
+        const cambia = p.fila.identidad_evento_real !== actual.data.identidad_evento_real
+            || p.fila.tabla !== actual.data.tabla
+            || gruposAntes !== gruposDespues
+            || reservasAnticipadas.reinicioPendiente(p.fila.config);
+        return cambia
+            ? `No se puede cambiar el nombre, la fecha, la hora, el valor, la tabla, los grupos ni pedir el reinicio de la tabla: el sorteo tiene ${anteriores} reserva(s) anticipada(s). Libéralas antes desde Tablas o conserva esos datos.`
+            : null;
+    });
+    if (bloqueoAnticipadas) return bloqueoAnticipadas;
 
     // Vuelve a borrador: la confirmación anterior era de otra versión. El
     // publicador solo publica estado 'programado' con confirmado_version =
@@ -402,6 +430,14 @@ async function cancelar(usuarioId, id) {
     const { estado } = actual.data;
 
     if (estado === "cancelado") return actual;
+
+    // Sin publicar y con reservas anticipadas: cancelar las dejaría sin
+    // sorteo. Primero se resuelven (D3).
+    if (reservasAnticipadas.ESTADOS_SIN_PUBLICAR.includes(estado)) {
+        const bloqueo = await bloqueoPorAnticipadas(usuarioId, actual.data, (n) =>
+            `No se puede cancelar: el sorteo tiene ${n} reserva(s) anticipada(s). Libéralas antes desde Tablas.`);
+        if (bloqueo) return bloqueo;
+    }
 
     // Grupos todavía no publicados: se cancelan (el publicador solo toma
     // 'pendiente'/'fallido', así que ya no se publicarán).

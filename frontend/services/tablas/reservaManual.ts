@@ -29,6 +29,21 @@ export interface ContextoGrupo {
     autorizado: boolean;
 }
 
+// Sorteo programado de este precio que todavía no se publicó: admite
+// reservas anticipadas (se guardan con su identidad, sin evento todavía).
+export interface SorteoProgramado {
+    sorteoId: string;
+    nombreEvento: string | null;
+    fechaEvento: string | null;
+    horaCierre: string | null;
+    horaFin: string | null;
+    publicarEn: string;
+    cifras: number;
+    aceptaReservas: boolean;
+    motivo: string | null;
+    grupos: { grupoId: string; grupoNombre: string | null; autorizado: boolean }[];
+}
+
 export interface EntradaHistorial {
     id: string;
     accion: AccionNumero;
@@ -67,6 +82,8 @@ export interface ContextoNumero {
         horaPago: string | null;
         motivoBloqueo: string | null;
         bloqueadoHasta: string | null;
+        /** Nombre del sorteo programado si es una reserva anticipada. */
+        sorteoAnticipado?: string | null;
     };
     sorteo: {
         nombreEvento: string | null;
@@ -78,6 +95,7 @@ export interface ContextoNumero {
         aceptaReservas: boolean;
     } | null;
     contextos: ContextoGrupo[];
+    programados?: SorteoProgramado[];
     pago: { metodoPago: string | null; observaciones: string | null; operador: string | null; registradoEn: string } | null;
     historial: EntradaHistorial[];
     auditoriaDisponible: boolean;
@@ -156,7 +174,10 @@ export function obtenerContextoNumero(precio: number, numero: string) {
 export interface DatosReserva {
     contactoId?: string;
     nuevoContacto?: { nombre: string; telefono: string };
-    eventoId: string;
+    /** Sorteo activo (su fila del grupo) o, en su lugar, sorteo programado + grupo. */
+    eventoId?: string;
+    sorteoProgramadoId?: string;
+    grupoId?: string;
     motivo: string;
     observaciones?: string;
     solicitudId: string;

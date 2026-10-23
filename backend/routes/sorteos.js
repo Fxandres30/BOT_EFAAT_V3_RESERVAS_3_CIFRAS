@@ -26,6 +26,7 @@ const ESTADO_HTTP = {
     bloqueado: 409,
     conflicto: 409,
     nombre_duplicado: 409,
+    reservas_anticipadas: 409,
     migracion_pendiente: 503
 };
 

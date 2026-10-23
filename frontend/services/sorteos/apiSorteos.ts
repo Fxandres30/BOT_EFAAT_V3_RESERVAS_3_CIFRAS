@@ -247,7 +247,8 @@ const MENSAJES: Record<string, string> = {
     reinicio_bloqueado: "No se pudo reiniciar la tabla: hay números protegidos. No se modificó nada.",
     nombre_duplicado: "Ya existe una plantilla con ese nombre.",
     migracion_pendiente: "Esta función todavía no está disponible. Inténtalo más tarde.",
-    validacion: "Revisa los campos marcados."
+    validacion: "Revisa los campos marcados.",
+    reservas_anticipadas: "El sorteo tiene reservas anticipadas: libéralas antes desde Tablas."
 };
 
 // Lo que ve el cliente cuando falla algo interno (servidor, configuración,
@@ -266,7 +267,9 @@ export function categoriaFallo(r: { motivo: string; status?: number }): string {
     return r.status && r.status >= 500 ? "error interno del servidor" : "solicitud rechazada";
 }
 
-export function describirError(r: { motivo: string; error?: string; migracion?: string; status?: number }): string {
+export function describirError(r: { motivo: string; error?: string; migracion?: string; status?: number; mensaje?: string }): string {
+    // Este rechazo trae del servidor la cantidad de reservas afectadas.
+    if (r.motivo === "reservas_anticipadas" && r.mensaje) return r.mensaje;
     const conocido = MENSAJES[r.motivo];
     if (!conocido || r.motivo === "migracion_pendiente") {
         console.warn("[EFAAT] error interno:", { categoria: categoriaFallo(r), motivo: r.motivo, status: r.status, migracion: r.migracion });

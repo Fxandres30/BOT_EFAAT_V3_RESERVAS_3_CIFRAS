@@ -20,7 +20,8 @@ const MOTIVOS = [
     "La reserva no se registró automáticamente",
     "Reserva por llamada o mensaje privado",
     "Mensaje fuera del grupo",
-    "Corrección de una reserva"
+    "Corrección de una reserva",
+    "Reserva antes de publicar el sorteo"
 ];
 
 const formatoHora = new Intl.DateTimeFormat("es-CO", {
@@ -29,15 +30,74 @@ const formatoHora = new Intl.DateTimeFormat("es-CO", {
     timeStyle: "short"
 });
 
+// Grupo elegible del sorteo elegido: id para elegirlo, y lo que se envía.
+interface OpcionGrupo {
+    clave: string;
+    grupoId: string | null;
+    grupoNombre: string | null;
+    datos: Pick<DatosReserva, "eventoId" | "sorteoProgramadoId" | "grupoId">;
+}
+
+// Sorteo al que va la reserva: el ACTIVO de esta tabla o uno PROGRAMADO que
+// todavía no se publicó (reserva anticipada). Nunca se deduce por el grupo.
+interface OpcionSorteo {
+    clave: string;
+    nombre: string;
+    detalle: string | null;
+    usable: boolean;
+    motivo: string | null;
+    grupos: OpcionGrupo[];
+}
+
+function opcionesDe(contexto: ContextoNumero): OpcionSorteo[] {
+
+    const opciones: OpcionSorteo[] = [];
+    const s = contexto.sorteo;
+
+    if (s) {
+        const grupos = contexto.contextos.filter(c => c.autorizado).map(c => ({
+            clave: c.eventoId, grupoId: c.grupoId, grupoNombre: c.grupoNombre, datos: { eventoId: c.eventoId }
+        }));
+        opciones.push({
+            clave: "activo",
+            nombre: s.nombreEvento || "Sorteo activo",
+            detalle: "Sorteo activo",
+            usable: s.aceptaReservas && grupos.length > 0,
+            motivo: !s.aceptaReservas ? "El sorteo ya no acepta reservas (cerrado o pasó la hora de cierre)."
+                : grupos.length === 0 ? "Ningún grupo de este sorteo está autorizado en EFAAT." : null,
+            grupos
+        });
+    }
+
+    for (const p of contexto.programados ?? []) {
+        const grupos = p.grupos.filter(g => g.autorizado).map(g => ({
+            clave: g.grupoId, grupoId: g.grupoId, grupoNombre: g.grupoNombre,
+            datos: { sorteoProgramadoId: p.sorteoId, grupoId: g.grupoId }
+        }));
+        opciones.push({
+            clave: `programado:${p.sorteoId}`,
+            nombre: p.nombreEvento || "Sorteo programado",
+            detalle: `Programado · se publica ${formatoHora.format(new Date(p.publicarEn))}`,
+            usable: p.aceptaReservas && grupos.length > 0,
+            motivo: p.motivo || (grupos.length === 0 ? "Ningún grupo de este sorteo está autorizado en EFAAT." : null),
+            grupos
+        });
+    }
+
+    return opciones;
+
+}
+
 // Formulario de la reserva manual de un número DISPONIBLE. Rellena lo que ya
-// se sabe (número, sorteo, precio, grupo cuando solo hay uno o el contacto
-// solo está en uno de los grupos del sorteo) y pide únicamente el contacto,
-// el grupo si hay varios, el motivo y las observaciones. El estado final, la
-// fecha/hora y el operador los fija el servidor.
+// se sabe (número, precio, sorteo y grupo cuando solo hay uno posible) y pide
+// el sorteo si hay varios (activo o programados sin publicar), el grupo, el
+// contacto, el motivo y las observaciones. El estado final, la fecha/hora y
+// el operador los fija el servidor.
 export default function ReservaManualForm({ contexto, onReservar }: Props) {
 
     const [contacto, setContacto] = useState<SeleccionContacto | null>(null);
-    const [eventoElegido, setEventoElegido] = useState<string | null>(null);
+    const [sorteoElegido, setSorteoElegido] = useState<string | null>(null);
+    const [grupoElegido, setGrupoElegido] = useState<string | null>(null);
     const [motivo, setMotivo] = useState("");
     const [observaciones, setObservaciones] = useState("");
     const [enviando, setEnviando] = useState(false);
@@ -52,37 +112,36 @@ export default function ReservaManualForm({ contexto, onReservar }: Props) {
         return () => clearInterval(t);
     }, []);
 
-    const contextosUsables = contexto.contextos.filter(c => c.autorizado);
+    const opciones = useMemo(() => opcionesDe(contexto), [contexto]);
+    const usables = opciones.filter(o => o.usable);
 
-    // Grupos del sorteo en los que se ha visto al contacto elegido.
-    const gruposDelContacto = useMemo(() => {
-        if (contacto?.tipo !== "existente") return [];
-        const ids = new Set(contacto.contacto.grupos.map(g => g.grupoId));
-        return contextosUsables.filter(c => c.grupoId && ids.has(c.grupoId));
-    }, [contacto, contextosUsables]);
+    // Sorteo: el que elija el propietario; si no, el único posible.
+    const sorteo = usables.find(o => o.clave === sorteoElegido) ?? (usables.length === 1 ? usables[0] : null);
+    const grupos = sorteo?.grupos ?? [];
+
+    // Grupos del sorteo elegido en los que se ha visto al contacto.
+    const idsDelContacto = new Set(contacto?.tipo === "existente" ? contacto.contacto.grupos.map(g => g.grupoId) : []);
+    const gruposDelContacto = grupos.filter(g => g.grupoId && idsDelContacto.has(g.grupoId));
 
     // Grupo: el que elija el propietario; si no, el único posible.
-    const eventoId = eventoElegido
-        ?? (contextosUsables.length === 1 ? contextosUsables[0].eventoId : null)
-        ?? (gruposDelContacto.length === 1 ? gruposDelContacto[0].eventoId : null);
+    const grupo = grupos.find(g => g.clave === grupoElegido)
+        ?? (grupos.length === 1 ? grupos[0] : null)
+        ?? (gruposDelContacto.length === 1 ? gruposDelContacto[0] : null);
 
-    const sorteo = contexto.sorteo;
-    const bloqueo = !sorteo
-        ? "No hay un sorteo activo para esta tabla: no se puede reservar."
-        : !sorteo.aceptaReservas
-            ? "El sorteo ya no acepta reservas (cerrado o pasó la hora de cierre)."
-            : contextosUsables.length === 0
-                ? "Ningún grupo de este sorteo está autorizado en EFAAT."
-                : null;
+    const bloqueo = usables.length === 0
+        ? (opciones.length === 0
+            ? "No hay un sorteo activo ni programado para esta tabla: no se puede reservar."
+            : opciones.map(o => `${o.nombre}: ${o.motivo}`).join(" "))
+        : null;
 
     const contactoListo = contacto?.tipo === "existente"
         || (contacto?.tipo === "nuevo" && contacto.nombre.trim().length >= 2 && contacto.telefono.replace(/\D/g, "").length >= 7);
 
-    const listo = !bloqueo && contactoListo && eventoId && motivo.trim().length >= 3 && !enviando;
+    const listo = !bloqueo && sorteo && grupo && contactoListo && motivo.trim().length >= 3 && !enviando;
 
     async function enviar() {
 
-        if (!listo || !contacto || !eventoId) return;
+        if (!listo || !contacto || !grupo) return;
 
         setEnviando(true);
         setFallo(null);
@@ -91,7 +150,7 @@ export default function ReservaManualForm({ contexto, onReservar }: Props) {
             ...(contacto.tipo === "existente"
                 ? { contactoId: contacto.contacto.id }
                 : { nuevoContacto: { nombre: contacto.nombre.trim(), telefono: contacto.telefono.trim() } }),
-            eventoId,
+            ...grupo.datos,
             motivo: motivo.trim(),
             observaciones: observaciones.trim() || undefined,
             solicitudId
@@ -113,7 +172,7 @@ export default function ReservaManualForm({ contexto, onReservar }: Props) {
         <div className="space-y-4">
 
             <div className="grid grid-cols-2 gap-2 text-sm">
-                <Ficha etiqueta="Sorteo" valor={sorteo?.nombreEvento || "Sin sorteo activo"} />
+                <Ficha etiqueta="Sorteo" valor={sorteo?.nombre || (usables.length > 1 ? "Elige el sorteo" : "Sin sorteo disponible")} nota={sorteo?.detalle ?? undefined} />
                 <Ficha etiqueta="Precio" valor={`$${contexto.precio.toLocaleString("es-CO")}`} />
                 <Ficha etiqueta="Estado al guardar" valor="Reservado · pendiente de pago" />
                 <Ficha etiqueta="Fecha y hora" valor={formatoHora.format(ahora)} nota="La fija el servidor al guardar" icon={CalendarClock} />
@@ -123,28 +182,54 @@ export default function ReservaManualForm({ contexto, onReservar }: Props) {
                 <Aviso>{bloqueo}</Aviso>
             )}
 
+            {opciones.length > 1 && (
+                <Campo etiqueta="Sorteo" requerido>
+                    <div className="space-y-1.5" role="radiogroup" aria-label="Sorteo">
+                        {opciones.map((o) => (
+                            <label key={o.clave} className={`flex items-start gap-2 border rounded-xl px-3 py-2 text-sm ${o.usable ? "cursor-pointer" : "opacity-60"} ${sorteo?.clave === o.clave ? "border-blue-500 bg-blue-50" : ""}`}>
+                                <input
+                                    type="radio"
+                                    name="sorteo-reserva"
+                                    className="mt-0.5"
+                                    checked={sorteo?.clave === o.clave}
+                                    onChange={() => { setSorteoElegido(o.clave); setGrupoElegido(null); setFallo(null); }}
+                                    disabled={enviando || !o.usable}
+                                />
+                                <span className="flex-1 min-w-0">
+                                    <span className="block truncate font-medium">{o.nombre}</span>
+                                    <span className="block text-xs text-gray-500">{o.usable ? o.detalle : o.motivo}</span>
+                                </span>
+                            </label>
+                        ))}
+                    </div>
+                    {sorteo?.clave.startsWith("programado:") && (
+                        <p className="text-xs text-gray-500 mt-1">Reserva anticipada: queda guardada para este sorteo y se mantiene cuando se publique.</p>
+                    )}
+                </Campo>
+            )}
+
             <Campo etiqueta="Contacto" requerido>
-                <SelectorContacto seleccion={contacto} onCambiar={(c) => { setContacto(c); setEventoElegido(null); setFallo(null); }} deshabilitado={enviando || Boolean(bloqueo)} />
+                <SelectorContacto seleccion={contacto} onCambiar={(c) => { setContacto(c); setGrupoElegido(null); setFallo(null); }} deshabilitado={enviando || Boolean(bloqueo)} />
             </Campo>
 
-            {contextosUsables.length > 0 && (
+            {grupos.length > 0 && (
                 <Campo etiqueta="Grupo de WhatsApp" requerido>
-                    {contextosUsables.length === 1 ? (
-                        <p className="text-sm border rounded-xl px-3 py-2.5 bg-gray-50">{contextosUsables[0].grupoNombre || contextosUsables[0].grupoId}</p>
+                    {grupos.length === 1 ? (
+                        <p className="text-sm border rounded-xl px-3 py-2.5 bg-gray-50">{grupos[0].grupoNombre || grupos[0].grupoId}</p>
                     ) : (
                         <div className="space-y-1.5" role="radiogroup" aria-label="Grupo de WhatsApp">
-                            {contextosUsables.map((c) => {
-                                const delContacto = gruposDelContacto.some(g => g.eventoId === c.eventoId);
+                            {grupos.map((g) => {
+                                const delContacto = gruposDelContacto.some(x => x.clave === g.clave);
                                 return (
-                                    <label key={c.eventoId} className={`flex items-center gap-2 border rounded-xl px-3 py-2 text-sm cursor-pointer ${eventoId === c.eventoId ? "border-blue-500 bg-blue-50" : ""}`}>
+                                    <label key={g.clave} className={`flex items-center gap-2 border rounded-xl px-3 py-2 text-sm cursor-pointer ${grupo?.clave === g.clave ? "border-blue-500 bg-blue-50" : ""}`}>
                                         <input
                                             type="radio"
                                             name="grupo-reserva"
-                                            checked={eventoId === c.eventoId}
-                                            onChange={() => setEventoElegido(c.eventoId)}
+                                            checked={grupo?.clave === g.clave}
+                                            onChange={() => setGrupoElegido(g.clave)}
                                             disabled={enviando}
                                         />
-                                        <span className="flex-1 min-w-0 truncate">{c.grupoNombre || c.grupoId}</span>
+                                        <span className="flex-1 min-w-0 truncate">{g.grupoNombre || g.grupoId}</span>
                                         {delContacto && <span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full shrink-0">contacto visto aquí</span>}
                                     </label>
                                 );
@@ -154,7 +239,9 @@ export default function ReservaManualForm({ contexto, onReservar }: Props) {
                             )}
                         </div>
                     )}
-                    {contexto.contextos.some(c => !c.autorizado) && (
+                    {(sorteo?.clave === "activo"
+                        ? contexto.contextos.some(c => !c.autorizado)
+                        : (contexto.programados ?? []).some(p => `programado:${p.sorteoId}` === sorteo?.clave && p.grupos.some(g => !g.autorizado))) && (
                         <p className="text-xs text-gray-500 mt-1">Los grupos no autorizados en EFAAT no aparecen.</p>
                     )}
                 </Campo>

@@ -258,7 +258,7 @@ function Ocupado({
                             <span className="font-medium text-right min-w-0 break-words">{paquete.numeros.filter(n => n !== contexto.numero).join(", ")}</span>
                         </div>
                     )}
-                    <Dato etiqueta="Sorteo" valor={fila.nombreEvento} />
+                    <Dato etiqueta="Sorteo" valor={fila.sorteoAnticipado ? `${fila.sorteoAnticipado} (reserva anticipada, sin publicar)` : fila.nombreEvento} />
                     <Dato etiqueta="Reservado" valor={[fila.fechaReserva, fila.horaReserva].filter(Boolean).join(" ") || null} />
                     {estado === "pagado" && (
                         <>

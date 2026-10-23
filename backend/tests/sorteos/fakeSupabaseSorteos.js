@@ -67,13 +67,19 @@ function crearFake() {
             lt(c, v) { q.filtros.push(f => f[c] != null && comparar(f[c], v) < 0); return b; },
             gte(c, v) { q.filtros.push(f => f[c] != null && comparar(f[c], v) >= 0); return b; },
             is(c, v) { q.filtros.push(f => (v === null ? f[c] == null : f[c] === v)); return b; },
-            // "col.eq.valor,col.is.null,..." (sintaxis PostgREST, condiciones simples)
+            // "col.eq.valor,col.is.null,col.not.in.(a,b),..." (sintaxis
+            // PostgREST, condiciones simples; las comas dentro de paréntesis
+            // son de la lista, no separan condiciones)
             or(expr) {
-                const conds = String(expr).split(",").map(c => {
+                const partes = String(expr).match(/[^,(]+(\([^)]*\))?/g) || [];
+                const conds = partes.map(c => {
                     const [col, op, ...resto] = c.split(".");
                     const val = resto.join(".");
+                    const lista = (v) => v.replace(/^in\.\(|^\(|\)$/g, "").split(",").filter(Boolean);
                     if (op === "eq") return f => String(f[col]) === val;
                     if (op === "is" && val === "null") return f => f[col] == null;
+                    if (op === "in") return f => f[col] != null && lista(val).includes(String(f[col]));
+                    if (op === "not" && val.startsWith("in.")) return f => f[col] != null && !lista(val).includes(String(f[col]));
                     throw new Error(`fake or(): condición no soportada ${c}`);
                 });
                 q.filtros.push(f => conds.some(fn => fn(f)));

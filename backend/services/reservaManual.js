@@ -34,6 +34,7 @@ const { evaluarGrupo } = require("../bot/funciones/grupos/politicaGrupos");
 const { listarContactos } = require("../bot/funciones/usuarios/listarContactos");
 const { obtenerUsuarioGlobal } = require("../bot/funciones/usuarios/obtenerUsuarioGlobal");
 const { esErrorTriggerCompradoresSinWhatsapp } = require("../bot/funciones/pagos/marcarReservasPagadasPorAdmin");
+const { sorteosParaReservar, sorteosSinPublicar } = require("../sorteos/reservasAnticipadas");
 
 const MAX_MOTIVO = 500;
 const MAX_OBSERVACIONES = 1000;
@@ -149,6 +150,27 @@ async function sorteoDelPrecio(usuarioId, tabla, precio) {
         : [principal];
 
     return { ok: true, filas };
+
+}
+
+// Sorteos programados de esta tabla y precio, todavía sin publicar, con sus
+// grupos y si cada uno está autorizado (reservas anticipadas). Nunca crea
+// nada en eventos_bot.
+async function programadosDelPrecio(usuarioId, config, ahora) {
+
+    const r = await sorteosParaReservar(usuarioId, { tabla: config.tabla, precio: config.precio, ahora });
+    if (!r.ok) return { ok: false, lista: [] };
+
+    const lista = await Promise.all(r.data.map(async (p) => ({
+        ...p,
+        grupos: await Promise.all(p.grupos.map(async (g) => ({
+            grupoId: g.grupo_id,
+            grupoNombre: g.grupo_nombre || null,
+            autorizado: (await evaluarGrupo(usuarioId, g.grupo_id)).permitido
+        })))
+    })));
+
+    return { ok: true, lista };
 
 }
 
@@ -382,10 +404,17 @@ async function contextoNumero({ usuarioId, precio, numero, ahora = new Date() })
     const fila = lectura.fila;
     const estado = estadoDeFila(fila, ahora);
 
-    const [sorteo, historial] = await Promise.all([
+    const [sorteo, historial, programados, sinPublicar] = await Promise.all([
         sorteoDelPrecio(usuarioId, config.tabla, config.precio),
-        historialNumero({ usuarioId, tabla: config.tabla, numero: fila.numero })
+        historialNumero({ usuarioId, tabla: config.tabla, numero: fila.numero }),
+        programadosDelPrecio(usuarioId, config, ahora),
+        sorteosSinPublicar(usuarioId)
     ]);
+
+    // Reserva anticipada: su sorteo programado todavía no tiene evento.
+    const sorteoAnticipado = fila.identidad_evento_real && sinPublicar.ok
+        ? sinPublicar.data.find(s => s.identidad_evento_real === fila.identidad_evento_real) || null
+        : null;
 
     const principal = sorteo.filas[0] || null;
     const contextos = principal ? await contextosDe(usuarioId, sorteo.filas) : [];
@@ -411,7 +440,8 @@ async function contextoNumero({ usuarioId, precio, numero, ahora = new Date() })
             fechaPago: fila.fecha_pago || null,
             horaPago: fila.hora_pago || null,
             motivoBloqueo: fila.temporal_por || null,
-            bloqueadoHasta: fila.bloqueado_hasta || null
+            bloqueadoHasta: fila.bloqueado_hasta || null,
+            sorteoAnticipado: sorteoAnticipado ? sorteoAnticipado.config?.nombre || "Sorteo programado" : null
         },
         sorteo: principal ? {
             nombreEvento: principal.nombre_evento || null,
@@ -423,6 +453,20 @@ async function contextoNumero({ usuarioId, precio, numero, ahora = new Date() })
             aceptaReservas: sorteoAceptaReservas(principal, ahora)
         } : null,
         contextos,
+        // Reservas anticipadas: sorteos programados de este precio que aún
+        // no se publicaron (sin evento todavía).
+        programados: programados.lista.map(p => ({
+            sorteoId: p.sorteo.id,
+            nombreEvento: p.sorteo.config?.nombre || null,
+            fechaEvento: p.fecha || null,
+            horaCierre: p.sorteo.config?.hora_cierre || null,
+            horaFin: p.sorteo.config?.hora_fin || null,
+            publicarEn: p.sorteo.publicar_en,
+            cifras: p.sorteo.cifras ?? config.cifras,
+            aceptaReservas: p.aceptaReservas,
+            motivo: p.motivo,
+            grupos: p.grupos
+        })),
         pago: ultimoPago ? {
             metodoPago: ultimoPago.metodo_pago || null,
             observaciones: ultimoPago.observaciones || null,
@@ -453,9 +497,43 @@ async function contextoNumero({ usuarioId, precio, numero, ahora = new Date() })
 
 // --------------------------------------------------------------- reservar ---
 
+// Destino de una reserva ANTICIPADA: sorteo programado confirmado (versión
+// vigente), sin publicar, de esta tabla y precio, sin reinicio pendiente,
+// antes de su cierre, y uno de sus grupos. Devuelve un contexto EN MEMORIA
+// (sin fila en eventos_bot): identidad y tabla del sorteo, evento_id vacío.
+async function destinoProgramado(usuarioId, config, sorteoProgramadoId, grupoId) {
+
+    const r = await sorteosParaReservar(usuarioId, { tabla: config.tabla, precio: config.precio });
+    if (!r.ok) return rechazo("error_sorteo", "No se pudo leer el sorteo programado.");
+
+    const p = r.data.find(x => x.sorteo.id === sorteoProgramadoId);
+    if (!p) return rechazo("sorteo_no_disponible", "Ese sorteo programado no admite reservas anticipadas en esta tabla (no está confirmado, ya se publicó, cerró o es de otro precio).");
+    if (!p.aceptaReservas) return rechazo("sorteo_no_disponible", p.motivo);
+
+    if (!grupoId) return rechazo("falta_grupo", "Selecciona el grupo de WhatsApp de la reserva.");
+    const grupo = p.grupos.find(g => g.grupo_id === grupoId);
+    if (!grupo) return rechazo("grupo_no_del_sorteo", "Ese grupo no pertenece al sorteo programado.");
+
+    return {
+        ok: true,
+        evento: {
+            id: null,
+            usuario_id: usuarioId,
+            tabla: config.tabla,
+            cifras: p.sorteo.cifras,
+            valor: config.precio,
+            identidad_evento_real: p.sorteo.identidad_evento_real,
+            grupo_id: grupo.grupo_id,
+            grupo_nombre: grupo.grupo_nombre || null,
+            telefono_bot: null
+        }
+    };
+
+}
+
 async function reservarManual({
     usuarioId, operador, precio, numero, contactoId, nuevoContacto, eventoId,
-    motivo, observaciones, solicitudId
+    sorteoProgramadoId, grupoId, motivo, observaciones, solicitudId
 }) {
 
     const motivoLimpio = texto(motivo, MAX_MOTIVO);
@@ -496,13 +574,31 @@ async function reservarManual({
     }
 
     // ---- sorteo y grupo (contexto) ----
-    const sorteo = await sorteoDelPrecio(usuarioId, config.tabla, config.precio);
-    if (!sorteo.ok) return rechazar(rechazo("error_sorteo", "No se pudo leer el sorteo activo."));
-    if (sorteo.filas.length === 0) return rechazar(rechazo("sin_sorteo", "No hay un sorteo activo para esta tabla."));
+    // Sorteo activo (eventoId) o programado sin publicar (sorteoProgramadoId
+    // + grupoId): el propietario elige; nunca se deduce por el grupo.
+    if (eventoId && sorteoProgramadoId) {
+        return rechazar(rechazo("destino_ambiguo", "Elige un sorteo activo o uno programado, no ambos."));
+    }
 
+    const anticipada = Boolean(sorteoProgramadoId);
     let evento;
-    if (eventoId) evento = sorteo.filas.find(e => e.id === eventoId);
-    else if (sorteo.filas.length === 1) evento = sorteo.filas[0];
+
+    if (anticipada) {
+
+        const destino = await destinoProgramado(usuarioId, config, String(sorteoProgramadoId), grupoId ? String(grupoId) : null);
+        if (!destino.ok) return rechazar(destino);
+        evento = destino.evento;
+
+    } else {
+
+        const sorteo = await sorteoDelPrecio(usuarioId, config.tabla, config.precio);
+        if (!sorteo.ok) return rechazar(rechazo("error_sorteo", "No se pudo leer el sorteo activo."));
+        if (sorteo.filas.length === 0) return rechazar(rechazo("sin_sorteo", "No hay un sorteo activo para esta tabla."));
+
+        if (eventoId) evento = sorteo.filas.find(e => e.id === eventoId);
+        else if (sorteo.filas.length === 1) evento = sorteo.filas[0];
+
+    }
 
     if (!evento) return rechazar(rechazo("falta_grupo", "Selecciona el grupo de WhatsApp de la reserva."));
 
@@ -518,7 +614,8 @@ async function reservarManual({
         return rechazar(rechazo("numero_invalido", `El número debe tener ${cifras} cifras.`), ctx);
     }
 
-    if (!sorteoAceptaReservas(evento)) {
+    // El programado ya se comprobó (cierre incluido) en destinoProgramado.
+    if (!anticipada && !sorteoAceptaReservas(evento)) {
         return rechazar(rechazo("sorteo_cerrado", "El sorteo ya no acepta reservas (cerrado o pasó la hora de cierre)."), ctx);
     }
 
@@ -592,10 +689,13 @@ async function reservarManual({
 
     }
 
-    // Contadores del sorteo (lo mismo que hace el bot tras reservar).
-    try { await actualizarEvento(evento); } catch { /* best-effort */ }
+    // Contadores del sorteo (lo mismo que hace el bot tras reservar). Una
+    // anticipada todavía no tiene evento: los cuenta el publicador al crearlo.
+    if (!anticipada) {
+        try { await actualizarEvento(evento); } catch { /* best-effort */ }
+    }
 
-    return { ok: true, estado: "reservado", fila: reservadas[0] };
+    return { ok: true, estado: "reservado", fila: reservadas[0], ...(anticipada ? { anticipada: true } : {}) };
 
 }
 

@@ -439,7 +439,7 @@ router.get("/:precio/numeros/:numero", exigirUsuario, manejar("contexto de núme
 ));
 
 // POST /tablas/:precio/numeros/:numero/reservar
-// { contactoId | nuevoContacto: { nombre, telefono }, eventoId, motivo, observaciones, solicitudId }
+// { contactoId | nuevoContacto: { nombre, telefono }, eventoId | (sorteoProgramadoId + grupoId), motivo, observaciones, solicitudId }
 router.post("/:precio/numeros/:numero/reservar", exigirUsuario, manejar("reserva manual", (req) => {
     const b = req.body || {};
     return reservaManual.reservarManual({
@@ -450,6 +450,8 @@ router.post("/:precio/numeros/:numero/reservar", exigirUsuario, manejar("reserva
         contactoId: b.contactoId || null,
         nuevoContacto: b.nuevoContacto || null,
         eventoId: b.eventoId || null,
+        sorteoProgramadoId: b.sorteoProgramadoId || null,
+        grupoId: b.grupoId || null,
         motivo: b.motivo,
         observaciones: b.observaciones,
         solicitudId: b.solicitudId

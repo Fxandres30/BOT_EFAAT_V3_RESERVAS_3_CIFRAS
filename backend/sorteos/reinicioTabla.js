@@ -12,6 +12,7 @@
 // ==========================================================================
 
 const supabase = require("../lib/supabase");
+const { anticipadasEnTabla } = require("./reservasAnticipadas");
 
 const SIN_MIGRACION = new Set(["42883", "42P01", "PGRST202", "PGRST205"]);
 
@@ -19,7 +20,8 @@ const NOMBRE_CLASE = {
     protegido_activo: "del sorteo activo",
     protegido_sin_sorteo: "que no se pueden atribuir con seguridad a un sorteo terminado",
     protegido_en_proceso: "con pago en proceso",
-    protegido_desconocido: "en un estado desconocido"
+    protegido_desconocido: "en un estado desconocido",
+    protegido_anticipada: "reservados antes de publicar un sorteo programado"
 };
 
 function describirGrupo(g) {
@@ -55,6 +57,27 @@ function explicarReinicio(r) {
 async function llamar(usuarioId, sorteo, { huella = null, aplicar }) {
 
     const liberarBloqueados = sorteo.liberarBloqueados ?? sorteo.config?.tabla?.liberar_bloqueados === true;
+
+    // Reservas anticipadas (sorteo programado sin publicar): la 030 solo
+    // protege identidades con evento activo y las archivaría. Mientras haya
+    // alguna, ningún reinicio (revisión ni aplicación) sigue adelante. Si no
+    // se puede comprobar, tampoco (falla cerrado). Una reserva hecha justo
+    // después cambia la huella y la 030 rechaza la aplicación.
+    const anticipadas = await anticipadasEnTabla(usuarioId, sorteo.tabla);
+    if (!anticipadas.ok) return { ok: false, motivo: "error_supabase" };
+    if (anticipadas.total > 0) {
+        return {
+            ok: true,
+            data: {
+                ok: false, motivo: "reservas_anticipadas", huella: null,
+                liberables: 0, protegidos: anticipadas.total, conservados: 0,
+                por_sorteo: anticipadas.porSorteo.map(s => ({
+                    identidad: s.identidad, nombre_evento: s.nombre, clase: "protegido_anticipada",
+                    reservados: s.reservados, pagados: s.pagados, otros: s.otros
+                }))
+            }
+        };
+    }
 
     const { data, error } = await supabase.rpc("reiniciar_tabla_cliente", {
         p_usuario: usuarioId,

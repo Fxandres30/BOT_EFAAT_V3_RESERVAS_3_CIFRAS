@@ -144,6 +144,10 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
 
     if (!guardado?.id) return { estado: "fallido", ultimo_error: "No se pudo guardar el evento; se reintentará." };
 
+    // Contadores del evento con las reservas que ya tiene su identidad
+    // (anticipadas desde el panel); la fila nueva nace en cero.
+    try { if (deps.actualizarEvento) await deps.actualizarEvento(guardado); } catch { /* best-effort */ }
+
     // Si WhatsApp no confirma la apertura, el worker de eventos la reintenta
     // (abierto=false, mismo mecanismo que la detección).
     const abierto = await deps.abrirGrupo({ sock, grupoId });
@@ -162,7 +166,7 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
     const base = { evento_bot_id: guardado.id };
 
     if (envio.ejecutada || envio.motivo === "ya_ok") {
-        return { ...base, estado: "publicado", version_publicada: sorteo.version, publicado_en: new Date().toISOString(), ultimo_error: null };
+        return { ...base, estado: "publicado", version_publicada: sorteo.version, publicado_en: ahora.toISOString(), ultimo_error: null };
     }
 
     // El registro de idempotencia no se pudo crear: el anuncio NO se envió.
@@ -514,12 +518,22 @@ async function liberarVencidas({ sock, deps, ahora }) {
 
         let liberadosSorteo = 0;
 
+        // Una reserva anticipada (hecha antes del anuncio) empieza a vencer
+        // cuando el sorteo se publica, no cuando se tomó: si no, se
+        // liberaría en el primer ciclo tras publicar.
+        const grupos = await repo.gruposDelSorteo(usuarioId, sorteo.id);
+        const publicaciones = (grupos.data || []).map(g => new Date(g.publicado_en).getTime()).filter(Number.isFinite);
+        const publicadoEn = Math.max(new Date(sorteo.publicar_en).getTime() || 0, publicaciones.length ? Math.min(...publicaciones) : 0);
+
         for (const fila of filas || []) {
 
             const reservadoEn = instanteBogota(fila.fecha_reserva, fila.hora_reserva);
 
             // Sin fecha de reserva no se puede saber si venció: no se toca.
-            if (!reservadoEn || ahora.getTime() - reservadoEn.getTime() < reservas.vencimiento_minutos * 60 * 1000) continue;
+            if (!reservadoEn) continue;
+
+            const desde = Math.max(reservadoEn.getTime(), publicadoEn);
+            if (ahora.getTime() - desde < reservas.vencimiento_minutos * 60 * 1000) continue;
 
             const { data: cambiadas } = await deps.supabase.from(sorteo.tabla)
                 .update(CAMPOS_LIBERACION)
