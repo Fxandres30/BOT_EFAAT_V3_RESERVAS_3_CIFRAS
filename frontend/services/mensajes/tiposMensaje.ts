@@ -196,18 +196,9 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         ejemploPlural: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["01", "27", "48"]), numeros_totales_cliente: formatearListaNumeros(["01","27","48"]), numeros_pagados: formatearListaNumeros(["27"]), numeros_pendientes: formatearListaNumeros(["01","48"]), cantidad_pagados: "1", cantidad_pendientes: "2", tu_numero_tus_numeros: "tus números", es_son: "son", reservado_reservados: "reservados", ese_esos: "esos números", tuyo_tuyos: "tuyos", su_numero_sus_numeros: "sus números", numero_numeros: "números" },
         soportado: true
     },
-    {
-        id: "mis_reservas",
-        categoria: "Consultas",
-        icono: "📋",
-        nombre: "Mis reservas",
-        descripcion: "El cliente pregunta qué tiene reservado.",
-        variables: [V.cliente, V.evento, V.reservados, V.tuNumeroTusNumeros, V.esSon, V.reservadoReservados, V.numerosPagados, V.numerosPendientes],
-        ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["01", "27", "48"]) },
-        ejemploSingular: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["27"]), tu_numero_tus_numeros: "tu número", es_son: "es", reservado_reservados: "reservado" },
-        ejemploPlural: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_reservados: formatearListaNumeros(["01", "27", "48"]), tu_numero_tus_numeros: "tus números", es_son: "son", reservado_reservados: "reservados" },
-        soportado: true
-    },
+    // «Mis reservas» se retiró del panel: devolvía los mismos datos que
+    // «Mis números», que ahora responde también a esas preguntas
+    // (backend/bot/ai/plantillaMensaje.js::calcularTipoPresentacion).
     {
         id: "cantidad_reservas",
         categoria: "Consultas",

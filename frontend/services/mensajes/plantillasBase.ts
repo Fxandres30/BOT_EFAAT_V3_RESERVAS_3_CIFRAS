@@ -127,31 +127,6 @@ const PLANTILLAS_POR_TIPO: Record<string, PlantillaBase[]> = {
 
     // mis_numeros: ver plantillasNumerosPagos.ts (10 sugeridas, 2 activas).
 
-    mis_reservas: construir([
-        // "esto es lo que tienes reservado" es una construcción neutra
-        // invariante ("esto"/"reservado" concuerdan entre sí, no con la
-        // cantidad de números) — ya es correcta para 1 o para varios, no
-        // necesita ninguna variable de concordancia.
-        "{{cliente}}, esto es lo que tienes reservado: {{numeros_reservados}}",
-        "{{reservado_reservados}}: {{numeros_reservados}}",
-        "{{cliente}}, tienes {{reservado_reservados}}: {{numeros_reservados}} 📋",
-        "¡Hola {{cliente}}! Esto tienes reservado hasta ahora: {{numeros_reservados}}",
-        "{{cliente}}, ¡tienes {{reservado_reservados}} {{numeros_reservados}}! 🎉",
-        "{{numeros_reservados}} {{reservado_reservados}} a tu nombre, {{cliente}}. ¡Suerte!",
-        "{{cliente}}, en {{evento}} tienes {{reservado_reservados}} actualmente: {{numeros_reservados}}.",
-        "{{numeros_reservados}}",
-        "{{cliente}}, tienes: {{numeros_reservados}}",
-        // "su reserva actual es" / "tu reserva es": "reserva" es un
-        // sustantivo singular invariante (contiene 1 o varios números),
-        // no concuerda con la cantidad — ya correctas.
-        "Estimado {{cliente}}, su reserva actual es: {{numeros_reservados}}.",
-        "Reserva actual: {{numeros_reservados}}",
-        "{{cliente}}, para {{evento}} tu reserva es: {{numeros_reservados}}",
-        "{{reservado_reservados}} a tu nombre: {{numeros_reservados}}",
-        "{{cliente}} 📋 llevas {{reservado_reservados}} {{numeros_reservados}} ✨",
-        ""
-    ]),
-
     cantidad_reservas: construir([
         "{{cliente}}, tienes {{cantidad}} {{numero_numeros}} {{reservado_reservados}}.",
         "Tienes {{cantidad}}.",

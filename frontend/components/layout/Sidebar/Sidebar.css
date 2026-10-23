@@ -154,6 +154,23 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
+.sidebar__account:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.45);
+}
+
+.sidebar__account svg {
+  flex-shrink: 0;
+}
+
+/* Textos largos: una línea con puntos suspensivos, sin desbordar. */
+.sidebar__accountText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sidebar__account--active {
   background: rgba(37, 99, 235, 0.22);
   border-color: rgba(37, 99, 235, 0.5);

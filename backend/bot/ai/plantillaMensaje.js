@@ -246,8 +246,16 @@ function calcularTipoPresentacion(ctx, resultado) {
             return "disponibilidad_agotada";
         }
 
+        // "mis_reservas" ya no es un tipo del panel: devuelve los mismos
+        // datos que mis_numeros (resolverConsulta.js), así que usa sus
+        // plantillas e interruptor. Las filas antiguas de mis_reservas se
+        // conservan en Supabase pero ya no se usan para redactar.
+        if (resultado?.tipo === "mis_reservas") {
+            return "mis_numeros";
+        }
+
         // Resto de tipos de consulta ya usan el nombre correcto
-        // (mis_numeros, mis_reservas, cantidad_reservas, numero_especifico,
+        // (mis_numeros, cantidad_reservas, numero_especifico,
         // disponibilidad, info_evento, multiple) — puestos por
         // resolverConsulta.js.
         return resultado?.tipo || null;

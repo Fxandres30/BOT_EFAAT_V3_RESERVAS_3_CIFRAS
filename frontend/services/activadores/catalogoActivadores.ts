@@ -355,8 +355,8 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 estado: "funciona",
                 activadores: [{
                     tipo: "frase",
-                    descripcion: "«número(s)» junto a una palabra de posesión, o una pregunta corta de posesión.",
-                    ejemplos: ["mis", "tengo", "cuales", "muestrame", "mios"],
+                    descripcion: "«número(s)» junto a una palabra de posesión, una palabra de «reserva» («mis reservas», «qué reservé») o una pregunta corta de posesión.",
+                    ejemplos: ["mis", "tengo", "cuales", "muestrame", "mios", "reservas"],
                     fuente: "backend/bot/funciones/consultas/detectarIntencion.js"
                 }],
                 condiciones: ["Sin números concretos en el mensaje."],
@@ -368,10 +368,10 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                     { archivo: "backend/bot/funciones/consultas/consultarMisNumeros.js", simbolo: "consultarMisNumerosPorEstado" },
                     { archivo: "backend/bot/funciones/consultas/resolverConsulta.js", simbolo: "resolverConsulta" }
                 ],
-                plantillas: ["mis_numeros", "mis_reservas"],
+                plantillas: ["mis_numeros"],
                 panel: [{ ...PANEL_MENSAJES, que: "Interruptor y plantillas." }],
                 edicion: { nivel: "mixto", detalle: "En el panel: texto e interruptor. Las frases que la activan están en el código." },
-                avisos: [FALLBACK_FIJO, "«Mis reservas» usa los mismos datos con su propio tipo de plantilla."],
+                avisos: [FALLBACK_FIJO, "Las preguntas por «mis reservas» también usan estas plantillas y este interruptor; si el antiguo «Mis reservas» estaba apagado, esas preguntas siguen sin respuesta."],
                 estadoReal: "tipos"
             },
             {

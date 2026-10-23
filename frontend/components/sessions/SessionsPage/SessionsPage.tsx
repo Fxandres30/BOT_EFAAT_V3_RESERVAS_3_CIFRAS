@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 
 import SessionCard from "../SessionCard/SessionCard";
+import AyudaContextual from "@/components/aprende/AyudaContextual";
 
 import styles from "./SessionsPage.module.css";
 
@@ -55,9 +56,12 @@ export default function SessionsPage() {
         title="Sesiones"
         description="Administra las sesiones de WhatsApp del bot."
         actions={
-          <Button leftIcon={<Plus size={15} />} onClick={agregarSesion}>
-            Agregar sesión
-          </Button>
+          <>
+            <AyudaContextual slug="crear-y-conectar-sesion" />
+            <Button leftIcon={<Plus size={15} />} onClick={agregarSesion}>
+              Agregar sesión
+            </Button>
+          </>
         }
       />
 

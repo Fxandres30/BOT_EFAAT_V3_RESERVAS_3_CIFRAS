@@ -33,10 +33,10 @@ function construirContextoDisponible(tipo: TipoMensaje): Record<string, boolean>
     }
 
     if (tipo.categoria === "Consultas") {
-        // "mis números"/"mis reservas" también traen el desglose
+        // "mis números" también trae el desglose
         // pagados/pendientes (resumen del backend, resolverConsulta.js).
         const esPago = tipo.id.startsWith("consulta_pago") || tipo.id === "multiple" ||
-            tipo.id === "mis_numeros" || tipo.id === "mis_reservas";
+            tipo.id === "mis_numeros";
         return { usuario: true, evento: true, reserva: false, consulta: true, estado_pago: esPago };
     }
 

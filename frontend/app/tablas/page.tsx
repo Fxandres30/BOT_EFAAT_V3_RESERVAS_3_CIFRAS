@@ -1,5 +1,6 @@
 import DashboardLayout from "@/components/layout/DashboardLayout/DashboardLayout";
 import IndiceTablas from "@/components/tablas/IndiceTablas";
+import AyudaContextual from "@/components/aprende/AyudaContextual";
 
 // Índice real de tablas de reservas: los precios de la cuenta de la sesión
 // (tablas_cliente, migración 027; sin ella, los precios base de
@@ -12,11 +13,14 @@ export default function TablasPage() {
 
             <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6 min-w-0">
 
-                <div>
-                    <h1 className="font-bold text-[clamp(1.5rem,4vw,1.875rem)]">Reservas</h1>
-                    <p className="text-gray-500">
-                        Selecciona una tabla de números por precio.
-                    </p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h1 className="font-bold text-[clamp(1.5rem,4vw,1.875rem)]">Reservas</h1>
+                        <p className="text-gray-500">
+                            Selecciona una tabla de números por precio.
+                        </p>
+                    </div>
+                    <AyudaContextual slug="tablas-de-precio" />
                 </div>
 
                 <IndiceTablas />

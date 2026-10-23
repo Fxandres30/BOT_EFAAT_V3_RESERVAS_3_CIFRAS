@@ -17,6 +17,7 @@ import {
   CalendarDays,
   LogOut,
   UserCog,
+  GraduationCap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -59,6 +60,8 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
   const cuentaActiva =
     pathname === "/mi-cuenta" || pathname.startsWith("/mi-cuenta/");
+  const aprendeActiva =
+    pathname === "/aprende" || pathname.startsWith("/aprende/");
 
   const [email, setEmail] = useState<string | null>(null);
   const [cerrando, setCerrando] = useState(false);
@@ -141,6 +144,21 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         >
           <UserCog size={15} aria-hidden="true" />
           Mi cuenta
+        </Link>
+
+        <Link
+          href="/aprende"
+          prefetch={false}
+          onClick={onClose}
+          aria-current={aprendeActiva ? "page" : undefined}
+          className={
+            aprendeActiva
+              ? "sidebar__account sidebar__account--active"
+              : "sidebar__account"
+          }
+        >
+          <GraduationCap size={15} aria-hidden="true" />
+          <span className="sidebar__accountText">Aprende a usar EFAAT</span>
         </Link>
 
         <button

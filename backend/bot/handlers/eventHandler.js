@@ -34,6 +34,15 @@ async function interruptorPrevioHabilitado(usuarioId, tipo) {
         return true;
     }
 
+    // "mis_reservas" responde con el interruptor de "mis_numeros" (ver
+    // calcularTipoPresentacion). Si el cliente había apagado el antiguo
+    // «Mis reservas», se respeta: quitarlo del panel no debe reactivar esas
+    // respuestas.
+    if (tipo === "mis_reservas") {
+        return (await estaRespuestaHabilitada(usuarioId, "mis_reservas")) &&
+            estaRespuestaHabilitada(usuarioId, "mis_numeros");
+    }
+
     return estaRespuestaHabilitada(usuarioId, tipo);
 
 }

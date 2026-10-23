@@ -11,6 +11,7 @@ import AccionesTabla, { BotonIcono } from "./AccionesTabla";
 import StatsBar from "./StatsBar";
 import Grid from "./Grid";
 import HistorialNumeros from "./HistorialNumeros";
+import AyudaContextual from "@/components/aprende/AyudaContextual";
 import ReservasRecientes from "./ReservasRecientes";
 import GruposPanel from "./GruposPanel";
 import ActividadReciente from "./ActividadReciente";
@@ -343,15 +344,18 @@ function Cabecera({
                     </p>
                 </div>
 
-                {coincidePrecio ? (
-                    <span className="bg-emerald-100 text-emerald-700 px-4 py-2 rounded-full font-semibold text-sm w-fit shrink-0">
-                        🟢 Evento activo
-                    </span>
-                ) : (
-                    <span className="bg-gray-100 text-gray-600 px-4 py-2 rounded-full font-semibold text-sm w-fit shrink-0">
-                        ⚪ Sin evento activo para ${precio.toLocaleString("es-CO")}
-                    </span>
-                )}
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    {coincidePrecio ? (
+                        <span className="bg-emerald-100 text-emerald-700 px-4 py-2 rounded-full font-semibold text-sm w-fit shrink-0">
+                            🟢 Evento activo
+                        </span>
+                    ) : (
+                        <span className="bg-gray-100 text-gray-600 px-4 py-2 rounded-full font-semibold text-sm w-fit shrink-0">
+                            ⚪ Sin evento activo para ${precio.toLocaleString("es-CO")}
+                        </span>
+                    )}
+                    <AyudaContextual slug="tablas-de-precio" />
+                </div>
 
             </div>
 
