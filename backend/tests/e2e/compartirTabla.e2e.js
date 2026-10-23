@@ -69,6 +69,19 @@ t.eventos_bot = [{
     creado_en: "2026-10-22T12:00:00Z"
 }];
 t[T5K] = [A, B].flatMap(u => Array.from({ length: 100 }, (_, i) => ({ id: `${u}-${i}`, numero: String(i).padStart(2, "0"), estado: i < 2 ? "pagado" : "libre", usuario_id: u })));
+// Diseño personalizado de la tabla (preset «Clásico» de disenoDefaults.ts):
+// la imagen debe conservar su fondo y los colores de las celdas.
+const CLASICO = {
+    theme: { pageBg: "#F3ECD8", tableBg: "#D8C36A", text: "#2B2210", border: "#B89A4F", accent: "#8A6A1F" },
+    cells: {
+        available: { bg: "#E8F2DF", border: "#9FC98A", text: "#2B2210" },
+        reserved: { bg: "#FBE9B0", border: "#D9A521", text: "#5C3D00" },
+        pagado: { bg: "#D9E9FB", border: "#5B8FC9", text: "#1C3A5C" }
+    },
+    numbers: { size: 18, weight: 700 },
+    grid: { radius: 8, spacing: 6, borderWidth: 1 }
+};
+t.tabla_configuracion_visual = [{ id: "cv-a-5000", usuario_id: A, precio: 5000, config: CLASICO, diseno_origen_id: null }];
 
 const { paso, terminar } = crearPasos();
 const PNG = "89504e470d0a1a0a";
@@ -126,17 +139,48 @@ async function main() {
         assert.ok(envios.every(e => e.image.equals(Buffer.from(src.split(",")[1], "base64"))), "se envía la MISMA captura que se vio en la vista previa");
         paso("confirmación con los destinos → imagen PNG + caption a cada grupo; resultado por grupo; selección guardada");
 
-        // La foto es el `div` real de la tabla en pantalla (Grid): mismas
-        // proporciones (captura a pixelRatio 2).
+        // La foto es SOLO la cuadrícula de números en pantalla (el `div` padre
+        // de los NumeroCard) más el margen interior de su tarjeta: sin la
+        // leyenda. Captura a pixelRatio 2.
         const caja = await page.evaluate(() => {
-            const div = document.querySelector('[data-numero="00"]').closest("div.rounded-2xl.border");
-            const r = div.getBoundingClientRect();
-            return { ancho: r.width, alto: r.height };
+            const grid = document.querySelector('[data-numero="00"]').parentElement;
+            const tarjeta = grid.parentElement;
+            const g = grid.getBoundingClientRect();
+            const c = document.querySelector('[data-numero="00"]').getBoundingClientRect();
+            return {
+                ancho: grid.offsetWidth, alto: grid.offsetHeight,
+                margen: parseFloat(getComputedStyle(tarjeta).paddingLeft),
+                tarjetaAlto: tarjeta.getBoundingClientRect().height,
+                celda00: { x: c.left - g.left + c.width / 2, y: c.top - g.top + c.height / 2 },
+                leyendaEnPanel: /Disponible/.test(tarjeta.innerText) && /Reservado/.test(tarjeta.innerText) && /Pagado/.test(tarjeta.innerText)
+            };
         });
         const ancho = envios[0].image.readUInt32BE(16);
         const alto = envios[0].image.readUInt32BE(20);
-        assert.ok(Math.abs(ancho - caja.ancho * 2) <= 2 && Math.abs(alto - caja.alto * 2) <= 2, `PNG ${ancho}x${alto} vs div ${caja.ancho}x${caja.alto}`);
-        paso(`la imagen enviada es el div de la tabla visible (${ancho}x${alto} px = ${caja.ancho}x${caja.alto} css × 2)`);
+        const esperadoAncho = (caja.ancho + caja.margen * 2) * 2;
+        const esperadoAlto = (caja.alto + caja.margen * 2) * 2;
+        assert.ok(Math.abs(ancho - esperadoAncho) <= 2 && Math.abs(alto - esperadoAlto) <= 2, `PNG ${ancho}x${alto} vs cuadrícula ${caja.ancho}x${caja.alto} + margen ${caja.margen}`);
+        assert.ok(alto < caja.tarjetaAlto * 2 - 40, "más baja que la tarjeta con leyenda: la leyenda no está en la imagen");
+        assert.ok(caja.leyendaEnPanel, "la leyenda sigue visible en el panel");
+        paso(`la imagen es solo la cuadrícula (${ancho}x${alto} px = (${caja.ancho}x${caja.alto} + margen ${caja.margen}) × 2); la leyenda sigue en el panel`);
+
+        // Colores del diseño personalizado conservados: fondo de la tabla en
+        // la esquina y color de «Pagado» en el centro de la celda 00.
+        const pixeles = await page.evaluate(async (dataUrl, punto) => {
+            const img = new Image();
+            img.src = dataUrl;
+            await img.decode();
+            const cv = document.createElement("canvas");
+            cv.width = img.width; cv.height = img.height;
+            const ctx = cv.getContext("2d");
+            ctx.drawImage(img, 0, 0);
+            const px = (x, y) => Array.from(ctx.getImageData(x, y, 1, 1).data.slice(0, 3));
+            return { esquina: px(4, 4), celda00: px(Math.round(punto.x), Math.round(punto.y)) };
+        }, src, { x: (caja.celda00.x + caja.margen) * 2, y: (caja.celda00.y + caja.margen) * 2 - 14 });
+        const cerca = (rgb, hex) => rgb.every((v, i) => Math.abs(v - parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16)) <= 6);
+        assert.ok(cerca(pixeles.esquina, CLASICO.theme.tableBg), `fondo ${pixeles.esquina} vs ${CLASICO.theme.tableBg}`);
+        assert.ok(cerca(pixeles.celda00, CLASICO.cells.pagado.bg), `celda 00 ${pixeles.celda00} vs ${CLASICO.cells.pagado.bg}`);
+        paso(`conserva el diseño personalizado: fondo ${CLASICO.theme.tableBg} y «Pagado» ${CLASICO.cells.pagado.bg}`);
 
         // 3. Siguiente clic: directo, sin volver a elegir.
         await pulsar(page, "Cerrar");

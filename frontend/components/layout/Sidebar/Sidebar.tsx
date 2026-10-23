@@ -16,6 +16,7 @@ import {
   CalendarClock,
   CalendarDays,
   LogOut,
+  UserCog,
   type LucideIcon,
 } from "lucide-react";
 
@@ -56,6 +57,8 @@ const NAV: NavItem[] = [
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const cuentaActiva =
+    pathname === "/mi-cuenta" || pathname.startsWith("/mi-cuenta/");
 
   const [email, setEmail] = useState<string | null>(null);
   const [cerrando, setCerrando] = useState(false);
@@ -124,6 +127,21 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           </span>
           <span className="sidebar__email">{email || "Sin sesión"}</span>
         </div>
+
+        <Link
+          href="/mi-cuenta"
+          prefetch={false}
+          onClick={onClose}
+          aria-current={cuentaActiva ? "page" : undefined}
+          className={
+            cuentaActiva
+              ? "sidebar__account sidebar__account--active"
+              : "sidebar__account"
+          }
+        >
+          <UserCog size={15} aria-hidden="true" />
+          Mi cuenta
+        </Link>
 
         <button
           type="button"

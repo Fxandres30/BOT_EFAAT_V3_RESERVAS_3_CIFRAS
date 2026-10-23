@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { DollarSign, Unlock } from "lucide-react";
 
 import BotonContraer from "./BotonContraer";
@@ -14,6 +13,8 @@ interface Props {
     accionando: string | null;
     onMarcarPagado: (numero: string) => void;
     onLiberar: (numero: string) => void;
+    expandido: boolean;
+    onToggleExpandido: () => void;
 }
 
 export default function ReservasRecientes({
@@ -21,10 +22,10 @@ export default function ReservasRecientes({
     numeros,
     accionando,
     onMarcarPagado,
-    onLiberar
+    onLiberar,
+    expandido,
+    onToggleExpandido
 }: Props) {
-
-    const [expandido, setExpandido] = useState(true);
 
     function confirmarLiberar(numero: string, cliente: string | null) {
 
@@ -45,7 +46,7 @@ export default function ReservasRecientes({
                 <BotonContraer
                     expandido={expandido}
                     seccion="reservas recientes"
-                    onToggle={() => setExpandido((v) => !v)}
+                    onToggle={onToggleExpandido}
                 />
             </div>
 

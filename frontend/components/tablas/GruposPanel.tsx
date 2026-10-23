@@ -10,11 +10,11 @@ import { ESTADOS_META_VISUAL, bucketEstado } from "./estadoVisual";
 interface Props {
     paquetes: PaqueteReserva[];
     precio: number;
+    expandido: boolean;
+    onToggleExpandido: () => void;
 }
 
-export default function GruposPanel({ paquetes, precio }: Props) {
-
-    const [expandido, setExpandido] = useState(true);
+export default function GruposPanel({ paquetes, precio, expandido, onToggleExpandido }: Props) {
 
     return (
 
@@ -30,7 +30,7 @@ export default function GruposPanel({ paquetes, precio }: Props) {
                 <BotonContraer
                     expandido={expandido}
                     seccion="grupos"
-                    onToggle={() => setExpandido((v) => !v)}
+                    onToggle={onToggleExpandido}
                 />
             </div>
 

@@ -5,6 +5,7 @@ import { Loader2, AlertTriangle, Info, Palette, LibraryBig } from "lucide-react"
 
 import { useTablaPrecio } from "@/hooks/useTablaPrecio";
 import { useTablaDiseno } from "@/hooks/useTablaDiseno";
+import { useSeccionesPanel } from "@/hooks/useSeccionesPanel";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import AccionesTabla from "./AccionesTabla";
@@ -66,6 +67,9 @@ export default function TablaPrecioView({ precio }: Props) {
     const [filtro, setFiltro] = useState<FiltroEstado>("todos");
 
     const conteosFiltro = useMemo(() => contarPorFiltro(numeros), [numeros]);
+
+    // Secciones contraídas/abiertas: preferencia visual recordada por usuario.
+    const { secciones, alternar: alternarSeccion } = useSeccionesPanel(usuarioId);
 
     // Diseño visual de ESTA tabla ($precio) — independiente de cualquier
     // otro precio. No toca números/reservas reales (useTablaPrecio, arriba).
@@ -229,11 +233,22 @@ export default function TablaPrecioView({ precio }: Props) {
                 accionando={accionando}
                 onMarcarPagado={pagarDesdeLista}
                 onLiberar={liberarDesdeLista}
+                expandido={secciones.reservas}
+                onToggleExpandido={() => alternarSeccion("reservas")}
             />
 
             <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">
-                <GruposPanel paquetes={paquetes} precio={precio} />
-                <ActividadReciente actividad={actividad} />
+                <GruposPanel
+                    paquetes={paquetes}
+                    precio={precio}
+                    expandido={secciones.grupos}
+                    onToggleExpandido={() => alternarSeccion("grupos")}
+                />
+                <ActividadReciente
+                    actividad={actividad}
+                    expandido={secciones.actividad}
+                    onToggleExpandido={() => alternarSeccion("actividad")}
+                />
             </div>
 
             <EditorDisenoModal

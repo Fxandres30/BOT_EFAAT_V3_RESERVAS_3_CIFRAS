@@ -27,7 +27,8 @@ interface Props {
     /** Representación exportada/compartida: solo la cuadrícula de números,
      *  sin leyenda ni modal de detalle (ver /tablas/imprimir/[precio]). */
     limpio?: boolean;
-    /** El `div` de la tabla tal como se ve: «Compartir» lo captura como PNG. */
+    /** La cuadrícula de números tal como se ve (sin la leyenda, que es solo
+     *  para administración): «Compartir» la captura como PNG. */
     contenedorRef?: Ref<HTMLDivElement>;
 }
 
@@ -99,7 +100,7 @@ export default function Grid({
 
     return (
 
-        <div ref={contenedorRef} className="border rounded-2xl shadow-sm p-2.5 sm:p-4" style={estiloDiseno}>
+        <div className="border rounded-2xl shadow-sm p-2.5 sm:p-4" style={estiloDiseno}>
 
             {!limpio && (
                 <div className="flex justify-center sm:justify-start pb-3 sm:pb-4 mb-1 border-b border-gray-100">
@@ -116,6 +117,7 @@ export default function Grid({
             ) : (
 
                 <div
+                    ref={contenedorRef}
                     className="mx-auto max-w-2xl grid grid-cols-10"
                     style={{ gap: "var(--efaat-tabla-cell-gap)" }}
                 >

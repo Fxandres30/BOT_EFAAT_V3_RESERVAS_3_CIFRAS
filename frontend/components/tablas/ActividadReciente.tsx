@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { History, DollarSign, Unlock, Lock, Ban, Users, RotateCcw, Clock } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -31,11 +30,11 @@ const TEXTOS: Record<TipoActividad, string> = {
 
 interface Props {
     actividad: ActividadReserva[];
+    expandido: boolean;
+    onToggleExpandido: () => void;
 }
 
-export default function ActividadReciente({ actividad }: Props) {
-
-    const [expandido, setExpandido] = useState(true);
+export default function ActividadReciente({ actividad, expandido, onToggleExpandido }: Props) {
 
     return (
 
@@ -46,7 +45,7 @@ export default function ActividadReciente({ actividad }: Props) {
                 <BotonContraer
                     expandido={expandido}
                     seccion="actividad reciente"
-                    onToggle={() => setExpandido((v) => !v)}
+                    onToggle={onToggleExpandido}
                 />
             </div>
 

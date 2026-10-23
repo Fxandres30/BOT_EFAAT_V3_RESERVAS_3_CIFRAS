@@ -63,3 +63,34 @@ export function enlaceSolicitud(plan?: PlanComercial): string {
     return `mailto:${CORREO_COMERCIAL}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
 
 }
+
+// Enlaces de «Mi cuenta» (panel privado): mismo canal que la landing. La
+// renovación y los cambios de plan se gestionan con el equipo por correo;
+// no hay cobros automáticos ni pasarela de pago.
+export type MotivoSoporte = "renovacion" | "cambio_plan" | "consulta_plan" | "soporte";
+
+const ASUNTOS_SOPORTE: Record<MotivoSoporte, string> = {
+    renovacion: "Renovación de mi cuenta de EFAAT",
+    cambio_plan: "Cambio de plan de EFAAT",
+    consulta_plan: "Consulta sobre mi plan de EFAAT",
+    soporte: "Soporte de EFAAT"
+};
+
+export function enlaceSoporte(motivo: MotivoSoporte, correoCuenta: string | null, plan?: PlanComercial): string {
+
+    const cuerpo = [
+        "Hola, equipo de EFAAT:",
+        "",
+        motivo === "renovacion" ? "Quiero renovar mi cuenta."
+            : motivo === "cambio_plan" ? (plan ? `Quiero cambiar al plan ${plan.nombre} (${textoGrupos(plan.maxGrupos).toLowerCase()}).` : "Quiero cambiar de plan.")
+            : motivo === "consulta_plan" ? "Quiero confirmar mi plan actual, su estado y su fecha de vencimiento."
+            : "Necesito ayuda con:",
+        "",
+        `Correo de mi cuenta: ${correoCuenta || ""}`,
+        "",
+        "Gracias."
+    ].join("\n");
+
+    return `mailto:${CORREO_COMERCIAL}?subject=${encodeURIComponent(ASUNTOS_SOPORTE[motivo])}&body=${encodeURIComponent(cuerpo)}`;
+
+}

@@ -1,0 +1,192 @@
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.state {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--efaat-text-secondary);
+  font-size: var(--efaat-text-base);
+}
+
+.error,
+.ok,
+.aviso {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--efaat-radius-control);
+  font-size: var(--efaat-text-sm);
+  line-height: 1.45;
+}
+
+.error {
+  background: var(--efaat-error-soft);
+  color: #991b1b;
+}
+
+.ok {
+  background: var(--efaat-success-soft);
+  color: #166534;
+}
+
+.aviso {
+  background: var(--efaat-warning-soft);
+  color: #92400e;
+}
+
+.error svg,
+.ok svg,
+.aviso svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.datos {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) 1fr;
+  gap: 10px 16px;
+  margin: 0;
+  font-size: var(--efaat-text-base);
+}
+
+.datos dt {
+  color: var(--efaat-text-secondary);
+}
+
+.datos dd {
+  margin: 0;
+  color: var(--efaat-text);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sinDato {
+  color: var(--efaat-text-muted);
+  font-style: italic;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 420px;
+}
+
+.acciones {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.etiqueta {
+  display: block;
+  margin-bottom: 6px;
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-text);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.lista {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--efaat-border);
+  font-size: var(--efaat-text-base);
+}
+
+.fila:first-child {
+  border-top: none;
+}
+
+.filaTexto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.filaSub {
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.nota {
+  margin: 0;
+  font-size: var(--efaat-text-sm);
+  color: var(--efaat-text-secondary);
+  line-height: 1.5;
+}
+
+.enlace {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--efaat-primary);
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  text-decoration: none;
+}
+
+.enlace:hover {
+  text-decoration: underline;
+}
+
+.plan {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.planNombre {
+  font-size: var(--efaat-text-md);
+  font-weight: var(--efaat-weight-semibold);
+}
+
+.planPrecio {
+  font-size: var(--efaat-text-lg);
+  font-weight: var(--efaat-weight-bold);
+}
+
+.planPrecio small {
+  font-size: var(--efaat-text-xs);
+  font-weight: var(--efaat-weight-medium);
+  color: var(--efaat-text-secondary);
+}
+
+@media (max-width: 560px) {
+  .datos {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .datos dd {
+    margin-bottom: 10px;
+  }
+}
