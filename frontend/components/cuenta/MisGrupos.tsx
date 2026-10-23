@@ -84,7 +84,7 @@ export default function MisGrupos() {
                         <StatCard
                             label="Grupos en uso"
                             value={resumen.enUso.length}
-                            hint="Autorizados y activos para el bot."
+                            hint="Autorizados y activos en EFAAT."
                             icon={<Users size={16} />}
                             tone="primary"
                         />
@@ -103,7 +103,7 @@ export default function MisGrupos() {
                         <StatCard
                             label="Grupos pausados"
                             value={resumen.pausados.length}
-                            hint="Autorizados, pero el bot no los atiende."
+                            hint="Autorizados, pero en pausa: EFAAT no los atiende."
                             icon={<PauseCircle size={16} />}
                         />
                     </div>
@@ -146,7 +146,7 @@ export default function MisGrupos() {
 
                         <SectionHeader
                             title="Grupos autorizados"
-                            description="Los grupos donde el bot puede trabajar para ti."
+                            description="Los grupos que EFAAT puede gestionar para ti."
                             actions={<Link className={styles.enlace} href="/automatizacion/grupos" prefetch={false}>Administrar grupos</Link>}
                         />
 

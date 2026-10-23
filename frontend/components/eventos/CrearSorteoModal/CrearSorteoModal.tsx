@@ -30,15 +30,15 @@ interface Props {
 const DETALLE: Record<Modalidad, { disponible: boolean; texto: string; faltantes?: string[] }> = {
     dos: {
         disponible: true,
-        texto: "Configura el sorteo (grupos, precio, premios, cuentas de pago, hora y mensajes). Se guarda como borrador: verás la vista previa real y solo se programa cuando lo confirmes. Los sorteos que el bot detecta en los grupos siguen funcionando igual."
+        texto: "Configura el sorteo (grupos, precio, premios, cuentas de pago, hora y mensajes). Se guarda como borrador: verás la vista previa real y solo se programa cuando lo confirmes. Los sorteos que EFAAT detecta en los grupos siguen funcionando igual."
     },
     tres_pago: {
         disponible: false,
         texto: "Todavía no disponible. Para crear sorteos de 3 cifras de pago falta:",
         faltantes: [
             "Tabla de reservas con números 000–999",
-            "Configuración de precio → tabla (configEvento)",
-            "Detección de sorteos de 3 cifras en el bot",
+            "Configuración del precio y su tabla",
+            "Detección automática de sorteos de 3 cifras",
             "Tipos de premio de 3 cifras",
             "Registro del número ganador (resultados)"
         ]
@@ -48,7 +48,7 @@ const DETALLE: Record<Modalidad, { disponible: boolean; texto: string; faltantes
         texto: "Todavía no disponible. Además de lo que falta para 3 cifras de pago, falta:",
         faltantes: [
             "Marcar el sorteo como gratuito (sin valor)",
-            "Reglas de participación sin pago (cuántos números por persona, cómo se asignan, requisitos) — decisión de negocio pendiente"
+            "Reglas de participación sin pago (cuántos números por persona, cómo se asignan y requisitos)"
         ]
     }
 };

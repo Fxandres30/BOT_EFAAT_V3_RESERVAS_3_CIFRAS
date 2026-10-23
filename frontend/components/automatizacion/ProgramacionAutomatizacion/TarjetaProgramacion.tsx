@@ -261,7 +261,7 @@ export default function TarjetaProgramacion({ config, nombre, conexion, evento, 
             <div className={styles.foot}>
                 <span>Actualización: {config.mensaje_actualizacion?.activo ? "sí" : "no"}</span>
                 <span>Umbral: {config.umbral_reservas}</span>
-                <span>Cooldown: {config.cooldown_minutos} min</span>
+                <span>Espera entre avisos: {config.cooldown_minutos} min</span>
             </div>
 
             {/* Diagnóstico: identificadores e historial del evento */}

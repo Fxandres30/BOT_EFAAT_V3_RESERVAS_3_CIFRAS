@@ -37,8 +37,8 @@ export async function llamarBot(url: string, init: RequestInit = {}, { timeoutMs
     } catch (err) {
         const nombre = (err as { name?: string } | null)?.name;
         return nombre === "TimeoutError" || nombre === "AbortError"
-            ? fallo(504, "BOT_SIN_RESPUESTA", "backend_timeout", "El bot no respondió a tiempo.")
-            : fallo(502, "BOT_NO_DISPONIBLE", "backend_no_disponible", "No se pudo contactar al bot.");
+            ? fallo(504, "BOT_SIN_RESPUESTA", "backend_timeout", "El servicio no respondió a tiempo.")
+            : fallo(502, "BOT_NO_DISPONIBLE", "backend_no_disponible", "No fue posible conectar con el servicio.");
     }
 
     let texto = "";
@@ -48,8 +48,8 @@ export async function llamarBot(url: string, init: RequestInit = {}, { timeoutMs
     } catch (err) {
         const nombre = (err as { name?: string } | null)?.name;
         return nombre === "TimeoutError" || nombre === "AbortError"
-            ? fallo(504, "BOT_SIN_RESPUESTA", "backend_timeout", "El bot no respondió a tiempo.")
-            : fallo(502, "BOT_NO_DISPONIBLE", "backend_no_disponible", "No se pudo leer la respuesta del bot.");
+            ? fallo(504, "BOT_SIN_RESPUESTA", "backend_timeout", "El servicio no respondió a tiempo.")
+            : fallo(502, "BOT_NO_DISPONIBLE", "backend_no_disponible", "No fue posible leer la respuesta del servicio.");
     }
 
     // Cualquier JSON válido se devuelve tal cual (también null o un arreglo:
@@ -59,7 +59,7 @@ export async function llamarBot(url: string, init: RequestInit = {}, { timeoutMs
     try {
         cuerpo = texto ? JSON.parse(texto) : {};
     } catch {
-        return fallo(res.ok ? 502 : res.status, "RESPUESTA_INVALIDA", "respuesta_invalida", "El bot respondió en un formato inesperado.");
+        return fallo(res.ok ? 502 : res.status, "RESPUESTA_INVALIDA", "respuesta_invalida", "El servicio respondió en un formato inesperado.");
     }
 
     return { status: res.status, cuerpo };

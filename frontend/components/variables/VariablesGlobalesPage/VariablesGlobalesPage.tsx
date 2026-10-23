@@ -110,7 +110,8 @@ export default function VariablesGlobalesPage() {
         const { data, error: err } = await listarVariablesGlobales(uid);
 
         if (err) {
-            setError(`No se pudo cargar (${err.message}). Verifica que la migración 017 esté aplicada en Supabase.`);
+            console.error("[Variables] carga:", err.message);
+            setError("No fue posible cargar las variables. Inténtalo nuevamente y, si el problema continúa, contacta con soporte.");
             setVariables([]);
         } else {
             setVariables(data || []);

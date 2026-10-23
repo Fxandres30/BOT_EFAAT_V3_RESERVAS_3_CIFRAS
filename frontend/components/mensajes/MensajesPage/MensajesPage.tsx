@@ -178,7 +178,8 @@ export default function MensajesPage() {
 
             if (error) {
 
-                setErrorInicializacion(`No se pudo verificar Supabase (${error.message}). Probablemente la migración todavía no se ejecutó.`);
+                console.error("[Mensajes] contarTodasLasPlantillas:", error.message);
+                setErrorInicializacion("No fue posible comprobar tus plantillas. Inténtalo nuevamente y, si el problema continúa, contacta con soporte.");
                 setInicializacionLista(true);
                 return;
 
@@ -278,7 +279,8 @@ export default function MensajesPage() {
 
         if (error) {
 
-            setErrorCarga(`No se pudo cargar (${error.message}). Verifica que la migración de Supabase esté ejecutada.`);
+            console.error("[Mensajes] listarPlantillas:", error.message);
+            setErrorCarga("No fue posible cargar las plantillas. Inténtalo nuevamente y, si el problema continúa, contacta con soporte.");
             setPlantillas([]);
             setCargandoPlantillas(false);
             return;
@@ -295,7 +297,8 @@ export default function MensajesPage() {
 
             if (resultado.error) {
 
-                setErrorCarga(`No se pudieron crear las plantillas iniciales (${resultado.error}). Verifica que la migración de Supabase esté ejecutada.`);
+                console.error("[Mensajes] sembrarPlantillasIniciales:", resultado.error);
+                setErrorCarga("No fue posible crear las plantillas iniciales. Inténtalo nuevamente y, si el problema continúa, contacta con soporte.");
                 setPlantillas([]);
                 setCargandoPlantillas(false);
                 return;
@@ -379,7 +382,7 @@ export default function MensajesPage() {
 
             <PageHeader
                 title="Mensajes"
-                description="Respuestas que EFAAT puede enviar. Cada tipo de resultado puede tener varias plantillas: fija, aleatoria o por rotación. El BOT calcula reservas y disponibilidad igual; esto solo cambia la redacción."
+                description="Respuestas que EFAAT puede enviar. Cada tipo de resultado puede tener varias plantillas: fija, aleatoria o por rotación. EFAAT calcula las reservas y la disponibilidad de la misma forma; esto solo cambia la redacción."
                 actions={
                     <Button variant="secondary" size="sm" leftIcon={<Workflow size={14} />} onClick={() => abrirActivadores(null)}>
                         Activadores y acciones
@@ -416,7 +419,7 @@ export default function MensajesPage() {
                         <div className={styles.reaccionesTexto}>
                             <h2 id="titulo-reacciones" className={styles.reaccionesTitulo}>Reacciones automáticas ✅/❌</h2>
                             <p className={styles.reaccionesAyuda}>
-                                El bot reacciona al mensaje del cliente: ✅ si le reservó todos los números que pidió y ❌ si todos estaban ocupados. Los mensajes de respuesta no cambian. Los cambios se aplican en menos de un minuto.
+                                EFAAT reacciona al mensaje del cliente: ✅ si le reservó todos los números que pidió y ❌ si todos estaban ocupados. Los mensajes de respuesta no cambian. Los cambios se aplican en menos de un minuto.
                             </p>
                             {errorReacciones && <p className={styles.reaccionesError} role="alert">{errorReacciones}</p>}
                         </div>
@@ -496,7 +499,7 @@ export default function MensajesPage() {
                         <EmptyState
                             icon={<Sparkles size={20} />}
                             title={`${tipoSeleccionado.icono} ${tipoSeleccionado.nombre}`}
-                            description="Este tipo de respuesta está preparado en la arquitectura, pero el BOT todavía no lo genera — por eso aún no hay plantillas reales que configurar."
+                            description="Esta función estará disponible próximamente. Por ahora no hay plantillas que configurar para este tipo de respuesta."
                         />
 
                     ) : errorCarga ? (
@@ -563,8 +566,8 @@ export default function MensajesPage() {
 
                                 {!estaHabilitado(tipoSeleccionado.id) && (
                                     <p className={styles.note}>
-                                        El BOT sigue detectando esta intención y (si aplica) ejecutando la
-                                        operación real, pero no enviará ningún mensaje de este tipo mientras
+                                        EFAAT sigue detectando esta intención y (si aplica) realizando la
+                                        operación, pero no enviará ningún mensaje de este tipo mientras
                                         esté desactivado. Las {plantillas.length} plantillas siguen existiendo
                                         y son editables.
                                     </p>
@@ -574,8 +577,7 @@ export default function MensajesPage() {
 
                                     <p className={styles.note}>
                                         Inicio del día siempre elige al azar entre las plantillas
-                                        habilitadas de abajo, una vez por día — no usa fijo/rotación
-                                        (ver automation/scheduler.js).
+                                        habilitadas de abajo, una vez por día — no usa fijo/rotación.
                                     </p>
 
                                 ) : (

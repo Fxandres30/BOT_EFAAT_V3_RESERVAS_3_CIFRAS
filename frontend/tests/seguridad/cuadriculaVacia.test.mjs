@@ -121,9 +121,9 @@ prueba("diagnóstico: cada causa con su mensaje; ninguna se presenta como 'tabla
     const casos = [
         [{ ok: false, motivo: "migracion_pendiente", estado: "vacia", filas: 0 }, /027/],
         [{ ok: false, motivo: "restriccion_unica", estado: "vacia", filas: 0 }, /033/],
-        [{ ok: false, motivo: "parte_a_pendiente", estado: "vacia", filas: 0 }, /RLS, Parte A/],
+        [{ ok: false, motivo: "parte_a_pendiente", estado: "vacia", filas: 0 }, /protección por cuenta.*Parte A/],
         [{ ok: false, motivo: "error_lectura", codigo: "42501" }, /código 42501/],
-        [{ ok: false, motivo: "sin_respuesta" }, /no respondió/]
+        [{ ok: false, motivo: "sin_respuesta" }, /No fue posible consultar.*referencia: sin_respuesta/]
     ];
     for (const [r, patron] of casos) {
         const d = diagnosticar(r, 0);
@@ -137,7 +137,7 @@ prueba("diagnóstico: cada causa con su mensaje; ninguna se presenta como 'tabla
 prueba("diagnóstico: la base tiene 100 filas pero la sesión no ve ninguna -> RLS/permisos, no 'vacía'", () => {
     const d = diagnosticar({ ok: true, estado: "completa", filas: 100, esperadas: 100 }, 0);
     assert.strictEqual(d.tipo, "bloqueada");
-    assert.ok(/RLS/.test(d.mensaje) && /No es una tabla vacía/.test(d.mensaje), d.mensaje);
+    assert.ok(/no tiene permiso para leerlos/.test(d.mensaje) && /No es una tabla vacía/.test(d.mensaje), d.mensaje);
     assert.strictEqual(diagnosticar({ ok: true, estado: "completa", filas: 100, esperadas: 100 }, 100).tipo, "lista");
 });
 
@@ -181,7 +181,7 @@ prueba("reiniciarTabla con 0 filas visibles y base lista: la cuadrícula la crea
 prueba("reiniciarTabla con 0 filas visibles pero 100 en la base (RLS): error claro, sin escribir", async () => {
     reiniciar();
     respuestaBackend = { ok: true, estado: "completa", filas: 100, esperadas: 100, tabla: T5K };
-    await assert.rejects(() => reiniciarTabla(5000, A), (e) => /RLS/.test(e.message));
+    await assert.rejects(() => reiniciarTabla(5000, A), (e) => /no tiene permiso para leerlos/.test(e.message));
     assert.deepStrictEqual(escrituras, []);
 });
 

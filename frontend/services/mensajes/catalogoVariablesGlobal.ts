@@ -159,7 +159,7 @@ export function aplicarModificadorTexto(valor: string, modificador?: string): st
 export const CATALOGO_VARIABLES: VariableGlobal[] = [
 
     { key: "cliente", aliases: ["nombre"], categoria: "CLIENTE", description: "Nombre del cliente identificado en la conversación", example: "Andrés", requires: ["usuario"], type: "texto", estado: "EXISTENTE" },
-    { key: "telefono", aliases: [], categoria: "CLIENTE", description: "Teléfono/JID del cliente identificado", example: "3001234567", requires: ["usuario"], type: "texto", estado: "NUEVA" },
+    { key: "telefono", aliases: [], categoria: "CLIENTE", description: "Teléfono o ID de WhatsApp del cliente identificado", example: "3001234567", requires: ["usuario"], type: "texto", estado: "NUEVA" },
 
     { key: "numeros_solicitados", aliases: ["numero", "numerito", "numeritos"], categoria: "NUMEROS", description: "Números que el cliente acaba de escribir/consultar", example: "( 12 )", requires: ["evento"], type: "lista", estado: "EXISTENTE" },
     { key: "numeros_reservados", aliases: [], categoria: "NUMEROS", description: "Números reservados por el cliente (en \"mis números\" incluye también los ya pagados)", example: "( 12 - 45 )", requires: ["evento"], type: "lista", estado: "EXISTENTE" },

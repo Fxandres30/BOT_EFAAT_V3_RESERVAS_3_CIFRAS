@@ -101,14 +101,14 @@ export default function ResumenAutomatizacion() {
                         <StatCard
                             label="Eventos activos"
                             value={`${resumen?.eventosActivos ?? 0}/${resumen?.grupoAutorizadosActivos ?? 0}`}
-                            hint="Event Sessions abiertos ahora, de tus grupos autorizados"
+                            hint="Sorteos en curso ahora, de tus grupos autorizados"
                             icon={<CalendarClock size={16} />}
                         />
 
                         <StatCard
-                            label="Scheduler"
+                            label="Envíos programados"
                             value="Preparado"
-                            hint="Construido y probado (179/179), aún no arrancado en producción."
+                            hint="Revisa la programación de tus grupos cada 30 segundos."
                             icon={<Clock size={16} />}
                         />
 

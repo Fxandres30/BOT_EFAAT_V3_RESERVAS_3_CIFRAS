@@ -11,7 +11,7 @@ export default function AutomatizacionHeader() {
     <>
       <PageHeader
         title="Automatización"
-        description="Configura el comportamiento del bot grupo por grupo. El sorteo (nombre, valor, premios, cierre) siempre lo decide la detección real del bot."
+        description="Configura la automatización grupo por grupo. Los datos del sorteo (nombre, valor, premios, cierre) siempre salen del anuncio que EFAAT detecta en el grupo."
       />
       <AutomatizacionNav />
     </>

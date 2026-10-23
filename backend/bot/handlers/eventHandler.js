@@ -4,9 +4,10 @@ const { detectarReserva } = require("../funciones/reservas/detectarReserva");
 const { reaccionarAlMensaje } = require("../funciones/reservas/reaccionReserva");
 const { consultarEvento } = require("../funciones/eventos/consultarEvento");
 const { detectarIntencion } = require("../funciones/consultas/detectarIntencion");
-const { resolverConsulta } = require("../funciones/consultas/resolverConsulta");
+const { resolverConsulta, componerCombinada } = require("../funciones/consultas/resolverConsulta");
 const { responderResultado } = require("../ai/responderResultado");
 const { estaRespuestaHabilitada } = require("../ai/configMensajes");
+const { calcularTipoPresentacion } = require("../ai/plantillaMensaje");
 const { obtenerContenido } = require("../middleware/normalizarMensaje");
 const { esCuentaIgnorada } = require("../funciones/mensajes/cuentasIgnoradas");
 const controlDisponibilidad = require("../funciones/consultas/controlDisponibilidad");
@@ -44,6 +45,42 @@ async function interruptorPrevioHabilitado(usuarioId, tipo) {
     }
 
     return estaRespuestaHabilitada(usuarioId, tipo);
+
+}
+
+// La parte de pago de una consulta combinada respeta el MISMO interruptor
+// que la respuesta de pago sola: consulta_pago_<estado real>, con la clave
+// que da calcularTipoPresentacion (responderResultado la aplica igual en el
+// caso individual). El estado solo se conoce tras la lectura, por eso se
+// comprueba aquí y no en interruptorPrevioHabilitado. Todas las partes de
+// pago comparten la misma lectura -> el mismo estado. Si está apagado, se
+// quita esa parte (sus datos nunca llegan a la plantilla); si no queda
+// ninguna parte, null = silencio.
+async function omitirPagoNoHabilitado(usuarioId, resultado) {
+
+    const partesPago = (resultado?.resultados || []).filter(r => r.tipo === "consulta_pago");
+
+    if (partesPago.length === 0) {
+        return resultado;
+    }
+
+    const tipoPago = calcularTipoPresentacion({ consulta: partesPago[0] }, partesPago[0]);
+
+    if (await estaRespuestaHabilitada(usuarioId, tipoPago)) {
+        return resultado;
+    }
+
+    console.log(`🔇 Parte de pago de la consulta combinada desactivada (${tipoPago}) — se omite.`);
+
+    const resto = resultado.resultados.filter(r => r.tipo !== "consulta_pago");
+
+    if (resto.length === 0) {
+        return null;
+    }
+
+    const { resultados: _omitidos, mensaje: _mensaje, ...base } = resultado;
+
+    return componerCombinada(base, resto);
 
 }
 
@@ -213,9 +250,10 @@ module.exports = async (ctx) => {
     // PROPIO interruptor de tipo — si el tenant desactivó "mis_numeros",
     // la combinada responde solo la parte habilitada; si ninguna sigue
     // habilitada, silencio total (mismo criterio que el resto de tipos,
-    // sin excepción nueva). La parte de pago no tiene interruptor previo
-    // (ver interruptorPrevioHabilitado); la respuesta combinada respeta el
-    // interruptor "multiple" en responderResultado().
+    // sin excepción nueva). La parte de pago se comprueba tras la lectura,
+    // con el interruptor de su estado real (omitirPagoNoHabilitado); la
+    // respuesta combinada respeta además el interruptor "multiple" en
+    // responderResultado().
     if (intencion.tipo === "multiple") {
 
         const subIntencionesHabilitadas = [];
@@ -238,7 +276,7 @@ module.exports = async (ctx) => {
 
         }
 
-        const resultadoCombinado = await resolverConsulta({
+        const resultadoLeido = await resolverConsulta({
 
             tipo: "multiple",
             intenciones: subIntencionesHabilitadas,
@@ -246,6 +284,16 @@ module.exports = async (ctx) => {
             usuario: ctx.usuario
 
         });
+
+        const resultadoCombinado = await omitirPagoNoHabilitado(usuarioId, resultadoLeido);
+
+        if (!resultadoCombinado) {
+
+            console.log("🔇 Ninguna parte de la consulta combinada sigue habilitada — silencio.");
+
+            return;
+
+        }
 
         ctx.consulta = resultadoCombinado;
 

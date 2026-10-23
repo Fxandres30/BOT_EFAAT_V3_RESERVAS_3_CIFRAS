@@ -110,7 +110,7 @@ prueba("un número libre con movimientos no hereda datos de la reserva anterior"
     assert.strictEqual(f33.reserva, null);
     assert.strictEqual(f33.eventos[0].cliente, "Caro");
     assert.deepStrictEqual(f33.eventos[0].detalles, ["Venció tras 30 min sin pago"]);
-    assert.strictEqual(f33.eventos[0].origen, "bot · reserva vencida");
+    assert.strictEqual(f33.eventos[0].origen, "automático · reserva vencida");
 });
 
 prueba("sin auditoría: toda la actividad por número, nada de eventos sin número", () => {

@@ -522,7 +522,7 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
                     {estadoGrupos.tipo === "ok" && grupos.length === 0 && (
                         <p className={`${styles.alerta} ${styles.alertaAviso}`}>
                             {estadoGrupos.resumen && estadoGrupos.resumen.registrados > 0
-                                ? <>Tus {estadoGrupos.resumen.registrados} grupo(s) de WhatsApp están desactivados para el bot. Actívalos en <Link href="/automatizacion/grupos">Automatización → Grupos</Link> y aparecerán aquí.</>
+                                ? <>Tus {estadoGrupos.resumen.registrados} grupo(s) de WhatsApp están desactivados en EFAAT. Actívalos en <Link href="/automatizacion/grupos">Automatización → Grupos</Link> y aparecerán aquí.</>
                                 : <>Todavía no hay grupos de WhatsApp habilitados para {cuentaSesion ? <b>{cuentaSesion}</b> : "tu cuenta"}. Habilítalos una vez en <Link href="/automatizacion/grupos">Automatización → Grupos</Link> y aparecerán aquí. Si los habilitaste con otra cuenta, inicia sesión con ella.</>}
                         </p>
                     )}

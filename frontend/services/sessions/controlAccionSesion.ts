@@ -21,7 +21,7 @@ export interface EstadoControl {
 // sesión) después de que el bot aceptó la acción.
 export const ESPERA_CONFIRMACION_MS = 45000;
 
-export const AVISO_SIN_CONFIRMACION = "El bot recibió la orden, pero el estado de la sesión todavía no cambió. Revisa la sesión en unos segundos o vuelve a intentarlo.";
+export const AVISO_SIN_CONFIRMACION = "EFAAT recibió la orden, pero el estado de la sesión todavía no cambió. Revisa la sesión en unos segundos o vuelve a intentarlo.";
 
 export function crearControlAccion({
     alCambiar,

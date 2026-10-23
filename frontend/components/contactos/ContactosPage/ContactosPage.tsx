@@ -89,7 +89,7 @@ function textoAvisoEscaneo(r: ResultadoBackfillContactos): string {
     }
 
     if (r.estado === "error") {
-        return "⚠️ El último escaneo terminó con error — revisa los logs del bot.";
+        return "⚠️ El último escaneo no se pudo completar. Inténtalo nuevamente y, si el problema continúa, contacta con soporte.";
     }
 
     if (r.estadisticas) {
@@ -230,7 +230,7 @@ export default function ContactosPage() {
                 <div>
                     <h1 className="contactos-titulo">Contactos</h1>
                     <p className="contactos-subtitulo">
-                        Directorio central de todos los usuarios que el bot conoce — identidad, reservas, pagos y actividad.
+                        Directorio central de todos los contactos que EFAAT conoce — identidad, reservas, pagos y actividad.
                     </p>
                 </div>
 
@@ -239,7 +239,7 @@ export default function ContactosPage() {
                     className="contactos-boton-escanear"
                     onClick={ejecutarBackfill}
                     disabled={escaneando || siguiendoProgreso}
-                    title="Escanea ahora todos los grupos de la sesión activa (Identity Scanner) y registra cada participante encontrado como contacto"
+                    title="Escanea ahora todos los grupos de la sesión activa y registra cada participante encontrado como contacto"
                 >
                     <RefreshCw size={14} className={escaneando || siguiendoProgreso ? "contactos-spin" : ""} />
                     {escaneando || siguiendoProgreso ? "Escaneando grupos..." : "Escanear grupos ahora"}
@@ -249,8 +249,8 @@ export default function ContactosPage() {
 
             {migracionPendiente && (
                 <p className="contactos-aviso">
-                    La tabla <code>contactos_tenant</code> todavía no existe en Supabase — aplica
-                    <code> supabase_migrations/018_contactos_tenant.sql</code> para poder ver el directorio completo.
+                    El directorio completo de contactos todavía no está disponible en tu cuenta.
+                    Si necesitas verlo, contacta con soporte.
                 </p>
             )}
 
@@ -270,7 +270,7 @@ export default function ContactosPage() {
 
                 <input
                     type="text"
-                    placeholder="Buscar por nombre, teléfono o LID..."
+                    placeholder="Buscar por nombre, teléfono o identificador de WhatsApp..."
                     value={busqueda}
                     onChange={(e) => setBusqueda(e.target.value)}
                 />

@@ -71,7 +71,7 @@ export default function SorteosPage() {
 
             <PageHeader
                 title="Sorteos programados"
-                description="Crea sorteos desde el panel, revisa la vista previa y prográmalos. Conviven con los sorteos que el bot detecta en los grupos."
+                description="Crea sorteos desde el panel, revisa la vista previa y prográmalos. Conviven con los sorteos que EFAAT detecta en los grupos."
                 actions={<Button leftIcon={<Plus size={16} />} onClick={() => setFormulario({ abierto: true, sorteo: null })}>Nuevo sorteo</Button>}
             />
 

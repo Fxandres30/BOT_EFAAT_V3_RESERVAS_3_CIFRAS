@@ -77,7 +77,7 @@ async function main() {
         await page.goto(`${PANEL}/tablas/5000`, { waitUntil: "domcontentloaded" });
         await pulsar(page, "Editar");
         await esperarTexto(page, "Editar sorteo activo");
-        await esperarTexto(page, "Detectado por el bot");
+        await esperarTexto(page, "Detectado en el grupo");
         const texto = await textoPagina(page);
         assert.ok(!texto.includes("no se editan aquí") && !texto.includes("Crear sorteo nuevo"), "ni el mensaje antiguo ni un sorteo nuevo");
         const titulos = await page.evaluate(() => Array.from(document.querySelectorAll('[role="dialog"] h2'), h => h.textContent.trim()));

@@ -530,6 +530,14 @@ function detectarIntencionUnica(texto = "", cifras = 2) {
 
     }
 
+    // "debo" / "devo" / "deboo" / "¿debo?" a solas: la deuda en primera
+    // persona es inequívoca aunque sea una sola palabra — misma respuesta de
+    // pago que "qué debo" (paso 0). "debe"/"debemos" sueltos son ambiguos y
+    // siguen sujetos al mínimo de palabras.
+    if (tokensPago.length === 1 && tokensPago[0] === "debo") {
+        return { tipo: "consulta_pago", numeros, modo: "resumen", bucket: "pendiente" };
+    }
+
     if (tokens.length < MINIMO_TOKENS_PARA_CONSULTA) {
         return resolverComoReservaOninguna(texto, numeros);
     }

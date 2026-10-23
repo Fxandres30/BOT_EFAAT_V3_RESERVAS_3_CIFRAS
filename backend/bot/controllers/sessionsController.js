@@ -408,7 +408,7 @@ async function backfillContactos(req, res) {
             return res.status(409).json({
                 success: false,
                 estado: obtenerEstadoIdentitySync(sessionId),
-                error: "El escaneo no se ejecutó (la sesión dejó de estar activa justo al intentar escanear). Revisa los logs del bot."
+                error: "El escaneo no se pudo completar porque la sesión dejó de estar activa. Inténtalo nuevamente y, si el problema continúa, contacta con soporte."
             });
 
         }
@@ -499,7 +499,7 @@ async function gruposDisponibles(req, res) {
 
             return res.status(409).json({
                 success: false,
-                error: `La sesión ${id} no tiene un socket conectado ahora mismo.`
+                error: `La sesión ${id} no está conectada a WhatsApp ahora mismo.`
             });
 
         }

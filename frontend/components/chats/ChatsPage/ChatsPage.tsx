@@ -91,8 +91,7 @@ export default function ChatsPage() {
             <div>
                 <h1 className="chats-titulo">Chats</h1>
                 <p className="chats-subtitulo">
-                    Mensajes reales registrados por el BOT en cada grupo
-                    ({"mensajes_grupos_sorteos"}). Solo lectura.
+                    Mensajes reales registrados por EFAAT en cada grupo. Solo lectura.
                 </p>
             </div>
 

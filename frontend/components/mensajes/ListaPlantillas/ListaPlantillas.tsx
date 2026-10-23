@@ -266,7 +266,7 @@ export default function ListaPlantillas({
                 <div className={styles.organizar}>
                     <p className={styles.organizarTexto}>
                         Sugeridas: {sugeridasPresentes} de {sugeridasTotales}.
-                        El bot solo usa las plantillas <strong>activas</strong>.
+                        EFAAT solo usa las plantillas <strong>activas</strong>.
                     </p>
                     <div className={styles.organizarAcciones}>
                         <Button
@@ -302,7 +302,7 @@ export default function ListaPlantillas({
 
                     <p className={styles.seccion}>Activas · {activas.length}</p>
                     {activas.length === 0 && (
-                        <p className={styles.seccionVacia}>Ninguna activa: el bot usará su mensaje fijo.</p>
+                        <p className={styles.seccionVacia}>Ninguna activa: EFAAT usará su mensaje predeterminado.</p>
                     )}
                     {activas.map(renderItem)}
 

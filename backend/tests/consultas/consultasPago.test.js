@@ -306,6 +306,31 @@ async function ejecutarPruebas() {
         assert.strictEqual(detectarIntencion("me llevo el 25, cuánto debo").tipo, "consulta_pago");
     });
 
+    // ======================================================================
+    // 20. Deuda en una sola palabra ("debo", "devo"...) -> la misma
+    // respuesta de pago que "qué debo". "debe"/"debemos" solos son
+    // ambiguos: siguen sin respuesta.
+    // ======================================================================
+
+    await test('20. "debo"/"devo"/"deboo"/"¿debo?" solos => consulta_pago resumen pendiente', () => {
+        for (const texto of ["debo", "devo", "deboo", "debooo", "¿debo?", "Debo?", "DEVO", "qué debo", "qué devo", "cuánto debo"]) {
+            const r = detectarIntencion(texto);
+            assert.deepStrictEqual(
+                { tipo: r.tipo, modo: r.modo, bucket: r.bucket, numeros: r.numeros },
+                { tipo: "consulta_pago", modo: "resumen", bucket: "pendiente", numeros: [] },
+                texto
+            );
+        }
+    });
+
+    await test('21. "debe"/"debemos" solos => ninguna; "debo" con número sigue igual', () => {
+        for (const texto of ["debe", "debemos", "¿debe?", "deve"]) {
+            assert.strictEqual(detectarIntencion(texto).tipo, "ninguna", texto);
+        }
+        assert.strictEqual(detectarIntencion("25").tipo, "reserva");
+        assert.strictEqual(detectarIntencion("cuánto debo por el 25").tipo, "consulta_pago");
+    });
+
     const fallidas = resultados.filter(r => !r.ok);
 
     console.log("\n============================================");

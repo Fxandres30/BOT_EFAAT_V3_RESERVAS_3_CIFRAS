@@ -524,7 +524,7 @@ async function reservarManual({
 
     const politica = await evaluarGrupo(usuarioId, evento.grupo_id);
     if (!politica.permitido) {
-        return rechazar(rechazo("grupo_no_autorizado", "Ese grupo no está autorizado para el bot."), ctx);
+        return rechazar(rechazo("grupo_no_autorizado", "Ese grupo no está autorizado en EFAAT."), ctx);
     }
 
     // ---- contacto ----

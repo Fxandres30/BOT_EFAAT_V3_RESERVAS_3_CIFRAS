@@ -140,7 +140,7 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
                     {aviso && <p className={`${styles.alerta} ${styles.alertaInfo}`}>{aviso}</p>}
 
                     <div className={`${styles.alerta} ${styles.alertaInfo}`}>
-                        <Badge tone={sorteo.origen === "panel" ? "primary" : "neutral"} dot>{sorteo.origen === "panel" ? "Creado desde el panel" : "Detectado por el bot"}</Badge>
+                        <Badge tone={sorteo.origen === "panel" ? "primary" : "neutral"} dot>{sorteo.origen === "panel" ? "Creado desde el panel" : "Detectado en el grupo"}</Badge>
                         <p>En curso: <b>{sorteo.reservados}</b> reservado(s) y <b>{sorteo.pagados}</b> pagado(s). Guardar no los modifica.</p>
                     </div>
 

@@ -60,7 +60,7 @@ router.get("/imprimir-datos", async (req, res) => {
         const usuarioId = firmado?.usuarioId || null;
 
         if (!usuarioId) {
-            return res.status(401).json({ error: "Token inválido o expirado." });
+            return res.status(401).json({ error: "El enlace no es válido o ya caducó. Vuelve a abrirlo desde el panel." });
         }
 
         const r = await datosTablaImprimir(usuarioId, precio, firmado.eventoId);

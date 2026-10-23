@@ -17,7 +17,7 @@ interface Props {
 }
 
 const MOTIVOS = [
-    "El bot no registró la reserva",
+    "La reserva no se registró automáticamente",
     "Reserva por llamada o mensaje privado",
     "Mensaje fuera del grupo",
     "Corrección de una reserva"
@@ -72,7 +72,7 @@ export default function ReservaManualForm({ contexto, onReservar }: Props) {
         : !sorteo.aceptaReservas
             ? "El sorteo ya no acepta reservas (cerrado o pasó la hora de cierre)."
             : contextosUsables.length === 0
-                ? "Ningún grupo de este sorteo está autorizado para el bot."
+                ? "Ningún grupo de este sorteo está autorizado en EFAAT."
                 : null;
 
     const contactoListo = contacto?.tipo === "existente"
@@ -155,7 +155,7 @@ export default function ReservaManualForm({ contexto, onReservar }: Props) {
                         </div>
                     )}
                     {contexto.contextos.some(c => !c.autorizado) && (
-                        <p className="text-xs text-gray-500 mt-1">Los grupos no autorizados para el bot no aparecen.</p>
+                        <p className="text-xs text-gray-500 mt-1">Los grupos no autorizados en EFAAT no aparecen.</p>
                     )}
                 </Campo>
             )}

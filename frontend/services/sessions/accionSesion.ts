@@ -27,9 +27,9 @@ export function mensajeErrorAccion(status: number, code: string): string {
 
     switch (code) {
         case "TOKEN_SERVICIO_NO_CONFIGURADO":
-            return "El panel no puede comunicarse con el bot porque el servidor no está configurado. Avisa al soporte técnico.";
+            return "No fue posible conectar con el servicio de WhatsApp por un problema de configuración. Contacta con soporte.";
         case "NO_AUTORIZADO":
-            return "El bot rechazó la comunicación con el panel por un problema de configuración del servidor. Avisa al soporte técnico.";
+            return "El servicio de WhatsApp rechazó la operación por un problema de configuración. Contacta con soporte.";
         case "sin_sesion":
         case "sesion_invalida":
             return "Tu sesión del panel expiró. Vuelve a iniciar sesión e inténtalo de nuevo.";
@@ -37,16 +37,16 @@ export function mensajeErrorAccion(status: number, code: string): string {
         case "NO_ENCONTRADA":
             return "Esta sesión ya no existe. Actualiza la lista de sesiones.";
         case "LEASE_NO_DISPONIBLE":
-            return "Este número está funcionando en otro servidor del bot. Espera un minuto e inténtalo de nuevo.";
+            return "Este número se está atendiendo en otro servidor de EFAAT. Espera un minuto e inténtalo de nuevo.";
         case "FILA_NO_ELIMINADA":
             return "El número se desconectó, pero la sesión no se pudo eliminar. Inténtalo de nuevo.";
         case "AUTH_NO_ELIMINADO":
-            return "La sesión se eliminó, pero sus archivos de conexión no se pudieron borrar. Avisa al soporte técnico.";
+            return "La sesión se eliminó, pero sus datos de conexión no se pudieron borrar. Contacta con soporte.";
         case "BOT_SIN_RESPUESTA":
         case "TIEMPO_AGOTADO":
-            return "El bot tardó demasiado en responder. Inténtalo de nuevo en un momento.";
+            return "El servicio de WhatsApp tardó demasiado en responder. Inténtalo de nuevo en un momento.";
         case "BOT_NO_DISPONIBLE":
-            return "El bot no está disponible en este momento. Inténtalo de nuevo en unos minutos.";
+            return "El servicio de WhatsApp no está disponible en este momento. Inténtalo de nuevo en unos minutos y, si el problema continúa, contacta con soporte.";
         case "RED":
             return "No hay conexión con el panel. Revisa tu internet e inténtalo de nuevo.";
     }

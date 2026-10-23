@@ -153,13 +153,13 @@ async function vista(usuarioId, filas) {
             hora_cierre: { editable: true, motivo: "Debe ser posterior a este momento y no después de la hora del sorteo." },
             cuentas: desdePanel
                 ? { editable: true, motivo: "Se usan en los recordatorios y avisos que falten; lo ya enviado no cambia." }
-                : { editable: false, motivo: "Los sorteos detectados por el bot no guardan cuentas de pago: siguen las del anuncio del grupo." },
+                : { editable: false, motivo: "Los sorteos detectados en el grupo no guardan cuentas de pago: siguen las del anuncio del grupo." },
             diseno: desdePanel
                 ? { editable: true, motivo: "Se usa en las próximas imágenes de la tabla de este sorteo." }
                 : { editable: false, motivo: "Usa el diseño de la tabla de este precio: cámbialo en Tablas → Personalizar." },
             publicacion: desdePanel
                 ? { editable: true, motivo: "Guardar no envía nada y lo ya publicado en los grupos no cambia; un grupo que siga pendiente de publicar recibirá este texto. Vacío = plantilla por defecto." }
-                : { editable: true, motivo: "El bot no guarda el texto del anuncio de WhatsApp. Lo que escribas aquí queda solo en el panel: no cambia ni reenvía el mensaje del grupo." },
+                : { editable: true, motivo: "EFAAT no guarda el texto del anuncio de WhatsApp. Lo que escribas aquí queda solo en el panel: no cambia ni reenvía el mensaje del grupo." },
             mensajes: { editable: false, motivo: desdePanel ? "Los recordatorios y el aviso de cierre de un sorteo en curso no se cambian desde aquí." : "Los sorteos detectados no tienen mensajes propios: usan los de Automatización." }
         }
     };
@@ -240,7 +240,7 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
     const base = entrada.base || {};
     if (!igual(base.premios, actual.premios) || (base.hora_cierre ?? null) !== (actual.hora_cierre ?? null)
         || (base.publicacion !== undefined && base.publicacion !== actual.publicacion)) {
-        return falla("version_cambiada", { mensaje: "El sorteo cambió desde que lo abriste (por ejemplo, el bot leyó de nuevo el anuncio). Vuelve a abrirlo." });
+        return falla("version_cambiada", { mensaje: "El sorteo cambió desde que lo abriste (por ejemplo, EFAAT leyó de nuevo el anuncio). Vuelve a abrirlo." });
     }
 
     const cambiosEvento = {};

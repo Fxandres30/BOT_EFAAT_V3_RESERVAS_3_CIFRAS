@@ -292,7 +292,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         categoria: "Consultas",
         icono: "🔴",
         nombre: "Consulta de pago — Sin ningún pago",
-        descripcion: "El cliente tiene reservas activas pero todavía no ha pagado nada (monto_pagado = 0, monto_pendiente > 0).",
+        descripcion: "El cliente tiene reservas activas pero todavía no ha pagado nada.",
         variables: [V.cliente, V.evento, V.numerosPagados, V.numerosPendientes, V.cantidadPagados, V.cantidadPendientes, V.montoTotal, V.montoPagado, V.montoPendiente],
         ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_pagados: "ninguno", numeros_pendientes: formatearListaNumeros(["12","45"]), cantidad_pagados: "0", cantidad_pendientes: "2", monto_total: "$10.000", monto_pagado: "$0" },
         soportado: true
@@ -302,7 +302,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         categoria: "Consultas",
         icono: "🟡",
         nombre: "Consulta de pago — Pago parcial",
-        descripcion: "El cliente ya pagó una parte, pero todavía tiene saldo pendiente (monto_pagado > 0 y monto_pendiente > 0). Es el ÚNICO caso donde tiene sentido decir \"has pagado X de Y, te falta Z\".",
+        descripcion: "El cliente ya pagó una parte, pero todavía tiene saldo pendiente. Es el ÚNICO caso donde tiene sentido decir \"has pagado X de Y, te falta Z\".",
         variables: [V.cliente, V.evento, V.numerosPagados, V.numerosPendientes, V.cantidadPagados, V.cantidadPendientes, V.montoTotal, V.montoPagado, V.montoPendiente],
         ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_pagados: formatearListaNumeros(["12"]), numeros_pendientes: formatearListaNumeros(["45"]), cantidad_pagados: "1", cantidad_pendientes: "1", monto_total: "$10.000", monto_pagado: "$5.000" },
         soportado: true
@@ -312,7 +312,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         categoria: "Consultas",
         icono: "🟢",
         nombre: "Consulta de pago — Pago completo",
-        descripcion: "El cliente ya pagó el total: no tiene ningún saldo pendiente (monto_pendiente = 0). Nunca debe decir \"te falta $0\" — confirma explícitamente que no hay saldo.",
+        descripcion: "El cliente ya pagó el total: no tiene ningún saldo pendiente. Nunca debe decir \"te falta $0\" — confirma explícitamente que no hay saldo.",
         variables: [V.cliente, V.evento, V.numerosPagados, V.numerosPendientes, V.cantidadPagados, V.cantidadPendientes, V.montoTotal, V.montoPagado, V.montoPendiente],
         ejemplo: { cliente: "Carlos", evento: "Lotería De Manizales", numeros_pagados: formatearListaNumeros(["12","45"]), numeros_pendientes: "ninguno", cantidad_pagados: "2", cantidad_pendientes: "0", monto_total: "$10.000", monto_pagado: "$10.000", monto_pendiente: "$0" },
         soportado: true
@@ -351,7 +351,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         categoria: "Automatización",
         icono: "🌅",
         nombre: "Inicio del día",
-        descripcion: "Mensaje de saludo que el Scheduler envía automáticamente cada día, antes de que empiece la dinámica (independiente de apertura/tabla — ver Master Spec §15).",
+        descripcion: "Mensaje de saludo que EFAAT envía automáticamente cada día, antes de que empiece la dinámica (independiente de la apertura y de la tabla).",
         // Se envía ANTES de que el sorteo del día se detecte, así que
         // {{evento}}/{{loteria}}/{{premio}} normalmente NO tendrán un
         // evento real en contexto todavía — el catálogo global las deja
@@ -374,7 +374,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         categoria: "Futuro",
         icono: "❓",
         nombre: "Mensaje no entendido",
-        descripcion: "Preparado para el futuro — el BOT todavía no genera este resultado.",
+        descripcion: "Esta función estará disponible próximamente.",
         variables: [V.cliente],
         ejemplo: { cliente: "Carlos" },
         soportado: false
@@ -384,7 +384,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         categoria: "Futuro",
         icono: "🚧",
         nombre: "Número inválido",
-        descripcion: "Preparado para el futuro — el BOT todavía no genera este resultado.",
+        descripcion: "Esta función estará disponible próximamente.",
         variables: [V.cliente, V.solicitados],
         ejemplo: { cliente: "Carlos", numeros_solicitados: formatearListaNumeros(["150"]) },
         soportado: false
@@ -394,7 +394,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         categoria: "Futuro",
         icono: "🕓",
         nombre: "Evento no disponible",
-        descripcion: "Preparado para el futuro — el BOT todavía no genera este resultado.",
+        descripcion: "Esta función estará disponible próximamente.",
         variables: [V.cliente],
         ejemplo: { cliente: "Carlos" },
         soportado: false
@@ -404,7 +404,7 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         categoria: "Futuro",
         icono: "🤔",
         nombre: "Solicitud ambigua",
-        descripcion: "Preparado para el futuro — el BOT todavía no genera este resultado.",
+        descripcion: "Esta función estará disponible próximamente.",
         variables: [V.cliente],
         ejemplo: { cliente: "Carlos" },
         soportado: false
@@ -413,8 +413,8 @@ export const TIPOS_MENSAJE: TipoMensaje[] = [
         id: "otro_determinista",
         categoria: "Futuro",
         icono: "🧩",
-        nombre: "Otros resultados determinísticos futuros",
-        descripcion: "Preparado para el futuro — el BOT todavía no genera este resultado.",
+        nombre: "Otros resultados",
+        descripcion: "Esta función estará disponible próximamente.",
         variables: [V.cliente],
         ejemplo: { cliente: "Carlos" },
         soportado: false

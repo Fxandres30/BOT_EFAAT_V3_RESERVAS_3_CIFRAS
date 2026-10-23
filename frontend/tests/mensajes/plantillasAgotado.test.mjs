@@ -147,7 +147,27 @@ prueba("catálogo: la entrada 'disponibilidad' y el resto de tipos quedaron idé
     // Se excluye el tipo nuevo en AMBOS lados: así la comparación sigue
     // siendo válida antes y después de confirmar (commit) este cambio.
     const sinNuevo = (lista) => lista.filter(t => t.id !== TIPO);
-    assert.deepStrictEqual(sinNuevo(TIPOS_MENSAJE), sinNuevo(tiposHead.TIPOS_MENSAJE));
+    // Única diferencia admitida con HEAD: la redacción visible aprobada en
+    // la modernización del lenguaje (sin «BOT» ni nombres de campos). Tras
+    // confirmar ese cambio, HEAD ya trae el texto nuevo y el mapa no aplica.
+    const TEXTOS_MODERNIZADOS = {
+        "El cliente tiene reservas activas pero todavía no ha pagado nada (monto_pagado = 0, monto_pendiente > 0).":
+            "El cliente tiene reservas activas pero todavía no ha pagado nada.",
+        "El cliente ya pagó una parte, pero todavía tiene saldo pendiente (monto_pagado > 0 y monto_pendiente > 0). Es el ÚNICO caso donde tiene sentido decir \"has pagado X de Y, te falta Z\".":
+            "El cliente ya pagó una parte, pero todavía tiene saldo pendiente. Es el ÚNICO caso donde tiene sentido decir \"has pagado X de Y, te falta Z\".",
+        "El cliente ya pagó el total: no tiene ningún saldo pendiente (monto_pendiente = 0). Nunca debe decir \"te falta $0\" — confirma explícitamente que no hay saldo.":
+            "El cliente ya pagó el total: no tiene ningún saldo pendiente. Nunca debe decir \"te falta $0\" — confirma explícitamente que no hay saldo.",
+        "Mensaje de saludo que el Scheduler envía automáticamente cada día, antes de que empiece la dinámica (independiente de apertura/tabla — ver Master Spec §15).":
+            "Mensaje de saludo que EFAAT envía automáticamente cada día, antes de que empiece la dinámica (independiente de la apertura y de la tabla).",
+        "Preparado para el futuro — el BOT todavía no genera este resultado.": "Esta función estará disponible próximamente.",
+        "Otros resultados determinísticos futuros": "Otros resultados"
+    };
+    const modernizar = (lista) => lista.map(t => ({
+        ...t,
+        nombre: TEXTOS_MODERNIZADOS[t.nombre] ?? t.nombre,
+        descripcion: TEXTOS_MODERNIZADOS[t.descripcion] ?? t.descripcion
+    }));
+    assert.deepStrictEqual(sinNuevo(TIPOS_MENSAJE), modernizar(sinNuevo(tiposHead.TIPOS_MENSAJE)));
 
 });
 

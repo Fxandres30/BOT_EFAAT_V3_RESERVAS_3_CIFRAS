@@ -127,7 +127,7 @@ export default function AutorizarGrupoModal({
                         Grupos de mis sesiones
                     </button>
                     <button className={modo === "manual" ? "activo" : ""} onClick={() => setModo("manual")}>
-                        Escribir el JID
+                        Escribir el identificador de WhatsApp
                     </button>
                 </div>
 
@@ -141,28 +141,28 @@ export default function AutorizarGrupoModal({
 
                         <p className="autorizar-cargando">
                             No tienes ninguna sesión de WhatsApp registrada. Créala en
-                            &quot;Sesiones&quot; o usa &quot;Escribir el JID&quot;.
+                            &quot;Sesiones&quot; o usa &quot;Escribir el identificador de WhatsApp&quot;.
                         </p>
 
                     ) : !sesiones.some((s) => s.conectada) && sesiones.some((s) => s.estado === "no_verificable") ? (
 
                         <p className="autorizar-cargando">
                             No pudimos comprobar tus sesiones de WhatsApp en este momento. Inténtalo de
-                            nuevo en unos minutos o usa &quot;Escribir el JID&quot;.
+                            nuevo en unos minutos o usa &quot;Escribir el identificador de WhatsApp&quot;.
                         </p>
 
                     ) : !sesiones.some((s) => s.conectada) ? (
 
                         <p className="autorizar-cargando">
-                            Ninguna de tus sesiones tiene un socket de WhatsApp conectado ahora mismo.
-                            Conéctala en &quot;Sesiones&quot; o usa &quot;Escribir el JID&quot;.
+                            Ninguna de tus sesiones de WhatsApp está conectada ahora mismo.
+                            Conéctala en &quot;Sesiones&quot; o usa &quot;Escribir el identificador de WhatsApp&quot;.
                         </p>
 
                     ) : !hayGruposReales ? (
 
                         <p className="autorizar-cargando">
                             Tu sesión está conectada, pero WhatsApp no reportó ningún grupo ahora mismo.
-                            Prueba &quot;Escribir el JID&quot; mientras tanto.
+                            Prueba &quot;Escribir el identificador de WhatsApp&quot; mientras tanto.
                         </p>
 
                     ) : (
@@ -213,7 +213,7 @@ export default function AutorizarGrupoModal({
                 ) : (
 
                     <label className="autorizar-campo">
-                        Identificador del grupo (JID de WhatsApp)
+                        Identificador de WhatsApp del grupo
                         <input
                             type="text"
                             placeholder="120363421290339105@g.us"

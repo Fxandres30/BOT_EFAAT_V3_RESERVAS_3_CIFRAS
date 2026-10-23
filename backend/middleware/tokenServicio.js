@@ -78,7 +78,7 @@ function exigirTokenServicio(req, res, next) {
         return res.status(503).json({
             success: false,
             code: "TOKEN_SERVICIO_NO_CONFIGURADO",
-            error: "El backend no tiene configurado el token de servicio."
+            error: "No fue posible completar la operación por un problema de configuración del servicio. Contacta con soporte."
         });
 
     }
@@ -97,7 +97,7 @@ function exigirTokenServicio(req, res, next) {
         return res.status(401).json({
             success: false,
             code: "NO_AUTORIZADO",
-            error: "Token de servicio ausente o inválido."
+            error: "No fue posible validar la solicitud. Contacta con soporte si el problema continúa."
         });
 
     }

@@ -169,13 +169,13 @@ export default function GruposAutomatizacion() {
                             <h2 className="grupos-seccion-titulo">Grupos disponibles</h2>
                             <p className="grupos-seccion-subtitulo">
                                 Grupos reales que tu sesión de WhatsApp reporta AHORA MISMO — nunca a
-                                partir de autorizaciones o mensajes históricos. Un grupo con el mismo JID
+                                partir de autorizaciones o mensajes históricos. Un grupo con el mismo ID de WhatsApp
                                 nunca aparece más de una vez, sin importar cuántas sesiones lo reporten.
                             </p>
                         </div>
 
                         <button className="grupos-boton-autorizar" onClick={() => setModalAbierto(true)}>
-                            + Agregar por JID
+                            + Agregar por identificador de WhatsApp
                         </button>
 
                     </div>
@@ -212,7 +212,7 @@ export default function GruposAutomatizacion() {
 
                         <div className="grupos-estado-vacio">
                             No tienes ninguna sesión de WhatsApp registrada. Créala en
-                            &quot;Sesiones&quot;, o usa <strong>+ Agregar por JID</strong>.
+                            &quot;Sesiones&quot;, o usa <strong>+ Agregar por identificador de WhatsApp</strong>.
                         </div>
 
                     ) : !hayAlgunaSesionConectada && hayConsultaIncompleta ? (
@@ -235,16 +235,16 @@ export default function GruposAutomatizacion() {
                     ) : !hayAlgunaSesionConectada ? (
 
                         <div className="grupos-estado-vacio">
-                            Ninguna de tus sesiones tiene un socket de WhatsApp conectado ahora mismo —
+                            Ninguna de tus sesiones de WhatsApp está conectada ahora mismo —
                             no se puede confirmar qué grupos existen actualmente. Conéctala en
-                            &quot;Sesiones&quot; para volver a verlos, o usa <strong>+ Agregar por JID</strong>.
+                            &quot;Sesiones&quot; para volver a verlos, o usa <strong>+ Agregar por identificador de WhatsApp</strong>.
                         </div>
 
                     ) : disponibles.length === 0 ? (
 
                         <div className="grupos-estado-vacio">
                             Tu sesión está conectada, pero WhatsApp no reportó ningún grupo para esa
-                            cuenta ahora mismo. Prueba <strong>+ Agregar por JID</strong> mientras tanto.
+                            cuenta ahora mismo. Prueba <strong>+ Agregar por identificador de WhatsApp</strong> mientras tanto.
                         </div>
 
                     ) : (
@@ -310,7 +310,7 @@ export default function GruposAutomatizacion() {
                             <p className="grupos-otros-nota">
                                 {hayConsultaIncompleta
                                     ? "Tienen una autorización guardada, pero no pudimos consultar todas tus sesiones. Su autorización y su configuración siguen intactas; no se muestra un nombre porque no hay confirmación actual."
-                                    : "Tienen una autorización guardada, pero WhatsApp no los reportó en la consulta más reciente — pueden haber sido eliminados o el bot fue removido. No se muestra un nombre actual porque no hay confirmación de que el grupo siga existiendo."}
+                                    : "Tienen una autorización guardada, pero WhatsApp no los reportó en la consulta más reciente — pueden haber sido eliminados o el número vinculado a EFAAT ya no forma parte del grupo. No se muestra un nombre actual porque no hay confirmación de que el grupo siga existiendo."}
                             </p>
 
                             <div className="grupos-grid">
@@ -319,7 +319,7 @@ export default function GruposAutomatizacion() {
 
                                     <div key={g.grupoId} className="grupo-card historico">
 
-                                        <div className="grupo-card-nombre">JID: {g.grupoId}</div>
+                                        <div className="grupo-card-nombre">ID de WhatsApp: {g.grupoId}</div>
 
                                         <div className={`grupo-card-estado ${hayConsultaIncompleta ? "pendiente" : "off"}`}>
                                             {hayConsultaIncompleta ? "⏳ Sin verificar ahora" : "🚫 No disponible actualmente"}

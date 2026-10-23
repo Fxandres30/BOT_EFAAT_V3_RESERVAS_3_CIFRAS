@@ -50,7 +50,7 @@ function montarBackend(app) {
     app.get("/sessions/salud", (req, res) => res.json({ ok: true, instancia: "VPS", generadoEn: new Date().toISOString(), sesiones: [salud(S1, "saludable"), salud(S2, "desconectada")] }));
     app.get("/sessions/:id/grupos-disponibles", (req, res) => req.params.id === S1
         ? res.json({ success: true, sessionId: S1, grupos: [{ id: G1, nombre: "Rifas del martes" }] })
-        : res.status(409).json({ success: false, error: `La sesión ${req.params.id} no tiene un socket conectado ahora mismo.` }));
+        : res.status(409).json({ success: false, error: `La sesión ${req.params.id} no está conectada a WhatsApp ahora mismo.` }));
     app.get("/contactos", (req, res) => res.json({ success: true, contactos: [{
         id: "c1", nombre: "Cliente Uno", telefono: "573111111111", lid: null, estadoIdentificacion: "solo_telefono",
         cantidadReservas: 2, cantidadPagadas: 1, primeraVezVisto: "2026-10-01T00:00:00Z", ultimaActividad: new Date().toISOString(), telefonoPendiente: false
@@ -79,20 +79,20 @@ async function main() {
         await page.goto(`${PANEL}/sesiones`, { waitUntil: "domcontentloaded" });
         await esperarTexto(page, "Sin verificar");
         let texto = await textoPagina(page);
-        assert.ok(!texto.includes("Bot activo"), "sin verificar no debe decir «Bot activo»");
+        assert.ok(!texto.includes("En servicio"), "sin verificar no debe decir «En servicio»");
         assert.ok(!/^Conectada$/m.test(texto), "sin verificar no debe decir «Conectada»");
         assert.ok(texto.includes("En uso · sin verificar"));
         assert.ok(texto.includes("Último estado guardado: conectada"));
         assert.ok(texto.includes("No se ha desconectado nada"));
         await captura(page, "sesiones-sin-token");
-        paso("Sesiones sin token: «Sin verificar», sin «Conectada» ni «Bot activo»");
+        paso("Sesiones sin token: «Sin verificar», sin «Conectada» ni «En servicio»");
 
         await page.goto(`${PANEL}/automatizacion/grupos`, { waitUntil: "domcontentloaded" });
         await esperarTexto(page, "Autorizados sin verificar");
         texto = await textoPagina(page);
         assert.ok(texto.includes("No pudimos comprobar tus sesiones de WhatsApp"));
         assert.ok(texto.includes("Principal — sin verificar"));
-        assert.ok(texto.includes(`JID: ${G1}`) && texto.includes(`JID: ${G2}`), "los dos grupos autorizados siguen visibles");
+        assert.ok(texto.includes(`ID de WhatsApp: ${G1}`) && texto.includes(`ID de WhatsApp: ${G2}`), "los dos grupos autorizados siguen visibles");
         assert.ok(texto.includes("Sin verificar ahora"));
         assert.ok(!texto.includes("No disponible actualmente"), "no se afirma que no existan");
         assert.ok(!texto.includes("desconectada ahora mismo"), "no se afirma que estén desconectadas");
@@ -123,15 +123,15 @@ async function main() {
         texto = await textoPagina(page);
         assert.ok(texto.includes("Principal — conectada"));
         assert.ok(texto.includes("Respaldo — desconectada ahora mismo"), "el 409 real sí se muestra como desconectada");
-        assert.ok(texto.includes("No disponibles actualmente") && texto.includes(`JID: ${G2}`), "G2 no reportado por la sesión conectada");
+        assert.ok(texto.includes("No disponibles actualmente") && texto.includes(`ID de WhatsApp: ${G2}`), "G2 no reportado por la sesión conectada");
         paso("Grupos con token: conectada / desconectada (409) / no disponible, con datos reales");
 
         await page.goto(`${PANEL}/sesiones`, { waitUntil: "domcontentloaded" });
         await esperarTexto(page, "Saludable · escuchando");
         texto = await textoPagina(page);
-        assert.ok(texto.includes("Bot activo"));
+        assert.ok(texto.includes("En servicio"));
         assert.ok(!texto.includes("Sin verificar"));
-        paso("Sesiones con token: estado real del bot («Saludable · escuchando», «Bot activo»)");
+        paso("Sesiones con token: estado real («Saludable · escuchando», «En servicio»)");
 
         assert.strictEqual(JSON.stringify(t.grupos_autorizados), autorizadosAntes, "grupos_autorizados no cambió");
         assert.deepStrictEqual(t.sesiones.map(s => [s.estado, s.activa, s.principal]), [["conectado", true, false], ["conectado", false, true]], "sesiones no cambió");

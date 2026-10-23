@@ -61,7 +61,7 @@ export default function SeccionActualizacion({ usuarioId, grupoId, inicialMensaj
 
             <p className={styles.nota}>
                 Se envía cuando entran suficientes reservas nuevas seguidas, respetando el
-                cooldown — el conteo real sigue viniendo de reservas_actividad, sin cambios.
+                tiempo de espera entre avisos. El conteo se basa en las reservas reales del sorteo.
             </p>
 
             <div className={styles.actionRow} style={{ borderTop: "none" }}>
@@ -78,7 +78,7 @@ export default function SeccionActualizacion({ usuarioId, grupoId, inicialMensaj
                     onChange={(e) => setUmbral(Number(e.target.value) || 1)}
                 />
                 <Input
-                    label="Cooldown (minutos)"
+                    label="Espera entre avisos (minutos)"
                     type="number"
                     min={1}
                     value={cooldown}

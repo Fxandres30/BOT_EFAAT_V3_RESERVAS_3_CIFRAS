@@ -17,8 +17,8 @@ export default function DashboardCards({
     const cards = [
 
         {
-            icon: "🤖",
-            titulo: "Bots Online",
+            icon: "🟢",
+            titulo: "En servicio",
             valor: resumen.bots,
             color: "green"
         },

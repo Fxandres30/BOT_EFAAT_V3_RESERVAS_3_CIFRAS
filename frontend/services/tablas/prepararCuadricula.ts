@@ -57,7 +57,7 @@ export function diagnosticar(r: RespuestaPreparar, vistas: number): DiagnosticoC
             return {
                 tipo: "bloqueada",
                 titulo: "La tabla existe, pero tu sesión no puede leerla",
-                mensaje: `La base tiene tus ${r.filas} números, pero los permisos (RLS) no dejan que el panel los lea. No es una tabla vacía. ${NO_REINICIAR} Avisa al administrador.`
+                mensaje: `Tus ${r.filas} números están guardados, pero el panel no tiene permiso para leerlos. No es una tabla vacía. ${NO_REINICIAR} Contacta con soporte.`
             };
         }
 
@@ -69,7 +69,7 @@ export function diagnosticar(r: RespuestaPreparar, vistas: number): DiagnosticoC
         return {
             tipo: "bloqueada",
             titulo: "Cuadrícula con números de más o de menos",
-            mensaje: `Tu cuadrícula tiene ${r.filas} de ${r.esperadas} números. No se completa ni se corrige automáticamente para no tocar reservas ni pagos. Avisa al administrador antes de operar esta tabla.`
+            mensaje: `Tu cuadrícula tiene ${r.filas} de ${r.esperadas} números. No se completa ni se corrige automáticamente para no tocar reservas ni pagos. Contacta con soporte antes de operar esta tabla.`
         };
     }
 
@@ -79,28 +79,28 @@ export function diagnosticar(r: RespuestaPreparar, vistas: number): DiagnosticoC
             return {
                 tipo: "bloqueada",
                 titulo: "Tu cuadrícula todavía no se puede crear",
-                mensaje: `Falta aplicar en la base de datos la migración de tablas por cliente (027, que necesita antes la 033 y la Parte A). Hasta entonces este cliente no tiene números del 00 al 99. ${NO_REINICIAR}`
+                mensaje: `Tu cuenta todavía no tiene habilitada su propia tabla de números del 00 al 99. Contacta con soporte (referencia: 027). ${NO_REINICIAR}`
             };
 
         case "restriccion_unica":
             return {
                 tipo: "bloqueada",
                 titulo: "Tu cuadrícula todavía no se puede crear",
-                mensaje: `La base solo admite un 00-99 en toda la tabla física (falta la migración 033). Crear la tuya chocaría con la de otro cliente, así que no se ha creado nada. ${NO_REINICIAR}`
+                mensaje: `Todavía no es posible crear tu cuadrícula sin afectar a otras cuentas, así que no se ha creado nada. Contacta con soporte (referencia: 033). ${NO_REINICIAR}`
             };
 
         case "parte_a_pendiente":
             return {
                 tipo: "bloqueada",
                 titulo: "Tu cuadrícula todavía no se puede crear",
-                mensaje: `Las tablas de números aún no tienen la protección por cliente (RLS, Parte A). No se crea ninguna cuadrícula nueva sin ella. ${NO_REINICIAR}`
+                mensaje: `Las tablas de números todavía no tienen activada la protección por cuenta, así que no se crea ninguna cuadrícula nueva. Contacta con soporte (referencia: Parte A). ${NO_REINICIAR}`
             };
 
         case "error_lectura":
             return {
                 tipo: "bloqueada",
                 titulo: "No se pudo comprobar la cuadrícula",
-                mensaje: `La base devolvió un error al contar tus números${r.codigo ? ` (código ${r.codigo})` : ""}. No es una tabla vacía. ${NO_REINICIAR}`
+                mensaje: `No fue posible contar tus números${r.codigo ? ` (código ${r.codigo})` : ""}. No es una tabla vacía. ${NO_REINICIAR}`
             };
 
         case "tabla_no_configurada":
@@ -114,7 +114,7 @@ export function diagnosticar(r: RespuestaPreparar, vistas: number): DiagnosticoC
             return {
                 tipo: "bloqueada",
                 titulo: "No se pudo comprobar la cuadrícula",
-                mensaje: `El servidor del bot no respondió con el estado de tu cuadrícula (${r.motivo || "sin motivo"}). No es una tabla vacía. ${NO_REINICIAR}`
+                mensaje: `No fue posible consultar el estado de tu cuadrícula en este momento (referencia: ${r.motivo || "sin motivo"}). No es una tabla vacía. ${NO_REINICIAR}`
             };
 
     }

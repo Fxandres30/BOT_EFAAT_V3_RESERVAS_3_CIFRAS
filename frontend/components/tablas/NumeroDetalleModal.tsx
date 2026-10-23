@@ -242,7 +242,7 @@ function Ocupado({
                     <Dato etiqueta="Motivo del bloqueo" valor={fila.motivoBloqueo} />
                     {fila.bloqueadoHasta && <Dato etiqueta={estado === "en_proceso_vencido" ? "Retención vencida el" : "Retenido hasta"} valor={new Date(fila.bloqueadoHasta).toLocaleString("es-CO")} />}
                     {estado === "en_proceso_vencido" && (
-                        <p className="text-xs text-gray-500 pt-2">La tabla lo muestra disponible, pero sigue retenido en la base: ni el bot ni el panel pueden reservarlo hasta liberarlo.</p>
+                        <p className="text-xs text-gray-500 pt-2">La tabla lo muestra disponible, pero sigue retenido en la base: no se puede reservar (ni de forma automática ni desde el panel) hasta liberarlo.</p>
                     )}
                 </div>
 
@@ -296,7 +296,7 @@ function Ocupado({
                     </p>
                     <p className="text-xs text-gray-600">
                         {bloqueado
-                            ? "El número vuelve a estar disponible para el bot y el panel."
+                            ? "El número vuelve a estar disponible para reservas automáticas y desde el panel."
                             : "Se borran el cliente, el grupo y las fechas de esta reserva; el número queda disponible. Queda registrado en el historial."}
                     </p>
                     <input className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder={motivoObligatorio ? "Motivo (obligatorio)" : "Motivo (opcional)"} maxLength={500} value={motivo} onChange={(e) => setMotivo(e.target.value)} disabled={procesando} />

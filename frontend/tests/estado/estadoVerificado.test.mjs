@@ -2,7 +2,7 @@
 // PRUEBAS (frontend) — un fallo al consultar el backend nunca se presenta
 // como un estado real:
 //   - /sesiones: sin respuesta de GET /sessions/salud, la tarjeta no dice
-//     «Conectada» ni «Bot activo» a partir de sesiones.estado;
+//     «Conectada» ni «En servicio» a partir de sesiones.estado;
 //   - grupos: solo el 409 del backend significa «desconectada»; 401/503
 //     (token de servicio), 5xx, 502 o un fallo de red son «sin verificar», y
 //     los grupos autorizados se conservan;
@@ -98,7 +98,7 @@ const saludDe = (estado) => ({
 
 console.log("Sesiones — estado visible");
 
-await prueba("sin respuesta de salud (error): «Sin verificar», nunca «Conectada» ni «Bot activo»", () => {
+await prueba("sin respuesta de salud (error): «Sin verificar», nunca «Conectada» ni «En servicio»", () => {
     const v = estadoVisibleSesion({ salud: null, consulta: "error", estadoGuardado: "conectado", activa: true });
     assert.strictEqual(v.status.label, "Sin verificar");
     assert.notStrictEqual(v.status.kind, "online");
@@ -108,7 +108,7 @@ await prueba("sin respuesta de salud (error): «Sin verificar», nunca «Conecta
     assert.doesNotMatch(v.nota, TECNICO);
 });
 
-await prueba("antes de la primera respuesta: «Verificando…», sin «Bot activo»", () => {
+await prueba("antes de la primera respuesta: «Verificando…», sin «En servicio»", () => {
     const v = estadoVisibleSesion({ salud: null, consulta: "pendiente", estadoGuardado: "conectado", activa: true });
     assert.strictEqual(v.status.label, "Verificando…");
     assert.strictEqual(v.marcaActiva.label, "En uso · verificando");
@@ -120,10 +120,10 @@ await prueba("salud ok pero sesión ausente del resultado: «Sin verificar»", (
     assert.strictEqual(v.marcaActiva, null);
 });
 
-await prueba("con salud real: «Bot activo» solo si está saludable", () => {
+await prueba("con salud real: «En servicio» solo si está saludable", () => {
     const sana = estadoVisibleSesion({ salud: saludDe("saludable"), consulta: "ok", estadoGuardado: "desconectado", activa: true });
     assert.strictEqual(sana.status.label, "Saludable · escuchando");
-    assert.deepStrictEqual(sana.marcaActiva, { tone: "primary", label: "Bot activo" });
+    assert.deepStrictEqual(sana.marcaActiva, { tone: "primary", label: "En servicio" });
     assert.strictEqual(sana.nota, null);
 
     const degradada = estadoVisibleSesion({ salud: saludDe("degradada"), consulta: "ok", estadoGuardado: "conectado", activa: true });

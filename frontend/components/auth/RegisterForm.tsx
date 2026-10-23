@@ -119,7 +119,7 @@ export default function RegisterForm() {
 
         <h1 className="login-title">Crear cuenta</h1>
 
-        <p className="login-subtitle">Regístrate para acceder a EFAAT BOTS.</p>
+        <p className="login-subtitle">Regístrate para acceder a EFAAT.</p>
 
         <input
           className="login-input"

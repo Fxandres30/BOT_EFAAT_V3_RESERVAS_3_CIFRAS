@@ -166,13 +166,13 @@ const RECOMENDACIONES: Recomendacion[] = [
     {
         icono: ShieldCheck,
         titulo: "Haz administrador al número conectado",
-        texto: "El número de WhatsApp vinculado a EFAAT debe ser administrador de los grupos donde funcionará el bot. Este permiso es necesario para las acciones administrativas que lo requieran, como expulsar participantes bloqueados y abrir o cerrar grupos cuando corresponda.",
+        texto: "El número de WhatsApp vinculado a EFAAT debe ser administrador de los grupos donde funcionará EFAAT. Este permiso es necesario para las acciones administrativas que lo requieran, como expulsar participantes bloqueados y abrir o cerrar grupos cuando corresponda.",
         esencial: true
     },
     {
         icono: Wifi,
         titulo: "Mantén activa y estable la conexión",
-        texto: "No cierres manualmente la sesión vinculada desde tu teléfono si quieres que el bot siga atendiendo tus grupos."
+        texto: "No cierres manualmente la sesión vinculada desde tu teléfono si quieres que EFAAT siga atendiendo tus grupos."
     },
     {
         icono: ListChecks,
@@ -188,7 +188,7 @@ const PREGUNTAS = [
     },
     {
         p: "¿Necesito conectar mi WhatsApp?",
-        r: "Sí. Para que EFAAT responda en tus grupos, debes vincular un número de WhatsApp mediante un código QR. Recomendamos utilizar un número dedicado al sistema y mantenerlo como administrador de los grupos donde funcionará el bot. La conexión se coordina al iniciar tu servicio."
+        r: "Sí. Para que EFAAT responda en tus grupos, debes vincular un número de WhatsApp mediante un código QR. Recomendamos utilizar un número dedicado al sistema y mantenerlo como administrador de los grupos donde funcionará EFAAT. La conexión se coordina al iniciar tu servicio."
     },
     {
         p: "¿Por qué mi número debe ser administrador?",
@@ -208,7 +208,7 @@ const PREGUNTAS = [
     },
     {
         p: "¿Qué ocurre cuando termina la prueba?",
-        r: "No hacemos ningún cobro automático. Si quieres continuar, eliges un plan y lo contratas escribiéndonos; te indicamos cómo realizar el pago. Si decides no continuar, el bot deja de atender tus grupos."
+        r: "No hacemos ningún cobro automático. Si quieres continuar, eliges un plan y lo contratas escribiéndonos; te indicamos cómo realizar el pago. Si decides no continuar, EFAAT deja de atender tus grupos."
     },
     {
         p: "¿Puedo cambiar de plan?",
@@ -334,7 +334,7 @@ export default function Landing() {
                 <section id="funciones" className={`${styles.seccion} ${styles.seccionSuave}`} aria-labelledby="funciones-titulo">
                     <div className={styles.contenedor}>
                         <h2 id="funciones-titulo" className={styles.tituloSeccion}>Lo que EFAAT hace por ti</h2>
-                        <p className={styles.introSeccion}>Funciones disponibles hoy en el bot y en el panel.</p>
+                        <p className={styles.introSeccion}>Funciones disponibles hoy en la atención automática y en el panel.</p>
                         <ul className={styles.funciones}>
                             {FUNCIONES.map(({ icono: Icono, titulo, texto }) => (
                                 <li key={titulo} className={styles.funcion}>
@@ -437,7 +437,7 @@ export default function Landing() {
                                     vez; la de respaldo queda en espera.
                                 </li>
                                 <li>
-                                    <strong>Principal y respaldo.</strong> Cada sesión muestra su estado: «Bot activo» indica la
+                                    <strong>Principal y respaldo.</strong> Cada sesión muestra su estado: «En servicio» indica la
                                     que atiende tus grupos, «Preferida» la principal y «En espera» las demás. Para pasar a otra
                                     conexión, usa «Usar esta sesión».
                                 </li>

@@ -47,6 +47,16 @@ const NOMBRE_TIPO: Record<string, string> = Object.fromEntries(TIPOS_MENSAJE.map
 
 const TODOS = "todos";
 
+// Las rutas de archivos del catálogo (e.codigo, a.fuente) siguen ahí para su
+// prueba de verificación, pero no se muestran. De «lee»/«escribe» solo se
+// enseñan los datos descritos en lenguaje del cliente («tabla de números»);
+// los nombres internos de tablas o campos se ocultan.
+const DATOS_INTERNOS = new Set(["usuarios", "grupos", "bloqueados"]);
+
+function esDatoLegible(dato: string) {
+    return !/[_=]|\(announce\)/.test(dato) && !DATOS_INTERNOS.has(dato.split(" ")[0]);
+}
+
 // Busca la entrada del catálogo que usa un tipo de respuesta del panel de
 // Mensajes (para abrir el modal directamente en ella).
 export function entradaParaTipoRespuesta(tipoId: string): string | null {
@@ -63,7 +73,6 @@ function coincide(entrada: EntradaCatalogo, filtro: string) {
         entrada.nombre, entrada.resumen, entrada.accion,
         ...entrada.condiciones,
         ...entrada.activadores.flatMap((a) => [a.descripcion, ...(a.ejemplos || [])]),
-        ...entrada.codigo.map((c) => `${c.archivo} ${c.simbolo || ""}`),
         ...(entrada.plantillas || [])
     ].join(" ").toLowerCase();
     return texto.includes(filtro.toLowerCase());
@@ -85,7 +94,7 @@ export default function ActivadoresModal({ open, onClose, usuarioId, enfocarId =
             onClose={onClose}
             size="lg"
             title="Activadores y acciones"
-            description="Qué activa cada función del bot y qué hace realmente. Solo lectura: nada de aquí cambia el comportamiento del bot."
+            description="Qué activa cada función automática de EFAAT y qué hace realmente. Solo lectura: nada de aquí cambia el funcionamiento de tus automatizaciones."
         >
             {open && <Contenido key={enfocarId || TODOS} usuarioId={usuarioId} enfocarId={enfocarId} onNavegar={onClose} />}
         </Modal>
@@ -162,7 +171,7 @@ function Contenido({ usuarioId, enfocarId, onNavegar }: { usuarioId: string; enf
                     <div className={styles.buscar}>
                         <Input
                             aria-label="Buscar"
-                            placeholder="Buscar por función, frase, archivo o plantilla…"
+                            placeholder="Buscar por función, frase o plantilla…"
                             value={filtro}
                             onChange={(e) => setFiltro(e.target.value)}
                         />
@@ -214,7 +223,7 @@ function Contenido({ usuarioId, enfocarId, onNavegar }: { usuarioId: string; enf
 
                 <p className={styles.pie}>
                     <Lock size={12} aria-hidden="true" />
-                    Probar qué detector se activaría con un mensaje requiere una simulación en el servidor del bot, que todavía no existe; no se muestra aquí para no duplicar los detectores.
+                    Probar qué función se activaría con un mensaje concreto estará disponible próximamente.
                 </p>
 
             </div>
@@ -230,6 +239,9 @@ function Entrada({ entrada: e, abierta, estadoReal, cargando, onNavegar }: {
     cargando: boolean;
     onNavegar: () => void;
 }) {
+
+    const lee = e.lee.filter(esDatoLegible);
+    const escribe = e.escribe.filter(esDatoLegible);
 
     return (
 
@@ -263,7 +275,7 @@ function Entrada({ entrada: e, abierta, estadoReal, cargando, onNavegar }: {
                                 {a.ejemplos?.length ? (
                                     <span className={styles.ejemplos}>
                                         {a.ejemplos.map((ej) => <code key={ej} className={styles.chip}>{ej}</code>)}
-                                        <span className={styles.nota}>(ejemplos; lista completa en {a.fuente?.split("/").pop()})</span>
+                                        <span className={styles.nota}>(ejemplos)</span>
                                     </span>
                                 ) : null}
                             </li>
@@ -279,10 +291,10 @@ function Entrada({ entrada: e, abierta, estadoReal, cargando, onNavegar }: {
 
                 <Seccion titulo="Qué hace">
                     <p className={styles.texto}>{e.accion}</p>
-                    {(e.lee.length > 0 || e.escribe.length > 0) && (
+                    {(lee.length > 0 || escribe.length > 0) && (
                         <dl className={styles.datos}>
-                            {e.lee.length > 0 && <><dt>Lee</dt><dd>{e.lee.join(" · ")}</dd></>}
-                            {e.escribe.length > 0 && <><dt>Modifica</dt><dd>{e.escribe.join(" · ")}</dd></>}
+                            {lee.length > 0 && <><dt>Lee</dt><dd>{lee.join(" · ")}</dd></>}
+                            {escribe.length > 0 && <><dt>Modifica</dt><dd>{escribe.join(" · ")}</dd></>}
                         </dl>
                     )}
                 </Seccion>
@@ -299,12 +311,6 @@ function Entrada({ entrada: e, abierta, estadoReal, cargando, onNavegar }: {
                         </ul>
                     ) : null}
                     <EstadoReal entrada={e} estadoReal={estadoReal} cargando={cargando} />
-                </Seccion>
-
-                <Seccion titulo="Código">
-                    <ul className={styles.codigo}>
-                        {e.codigo.map((c) => <li key={`${c.archivo}-${c.simbolo}`}><code>{c.archivo}</code>{c.simbolo && <> · <code>{c.simbolo}</code></>}</li>)}
-                    </ul>
                 </Seccion>
 
             </div>

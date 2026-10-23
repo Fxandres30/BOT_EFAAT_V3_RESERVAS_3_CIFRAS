@@ -95,7 +95,7 @@ export default function LoginForm() {
       >
 
         <h1 className="login-title">
-          EFAAT BOTS
+          EFAAT
         </h1>
 
         <p className="login-subtitle">

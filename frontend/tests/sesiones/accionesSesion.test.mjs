@@ -183,7 +183,7 @@ await prueba("reenviarAlBot: envía token de servicio y sesión del usuario; el 
 // ------------------------------------------------- 3. ejecutarAccionSesion ---
 
 const CASOS_ACCION = [
-    ["503 sin token", respuesta(503, { code: "TOKEN_SERVICIO_NO_CONFIGURADO" }), "TOKEN_SERVICIO_NO_CONFIGURADO", /soporte técnico/],
+    ["503 sin token", respuesta(503, { code: "TOKEN_SERVICIO_NO_CONFIGURADO" }), "TOKEN_SERVICIO_NO_CONFIGURADO", /contacta con soporte/i],
     ["401 sesión vencida", respuesta(401, { motivo: "sesion_invalida" }), "sesion_invalida", /iniciar sesión/],
     ["404 sin código", respuesta(404, { error: "Sesión no encontrada." }), "NO_ENCONTRADA", /ya no existe/],
     ["404 SESSION_NOT_FOUND", respuesta(404, { success: false, code: "SESSION_NOT_FOUND" }), "SESSION_NOT_FOUND", /ya no existe/],

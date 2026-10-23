@@ -59,7 +59,7 @@ export default function SelectorContacto({ seleccion, onCambiar, deshabilitado =
                         <span className="truncate">{c.nombre || "Sin nombre"}</span>
                     </p>
                     <p className="text-sm text-gray-600 flex items-center gap-1 mt-0.5">
-                        <Phone size={12} /> {c.telefono || (c.telefonoPendiente ? "Teléfono pendiente (solo LID)" : "Sin teléfono")}
+                        <Phone size={12} /> {c.telefono || (c.telefonoPendiente ? "Teléfono pendiente (solo identificador de WhatsApp)" : "Sin teléfono")}
                     </p>
                     {c.grupos.length > 0 && (
                         <p className="text-xs text-gray-500 mt-1 flex items-start gap-1">
@@ -152,7 +152,7 @@ export default function SelectorContacto({ seleccion, onCambiar, deshabilitado =
                         >
                             <span className="flex items-center justify-between gap-2">
                                 <span className="font-medium text-gray-900 truncate">{c.nombre || "Sin nombre"}</span>
-                                <span className="text-xs text-gray-500 shrink-0">{c.telefono || "solo LID"}</span>
+                                <span className="text-xs text-gray-500 shrink-0">{c.telefono || "sin teléfono"}</span>
                             </span>
                             {c.grupos.length > 0 && (
                                 <span className="block text-xs text-gray-500 truncate mt-0.5">

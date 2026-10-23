@@ -380,7 +380,7 @@ async function reconectar(req, res) {
 
         if (leaseDeOtraInstancia(leases.get(sessionId))) {
 
-            throw new ErrorHttp(409, "LEASE_NO_DISPONIBLE", "La sesión está siendo operada por otra instancia del backend.");
+            throw new ErrorHttp(409, "LEASE_NO_DISPONIBLE", "La sesión se está atendiendo en otro servidor de EFAAT. Espera un minuto e inténtalo de nuevo.");
 
         }
 
@@ -412,7 +412,7 @@ async function reconectar(req, res) {
 
         if (data.success === false && data.code === "LEASE_NO_DISPONIBLE") {
 
-            throw new ErrorHttp(409, "LEASE_NO_DISPONIBLE", "La sesión está siendo operada por otra instancia del backend.");
+            throw new ErrorHttp(409, "LEASE_NO_DISPONIBLE", "La sesión se está atendiendo en otro servidor de EFAAT. Espera un minuto e inténtalo de nuevo.");
 
         }
 
@@ -468,7 +468,7 @@ async function eliminar(req, res) {
 
         if (leaseDeOtraInstancia(leases.get(sessionId))) {
 
-            throw new ErrorHttp(409, "LEASE_NO_DISPONIBLE", "La sesión está siendo operada por otra instancia del backend; elimínala desde esa instancia.");
+            throw new ErrorHttp(409, "LEASE_NO_DISPONIBLE", "La sesión se está atendiendo en otro servidor de EFAAT. Espera un minuto e inténtalo de nuevo; si continúa, contacta con soporte.");
 
         }
 

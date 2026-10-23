@@ -19,8 +19,8 @@ interface Props {
 }
 
 const ETIQUETA_ESTADO_IDENTIFICACION: Record<string, string> = {
-    completo: "Completo (LID + teléfono)",
-    solo_lid: "Solo LID — teléfono pendiente",
+    completo: "Completo (identificador de WhatsApp + teléfono)",
+    solo_lid: "Solo identificador de WhatsApp — teléfono pendiente",
     solo_telefono: "Solo teléfono",
     sin_identificar: "Sin identificar"
 };
@@ -131,7 +131,7 @@ export default function PerfilContacto({ contacto, usuarioId, onTelefonoAgregado
 
         if (!resultado.ok || !resultado.bloqueado) {
             setErrorBloqueo(resultado.motivo === "sin_identificador"
-                ? "Este contacto no tiene teléfono ni LID todavía — no se puede bloquear."
+                ? "Este contacto todavía no tiene teléfono ni identificador de WhatsApp — no se puede bloquear."
                 : "No se pudo bloquear al contacto. Intenta de nuevo.");
             return;
         }

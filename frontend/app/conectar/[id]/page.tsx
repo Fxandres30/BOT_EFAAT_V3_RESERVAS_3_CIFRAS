@@ -216,7 +216,7 @@ export default function Conectar({
 
         <h1>
 
-          EFAAT BOTS
+          EFAAT
 
         </h1>
 

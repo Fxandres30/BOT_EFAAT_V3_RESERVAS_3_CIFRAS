@@ -82,8 +82,8 @@ export interface ModuloCatalogo {
 const PANEL_MENSAJES = { pagina: "Mensajes", ruta: "/mensajes" };
 const PANEL_AUTOMATIZACION = { pagina: "Automatización", ruta: "/automatizacion" };
 
-const FALLBACK_GEMINI = "Sin plantilla activa, el texto lo redacta Gemini a partir del resultado real; si Gemini falla, se envía el mensaje fijo del bot.";
-const FALLBACK_FIJO = "Sin plantilla activa se envía el mensaje fijo del bot (nunca Gemini).";
+const FALLBACK_GEMINI = "Sin plantilla activa, el texto se genera con redacción automática con IA a partir del resultado real; si no está disponible, se envía el mensaje predeterminado de EFAAT.";
+const FALLBACK_FIJO = "Sin plantilla activa se envía el mensaje predeterminado de EFAAT (nunca se usa redacción con IA).";
 
 export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
 
@@ -95,13 +95,13 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
         entradas: [
             {
                 id: "compuerta",
-                nombre: "Compuerta de ingreso (duplicados e históricos)",
+                nombre: "Filtro de ingreso (duplicados y mensajes antiguos)",
                 resumen: "Evita procesar dos veces un mensaje o actuar sobre mensajes antiguos.",
                 estado: "funciona",
-                activadores: [{ tipo: "evento", descripcion: "Llega un mensaje de WhatsApp (messages.upsert)." }],
+                activadores: [{ tipo: "evento", descripcion: "Llega un mensaje de WhatsApp." }],
                 condiciones: [
                     "Si el mensaje (grupo + id) ya está registrado, se descarta.",
-                    "Si es histórico (offline, reenvío o anterior a la sesión), solo se guarda en el historial."
+                    "Si es antiguo (recibido sin conexión, reenviado o anterior a la sesión), solo se guarda en el historial."
                 ],
                 accion: "Registra el mensaje y decide si continúa al resto del flujo.",
                 lee: ["mensajes_grupos_sorteos"],
@@ -128,10 +128,10 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
             },
             {
                 id: "salida-programa",
-                nombre: "Mensajes enviados por el propio bot",
-                resumen: "Los mensajes que envió el programa no se vuelven a procesar como pedidos.",
+                nombre: "Mensajes enviados por EFAAT",
+                resumen: "Los mensajes que envió EFAAT no se vuelven a procesar como pedidos.",
                 estado: "funciona",
-                activadores: [{ tipo: "condicion", descripcion: "Mensaje propio (fromMe) cuyo id registró el programa al enviarlo." }],
+                activadores: [{ tipo: "condicion", descripcion: "Mensaje enviado desde el número vinculado que EFAAT registró al enviarlo." }],
                 condiciones: [],
                 accion: "Solo queda en el historial.",
                 lee: [],
@@ -157,13 +157,13 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 nombre: "Cuentas ignoradas",
                 resumen: "Cuentas operativas cuyos avisos no se toman como pedidos de clientes.",
                 estado: "funciona",
-                activadores: [{ tipo: "condicion", descripcion: "El remitente es una de las cuentas fijas (por LID) o una sesión de WhatsApp del propio sistema." }],
+                activadores: [{ tipo: "condicion", descripcion: "El remitente es una de las cuentas fijas (por identificador de contacto de WhatsApp) o una sesión de WhatsApp vinculada a EFAAT." }],
                 condiciones: ["Solo se saltan reservas y consultas; sus anuncios de sorteo y stickers de pago sí se procesan."],
                 accion: "No se evalúa como reserva ni consulta.",
                 lee: [],
                 escribe: [],
                 codigo: [{ archivo: "backend/bot/funciones/mensajes/cuentasIgnoradas.js", simbolo: "esCuentaIgnorada" }],
-                edicion: { nivel: "codigo", detalle: "La lista de cuentas está escrita en el código; no es editable desde el panel." }
+                edicion: { nivel: "codigo", detalle: "La lista de cuentas es fija; no es editable desde el panel." }
             },
             {
                 id: "clasificacion-historial",
@@ -177,7 +177,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                     fuente: "backend/bot/funciones/mensajes/clasificarMensaje.js"
                 }],
                 condiciones: [],
-                accion: "Escribe las columnas accion / worker / estado del historial.",
+                accion: "Añade la etiqueta al registro del historial.",
                 lee: [],
                 escribe: ["mensajes_grupos_sorteos"],
                 codigo: [
@@ -185,16 +185,16 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                     { archivo: "backend/bot/workers/index.js", simbolo: "iniciarWorkers" },
                     { archivo: "backend/bot/workers/reservaWorker.js", simbolo: "reservaWorker" }
                 ],
-                edicion: { nivel: "ninguno", detalle: "No tiene efecto en el comportamiento del bot." },
+                edicion: { nivel: "ninguno", detalle: "No tiene efecto en las respuestas automáticas." },
                 avisos: [
-                    "Nadie consume esta etiqueta: iniciarWorkers() nunca se llama y reservaWorker.js requiere un archivo que no existe (services/reservas/procesarReserva).",
+                    "Ningún proceso utiliza esta etiqueta todavía.",
                     "Las respuestas reales las deciden los detectores de Reservas y Consultas, no esta clasificación."
                 ]
             },
             {
                 id: "comandos",
                 nombre: "Comandos",
-                resumen: "Manejador de comandos del bot.",
+                resumen: "Comandos de administración.",
                 estado: "codigo_muerto",
                 activadores: [{ tipo: "desconocido", descripcion: "No hay ningún comando definido." }],
                 condiciones: [],
@@ -203,7 +203,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 escribe: [],
                 codigo: [{ archivo: "backend/bot/handlers/commandHandler.js" }],
                 edicion: { nivel: "ninguno", detalle: "No existen comandos." },
-                avisos: ["dispatcher.js lo llama en cada mensaje, pero commandHandler.js solo exporta una función vacía (module.exports = async () => {})."]
+                avisos: ["Todavía no hay comandos de administración disponibles: la función existe, pero no realiza ninguna acción."]
             }
         ]
     },
@@ -212,7 +212,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
     {
         id: "sorteos",
         nombre: "Anuncios de sorteo",
-        descripcion: "Cómo el bot reconoce el anuncio de un sorteo escrito en el grupo y qué hace con él.",
+        descripcion: "Cómo EFAAT reconoce el anuncio de un sorteo escrito en el grupo y qué hace con él.",
         entradas: [
             {
                 id: "deteccion-anuncio",
@@ -229,7 +229,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                     "Si es el mismo sorteo ya activo, se reactiva en lugar de duplicarse.",
                     "No pisa un sorteo activo creado desde «Sorteos programados»."
                 ],
-                accion: "Guarda el sorteo en eventos_bot, abre el grupo en WhatsApp, inicia la automatización del grupo (si está autorizada) y escanea identidades.",
+                accion: "Guarda el sorteo, abre el grupo en WhatsApp, inicia la automatización del grupo (si está autorizada) y escanea identidades.",
                 lee: ["eventos_bot", "tabla de números del precio"],
                 escribe: ["eventos_bot", "event_sessions"],
                 codigo: [
@@ -242,7 +242,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                     { archivo: "backend/bot/funciones/eventos/guardarEvento.js", simbolo: "guardarEvento" },
                     { archivo: "backend/bot/funciones/eventos/grupos/abrirGrupo.js", simbolo: "abrirGrupo" }
                 ],
-                edicion: { nivel: "codigo", detalle: "La lista de loterías y los precios aceptados están escritos en el código." },
+                edicion: { nivel: "codigo", detalle: "La lista de loterías y los precios aceptados son fijos en el sistema." },
                 avisos: [
                     "No se comprueba que quien anuncia sea administrador: cualquier miembro cuyo mensaje cumpla la forma del anuncio crearía o actualizaría el sorteo.",
                     "Un anuncio con «valor 5000» (sin «número») no se reconoce como anuncio."
@@ -276,7 +276,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
             {
                 id: "reserva",
                 nombre: "Reserva de números",
-                resumen: "El cliente pide uno o varios números y el bot los aparta a su nombre si están libres.",
+                resumen: "El cliente pide uno o varios números y EFAAT los aparta a su nombre si están libres.",
                 estado: "funciona",
                 sensible: true,
                 activadores: [
@@ -313,7 +313,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 ],
                 plantillas: ["reserva_completa", "reserva_parcial", "numero_ocupado", "todos_ocupados"],
                 panel: [{ ...PANEL_MENSAJES, que: "Interruptor y plantillas de cada tipo de respuesta de reserva." }],
-                edicion: { nivel: "mixto", detalle: "En el panel: el texto de la respuesta y si se envía. La regla que decide qué es una reserva está en el código." },
+                edicion: { nivel: "mixto", detalle: "En el panel: el texto de la respuesta y si se envía. La regla que decide qué es una reserva es fija del sistema." },
                 avisos: [
                     FALLBACK_GEMINI,
                     "Si el tipo de respuesta está desactivado, la reserva igual se realiza; solo no se envía el mensaje.",
@@ -370,7 +370,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 ],
                 plantillas: ["mis_numeros"],
                 panel: [{ ...PANEL_MENSAJES, que: "Interruptor y plantillas." }],
-                edicion: { nivel: "mixto", detalle: "En el panel: texto e interruptor. Las frases que la activan están en el código." },
+                edicion: { nivel: "mixto", detalle: "En el panel: texto e interruptor. Las frases que la activan son fijas del sistema." },
                 avisos: [FALLBACK_FIJO, "Las preguntas por «mis reservas» también usan estas plantillas y este interruptor; si el antiguo «Mis reservas» estaba apagado, esas preguntas siguen sin respuesta."],
                 estadoReal: "tipos"
             },
@@ -388,11 +388,11 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                     },
                     {
                         tipo: "frase",
-                        descripcion: "Vocabulario exacto de pago y deuda (sin coincidencia aproximada: «pasar» o «pasado» no son pago).",
+                        descripcion: "Vocabulario exacto de pago y deuda (sin coincidencia aproximada: «pasar» o «pasado» no son pago). «Debo» o «devo» bastan solos; «debe» o «debemos» solos no.",
                         ejemplos: ["debo", "devo", "pague", "page", "cancele"],
                         fuente: "backend/bot/funciones/consultas/vocabularioPago.js"
                     },
-                    { tipo: "condicion", descripcion: "«Ya pagué», «cancelé el 25» solo cuentan como PREGUNTA con «?», «¿» o una palabra interrogativa; si son afirmaciones el bot no responde." }
+                    { tipo: "condicion", descripcion: "«Ya pagué», «cancelé el 25» solo cuentan como PREGUNTA con «?», «¿» o una palabra interrogativa; si son afirmaciones, EFAAT no responde." }
                 ],
                 condiciones: ["La plantilla se elige por el estado real del cliente (sin pago, parcial, completo, sin números)."],
                 accion: "Lee los números del cliente una vez y responde con lo pendiente. Nunca confirma un pago no registrado.",
@@ -406,7 +406,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 ],
                 plantillas: ["consulta_pago_sin_pago", "consulta_pago_pago_parcial", "consulta_pago_pago_completo", "consulta_pago_sin_saldo"],
                 panel: [{ ...PANEL_MENSAJES, que: "Interruptor y plantillas de cada estado de pago." }],
-                edicion: { nivel: "mixto", detalle: "En el panel: texto e interruptor por estado. Las frases están en el código." },
+                edicion: { nivel: "mixto", detalle: "En el panel: texto e interruptor por estado. Las frases son fijas del sistema." },
                 avisos: [FALLBACK_FIJO, "Sin precio configurado se descartan las plantillas con montos y nunca se muestra «$0»."],
                 estadoReal: "tipos"
             },
@@ -490,8 +490,8 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 ],
                 plantillas: ["disponibilidad", "disponibilidad_agotada"],
                 panel: [{ ...PANEL_MENSAJES, que: "Interruptor y plantillas (normal y agotado)." }],
-                edicion: { nivel: "mixto", detalle: "Texto e interruptor en el panel. Las ventanas anti-ráfaga son variables de entorno del servidor." },
-                avisos: [FALLBACK_GEMINI + " Agotado nunca usa Gemini."],
+                edicion: { nivel: "mixto", detalle: "Texto e interruptor en el panel. Los tiempos de espera entre respuestas son fijos en el servidor." },
+                avisos: [FALLBACK_GEMINI + " El aviso de agotado nunca usa redacción con IA."],
                 estadoReal: "tipos"
             },
             {
@@ -517,7 +517,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 resumen: "Varias preguntas de números y pagos en un mensaje («mis números y cuánto debo»).",
                 estado: "funciona",
                 activadores: [{ tipo: "frase", descripcion: "Dos o más preguntas de la familia separadas por «y» o comas." }],
-                condiciones: ["Cada parte respeta su propio interruptor."],
+                condiciones: ["Cada parte respeta su propio interruptor; la de pago, el del estado real del cliente (sin pago, parcial, completo, sin números). Una parte apagada se omite; si no queda ninguna, no se responde."],
                 accion: "Una sola lectura de los números para todas las partes.",
                 lee: ["tabla de números del sorteo"],
                 escribe: [],
@@ -531,11 +531,11 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
             {
                 id: "tipos-sin-uso",
                 nombre: "Tipos de respuesta sin uso",
-                resumen: "«Mensaje no entendido», «Número inválido», «Evento no disponible», «Solicitud ambigua» y «Otro determinista».",
+                resumen: "«Mensaje no entendido», «Número inválido», «Evento no disponible», «Solicitud ambigua» y «Otros resultados».",
                 estado: "sin_efecto",
                 activadores: [{ tipo: "desconocido", descripcion: "Ningún detector los genera." }],
                 condiciones: [],
-                accion: "Ninguna: el bot nunca envía estas respuestas.",
+                accion: "Ninguna: EFAAT nunca envía estas respuestas.",
                 lee: [],
                 escribe: [],
                 codigo: [{ archivo: "frontend/services/mensajes/tiposMensaje.ts", simbolo: "mensaje_no_entendido" }],
@@ -586,7 +586,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 ],
                 panel: [{ ...PANEL_AUTOMATIZACION, que: "Solo qué sticker se usa; la regla no es configurable." }],
                 edicion: { nivel: "mixto", detalle: "Solo el sticker es configurable. Nunca se activa por una frase." },
-                avisos: ["Después del cierre del sorteo (activo=false) el sticker ya no marca pagos: esos pagos deben marcarse desde Tablas."],
+                avisos: ["Después del cierre del sorteo el sticker ya no marca pagos: esos pagos deben marcarse desde Tablas."],
                 estadoReal: "sticker"
             },
             {
@@ -622,7 +622,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 nombre: "Lector de pagos (app Android)",
                 resumen: "Recibe las notificaciones bancarias leídas por el teléfono vinculado.",
                 estado: "funciona",
-                activadores: [{ tipo: "evento", descripcion: "Petición HTTP del dispositivo vinculado (POST /pagos/movimientos)." }],
+                activadores: [{ tipo: "evento", descripcion: "Aviso enviado por el teléfono vinculado." }],
                 condiciones: ["Credenciales del dispositivo válidas.", "Movimientos duplicados se descartan."],
                 accion: "Guarda los movimientos. No confirma pagos ni los cruza con reservas.",
                 lee: [],
@@ -641,7 +641,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
     {
         id: "automatizacion",
         nombre: "Automatización programada",
-        descripcion: "Mensajes que el bot envía solo, por grupo autorizado. Se revisa cada 30 segundos.",
+        descripcion: "Mensajes que EFAAT envía automáticamente, por grupo autorizado. Se revisa cada 30 segundos.",
         entradas: [
             {
                 id: "inicio-dia",
@@ -723,7 +723,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 resumen: "Aviso cuando entran suficientes reservas nuevas.",
                 estado: "funciona",
                 activadores: [{ tipo: "estado", descripcion: "Reservas nuevas ≥ umbral configurado." }],
-                condiciones: ["Espera mínima (cooldown) entre dos avisos.", "Solo si quedan números libres y el grupo sigue abierto (estado real leído antes del envío)."],
+                condiciones: ["Espera mínima entre dos avisos.", "Solo si quedan números libres y el grupo sigue abierto (estado real leído antes del envío)."],
                 accion: "Envía un mensaje del grupo de actualizaciones.",
                 lee: ["automation_configs", "eventos_bot"],
                 escribe: ["automation_actions", "event_sessions"],
@@ -737,7 +737,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 nombre: "Mensaje de cierre",
                 resumen: "Después de que el sorteo se cierra.",
                 estado: "funciona",
-                activadores: [{ tipo: "estado", descripcion: "El sorteo pasó a cerrado (activo=false) por el cierre automático." }],
+                activadores: [{ tipo: "estado", descripcion: "El sorteo pasó a cerrado por el cierre automático." }],
                 condiciones: ["Una vez por sorteo."],
                 accion: "Envía un mensaje del grupo de cierre.",
                 lee: ["automation_configs", "automation_messages"],
@@ -750,11 +750,11 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
             {
                 id: "stickers-automatizacion",
                 nombre: "Stickers en la automatización",
-                resumen: "Columna «stickers» de la configuración de automatización.",
+                resumen: "Opción «stickers» de la configuración de automatización.",
                 estado: "sin_efecto",
                 activadores: [{ tipo: "desconocido", descripcion: "Ningún flujo la lee." }],
                 condiciones: [],
-                accion: "Ninguna (punto de extensión preparado, sin uso).",
+                accion: "Ninguna (función preparada, todavía sin uso).",
                 lee: ["automation_configs"],
                 escribe: [],
                 codigo: [{ archivo: "backend/automation/engine.js", simbolo: "stickers" }],
@@ -797,8 +797,8 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 nombre: "Reintento de apertura del grupo",
                 resumen: "Si abrir el grupo falló al anunciar, se reintenta.",
                 estado: "funciona",
-                activadores: [{ tipo: "estado", descripcion: "Sorteo activo con apertura fallida (abierto=false)." }],
-                condiciones: ["El bot debe ser administrador del grupo."],
+                activadores: [{ tipo: "estado", descripcion: "Sorteo activo cuyo grupo no se pudo abrir." }],
+                condiciones: ["El número vinculado a EFAAT debe ser administrador del grupo."],
                 accion: "Vuelve a abrir el grupo en WhatsApp.",
                 lee: ["eventos_bot"],
                 escribe: ["eventos_bot"],
@@ -808,7 +808,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
             {
                 id: "ciclo-codigo-muerto",
                 nombre: "Módulos de ciclo de vida sin uso",
-                resumen: "notificarEvento, eventos/index.js, procesarEvento / evaluarEvento / verificarEventoLleno y responderReserva.",
+                resumen: "Componentes internos antiguos de notificación y evaluación de sorteos.",
                 estado: "codigo_muerto",
                 activadores: [{ tipo: "desconocido", descripcion: "Nadie los llama." }],
                 condiciones: [],
@@ -825,8 +825,8 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 ],
                 edicion: { nivel: "ninguno", detalle: "No forman parte del comportamiento real." },
                 avisos: [
-                    "notificarEvento.js usa sintaxis de módulos ES en un proyecto CommonJS e importa un archivo inexistente.",
-                    "Solo lo importa eventos/index.js, que tampoco requiere nadie y reexporta archivos que no existen (crearEvento, programarCierreEvento, verificarEventosPendientes)."
+                    "Son componentes antiguos que no se ejecutan.",
+                    "No afectan a tus sorteos ni a tus respuestas automáticas."
                 ]
             }
         ]
@@ -836,7 +836,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
     {
         id: "programados",
         nombre: "Sorteos programados",
-        descripcion: "Sorteos creados desde el panel que el bot publica solo. Tienen sus propios textos, distintos de las plantillas de Mensajes.",
+        descripcion: "Sorteos creados desde el panel que EFAAT publica automáticamente. Tienen sus propios textos, distintos de las plantillas de Mensajes.",
         entradas: [
             {
                 id: "publicacion-programada",
@@ -906,7 +906,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 resumen: "Saca del grupo a una persona bloqueada en cuanto entra.",
                 estado: "funciona",
                 sensible: true,
-                activadores: [{ tipo: "evento", descripcion: "Un participante entra al grupo (group-participants.update, add)." }],
+                activadores: [{ tipo: "evento", descripcion: "Un participante entra al grupo." }],
                 condiciones: ["La persona está en la lista de bloqueados.", "Una sola vez por persona y grupo en una ventana corta."],
                 accion: "Expulsa al participante.",
                 lee: ["bloqueados", "usuarios"],
@@ -918,7 +918,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
             {
                 id: "escaner-identidades",
                 nombre: "Escáner de identidades",
-                resumen: "Asocia teléfonos y LID de los participantes.",
+                resumen: "Asocia los teléfonos y los identificadores de contacto de WhatsApp de los participantes.",
                 estado: "funciona",
                 activadores: [
                     { tipo: "evento", descripcion: "Entra un participante o se detecta un anuncio." },
@@ -936,7 +936,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 nombre: "Sincronización del grupo",
                 resumen: "Actualiza los datos de un grupo cuando cambia en WhatsApp.",
                 estado: "funciona",
-                activadores: [{ tipo: "evento", descripcion: "groups.update de WhatsApp." }],
+                activadores: [{ tipo: "evento", descripcion: "WhatsApp informa un cambio en el grupo." }],
                 condiciones: [],
                 accion: "Sincroniza los datos del grupo.",
                 lee: [],
@@ -956,7 +956,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 lee: ["usuarios", "eventos_bot", "inactividad_miembros"],
                 escribe: ["inactividad_ejecuciones", "inactividad_evaluaciones", "inactividad_miembros"],
                 codigo: [{ archivo: "backend/bot/funciones/inactividad/ejecutarControlInactividad.js", simbolo: "ejecutarControlInactividad" }, { archivo: "backend/bot/funciones/inactividad/configInactividad.js", simbolo: "INACTIVIDAD_MODO" }],
-                edicion: { nivel: "entorno", detalle: "Solo con variables de entorno del servidor (INACTIVIDAD_*). No hay opción en el panel." },
+                edicion: { nivel: "entorno", detalle: "Solo se configura en el servidor, con ayuda de soporte. No hay opción en el panel." },
                 avisos: ["El modo actual del servidor no se puede ver desde el panel."]
             }
         ]
@@ -990,7 +990,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 sensible: true,
                 activadores: [{ tipo: "panel", descripcion: "Ventana de cada número en Tablas." }],
                 condiciones: [
-                    "Reservar: número libre, sorteo activo del precio y abierto, grupo autorizado y contacto de tus contactos (mismas reglas que el bot).",
+                    "Reservar: número libre, sorteo activo del precio y abierto, grupo autorizado y contacto de tus contactos (mismas reglas que las respuestas automáticas).",
                     "Registrar el pago: solo números reservados.",
                     "Liberar, anular un pago o desbloquear: con confirmación; anular un pago exige motivo."
                 ],
@@ -1025,13 +1025,13 @@ export const ETIQUETA_ESTADO: Record<EstadoEntrada, string> = {
     funciona: "Funciona",
     con_conflicto: "Con conflicto conocido",
     sin_efecto: "Sin efecto",
-    codigo_muerto: "Código sin uso"
+    codigo_muerto: "Sin uso"
 };
 
 export const ETIQUETA_EDICION: Record<NivelEdicion, string> = {
     panel: "Editable en el panel",
     mixto: "Parcialmente editable",
-    codigo: "Codificado",
-    entorno: "Variables del servidor",
+    codigo: "Regla fija",
+    entorno: "Configurado en el servidor",
     ninguno: "Sin efecto"
 };

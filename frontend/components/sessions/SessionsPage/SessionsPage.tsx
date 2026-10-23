@@ -39,7 +39,7 @@ export default function SessionsPage() {
 
   async function agregarSesion() {
     if (!usuarioId) {
-      alert("Usuario no encontrado");
+      alert("No se pudo identificar tu cuenta. Vuelve a iniciar sesión e inténtalo de nuevo.");
       return;
     }
 
@@ -54,7 +54,7 @@ export default function SessionsPage() {
     <>
       <PageHeader
         title="Sesiones"
-        description="Administra las sesiones de WhatsApp del bot."
+        description="Gestiona tus sesiones de WhatsApp."
         actions={
           <>
             <AyudaContextual slug="crear-y-conectar-sesion" />
@@ -67,8 +67,8 @@ export default function SessionsPage() {
 
       {usuarioId && errorSalud && (
         <p className={styles.avisoSalud} role="status">
-          No pudimos consultar el estado del bot en este momento, así que las
-          sesiones aparecen «Sin verificar». No se ha desconectado nada; se
+          No pudimos consultar el estado de tus sesiones en este momento, así que
+          aparecen «Sin verificar». No se ha desconectado nada; se
           vuelve a comprobar automáticamente cada pocos segundos.
         </p>
       )}
@@ -83,7 +83,7 @@ export default function SessionsPage() {
         <EmptyState
           icon={<Smartphone size={20} />}
           title="Todavía no hay sesiones"
-          description="Crea una sesión para vincular un número de WhatsApp al bot."
+          description="Crea una sesión para vincular tu número de WhatsApp a EFAAT."
           action={
             <Button leftIcon={<Plus size={15} />} onClick={agregarSesion}>
               Agregar sesión

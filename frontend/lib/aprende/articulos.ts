@@ -46,16 +46,16 @@ export const CORREO_SOPORTE_APRENDE = "soporte@efaat.com";
 
 export const CATEGORIAS: Categoria[] = [
     { id: "primeros-pasos", titulo: "Primeros pasos", descripcion: "Qué es EFAAT, qué configurar primero y cómo leer los estados.", icono: "rocket", seccion: null },
-    { id: "sesiones", titulo: "Sesiones de WhatsApp", descripcion: "Vincular tu número, saber si el bot escucha y resolver desconexiones.", icono: "smartphone", seccion: { href: "/sesiones", texto: "Abrir Sesiones" } },
+    { id: "sesiones", titulo: "Sesiones de WhatsApp", descripcion: "Vincular tu número, comprobar que está en servicio y resolver desconexiones.", icono: "smartphone", seccion: { href: "/sesiones", texto: "Abrir Sesiones" } },
     { id: "reservas", titulo: "Reservas y tablas", descripcion: "Tablas por precio, estados de los números, historial y compartir.", icono: "ticket", seccion: { href: "/tablas", texto: "Abrir Reservas" } },
     { id: "mi-cuenta", titulo: "Mi cuenta", descripcion: "Perfil, contraseña, plan, grupos y soporte.", icono: "user", seccion: { href: "/mi-cuenta", texto: "Abrir Mi cuenta" } },
-    { id: "mensajes", titulo: "Mensajes", descripcion: "Respuestas del bot en los grupos.", icono: "message", seccion: { href: "/mensajes", texto: "Abrir Mensajes" } },
+    { id: "mensajes", titulo: "Mensajes", descripcion: "Respuestas automáticas en los grupos.", icono: "message", seccion: { href: "/mensajes", texto: "Abrir Mensajes" } },
     { id: "variables", titulo: "Variables globales", descripcion: "Datos reutilizables en los mensajes.", icono: "puzzle", seccion: { href: "/variables-globales", texto: "Abrir Variables globales" } },
     { id: "contactos", titulo: "Contactos", descripcion: "Directorio de participantes de tus grupos.", icono: "users", seccion: { href: "/contactos", texto: "Abrir Contactos" } },
-    { id: "eventos", titulo: "Eventos", descripcion: "Sorteos detectados por el bot.", icono: "target", seccion: { href: "/eventos", texto: "Abrir Eventos" } },
+    { id: "eventos", titulo: "Eventos", descripcion: "Sorteos detectados en tus grupos.", icono: "target", seccion: { href: "/eventos", texto: "Abrir Eventos" } },
     { id: "sorteos", titulo: "Sorteos programados", descripcion: "Publicar sorteos desde el panel.", icono: "calendar-clock", seccion: { href: "/sorteos", texto: "Abrir Sorteos programados" } },
     { id: "loterias", titulo: "Calendario de loterías", descripcion: "Loterías y horarios disponibles.", icono: "calendar-days", seccion: { href: "/loterias", texto: "Abrir Calendario de loterías" } },
-    { id: "automatizacion", titulo: "Automatización", descripcion: "Grupos autorizados, mensajes y programación del bot.", icono: "bot", seccion: { href: "/automatizacion", texto: "Abrir Automatización" } },
+    { id: "automatizacion", titulo: "Automatización", descripcion: "Grupos autorizados, mensajes y programación automática.", icono: "bot", seccion: { href: "/automatizacion", texto: "Abrir Automatización" } },
     { id: "lector-pagos", titulo: "Lector de pagos", descripcion: "Lectura de notificaciones de pago.", icono: "scan", seccion: { href: "/lector-pagos", texto: "Abrir Lector de pagos" } },
     { id: "bloqueados", titulo: "Bloqueados", descripcion: "Participantes bloqueados en tus grupos.", icono: "shield", seccion: { href: "/bloqueados", texto: "Abrir Bloqueados" } }
 ];
@@ -73,16 +73,16 @@ export const ARTICULOS: Articulo[] = [
         descripcion: "Lo que hace el panel y para qué sirve cada opción del menú.",
         minutos: 3,
         claves: ["menú", "panel", "inicio", "orientarse"],
-        paraQueSirve: "EFAAT conecta un número de WhatsApp a un bot que atiende tus grupos de sorteos: toma las reservas de números, responde consultas y te deja administrar todo desde este panel.",
+        paraQueSirve: "EFAAT se conecta a tu número de WhatsApp y atiende tus grupos de sorteos de forma automática: toma las reservas de números, responde consultas y te deja administrar todo desde este panel.",
         antes: [
             "Haber iniciado sesión en el panel con tu correo y contraseña.",
-            "Tener a mano el teléfono con el WhatsApp que usará el bot."
+            "Tener a mano el teléfono con el WhatsApp que vincularás a EFAAT."
         ],
         pasos: [
             "Usa el menú lateral para moverte entre secciones. En el móvil se abre con el botón «Abrir menú» de la barra superior.",
             "«Sesiones»: vincula y vigila tu número de WhatsApp.",
             "«Reservas»: abre la tabla de números de cada precio, con su historial.",
-            "«Automatización»: autoriza los grupos donde trabaja el bot y configura su comportamiento.",
+            "«Automatización»: autoriza los grupos donde trabaja EFAAT y configura la automatización de cada uno.",
             "«Mi cuenta» (abajo, junto a tu correo): tus datos, tu contraseña y el contacto con soporte.",
             "Las demás opciones (Mensajes, Variables globales, Contactos, Eventos, Sorteos programados, Calendario de loterías, Lector de pagos y Bloqueados) tendrán su propia guía en este centro."
         ],
@@ -97,27 +97,27 @@ export const ARTICULOS: Articulo[] = [
         slug: "primera-configuracion",
         categoria: "primeros-pasos",
         titulo: "Qué configurar primero",
-        descripcion: "Los tres pasos para que el bot empiece a tomar reservas.",
+        descripcion: "Los tres pasos para que EFAAT empiece a tomar reservas.",
         minutos: 4,
         claves: ["empezar", "configuración inicial", "requisitos", "grupos autorizados"],
-        paraQueSirve: "Te indica el orden en que conviene preparar tu cuenta para que el bot pueda trabajar en tus grupos.",
+        paraQueSirve: "Te indica el orden en que conviene preparar tu cuenta para que EFAAT pueda trabajar en tus grupos.",
         antes: [
             "Un número de WhatsApp que esté en los grupos de tus sorteos.",
             "Acceso a ese teléfono para escanear un código QR."
         ],
         pasos: [
-            "Conecta tu WhatsApp: en «Sesiones», pulsa «Agregar sesión» y luego «Conectar» en la tarjeta nueva (detalle en la guía «Crear y conectar una sesión»).",
-            "Autoriza tus grupos: en «Automatización › Grupos» aparecen los grupos de tu sesión conectada; pulsa «Autorizar» en cada grupo donde quieres que trabaje el bot. El bot no procesa mensajes, reservas ni pagos en grupos sin autorizar.",
-            "Revisa tus tablas: en «Reservas» abre la tabla del precio de tu sorteo. Cuando el bot detecta el anuncio de un sorteo en un grupo autorizado (o lo publicas desde el panel), la tabla muestra «Evento activo» y empieza a recibir reservas."
+            "Conecta tu WhatsApp: en «Sesiones», pulsa «Agregar sesión» y luego «Conectar» en la tarjeta nueva (detalle en la guía «Cómo conectar tu WhatsApp»).",
+            "Autoriza tus grupos: en «Automatización › Grupos» aparecen los grupos de tu sesión conectada; pulsa «Autorizar» en cada grupo donde quieres que trabaje EFAAT. EFAAT no procesa mensajes, reservas ni pagos en grupos sin autorizar.",
+            "Revisa tus tablas: en «Reservas» abre la tabla del precio de tu sorteo. Cuando EFAAT detecta el anuncio de un sorteo en un grupo autorizado (o lo publicas desde el panel), la tabla muestra «Evento activo» y empieza a recibir reservas."
         ],
         estados: [
-            { nombre: "🟢 Autorizado", significado: "El bot trabaja en ese grupo." },
-            { nombre: "🟡 Autorizado (inactivo)", significado: "Está autorizado pero en pausa: el bot no lo atiende." },
-            { nombre: "⚪ No autorizado", significado: "El bot no actúa en ese grupo." }
+            { nombre: "🟢 Autorizado", significado: "EFAAT trabaja en ese grupo." },
+            { nombre: "🟡 Autorizado (inactivo)", significado: "Está autorizado pero en pausa: EFAAT no lo atiende." },
+            { nombre: "⚪ No autorizado", significado: "EFAAT no actúa en ese grupo." }
         ],
         errores: [
             { sintoma: "En «Automatización › Grupos» no aparece ningún grupo.", comprobar: "Los grupos se leen de la sesión conectada. Comprueba en «Sesiones» que tu número esté conectado." },
-            { sintoma: "Acabas de autorizar un grupo y el bot aún no responde.", comprobar: "La autorización puede tardar hasta unos 30 segundos en aplicarse." }
+            { sintoma: "Acabas de autorizar un grupo y EFAAT aún no responde.", comprobar: "La autorización puede tardar hasta unos 30 segundos en aplicarse." }
         ],
         siNoFunciona: ["Revisa la guía «Mi sesión no conecta o se desconecta» y, si el problema sigue, escríbenos."],
         seccion: { href: "/automatizacion/grupos", texto: "Abrir Automatización › Grupos" }
@@ -129,15 +129,15 @@ export const ARTICULOS: Articulo[] = [
         descripcion: "Qué significan las etiquetas de las sesiones y los colores de los números.",
         minutos: 3,
         claves: ["estados", "colores", "saludable", "verificando", "sin verificar", "disponible", "reservado", "pagado"],
-        paraQueSirve: "Te ayuda a saber de un vistazo si el bot está escuchando y en qué situación está cada número.",
+        paraQueSirve: "Te ayuda a saber de un vistazo si tu WhatsApp está en servicio y en qué situación está cada número.",
         antes: [],
         pasos: [
-            "En «Sesiones», mira la etiqueta de la esquina de cada tarjeta: es el estado real que informa el bot y se actualiza cada pocos segundos.",
+            "En «Sesiones», mira la etiqueta de la esquina de cada tarjeta: es el estado real que informa EFAAT y se actualiza cada pocos segundos.",
             "En una tabla de «Reservas», el color de cada número indica su estado actual (la leyenda aparece encima de la cuadrícula).",
             "Si un dato no se pudo comprobar, el panel lo dice («Verificando…» o «Sin verificar») en lugar de suponerlo."
         ],
         estados: [
-            { nombre: "Saludable · escuchando", significado: "La sesión está conectada y el bot está procesando mensajes." },
+            { nombre: "Saludable · escuchando", significado: "La sesión está conectada y EFAAT está procesando mensajes." },
             { nombre: "Conectada a WhatsApp", significado: "Hay conexión con WhatsApp." },
             { nombre: "Conectando / QR pendiente", significado: "Se está estableciendo la conexión o falta escanear el código QR." },
             { nombre: "Degradada", significado: "Conectada pero con problemas; la tarjeta muestra las causas." },
@@ -156,33 +156,33 @@ export const ARTICULOS: Articulo[] = [
     {
         slug: "crear-y-conectar-sesion",
         categoria: "sesiones",
-        titulo: "Crear y conectar una sesión",
-        descripcion: "Vincula tu número de WhatsApp al bot escaneando un código QR.",
+        titulo: "Cómo conectar tu WhatsApp",
+        descripcion: "Crea una sesión y vincula tu número de WhatsApp a EFAAT escaneando un código QR.",
         minutos: 4,
         claves: ["qr", "vincular", "conectar", "agregar sesión", "dispositivos vinculados", "whatsapp"],
-        paraQueSirve: "Una sesión es la conexión entre un número de WhatsApp y el bot de EFAAT. Sin una sesión conectada el bot no puede leer ni responder en tus grupos.",
+        paraQueSirve: "Una sesión es la conexión entre tu número de WhatsApp y EFAAT. Sin una sesión conectada, EFAAT no puede leer ni responder en tus grupos.",
         antes: [
             "Tener el teléfono con WhatsApp a mano y con internet.",
-            "Que ese número esté en los grupos donde trabajará el bot."
+            "Que ese número esté en los grupos donde trabajará EFAAT."
         ],
         pasos: [
             "Entra en «Sesiones» y pulsa «Agregar sesión». Aparece una tarjeta nueva con el estado de la sesión.",
-            "En la tarjeta, pulsa «Conectar». El botón muestra «Procesando...» mientras el bot prepara el código.",
+            "En la tarjeta, pulsa «Conectar». El botón muestra «Procesando...» mientras EFAAT prepara el código.",
             "Cuando el botón cambie a «Ver QR», púlsalo: se abre la ventana «Conectar WhatsApp» con el código y un contador.",
             "En el teléfono, abre WhatsApp › Dispositivos vinculados › Vincular un dispositivo, y escanea el código.",
             "Al vincularse, la ventana se cierra sola y el botón de la tarjeta pasa a «Desconectar».",
-            "Si quieres que el bot use esta sesión, pulsa «Usar esta sesión» (ver la guía «Sesión en uso y sesión preferida»)."
+            "Si quieres que EFAAT use esta sesión, pulsa «Usar esta sesión» (ver la guía «Sesión en uso y sesión preferida»)."
         ],
         estados: [
             { nombre: "Conectar", significado: "La sesión no está vinculada." },
             { nombre: "Ver QR", significado: "Hay un código listo para escanear." },
-            { nombre: "Procesando...", significado: "Se envió la orden y se espera la confirmación del bot." },
+            { nombre: "Procesando...", significado: "Se envió la orden y se espera la confirmación de EFAAT." },
             { nombre: "Desconectar", significado: "La sesión está vinculada." }
         ],
         errores: [
             { sintoma: "El contador llegó a 00:00 y la ventana se cerró.", comprobar: "El código venció. Vuelve a pulsar «Ver QR» o, si el botón volvió a «Conectar», púlsalo de nuevo." },
             { sintoma: "La ventana dice «Generando código…».", comprobar: "El código todavía no llega. El código se actualiza solo; espera unos segundos." },
-            { sintoma: "Aparece un mensaje debajo del botón.", comprobar: "Indica que la orden falló o que el bot no confirmó a tiempo. Léelo y vuelve a intentarlo." }
+            { sintoma: "Aparece un mensaje debajo del botón.", comprobar: "Indica que la orden falló o que EFAAT no la confirmó a tiempo. Léelo y vuelve a intentarlo." }
         ],
         siNoFunciona: [
             "Prueba «Reconectar» desde el menú de la tarjeta (los tres puntos).",
@@ -193,28 +193,28 @@ export const ARTICULOS: Articulo[] = [
     {
         slug: "estado-de-la-sesion",
         categoria: "sesiones",
-        titulo: "Comprobar si la sesión está conectada y escuchando",
+        titulo: "Comprobar el estado de tus sesiones de WhatsApp",
         descripcion: "Cómo leer la tarjeta de la sesión y sus tiempos.",
         minutos: 3,
-        claves: ["escuchando", "salud", "bot activo", "último mensaje", "degradada", "atendida en otro equipo"],
-        paraQueSirve: "La tarjeta muestra el estado real que informa el bot: no solo si WhatsApp está conectado, sino si el bot está escuchando y procesando mensajes.",
+        claves: ["escuchando", "salud", "en servicio", "último mensaje", "degradada", "atendida en otro equipo"],
+        paraQueSirve: "La tarjeta muestra el estado real que informa EFAAT: no solo si WhatsApp está conectado, sino si EFAAT está recibiendo y procesando mensajes.",
         antes: ["Tener al menos una sesión creada."],
         pasos: [
             "Entra en «Sesiones». La etiqueta de la esquina superior de cada tarjeta es su estado; se vuelve a consultar cada 15 segundos.",
-            "Debajo del nombre y el teléfono, las marcas indican el papel de la sesión: «Bot activo», «Preferida» o «En espera».",
-            "Cuando hay datos del bot, la tarjeta muestra tiempos: «Conectada», «Escuchando desde», «Último mensaje», «Último procesado OK» y, si los hay, «Último error» y «Recuperación auto.».",
+            "Debajo del nombre y el teléfono, las marcas indican el papel de la sesión: «En servicio», «Preferida» o «En espera».",
+            "Cuando hay datos de la sesión, la tarjeta muestra tiempos: «Conectada», «Escuchando desde», «Último mensaje», «Último procesado OK» y, si los hay, «Último error» y «Recuperación auto.».",
             "Si hay problemas, la tarjeta lista las causas y una acción recomendada."
         ],
         estados: [
-            { nombre: "Saludable · escuchando", significado: "Todo correcto: el bot recibe y procesa mensajes." },
-            { nombre: "Bot activo", significado: "Es la sesión que usa el bot y está procesando." },
-            { nombre: "Activa · no está procesando", significado: "Es la sesión en uso pero el bot no la está procesando; revisa las causas que muestra la tarjeta." },
+            { nombre: "Saludable · escuchando", significado: "Todo correcto: EFAAT recibe y procesa mensajes." },
+            { nombre: "En servicio", significado: "Es la sesión en uso y está procesando mensajes." },
+            { nombre: "Activa · no está procesando", significado: "Es la sesión en uso, pero EFAAT no la está procesando; revisa las causas que muestra la tarjeta." },
             { nombre: "En uso · verificando / sin verificar", significado: "Es la sesión en uso, pero aún no se pudo confirmar su estado." },
             { nombre: "Atendida en otro equipo", significado: "Otro servidor de EFAAT está atendiendo esta sesión en este momento." },
-            { nombre: "Sin verificar", significado: "No se pudo consultar al bot; la tarjeta muestra el último estado guardado como referencia." }
+            { nombre: "Sin verificar", significado: "No se pudo consultar el estado de la sesión; la tarjeta muestra el último estado guardado como referencia." }
         ],
         errores: [
-            { sintoma: "Arriba aparece «No pudimos consultar el estado del bot en este momento».", comprobar: "No se ha desconectado nada: el panel no pudo preguntar al bot y lo reintenta solo cada pocos segundos." }
+            { sintoma: "Arriba aparece «No pudimos consultar el estado de tus sesiones en este momento».", comprobar: "No se ha desconectado nada: el panel no pudo consultar el estado y lo reintenta solo cada pocos segundos." }
         ],
         siNoFunciona: ["Si una sesión sigue «Degradada» o «Desconectada», sigue la guía «Mi sesión no conecta o se desconecta»."],
         seccion: SESIONES
@@ -226,18 +226,18 @@ export const ARTICULOS: Articulo[] = [
         descripcion: "Qué significan «Usar esta sesión», «Sesión en uso» y «Hacer preferida».",
         minutos: 2,
         claves: ["usar esta sesión", "sesión en uso", "preferida", "principal", "en espera", "varias sesiones"],
-        paraQueSirve: "Si tienes varias sesiones, el bot trabaja con una sola de tu cuenta a la vez. Aquí eliges cuál.",
+        paraQueSirve: "Si tienes varias sesiones, EFAAT trabaja con una sola de tu cuenta a la vez. Aquí eliges cuál.",
         antes: ["Tener la sesión conectada para poder usarla."],
         pasos: [
-            "En una sesión conectada, pulsa «Usar esta sesión». Pasa a ser la sesión con la que trabaja el bot para tu cuenta y también queda marcada como «Preferida».",
+            "En una sesión conectada, pulsa «Usar esta sesión». Pasa a ser la sesión con la que trabaja EFAAT para tu cuenta y también queda marcada como «Preferida».",
             "El botón cambia a «Sesión en uso» en la sesión elegida.",
             "Desde el menú de la tarjeta (los tres puntos) puedes usar «Hacer preferida» para marcar una sesión como preferida aunque no esté conectada.",
             "Las sesiones que no están en uso ni son preferidas muestran «En espera»."
         ],
         estados: [
-            { nombre: "Sesión en uso", significado: "Es la sesión que usa el bot para tu cuenta." },
+            { nombre: "Sesión en uso", significado: "Es la sesión que usa EFAAT para tu cuenta." },
             { nombre: "Preferida", significado: "La sesión que elegiste como preferida." },
-            { nombre: "En espera", significado: "Está creada pero el bot no la usa." }
+            { nombre: "En espera", significado: "Está creada pero EFAAT no la usa." }
         ],
         errores: [
             { sintoma: "No ves el botón «Usar esta sesión» en la tarjeta.", comprobar: "Solo aparece con la sesión conectada. Desde el menú también está la opción «Usar esta sesión» mientras no sea la sesión en uso." }
@@ -248,8 +248,8 @@ export const ARTICULOS: Articulo[] = [
     {
         slug: "desconectar-y-eliminar-sesion",
         categoria: "sesiones",
-        titulo: "Desconectar, reconectar, renombrar o eliminar una sesión",
-        descripcion: "Las acciones de la tarjeta y de su menú, y qué efecto tiene cada una.",
+        titulo: "Administrar las sesiones de WhatsApp",
+        descripcion: "Desconectar, reconectar, renombrar o eliminar una sesión, y qué efecto tiene cada acción.",
         minutos: 3,
         claves: ["desconectar", "reconectar", "eliminar", "cambiar nombre", "menú de la sesión"],
         paraQueSirve: "Te explica cómo administrar una sesión existente sin sorpresas.",
@@ -265,7 +265,7 @@ export const ARTICULOS: Articulo[] = [
         errores: [
             { sintoma: "Eliminaste la sesión por error.", comprobar: "No se puede recuperar: crea una sesión nueva con «Agregar sesión» y vuelve a escanear el QR." }
         ],
-        siNoFunciona: ["Si una acción queda en «Procesando...», espera: termina con la confirmación del bot, con un error o al vencer la espera."],
+        siNoFunciona: ["Si una acción queda en «Procesando...», espera: termina con la confirmación de EFAAT, con un error o al vencer la espera."],
         seccion: SESIONES
     },
     {
@@ -309,7 +309,7 @@ export const ARTICULOS: Articulo[] = [
         paraQueSirve: "Una lista de comprobaciones para cuando la sesión no se vincula o deja de escuchar.",
         antes: ["Tener el teléfono con WhatsApp encendido y con internet."],
         pasos: [
-            "Mira la etiqueta de la tarjeta. Si dice «Verificando…» o «Sin verificar», el panel no pudo consultar al bot: espera unos segundos antes de actuar.",
+            "Mira la etiqueta de la tarjeta. Si dice «Verificando…» o «Sin verificar», el panel no pudo consultar el estado de la sesión: espera unos segundos antes de actuar.",
             "Si dice «Degradada» o «Desconectada», lee las causas y la acción recomendada que muestra la tarjeta.",
             "Pulsa «Reconectar» en el menú de la tarjeta (o «Conectar») y, cuando aparezca «Ver QR», vuelve a escanear el código.",
             "En el teléfono, revisa WhatsApp › Dispositivos vinculados: si la sesión ya no aparece, hay que vincularla de nuevo.",
@@ -318,7 +318,7 @@ export const ARTICULOS: Articulo[] = [
         estados: [],
         errores: [
             { sintoma: "El código vence antes de escanearlo.", comprobar: "Ten WhatsApp abierto en «Vincular un dispositivo» antes de pulsar «Ver QR»." },
-            { sintoma: "Se conecta pero el bot no responde en un grupo.", comprobar: "Ese grupo debe estar autorizado en «Automatización › Grupos» y la sesión debe ser la «Sesión en uso»." }
+            { sintoma: "Se conecta pero EFAAT no responde en un grupo.", comprobar: "Ese grupo debe estar autorizado en «Automatización › Grupos» y la sesión debe ser la «Sesión en uso»." }
         ],
         siNoFunciona: [`Escríbenos a ${CORREO_SOPORTE_APRENDE} indicando el nombre de la sesión y lo que muestra su tarjeta. Nunca te pediremos tu contraseña ni el código QR.`],
         seccion: SESIONES
@@ -339,7 +339,7 @@ export const ARTICULOS: Articulo[] = [
             "Arriba verás el nombre del sorteo y una marca: «🟢 Evento activo» o «⚪ Sin evento activo».",
             "Las tarjetas muestran Disponibles, Reservados, Pagados y el porcentaje de Ocupación.",
             "Debajo están las acciones (Reiniciar, Editar, Compartir, Cambiar grupos, Personalizar y Diseños), la cuadrícula de números y el «Historial de números».",
-            "La tabla se actualiza sola cuando el bot o el panel cambian un número."
+            "La tabla se actualiza sola cuando EFAAT o el panel cambian un número."
         ],
         estados: [
             { nombre: "🟢 Evento activo", significado: "Hay un sorteo abierto de este precio en la tabla." },
@@ -371,7 +371,7 @@ export const ARTICULOS: Articulo[] = [
             { nombre: "Reservado · pendiente de pago", significado: "Apartado por un cliente; falta el pago." },
             { nombre: "Pagado", significado: "El pago está registrado." },
             { nombre: "En proceso (retención temporal)", significado: "Retenido durante un tiempo; en la cuadrícula se ve como reservado." },
-            { nombre: "Retención vencida", significado: "La tabla lo muestra disponible, pero sigue retenido en la base: ni el bot ni el panel pueden reservarlo hasta liberarlo." },
+            { nombre: "Retención vencida", significado: "La tabla lo muestra disponible, pero sigue retenido en la base: no se puede reservar (ni de forma automática ni desde el panel) hasta liberarlo." },
             { nombre: "Bloqueado", significado: "No se puede reservar; el detalle indica el motivo si está registrado." }
         ],
         errores: [],
@@ -385,9 +385,9 @@ export const ARTICULOS: Articulo[] = [
         descripcion: "Intervenir manualmente un número desde su detalle.",
         minutos: 4,
         claves: ["reserva manual", "registrar pago", "liberar", "anular pago", "desbloquear", "motivo"],
-        paraQueSirve: "Corrige o completa lo que el bot no registró: una reserva por llamada, un pago recibido o una reserva que hay que soltar.",
+        paraQueSirve: "Corrige o completa lo que no se registró automáticamente: una reserva por llamada, un pago recibido o una reserva que hay que soltar.",
         antes: [
-            "Para reservar: un sorteo activo de este precio que acepte reservas y al menos un grupo del sorteo autorizado para el bot.",
+            "Para reservar: un sorteo activo de este precio que acepte reservas y al menos un grupo del sorteo autorizado en EFAAT.",
             "Tener claro el motivo de la intervención: queda registrado."
         ],
         pasos: [
@@ -402,8 +402,8 @@ export const ARTICULOS: Articulo[] = [
         errores: [
             { sintoma: "«No hay un sorteo activo para esta tabla: no se puede reservar».", comprobar: "Abre o publica el sorteo de este precio." },
             { sintoma: "«El sorteo ya no acepta reservas».", comprobar: "El sorteo está cerrado o pasó su hora de cierre." },
-            { sintoma: "«Ningún grupo de este sorteo está autorizado para el bot».", comprobar: "Autoriza el grupo en «Automatización › Grupos»." },
-            { sintoma: "«El número cambió de estado».", comprobar: "Alguien (el bot u otra persona) lo cambió mientras tanto. Recarga y revisa antes de repetir." }
+            { sintoma: "«Ningún grupo de este sorteo está autorizado en EFAAT».", comprobar: "Autoriza el grupo en «Automatización › Grupos»." },
+            { sintoma: "«El número cambió de estado».", comprobar: "Alguien (EFAAT u otra persona) lo cambió mientras tanto. Recarga y revisa antes de repetir." }
         ],
         siNoFunciona: ["Si una reserva falla por la red, puedes reintentar: si ya se guardó, no se duplica."],
         seccion: RESERVAS

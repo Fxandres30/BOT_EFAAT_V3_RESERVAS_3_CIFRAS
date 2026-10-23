@@ -52,7 +52,7 @@ export function estadoVisibleSesion({
         return {
             status: ESTADO_SALUD[salud.estado],
             marcaActiva: !activa ? null
-                : salud.estado === "saludable" ? { tone: "primary", label: "Bot activo" }
+                : salud.estado === "saludable" ? { tone: "primary", label: "En servicio" }
                 : { tone: "error", label: "Activa · no está procesando" },
             nota: null,
         };

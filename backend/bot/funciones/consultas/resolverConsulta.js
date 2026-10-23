@@ -274,6 +274,12 @@ function modoBucketImplicitos(tipo, modo, bucket) {
 
 }
 
+// Respuesta combinada = sus partes, una por línea. Único lugar que la
+// arma: también la usa eventHandler.js al omitir una parte no habilitada.
+function componerCombinada(base, resultados) {
+    return { ...base, resultados, mensaje: resultados.map(r => r.mensaje).join("\n") };
+}
+
 async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, intenciones }) {
 
     if (!evento || !usuario) {
@@ -316,9 +322,7 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
 
             });
 
-            const mensaje = resultados.map(r => r.mensaje).join("\n");
-
-            return { tipo, ...datos, resultados, mensaje };
+            return componerCombinada({ tipo, ...datos }, resultados);
 
         }
 
@@ -467,5 +471,6 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
 }
 
 module.exports = {
-    resolverConsulta
+    resolverConsulta,
+    componerCombinada
 };

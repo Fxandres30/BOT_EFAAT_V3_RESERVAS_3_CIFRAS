@@ -140,7 +140,7 @@ export default function BloqueadosPage() {
             <PageHeader
                 icon={<ShieldBan size={20} />}
                 title="🚫 Bloqueados"
-                description="Contactos bloqueados en EFAAT: no pueden usar el bot ni reservar, y se expulsan automáticamente en cuanto intentan entrar a cualquier grupo administrado por el bot."
+                description="Contactos bloqueados en EFAAT: no reciben respuestas automáticas ni pueden reservar, y se expulsan automáticamente en cuanto intentan entrar a cualquier grupo que gestiona EFAAT."
             />
 
             <div className={styles.resumen}>
@@ -162,7 +162,7 @@ export default function BloqueadosPage() {
 
             <Input
                 leftIcon={<Search size={14} />}
-                placeholder="Buscar por nombre, teléfono, LID o motivo…"
+                placeholder="Buscar por nombre, teléfono, identificador de WhatsApp o motivo…"
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
             />

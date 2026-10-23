@@ -112,8 +112,8 @@ function evaluar({ sessionId, sock, abierto, activa, lease = null, leasePropio =
         }
 
         if (estadoSupabase === "conectado") {
-            causas.push("Figura como conectada, pero el bot no la está atendiendo en este momento.");
-            return { ...base, estado: "desconectada", causas, accion: "El bot reintentará automáticamente; si no vuelve en 1 minuto, pulsa Reconectar." };
+            causas.push("Figura como conectada, pero EFAAT no la está atendiendo en este momento.");
+            return { ...base, estado: "desconectada", causas, accion: "EFAAT reintentará automáticamente; si no vuelve en 1 minuto, pulsa Reconectar." };
         }
 
         return { ...base, estado: "desconectada", causas: ["Sin conexión a WhatsApp."], accion: "Pulsa Conectar y escanea el QR si se solicita." };
@@ -128,13 +128,13 @@ function evaluar({ sessionId, sock, abierto, activa, lease = null, leasePropio =
 
     const escuchando = !!r.listenerSocket && r.listenerSocket === sock;
 
-    if (!escuchando) causas.push("Conectada, pero el bot no está leyendo los mensajes de los grupos.");
+    if (!escuchando) causas.push("Conectada, pero EFAAT no está leyendo los mensajes de los grupos.");
     if (workerDetenido(r, ahora)) causas.push("La apertura y el cierre automático de los grupos no están avanzando.");
     if ((r.errores || 0) >= UMBRAL_ERRORES) causas.push(`Hubo ${r.errores} errores seguidos al procesar mensajes.`);
-    if ((estadoLeasePropio?.erroresSeguidos || 0) >= UMBRAL_LEASE) causas.push("El bot tiene problemas para mantener esta sesión asignada a este equipo.");
+    if ((estadoLeasePropio?.erroresSeguidos || 0) >= UMBRAL_LEASE) causas.push("EFAAT tiene problemas para mantener esta sesión asignada a este equipo.");
 
     if (causas.length) {
-        return { ...base, estado: "degradada", escuchando, causas, accion: "El bot intenta recuperarse solo. Si el estado no mejora en 2 minutos, pulsa Reconectar." };
+        return { ...base, estado: "degradada", escuchando, causas, accion: "EFAAT intenta recuperarse automáticamente. Si el estado no mejora en 2 minutos, pulsa Reconectar." };
     }
 
     return { ...base, estado: "saludable", escuchando: true, causas: [], accion: null };

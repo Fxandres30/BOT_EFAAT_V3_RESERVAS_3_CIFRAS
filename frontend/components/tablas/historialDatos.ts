@@ -169,7 +169,7 @@ function desdeAuditoria(a: FilaAuditoria): EventoHistorial {
         fuente: "auditoria",
         titulo: TITULO_AUDITORIA[a.accion] || a.accion,
         en: a.creado_en,
-        origen: a.origen === "bot" ? "bot" : a.operador_email ? `panel · ${a.operador_email}` : "panel",
+        origen: a.origen === "bot" ? "automático" : a.operador_email ? `panel · ${a.operador_email}` : "panel",
         resultado: a.resultado,
         estadoAnterior: a.estado_anterior,
         estadoNuevo: a.estado_nuevo,
@@ -187,7 +187,8 @@ function desdeAuditoria(a: FilaAuditoria): EventoHistorial {
 
 function origenActividad(realizadoPor: string | null, detalle: Record<string, unknown>): string | null {
     if (detalle.confirmado_via === "sticker_admin") return "sticker del administrador";
-    if (realizadoPor === "bot:vencimiento") return "bot · reserva vencida";
+    if (realizadoPor === "bot:vencimiento") return "automático · reserva vencida";
+    if (realizadoPor === "bot") return "automático";
     if (realizadoPor?.startsWith("panel:")) return `panel · ${realizadoPor.slice(6)}`;
     return texto(realizadoPor);
 }

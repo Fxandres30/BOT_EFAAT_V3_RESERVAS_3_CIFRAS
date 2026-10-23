@@ -34,7 +34,7 @@ export default function HistorialNumero({ historial, disponible }: { historial: 
             <div className="px-3 pb-3">
 
                 {!disponible ? (
-                    <p className="text-sm text-gray-500">El historial se activa al aplicar la migración de auditoría (032).</p>
+                    <p className="text-sm text-gray-500">El historial de este número todavía no está disponible en tu cuenta.</p>
                 ) : historial.length === 0 ? (
                     <p className="text-sm text-gray-500">Sin operaciones registradas todavía.</p>
                 ) : (
@@ -46,7 +46,7 @@ export default function HistorialNumero({ historial, disponible }: { historial: 
                                     <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${RESULTADO[h.resultado] || ""}`}>
                                         {h.resultado === "ok" ? "hecho" : h.resultado}{h.codigo ? ` · ${h.codigo}` : ""}
                                     </span>
-                                    <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">{h.origen === "bot" ? "bot" : "manual"}</span>
+                                    <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">{h.origen === "bot" ? "automático" : "manual"}</span>
                                 </div>
                                 <p className="text-xs text-gray-500 mt-0.5">
                                     {formato.format(new Date(h.creadoEn))}

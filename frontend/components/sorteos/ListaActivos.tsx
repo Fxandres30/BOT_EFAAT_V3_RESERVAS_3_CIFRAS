@@ -18,7 +18,7 @@ const fechaLegible = (f: string | null) => (f ? f.split("-").reverse().join("/")
 export default function ListaActivos({ activos, onEditar }: Props) {
 
     if (!activos.length) {
-        return <EmptyState icon={<Radio size={28} />} title="No hay sorteos en curso" description="Aquí aparecen los sorteos activos de tus grupos, los detecte el bot o los publiques desde el panel." />;
+        return <EmptyState icon={<Radio size={28} />} title="No hay sorteos en curso" description="Aquí aparecen los sorteos activos de tus grupos, los detecte EFAAT en el grupo o los publiques desde el panel." />;
     }
 
     return (
@@ -27,7 +27,7 @@ export default function ListaActivos({ activos, onEditar }: Props) {
                 <Card key={s.id} padding="md" className={styles.tarjeta}>
                     <div className={styles.tarjetaCabecera}>
                         <h3 className={styles.tarjetaTitulo}>{s.nombre || "Sorteo sin nombre"}</h3>
-                        <Badge tone={s.origen === "panel" ? "primary" : "neutral"} dot>{s.origen === "panel" ? "Creado desde el panel" : "Detectado por el bot"}</Badge>
+                        <Badge tone={s.origen === "panel" ? "primary" : "neutral"} dot>{s.origen === "panel" ? "Creado desde el panel" : "Detectado en el grupo"}</Badge>
                     </div>
                     <div className={styles.meta}>
                         <span>Sorteo: {fechaLegible(s.fecha_evento)} {s.hora_fin || ""}{s.hora_cierre ? ` · cierre ${s.hora_cierre}` : ""}</span>

@@ -264,7 +264,7 @@ async function main() {
         paginas.push(d);
         await d.goto(`${PANEL}/sorteos`, { waitUntil: "domcontentloaded" });
         await pulsar(d, "Nuevo sorteo");
-        await esperarTexto(d, "Tus 1 grupo(s) de WhatsApp están desactivados para el bot");
+        await esperarTexto(d, "Tus 1 grupo(s) de WhatsApp están desactivados en EFAAT");
         await sinTextoTecnico(d, "grupos desactivados");
         paso("Usuario con grupos registrados pero inactivos: lo dice explícitamente");
 

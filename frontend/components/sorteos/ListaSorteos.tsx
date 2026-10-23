@@ -61,7 +61,7 @@ export default function ListaSorteos({ sorteos, onVistaPrevia, onEditar, onActua
     }
 
     if (!sorteos.length) {
-        return <EmptyState icon={<CalendarClock size={28} />} title="No hay sorteos programados" description="Crea uno con «Nuevo sorteo». Los sorteos detectados por el bot siguen apareciendo en Eventos." />;
+        return <EmptyState icon={<CalendarClock size={28} />} title="No hay sorteos programados" description="Crea uno con «Nuevo sorteo». Los sorteos detectados en los grupos siguen apareciendo en Eventos." />;
     }
 
     return (
