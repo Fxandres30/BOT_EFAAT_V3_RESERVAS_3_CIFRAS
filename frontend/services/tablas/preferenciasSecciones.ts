@@ -4,12 +4,14 @@
 // comparten preferencias. Solo se guardan booleanos: nada de reservas,
 // números ni datos del cliente.
 
-export type SeccionPanel = "reservas" | "grupos" | "actividad";
+export type SeccionPanel = "historial" | "reservas" | "grupos" | "actividad";
 
 export type EstadoSecciones = Record<SeccionPanel, boolean>;
 
-// Comportamiento sin preferencia guardada: todo abierto (el de siempre).
+// Comportamiento sin preferencia guardada: todo abierto (el de siempre). Una
+// preferencia guardada antes de existir «historial» lo deja abierto.
 export const SECCIONES_PREDETERMINADAS: EstadoSecciones = {
+    historial: true,
     reservas: true,
     grupos: true,
     actividad: true

@@ -12,6 +12,7 @@ import AccionesTabla from "./AccionesTabla";
 import StatsBar from "./StatsBar";
 import FiltrosBar from "./FiltrosBar";
 import Grid from "./Grid";
+import HistorialNumeros from "./HistorialNumeros";
 import ReservasRecientes from "./ReservasRecientes";
 import GruposPanel from "./GruposPanel";
 import ActividadReciente from "./ActividadReciente";
@@ -41,6 +42,8 @@ export default function TablaPrecioView({ precio }: Props) {
         paquetes,
         recientes,
         actividad,
+        historial,
+        auditoriaDisponible,
         accionando,
         reservar,
         marcarPagado,
@@ -225,6 +228,13 @@ export default function TablaPrecioView({ precio }: Props) {
                 onReservar={reservar}
                 onMarcarPagado={marcarPagado}
                 onLiberar={liberar}
+            />
+
+            <HistorialNumeros
+                filas={historial}
+                auditoriaDisponible={auditoriaDisponible}
+                expandido={secciones.historial}
+                onToggleExpandido={() => alternarSeccion("historial")}
             />
 
             <ReservasRecientes

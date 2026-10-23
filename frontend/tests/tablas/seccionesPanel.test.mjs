@@ -6,7 +6,7 @@
 //   - sin preferencia (o con datos corruptos / almacenamiento bloqueado) se
 //     usa el predeterminado de siempre: todo abierto;
 //   - solo se guardan booleanos de secciones conocidas;
-//   - las tres secciones reciben el estado de la vista (useSeccionesPanel)
+//   - las cuatro secciones (con «Historial de números») reciben el estado de la vista (useSeccionesPanel)
 //     en lugar de un useState(true) local que se perdía al recargar.
 //
 // Carga el servicio TypeScript REAL (mismo cargador que
@@ -58,7 +58,7 @@ const bloqueado = {
 
 const USUARIO_A = "11111111-1111-4111-8111-111111111111";
 const USUARIO_B = "22222222-2222-4222-8222-222222222222";
-const TODO_ABIERTO = { reservas: true, grupos: true, actividad: true };
+const TODO_ABIERTO = { historial: true, reservas: true, grupos: true, actividad: true };
 
 let pasadas = 0;
 function prueba(nombre, fn) {
@@ -76,8 +76,8 @@ prueba("sin preferencia guardada: todo abierto (comportamiento actual)", () => {
 
 prueba("se guarda y se restaura tras «recargar» (nueva lectura)", () => {
     const almacen = almacenFalso();
-    guardarSecciones(almacen, USUARIO_A, { reservas: false, grupos: false, actividad: false });
-    assert.deepStrictEqual(leerSecciones(almacen, USUARIO_A), { reservas: false, grupos: false, actividad: false });
+    guardarSecciones(almacen, USUARIO_A, { historial: true, reservas: false, grupos: false, actividad: false });
+    assert.deepStrictEqual(leerSecciones(almacen, USUARIO_A), { historial: true, reservas: false, grupos: false, actividad: false });
 });
 
 prueba("cada sección conserva su estado independientemente", () => {
@@ -85,30 +85,30 @@ prueba("cada sección conserva su estado independientemente", () => {
     let estado = leerSecciones(almacen, USUARIO_A);
     estado = { ...estado, grupos: !estado.grupos };
     guardarSecciones(almacen, USUARIO_A, estado);
-    assert.deepStrictEqual(leerSecciones(almacen, USUARIO_A), { reservas: true, grupos: false, actividad: true });
+    assert.deepStrictEqual(leerSecciones(almacen, USUARIO_A), { historial: true, reservas: true, grupos: false, actividad: true });
 
     estado = { ...leerSecciones(almacen, USUARIO_A), actividad: false };
     guardarSecciones(almacen, USUARIO_A, estado);
-    assert.deepStrictEqual(leerSecciones(almacen, USUARIO_A), { reservas: true, grupos: false, actividad: false });
+    assert.deepStrictEqual(leerSecciones(almacen, USUARIO_A), { historial: true, reservas: true, grupos: false, actividad: false });
 
     estado = { ...leerSecciones(almacen, USUARIO_A), grupos: true };
     guardarSecciones(almacen, USUARIO_A, estado);
-    assert.deepStrictEqual(leerSecciones(almacen, USUARIO_A), { reservas: true, grupos: true, actividad: false });
+    assert.deepStrictEqual(leerSecciones(almacen, USUARIO_A), { historial: true, reservas: true, grupos: true, actividad: false });
 });
 
 prueba("preferencias por usuario: otra cuenta no las comparte", () => {
     const almacen = almacenFalso();
-    guardarSecciones(almacen, USUARIO_A, { reservas: false, grupos: true, actividad: false });
+    guardarSecciones(almacen, USUARIO_A, { historial: true, reservas: false, grupos: true, actividad: false });
     assert.deepStrictEqual(leerSecciones(almacen, USUARIO_B), TODO_ABIERTO);
-    guardarSecciones(almacen, USUARIO_B, { reservas: true, grupos: false, actividad: true });
-    assert.deepStrictEqual(leerSecciones(almacen, USUARIO_A), { reservas: false, grupos: true, actividad: false });
+    guardarSecciones(almacen, USUARIO_B, { historial: true, reservas: true, grupos: false, actividad: true });
+    assert.deepStrictEqual(leerSecciones(almacen, USUARIO_A), { historial: true, reservas: false, grupos: true, actividad: false });
     assert.notStrictEqual(claveSecciones(USUARIO_A), claveSecciones(USUARIO_B));
     assert.ok(claveSecciones(USUARIO_A).includes(USUARIO_A));
 });
 
 prueba("sin usuario no se lee ni se escribe nada", () => {
     const almacen = almacenFalso();
-    guardarSecciones(almacen, null, { reservas: false, grupos: false, actividad: false });
+    guardarSecciones(almacen, null, { historial: true, reservas: false, grupos: false, actividad: false });
     assert.strictEqual(almacen.datos.size, 0);
     assert.deepStrictEqual(leerSecciones(almacen, null), TODO_ABIERTO);
 });
@@ -119,7 +119,7 @@ prueba("datos corruptos, ajenos o almacenamiento bloqueado: predeterminado sin e
     assert.deepStrictEqual(leerSecciones(almacen, USUARIO_A), TODO_ABIERTO);
 
     almacen.setItem(claveSecciones(USUARIO_A), JSON.stringify({ reservas: "no", grupos: false, otra: false }));
-    assert.deepStrictEqual(leerSecciones(almacen, USUARIO_A), { reservas: true, grupos: false, actividad: true });
+    assert.deepStrictEqual(leerSecciones(almacen, USUARIO_A), { historial: true, reservas: true, grupos: false, actividad: true });
 
     assert.deepStrictEqual(leerSecciones(bloqueado, USUARIO_A), TODO_ABIERTO);
     assert.doesNotThrow(() => guardarSecciones(bloqueado, USUARIO_A, TODO_ABIERTO));
@@ -129,27 +129,38 @@ prueba("datos corruptos, ajenos o almacenamiento bloqueado: predeterminado sin e
 prueba("solo se guardan booleanos de las tres secciones (nada de reservas)", () => {
     const almacen = almacenFalso();
     guardarSecciones(almacen, USUARIO_A, {
-        reservas: false, grupos: true, actividad: false,
+        historial: true, reservas: false, grupos: true, actividad: false,
         comprador: "Ana", numeros: ["07", "12"], telefono: "573001234567"
     });
     assert.strictEqual(almacen.datos.size, 1);
     const guardado = JSON.parse(almacen.getItem(claveSecciones(USUARIO_A)));
-    assert.deepStrictEqual(guardado, { reservas: false, grupos: true, actividad: false });
+    assert.deepStrictEqual(guardado, { historial: true, reservas: false, grupos: true, actividad: false });
 });
 
-prueba("las tres secciones usan el estado recordado de la vista", () => {
+prueba("una preferencia guardada antes del historial lo deja abierto y conserva las demás", () => {
+    const almacen = almacenFalso();
+    almacen.setItem(claveSecciones(USUARIO_A), JSON.stringify({ reservas: false, grupos: true, actividad: false }));
+    assert.deepStrictEqual(leerSecciones(almacen, USUARIO_A), { historial: true, reservas: false, grupos: true, actividad: false });
+    guardarSecciones(almacen, USUARIO_A, { historial: false, reservas: false, grupos: true, actividad: false });
+    assert.deepStrictEqual(leerSecciones(almacen, USUARIO_A), { historial: false, reservas: false, grupos: true, actividad: false });
+});
+
+prueba("las cuatro secciones usan el estado recordado de la vista; el historial va primero", () => {
     const leer = (r) => fs.readFileSync(path.join(FRONT, r), "utf8");
-    for (const c of ["ReservasRecientes", "GruposPanel", "ActividadReciente"]) {
+    for (const c of ["HistorialNumeros", "ReservasRecientes", "GruposPanel", "ActividadReciente"]) {
         const src = leer(`components/tablas/${c}.tsx`);
         assert.ok(!/useState\(true\)/.test(src), `${c} no debe tener un useState(true) local para expandido`);
         assert.ok(/onToggle=\{onToggleExpandido\}/.test(src), `${c} debe usar onToggleExpandido`);
     }
     const vista = leer("components/tablas/TablaPrecioView.tsx");
     assert.ok(/useSeccionesPanel\(usuarioId\)/.test(vista));
-    for (const s of ["reservas", "grupos", "actividad"]) {
+    for (const s of ["historial", "reservas", "grupos", "actividad"]) {
         assert.ok(vista.includes(`expandido={secciones.${s}}`), `falta expandido de ${s}`);
         assert.ok(vista.includes(`alternarSeccion("${s}")`), `falta alternar ${s}`);
     }
+    const pos = ["<HistorialNumeros", "<ReservasRecientes", "<GruposPanel", "<ActividadReciente"].map(t => vista.indexOf(t));
+    assert.ok(pos.every(p => p > vista.indexOf("<Grid")), "las secciones van debajo de la cuadrícula");
+    assert.deepStrictEqual([...pos].sort((a, b) => a - b), pos, "orden: historial, reservas, grupos, actividad");
 });
 
 console.log(`\n${pasadas} pruebas pasadas`);

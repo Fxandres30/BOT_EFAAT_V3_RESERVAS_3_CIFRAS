@@ -9,6 +9,7 @@ import { getUser } from "@/services/auth/getUser";
 import { obtenerTabla } from "@/services/tablas/obtenerTabla";
 import { obtenerEventoActivo } from "@/services/tablas/obtenerEventoActivo";
 import { obtenerActividad } from "@/services/tablas/obtenerActividad";
+import { obtenerEventosHistorial, LIMITE_HISTORIAL, type EventosHistorial } from "@/services/tablas/obtenerHistorial";
 import { reiniciarTabla } from "@/services/tablas/reiniciarTabla";
 import { prepararCuadricula, diagnosticar, type DiagnosticoCuadricula } from "@/services/tablas/prepararCuadricula";
 // Reservar, registrar el pago, liberar y desbloquear pasan por el backend
@@ -26,6 +27,7 @@ import {
 
 import { derivarPaquetes } from "@/components/tablas/derivarPaquetes";
 import { estadoEfectivo } from "@/components/tablas/estadoVisual";
+import { construirHistorial } from "@/components/tablas/historialDatos";
 import type { NumeroReserva, EventoActivo, ActividadReserva } from "@/components/tablas/types";
 
 // Único hook fuente-de-verdad de la pantalla /tablas/:precio. Todo lo que
@@ -43,6 +45,7 @@ export function useTablaPrecio(precio: number) {
     const [numeros, setNumeros] = useState<NumeroReserva[]>([]);
     const [eventoActivo, setEventoActivo] = useState<EventoActivo | null>(null);
     const [actividad, setActividad] = useState<ActividadReserva[]>([]);
+    const [eventosHistorial, setEventosHistorial] = useState<EventosHistorial>({ auditoria: [], auditoriaDisponible: false, archivo: [] });
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -65,10 +68,14 @@ export function useTablaPrecio(precio: number) {
 
         try {
 
-            const [leidos, evt, act] = await Promise.all([
+            // La actividad se lee una sola vez con el límite del historial;
+            // «Actividad reciente» muestra sus primeras filas (misma consulta
+            // y mismo orden que antes).
+            const [leidos, evt, act, hist] = await Promise.all([
                 obtenerTabla(precio, uid),
                 obtenerEventoActivo(config.tabla, uid),
-                obtenerActividad(config.tabla, uid)
+                obtenerActividad(config.tabla, uid, LIMITE_HISTORIAL),
+                obtenerEventosHistorial(config.tabla, uid)
             ]);
 
             let nums = leidos;
@@ -95,6 +102,7 @@ export function useTablaPrecio(precio: number) {
             setNumeros(nums);
             setEventoActivo(evt);
             setActividad(act);
+            setEventosHistorial(hist);
             setError(null);
 
         } catch (e) {
@@ -213,6 +221,16 @@ export function useTablaPrecio(precio: number) {
 
     const paquetes = useMemo(() => derivarPaquetes(numeros), [numeros]);
 
+    // Mismo límite que antes para «Actividad reciente».
+    const actividadReciente = useMemo(() => actividad.slice(0, 15), [actividad]);
+
+    const historial = useMemo(() => construirHistorial(numeros, {
+        auditoria: eventosHistorial.auditoria,
+        auditoriaDisponible: eventosHistorial.auditoriaDisponible,
+        actividad,
+        archivo: eventosHistorial.archivo
+    }, estadoEfectivo), [numeros, actividad, eventosHistorial]);
+
     const recientes = useMemo(() => {
 
         return [...numeros]
@@ -261,7 +279,9 @@ export function useTablaPrecio(precio: number) {
         stats,
         paquetes,
         recientes,
-        actividad,
+        actividad: actividadReciente,
+        historial,
+        auditoriaDisponible: eventosHistorial.auditoriaDisponible,
         accionando,
 
         recargar: async () => {
