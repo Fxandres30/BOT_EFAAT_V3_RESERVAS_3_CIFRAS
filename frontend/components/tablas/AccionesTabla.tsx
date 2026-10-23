@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { RotateCcw, Pencil, Share2, type LucideIcon } from "lucide-react";
+import { useRef, useState } from "react";
+import { RotateCcw, Pencil, Share2, Users, type LucideIcon } from "lucide-react";
 
 import ConfirmDialog from "./ConfirmDialog";
 import AnuncioSorteoModal from "./AnuncioSorteoModal";
-import { compartirTabla } from "@/services/tablas/compartirTabla";
+import CompartirTablaModal, { nuevaSolicitud, type PanelCompartir } from "./CompartirTablaModal";
+import { compartirTabla, mensajeCompartir } from "@/services/tablas/compartirTabla";
 
 interface Props {
     precio: number;
@@ -26,6 +27,9 @@ export default function AccionesTabla({
     const [confirmandoReinicio, setConfirmandoReinicio] = useState(false);
     const [reiniciando, setReiniciando] = useState(false);
     const [compartiendo, setCompartiendo] = useState(false);
+    const [panelCompartir, setPanelCompartir] = useState<PanelCompartir | null>(null);
+    // Bloqueo síncrono: dos clics seguidos no lanzan dos envíos.
+    const compartiendoRef = useRef(false);
     const [editandoAnuncio, setEditandoAnuncio] = useState(false);
 
     async function confirmarReinicio() {
@@ -49,6 +53,9 @@ export default function AccionesTabla({
 
     }
 
+    // Un clic: imagen actual + texto configurado a los grupos GUARDADOS de
+    // esta tabla. Sin grupos guardados (o si ya no están disponibles) se
+    // abre la configuración: vista previa, grupos y confirmación.
     async function compartir() {
 
         if (!usuarioId) {
@@ -56,33 +63,29 @@ export default function AccionesTabla({
             return;
         }
 
+        if (compartiendoRef.current) return;
+        compartiendoRef.current = true;
         setCompartiendo(true);
+        setPanelCompartir({ tipo: "enviando" });
 
         try {
 
-            const resultado = await compartirTabla(precio, usuarioId);
+            const resultado = await compartirTabla(precio, { solicitudId: nuevaSolicitud() });
 
-            if (!resultado.enviado) {
-
-                const mensajes: Record<string, string> = {
-                    sin_evento_activo: "No hay ningún sorteo activo en esta tabla para compartir.",
-                    tabla_no_configurada: "Esta tabla no está configurada.",
-                    error_envio: "No se pudo enviar la imagen por WhatsApp."
-                };
-
-                alert(mensajes[resultado.motivo || ""] || "No se pudo compartir la tabla.");
+            if (resultado.motivo === "sin_destinos" || resultado.motivo === "destinos_no_disponibles") {
+                setPanelCompartir({ tipo: "configurar", aviso: resultado.motivo === "sin_destinos" ? "Elige los grupos donde se publicará esta tabla." : mensajeCompartir(resultado.motivo) });
                 return;
-
             }
 
-            alert("Tabla compartida en el grupo de WhatsApp.");
+            setPanelCompartir({ tipo: "resultado", resultado });
 
         } catch {
 
-            alert("No se pudo compartir la tabla.");
+            setPanelCompartir({ tipo: "resultado", resultado: { enviado: false, motivo: "error_interno" } });
 
         } finally {
 
+            compartiendoRef.current = false;
             setCompartiendo(false);
 
         }
@@ -118,6 +121,14 @@ export default function AccionesTabla({
                     onClick={compartir}
                 />
 
+                <BotonIcono
+                    icon={Users}
+                    label="Cambiar grupos"
+                    color="text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200"
+                    disabled={compartiendo}
+                    onClick={() => setPanelCompartir({ tipo: "configurar" })}
+                />
+
             </div>
 
             <ConfirmDialog
@@ -133,6 +144,15 @@ export default function AccionesTabla({
 
             {/* «Editar» prepara el anuncio del sorteo en un modal de esta
                 misma pantalla (sin navegar). Se monta por apertura. */}
+            {panelCompartir && (
+                <CompartirTablaModal
+                    precio={precio}
+                    panel={panelCompartir}
+                    onCambiar={setPanelCompartir}
+                    onClose={() => setPanelCompartir(null)}
+                />
+            )}
+
             {editandoAnuncio && (
                 <AnuncioSorteoModal precio={precio} onClose={() => setEditandoAnuncio(false)} />
             )}

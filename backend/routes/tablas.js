@@ -18,7 +18,8 @@ const supabase = require("../lib/supabase");
 // sin ella, la configuración base de siempre).
 const { obtenerConfiguracionCliente, inicializarCliente, prepararCuadricula } = require("../bot/funciones/eventos/tablasCliente");
 const tablaEventoRepo = require("../automation/repo/tablaEvento");
-const { compartirTabla, verificarTokenImprimirDetalle } = require("../services/compartirTabla");
+const { compartirTabla, compartirEnGrupos, capturarImagenTabla, verificarTokenImprimirDetalle } = require("../services/compartirTabla");
+const destinos = require("../services/destinosCompartir");
 const { disenoDelEvento } = require("../sorteos/repo");
 const { normalizarConfigDiseno } = require("../sorteos/disenoTabla");
 
@@ -112,12 +113,195 @@ router.get("/imprimir-datos", async (req, res) => {
 
 });
 
-// POST /tablas/compartir — { precio, usuarioId } — botón manual del panel.
+// ------------------------------------------- «Compartir» con destinos ---
+// El panel elige (y guarda) a qué grupos se publica la tabla; después un
+// clic envía imagen + texto a esos grupos. Ver services/destinosCompartir.js.
+
+const SOLICITUD = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const precioValido = (p) => /^\d{1,7}$/.test(String(p ?? "")) && Number(p) > 0;
+
+// Un envío a la vez por cliente y tabla (dos pestañas, doble clic...).
+const enviosEnCurso = new Set();
+
+// Tabla + evento activo del cliente del token, o la respuesta de error.
+async function tablaYEvento(usuarioId, precio) {
+    if (!precioValido(precio)) return { status: 400, cuerpo: { ok: false, enviado: false, motivo: "faltan_parametros" } };
+    const config = await obtenerConfiguracionCliente(usuarioId, Number(precio));
+    if (!config) return { status: 404, cuerpo: { ok: false, enviado: false, motivo: "tabla_no_configurada" } };
+    const evento = await obtenerEventoActivoReal(config.tabla, usuarioId);
+    if (!evento) return { status: 404, cuerpo: { ok: false, enviado: false, motivo: "sin_evento_activo" } };
+    return { config, evento };
+}
+
+const socketDe = (usuarioId) => require("../services/baileys/manager").getSocketActivoDe(usuarioId);
+
+// GET /tablas/compartir/vista-previa?precio= — imagen real, texto y grupos.
+// NUNCA envía nada.
+router.get("/compartir/vista-previa", exigirUsuario, async (req, res) => {
+
+    try {
+
+        const usuarioId = req.usuarioId;
+        const precio = req.query.precio;
+        const t = await tablaYEvento(usuarioId, precio);
+        if (!t.evento) return res.status(t.status).json(t.cuerpo);
+
+        const disponibles = await destinos.gruposDisponibles(usuarioId);
+        if (!disponibles.ok) return res.status(500).json({ ok: false, motivo: "error_grupos" });
+
+        const guardados = await destinos.obtenerDestinos(usuarioId, precio);
+        if (!guardados.ok) return res.status(500).json({ ok: false, motivo: "error_destinos" });
+
+        const { validos, invalidos } = destinos.clasificar(guardados.data || [], disponibles.data);
+        const texto = await destinos.textoParaCompartir(usuarioId, t.evento);
+
+        let imagen = null;
+        let errorImagen = null;
+        try {
+            const png = await capturarImagenTabla(Number(precio), usuarioId, t.evento.id ?? null);
+            imagen = `data:image/png;base64,${Buffer.from(png).toString("base64")}`;
+        } catch (err) {
+            console.error("❌ [TABLAS] vista previa sin imagen:", err?.message);
+            errorImagen = "No se pudo generar la imagen de la tabla.";
+        }
+
+        res.json({
+            ok: true,
+            data: {
+                precio: Number(precio),
+                evento: { id: t.evento.id, nombre: t.evento.nombre_evento || null, hora_fin: t.evento.hora_fin || null, hora_cierre: t.evento.hora_cierre || null },
+                imagen,
+                error_imagen: errorImagen,
+                texto: texto.texto,
+                origen_texto: texto.origen,
+                grupos: disponibles.data,
+                seleccion: validos.map(g => g.grupo_id),
+                invalidos,
+                persistencia: guardados.persistencia,
+                sesion_conectada: Boolean(socketDe(usuarioId))
+            }
+        });
+
+    } catch (err) {
+
+        console.error("❌ [TABLAS] error en /compartir/vista-previa:", err.message);
+        res.status(500).json({ ok: false, motivo: "error_interno" });
+
+    }
+
+});
+
+// PUT /tablas/compartir/destinos — { precio, grupos } — solo guarda.
+router.put("/compartir/destinos", exigirUsuario, async (req, res) => {
+
+    try {
+
+        const usuarioId = req.usuarioId;
+        const { precio, grupos } = req.body || {};
+        if (!precioValido(precio)) return res.status(400).json({ ok: false, motivo: "faltan_parametros" });
+
+        const ids = destinos.normalizarGrupos(grupos);
+        if (!ids) return res.status(400).json({ ok: false, motivo: "grupos_invalidos" });
+
+        const disponibles = await destinos.gruposDisponibles(usuarioId);
+        if (!disponibles.ok) return res.status(500).json({ ok: false, motivo: "error_grupos" });
+
+        const { invalidos } = destinos.clasificar(ids, disponibles.data);
+        if (invalidos.length) return res.status(409).json({ ok: false, motivo: "destinos_no_disponibles", invalidos });
+
+        const r = await destinos.guardarDestinos(usuarioId, precio, ids);
+        if (!r.ok) return res.status(r.motivo === "migracion_pendiente" ? 503 : 500).json({ ok: false, motivo: r.motivo, ...(r.migracion ? { migracion: r.migracion } : {}) });
+
+        res.json({ ok: true, data: { seleccion: ids } });
+
+    } catch (err) {
+
+        console.error("❌ [TABLAS] error en /compartir/destinos:", err.message);
+        res.status(500).json({ ok: false, motivo: "error_interno" });
+
+    }
+
+});
+
+// POST /tablas/compartir con solicitudId — { precio, solicitudId,
+// grupos?, texto?, guardar_destinos? }. Sin `grupos`: los guardados.
+async function compartirConDestinos(req, res) {
+
+    const usuarioId = req.usuarioId;
+    const { precio, solicitudId, grupos, texto, guardar_destinos: guardar } = req.body || {};
+
+    if (!SOLICITUD.test(String(solicitudId))) return res.status(400).json({ ok: false, enviado: false, motivo: "faltan_parametros" });
+
+    const t = await tablaYEvento(usuarioId, precio);
+    if (!t.evento) return res.status(t.status).json(t.cuerpo);
+
+    const disponibles = await destinos.gruposDisponibles(usuarioId);
+    if (!disponibles.ok) return res.status(500).json({ ok: false, enviado: false, motivo: "error_grupos" });
+
+    let elegidos;
+    let aviso = null;
+
+    if (grupos !== undefined) {
+
+        const ids = destinos.normalizarGrupos(grupos);
+        if (!ids) return res.status(400).json({ ok: false, enviado: false, motivo: "grupos_invalidos" });
+
+        const { validos, invalidos } = destinos.clasificar(ids, disponibles.data);
+        if (invalidos.length) return res.status(409).json({ ok: false, enviado: false, motivo: "destinos_no_disponibles", invalidos });
+        elegidos = validos;
+
+        if (guardar === true) {
+            const g = await destinos.guardarDestinos(usuarioId, precio, ids);
+            if (!g.ok) aviso = g.motivo === "migracion_pendiente"
+                ? "La selección de grupos todavía no se puede guardar: la próxima vez se volverá a pedir."
+                : "No se pudo guardar la selección de grupos: la próxima vez se volverá a pedir.";
+        }
+
+    } else {
+
+        const guardados = await destinos.obtenerDestinos(usuarioId, precio);
+        if (!guardados.ok) return res.status(500).json({ ok: false, enviado: false, motivo: "error_destinos" });
+        if (!guardados.data) return res.status(409).json({ ok: false, enviado: false, motivo: "sin_destinos", persistencia: guardados.persistencia });
+
+        const { validos, invalidos } = destinos.clasificar(guardados.data, disponibles.data);
+        if (invalidos.length || !validos.length) return res.status(409).json({ ok: false, enviado: false, motivo: "destinos_no_disponibles", invalidos });
+        elegidos = validos;
+
+    }
+
+    const sock = socketDe(usuarioId);
+    if (!sock) return res.status(409).json({ ok: false, enviado: false, motivo: "sin_sesion_activa", ...(aviso ? { aviso } : {}) });
+
+    const clave = `${usuarioId}:${Number(precio)}`;
+    if (enviosEnCurso.has(clave)) return res.status(409).json({ ok: false, enviado: false, motivo: "envio_en_curso" });
+    enviosEnCurso.add(clave);
+
+    try {
+
+        const caption = destinos.textoEditado(texto) ?? (await destinos.textoParaCompartir(usuarioId, t.evento)).texto;
+        const r = await compartirEnGrupos({ evento: t.evento, sock, grupos: elegidos, caption, solicitudId });
+
+        if (!r.ok) return res.status(502).json({ ok: false, enviado: false, motivo: r.motivo, ...(aviso ? { aviso } : {}) });
+
+        const hechos = r.resultados.filter(x => x.estado === "enviado" || x.estado === "ya_enviado").length;
+        res.json({ ok: true, enviado: hechos > 0, enviados: hechos, fallidos: r.resultados.length - hechos, resultados: r.resultados, ...(aviso ? { aviso } : {}) });
+
+    } finally {
+        enviosEnCurso.delete(clave);
+    }
+
+}
+
+// POST /tablas/compartir — botón manual del panel. Con `solicitudId`: el
+// flujo con destinos elegidos (arriba). Sin él (panel anterior, mientras se
+// despliega): el comportamiento de siempre, al grupo del evento activo.
 // Resuelve el evento REAL activo de esa tabla para ese usuario y ejecuta
 // exactamente la misma función que usa la automatización (Scheduler).
 router.post("/compartir", exigirUsuario, async (req, res) => {
 
     try {
+
+        if (req.body?.solicitudId !== undefined) return await compartirConDestinos(req, res);
 
         const usuarioId = req.usuarioId;
         const { precio } = req.body || {};
