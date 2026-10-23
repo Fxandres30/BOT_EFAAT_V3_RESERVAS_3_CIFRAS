@@ -100,8 +100,11 @@ export interface SorteoActivo {
     cuentas_ids: string[] | null;
     diseno: DisenoSorteo | null;
     mensajes: { publicacion: string; aviso_cierre: string } | null;
+    /** Texto que acompaña al anuncio ("" = sin texto guardado). Panel:
+     *  config.mensajes.publicacion; detectado: el escrito desde el panel. */
+    publicacion: string;
     recordatorios: Recordatorio[] | null;
-    campos: Record<"nombre" | "fecha_evento" | "hora_fin" | "valor" | "tabla" | "grupos" | "premios" | "hora_cierre" | "cuentas" | "diseno" | "mensajes", CampoActivo>;
+    campos: Record<"nombre" | "fecha_evento" | "hora_fin" | "valor" | "tabla" | "grupos" | "premios" | "hora_cierre" | "cuentas" | "diseno" | "publicacion" | "mensajes", CampoActivo>;
 }
 
 /** Lo que se puede cambiar de un sorteo activo; `base` = lo que se vio al abrirlo. */
@@ -110,7 +113,8 @@ export interface EdicionActivo {
     hora_cierre?: string;
     cuentas?: string[];
     diseno?: DisenoSorteo;
-    base: { premios: Premio[]; hora_cierre: string | null };
+    publicacion?: string;
+    base: { premios: Premio[]; hora_cierre: string | null; publicacion?: string };
 }
 
 export interface VistaPrevia {

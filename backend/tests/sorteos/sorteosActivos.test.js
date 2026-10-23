@@ -251,6 +251,123 @@ prueba("9. La detección automática sigue igual: el bot puede volver a guardar 
     assert.strictEqual(fake.tablas.eventos_bot.filter(e => e.usuario_id === A && e.grupo_id === "g1@g.us").length, 1);
 });
 
+// ------------------------------------------------ texto de la publicación ---
+
+const BASE_PANEL = { premios: [{ tipo: "otro", nombre: "Seco", premio: 50000 }], hora_cierre: "22:26" };
+const sp = () => fake.tablas.sorteos_programados.find(s => s.id === SP_PANEL);
+// Todo menos `excepto`: lo que guardar el texto NO debe tocar (reservas,
+// pagos, grupos, envíos/idempotencia, colas...).
+const resto = (...excepto) => JSON.stringify(Object.entries(fake.tablas).filter(([t]) => !excepto.includes(t)));
+
+prueba("10. Panel: el texto de la publicación se muestra al abrir la edición (mismo campo que la creación)", async () => {
+    escenario();
+    const r1 = await get(`/activos/${EV_PANEL}`);
+    assert.strictEqual(r1.status, 200, JSON.stringify(r1.json));
+    assert.strictEqual(r1.json.data.publicacion, "Juega {{nombre}}");
+    assert.strictEqual(r1.json.data.campos.publicacion.editable, true);
+    assert.ok(/no envía nada/.test(r1.json.data.campos.publicacion.motivo));
+});
+
+prueba("11. Panel: modificar y guardar el texto actualiza config.mensajes.publicacion y nada más (sin enviar)", async () => {
+    escenario();
+    const antesResto = resto("sorteos_programados");
+    const antesConfig = JSON.parse(JSON.stringify(sp().config));
+    const r1 = await put(`/activos/${EV_PANEL}`, { publicacion: "  Nuevo texto {{premios}}  ", premios: BASE_PANEL.premios, hora_cierre: "22:26", base: { ...BASE_PANEL, publicacion: "Juega {{nombre}}" } });
+    assert.strictEqual(r1.status, 200, JSON.stringify(r1.json));
+    assert.strictEqual(r1.json.data.publicacion, "Nuevo texto {{premios}}", "recortado como en la creación");
+    assert.strictEqual(sp().config.mensajes.publicacion, "Nuevo texto {{premios}}");
+    assert.deepStrictEqual({ ...sp().config, mensajes: null }, { ...antesConfig, mensajes: null }, "el resto de la configuración igual");
+    assert.strictEqual(sp().config.mensajes.aviso_cierre, antesConfig.mensajes.aviso_cierre, "aviso de cierre intacto");
+    assert.deepStrictEqual(sp().config.recordatorios, antesConfig.recordatorios, "recordatorios intactos");
+    assert.deepStrictEqual([sp().version, sp().estado], [1, "publicado"], "ni nueva versión ni vuelta a publicar");
+    assert.strictEqual(resto("sorteos_programados"), antesResto, "eventos, grupos, reservas, pagos y registros de envío intactos");
+    // Reabrir: se ve el texto guardado.
+    assert.strictEqual((await get(`/activos/${EV_PANEL}`)).json.data.publicacion, "Nuevo texto {{premios}}");
+});
+
+prueba("12. Panel sin texto guardado: el campo llega vacío y se puede introducir", async () => {
+    escenario();
+    sp().config.mensajes = { publicacion: "", aviso_cierre: "" };
+    const r1 = await get(`/activos/${EV_PANEL}`);
+    assert.strictEqual(r1.json.data.publicacion, "");
+    const r2 = await put(`/activos/${EV_PANEL}`, { publicacion: "Primer texto", base: { ...BASE_PANEL, publicacion: "" } });
+    assert.strictEqual(r2.status, 200, JSON.stringify(r2.json));
+    assert.strictEqual(sp().config.mensajes.publicacion, "Primer texto");
+});
+
+prueba("13. Detectado: sin texto (el bot no lo guarda) -> vacío; se añade sin tocar reservas, pagos ni datos del sorteo", async () => {
+    escenario();
+    const r0 = await get(`/activos/${EV_DET_G1}`);
+    assert.strictEqual(r0.json.data.publicacion, "", "no se inventa contenido");
+    assert.strictEqual(r0.json.data.campos.publicacion.editable, true);
+    assert.ok(/no cambia ni reenvía/.test(r0.json.data.campos.publicacion.motivo));
+    const antesTabla = tablaDe(A);
+    const antesOtros = resto("eventos_bot");
+    const antesB = JSON.stringify(ev(EV_B));
+    const r1 = await put(`/activos/${EV_DET_G1}`, { publicacion: "Anuncio del Chontico", premios: PREMIOS_DET, hora_cierre: "22:26", base: { premios: PREMIOS_DET, hora_cierre: "22:26", publicacion: "" } });
+    assert.strictEqual(r1.status, 200, JSON.stringify(r1.json));
+    assert.strictEqual(r1.json.data.publicacion, "Anuncio del Chontico");
+    for (const id of [EV_DET_G1, EV_DET_G2]) {
+        assert.strictEqual(ev(id).publicacion_panel.texto, "Anuncio del Chontico", id);
+        assert.strictEqual(ev(id).publicacion_panel.identidad, "det-a", id);
+        assert.deepStrictEqual([ev(id).premios, ev(id).hora_cierre, ev(id).identidad_evento_real, ev(id).estado, ev(id).abierto], [PREMIOS_DET, "22:26", "det-a", "abierto", true], id);
+    }
+    assert.strictEqual(tablaDe(A), antesTabla, "reservas y pagos intactos");
+    assert.deepStrictEqual([r1.json.data.reservados, r1.json.data.pagados], [1, 2]);
+    assert.strictEqual(resto("eventos_bot"), antesOtros, "sin sorteos programados, envíos ni otras escrituras");
+    assert.strictEqual(JSON.stringify(ev(EV_B)), antesB, "el evento de B no se toca");
+    assert.strictEqual((await get(`/activos/${EV_DET_G2}`)).json.data.publicacion, "Anuncio del Chontico", "abierto desde el otro grupo, el mismo texto");
+});
+
+prueba("14. Detectado: la detección no pisa el texto y uno de un sorteo ANTERIOR de la misma fila no se muestra", async () => {
+    escenario();
+    await put(`/activos/${EV_DET_G1}`, { publicacion: "Texto det-a", base: { premios: PREMIOS_DET, hora_cierre: "22:26" } });
+    const sock = { context: { usuarioId: A, sessionId: "ses-a", telefono: "573000000000" }, groupMetadata: async () => ({ subject: "Grupo g1", participants: [] }) };
+    await guardarEvento({
+        sock, grupoId: "g1@g.us",
+        evento: { nombre: "Chontico Noche", hora: "22:30", horaCierre: "22:26", valor: 5000, premios: PREMIOS_DET, tabla: T5K, cifras: 2, cantidad_numeros: 100 },
+        eventoAnterior: ev(EV_DET_G1), sorteoVigente: { identidad_evento_real: "det-a", fecha_evento: "2026-10-15" }
+    });
+    assert.strictEqual((await get(`/activos/${EV_DET_G1}`)).json.data.publicacion, "Texto det-a", "re-anuncio del mismo sorteo: se conserva");
+    // La fila del grupo pasa a otro sorteo (identidad distinta): sin texto.
+    Object.assign(ev(EV_DET_G1), { identidad_evento_real: "otro-sorteo" });
+    assert.strictEqual((await get(`/activos/${EV_DET_G1}`)).json.data.publicacion, "");
+});
+
+prueba("15. Texto: aislamiento por cliente, cambio concurrente y migración 036 sin aplicar", async () => {
+    escenario();
+    const antesB = JSON.stringify(ev(EV_B));
+    assert.strictEqual((await put(`/activos/${EV_B}`, { publicacion: "Hack", base: { premios: PREMIOS_DET, hora_cierre: "22:26" } })).status, 404);
+    assert.strictEqual((await put(`/activos/${EV_PANEL}`, { publicacion: "Hack" , base: BASE_PANEL }, "jwt-B")).status, 404);
+    assert.strictEqual(JSON.stringify(ev(EV_B)), antesB);
+    assert.strictEqual(sp().config.mensajes.publicacion, "Juega {{nombre}}");
+    // Otro lo cambió desde que se abrió: no se pisa.
+    const viejo = await put(`/activos/${EV_PANEL}`, { publicacion: "Mío", base: { ...BASE_PANEL, publicacion: "lo que vi" } });
+    assert.strictEqual(viejo.status, 409);
+    assert.strictEqual(sp().config.mensajes.publicacion, "Juega {{nombre}}");
+    // Sin la columna publicacion_panel: 503 claro y nada guardado.
+    const original = fake.client.from;
+    fake.client.from = (t) => {
+        const q = original(t);
+        if (t !== "eventos_bot") return q;
+        const update = q.update.bind(q);
+        q.update = (v) => {
+            if (!v.publicacion_panel) return update(v);
+            const err = { eq() { return err; }, in() { return err; }, then(ok) { return Promise.resolve({ data: null, error: { code: "PGRST204", message: "Could not find the 'publicacion_panel' column" } }).then(ok); } };
+            return err;
+        };
+        return q;
+    };
+    const antes = JSON.stringify(fake.tablas.eventos_bot);
+    const sinMig = await put(`/activos/${EV_DET_G1}`, { publicacion: "X", premios: [{ nombre: "Otro", premio: 1 }], base: { premios: PREMIOS_DET, hora_cierre: "22:26" } });
+    fake.client.from = original;
+    assert.strictEqual(sinMig.status, 503, JSON.stringify(sinMig.json));
+    assert.strictEqual(sinMig.json.motivo, "migracion_pendiente");
+    assert.strictEqual(JSON.stringify(fake.tablas.eventos_bot), antes, "ni el texto ni los premios");
+    // Sin la migración, editar premios sin tocar el texto sigue funcionando.
+    assert.strictEqual((await put(`/activos/${EV_DET_G1}`, { publicacion: "", premios: [{ nombre: "Otro", premio: 1 }], base: { premios: PREMIOS_DET, hora_cierre: "22:26" } })).status, 200);
+});
+
 (async () => {
     const app = express();
     app.use(express.json());

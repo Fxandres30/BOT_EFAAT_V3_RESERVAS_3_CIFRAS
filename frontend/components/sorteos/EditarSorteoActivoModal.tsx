@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Lock, Plus, Trash2 } from "lucide-react";
 
-import { Modal, Button, Input, Select, IconButton, Badge } from "@/components/ui";
+import { Modal, Button, Input, Select, Textarea, IconButton, Badge } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { apiSorteos, describirError, type CuentaPago, type ErrorCampo, type SorteoActivo } from "@/services/sorteos/apiSorteos";
 import { listarDisenos } from "@/services/tablas/disenos";
@@ -39,6 +39,7 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
     const [horaCierre, setHoraCierre] = useState("");
     const [cuentasSel, setCuentasSel] = useState<string[]>([]);
     const [diseno, setDiseno] = useState("guardado");
+    const [publicacion, setPublicacion] = useState("");
     const [cuentas, setCuentas] = useState<CuentaPago[]>([]);
     const [disenos, setDisenos] = useState<TablaDiseno[]>([]);
     const [errores, setErrores] = useState<ErrorCampo[]>([]);
@@ -63,6 +64,7 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
             setHoraCierre(s.hora_cierre ? s.hora_cierre.slice(0, 5) : "");
             setCuentasSel(s.cuentas_ids || []);
             setDiseno(s.diseno ? disenoAForm(s.diseno) : "guardado");
+            setPublicacion(s.publicacion || "");
             setCarga({ tipo: "ok", sorteo: s });
             if (s.campos.cuentas.editable) {
                 const c = await apiSorteos.cuentas();
@@ -95,7 +97,8 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
             hora_cierre: horaCierre,
             ...(sorteo.campos.cuentas.editable ? { cuentas: cuentasSel } : {}),
             ...(sorteo.campos.diseno.editable && diseno !== "guardado" ? { diseno: formADiseno(diseno, sorteo.diseno) } : {}),
-            base: { premios: sorteo.premios, hora_cierre: sorteo.hora_cierre }
+            ...(sorteo.campos.publicacion?.editable ? { publicacion } : {}),
+            base: { premios: sorteo.premios, hora_cierre: sorteo.hora_cierre, ...(sorteo.campos.publicacion ? { publicacion: sorteo.publicacion } : {}) }
         });
 
         setGuardando(false);
@@ -207,9 +210,19 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
                         ) : <p className={styles.ayuda}><Lock size={12} /> {sorteo.campos.diseno.motivo}</p>}
                     </section>
 
+                    {sorteo.campos.publicacion?.editable && (
+                        <section className={styles.seccion}>
+                            <h3 className={styles.seccionTitulo}>Publicación</h3>
+                            <Textarea label="Mensaje de publicación" optional rows={8} value={publicacion} onChange={e => setPublicacion(e.target.value)} error={errorDe("publicacion")}
+                                hint={sorteo.origen === "panel"
+                                    ? `${sorteo.campos.publicacion.motivo} Variables: {{nombre}} {{hora}} {{hora_cierre}} {{valor}} {{premios}} {{cuentas}} {{cantidad}} {{fecha}}`
+                                    : sorteo.campos.publicacion.motivo} />
+                        </section>
+                    )}
+
                     <section className={styles.seccion}>
                         <h3 className={styles.seccionTitulo}>Mensajes y recordatorios</h3>
-                        {sorteo.mensajes?.publicacion && <pre className={styles.mensaje}>{sorteo.mensajes.publicacion}</pre>}
+                        {!sorteo.campos.publicacion && sorteo.mensajes?.publicacion && <pre className={styles.mensaje}>{sorteo.mensajes.publicacion}</pre>}
                         {(sorteo.recordatorios || []).map((r, i) => <p key={i} className={styles.ayuda}>{r.minutos_antes_cierre} min antes del cierre: {r.texto}</p>)}
                         <p className={styles.ayuda}><Lock size={12} /> {sorteo.campos.mensajes.motivo}</p>
                     </section>

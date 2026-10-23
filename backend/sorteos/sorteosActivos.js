@@ -26,6 +26,13 @@
 //   - premios y cierre de reservas: editables (validados).
 //   - cuentas de pago y estilo de la tabla: solo si el sorteo nació en el
 //     panel (los detectados no los guardan).
+//   - texto de la publicación (el que acompaña al anuncio): editable.
+//     Panel: config.mensajes.publicacion del sorteo programado (el mismo
+//     campo del formulario de creación). Detectado: el bot NO guarda el
+//     texto del anuncio de WhatsApp, así que se guarda aparte en
+//     eventos_bot.publicacion_panel (migración 036) con la identidad del
+//     sorteo: la fila de un grupo se reutiliza en el sorteo siguiente y
+//     un texto de otra identidad no se muestra. Solo informativo.
 // Nada de esto toca la tabla de números ni envía mensajes.
 //
 // Límite conocido: si el administrador vuelve a publicar el anuncio en el
@@ -35,7 +42,10 @@
 const supabase = require("../lib/supabase");
 const repo = require("./repo");
 const tablasCliente = require("../bot/funciones/eventos/tablasCliente");
-const { normalizarPremios, instanteBogota, partesBogota, HORA } = require("./validar");
+const { normalizarPremios, instanteBogota, partesBogota, HORA, texto, LIMITES } = require("./validar");
+
+// Columna inexistente (migración 036 sin aplicar), en Postgres o PostgREST.
+const SIN_COLUMNA = new Set(["42703", "PGRST204"]);
 
 const MOTIVO_IDENTIDAD = "Forma la identidad del sorteo en curso: con ella se guardan sus reservas y pagos y se programan los mensajes de cada grupo. Cambiarlo separaría las reservas existentes. Para cambiarlo, deja cerrar este sorteo y crea uno nuevo.";
 
@@ -79,6 +89,13 @@ async function filasActivas(usuarioId, precio = null) {
 
 // Clave del sorteo real (varias filas = varios grupos del mismo sorteo).
 const claveDe = (e) => e.identidad_evento_real || `evento:${e.id}`;
+
+// Texto guardado desde el panel para un sorteo detectado, solo si es de
+// ESTE sorteo (la fila puede venir de uno anterior del mismo grupo).
+function publicacionDetectado(filas) {
+    const guardado = filas.map(f => f.publicacion_panel).find(p => p?.identidad === claveDe(filas[0]));
+    return typeof guardado?.texto === "string" ? guardado.texto : "";
+}
 
 async function contarNumeros(usuarioId, tabla, identidad) {
     if (!tabla || !identidad) return { reservados: 0, pagados: 0 };
@@ -126,6 +143,9 @@ async function vista(usuarioId, filas) {
         cuentas_ids: desdePanel ? (programado.config?.cuentas || []) : null,
         diseno: desdePanel ? (programado.config?.diseno || null) : null,
         mensajes: desdePanel ? (programado.config?.mensajes || null) : null,
+        // Texto que acompaña al anuncio ("" = no guardado: el panel usa la
+        // plantilla por defecto; en un detectado, nadie lo escribió aún).
+        publicacion: desdePanel ? (programado.config?.mensajes?.publicacion || "") : publicacionDetectado(filas),
         recordatorios: desdePanel ? (programado.config?.recordatorios || []) : null,
         campos: {
             ...Object.fromEntries(Object.entries(CAMPOS_BLOQUEADOS).map(([c, motivo]) => [c, { editable: false, motivo }])),
@@ -137,7 +157,10 @@ async function vista(usuarioId, filas) {
             diseno: desdePanel
                 ? { editable: true, motivo: "Se usa en las próximas imágenes de la tabla de este sorteo." }
                 : { editable: false, motivo: "Usa el diseño de la tabla de este precio: cámbialo en Tablas → Personalizar." },
-            mensajes: { editable: false, motivo: desdePanel ? "Los mensajes y recordatorios de un sorteo en curso no se cambian desde aquí." : "Los sorteos detectados no tienen mensajes propios: usan los de Automatización." }
+            publicacion: desdePanel
+                ? { editable: true, motivo: "Guardar no envía nada y lo ya publicado en los grupos no cambia; un grupo que siga pendiente de publicar recibirá este texto. Vacío = plantilla por defecto." }
+                : { editable: true, motivo: "El bot no guarda el texto del anuncio de WhatsApp. Lo que escribas aquí queda solo en el panel: no cambia ni reenvía el mensaje del grupo." },
+            mensajes: { editable: false, motivo: desdePanel ? "Los recordatorios y el aviso de cierre de un sorteo en curso no se cambian desde aquí." : "Los sorteos detectados no tienen mensajes propios: usan los de Automatización." }
         }
     };
 
@@ -194,7 +217,7 @@ async function obtener(usuarioId, id) {
 const igual = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 // Edita el sorteo activo del evento `id` (y sus otros grupos).
-// entrada: { premios?, hora_cierre?, cuentas?, diseno?, base: { premios, hora_cierre } }
+// entrada: { premios?, hora_cierre?, cuentas?, diseno?, publicacion?, base: { premios, hora_cierre, publicacion? } }
 // `base` = lo que el panel vio; si cambió entretanto, no se pisa.
 async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolverDiseno } = {}) {
 
@@ -215,7 +238,8 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
     }
 
     const base = entrada.base || {};
-    if (!igual(base.premios, actual.premios) || (base.hora_cierre ?? null) !== (actual.hora_cierre ?? null)) {
+    if (!igual(base.premios, actual.premios) || (base.hora_cierre ?? null) !== (actual.hora_cierre ?? null)
+        || (base.publicacion !== undefined && base.publicacion !== actual.publicacion)) {
         return falla("version_cambiada", { mensaje: "El sorteo cambió desde que lo abriste (por ejemplo, el bot leyó de nuevo el anuncio). Vuelve a abrirlo." });
     }
 
@@ -270,6 +294,15 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
         }
     }
 
+    // Texto de la publicación: panel -> su config; detectado -> el evento.
+    if (entrada.publicacion !== undefined) {
+        const publicacion = texto(entrada.publicacion, LIMITES.mensaje);
+        if (publicacion !== actual.publicacion) {
+            if (programado?.ok) cambiosProgramado.publicacion = publicacion;
+            else cambiosEvento.publicacion_panel = { identidad: claveDe(filas[0]), texto: publicacion, actualizado_en: new Date().toISOString() };
+        }
+    }
+
     if (errores.length) return falla("validacion", { errores });
 
     if (!Object.keys(cambiosEvento).length && !Object.keys(cambiosProgramado).length) {
@@ -283,6 +316,9 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
         const { error } = await supabase.from("eventos_bot")
             .update({ ...cambiosEvento, actualizado_en: new Date().toISOString() })
             .eq("usuario_id", usuarioId).in("id", filas.map(f => f.id));
+        if (error && SIN_COLUMNA.has(error.code) && cambiosEvento.publicacion_panel) {
+            return falla("migracion_pendiente", { migracion: "036_publicacion_sorteo_detectado.sql", mensaje: "Guardar el texto de un sorteo detectado todavía no está disponible. No se guardó ningún cambio." });
+        }
         if (error) return falla("error_supabase", { error: error.message });
     }
 
@@ -295,7 +331,8 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
             ...(cambiosEvento.premios ? { premios: cambiosEvento.premios } : {}),
             ...(cambiosEvento.hora_cierre ? { hora_cierre: cambiosEvento.hora_cierre } : {}),
             ...(cambiosProgramado.cuentas ? { cuentas: cambiosProgramado.cuentas } : {}),
-            ...(cambiosProgramado.diseno ? { diseno: cambiosProgramado.diseno } : {})
+            ...(cambiosProgramado.diseno ? { diseno: cambiosProgramado.diseno } : {}),
+            ...(cambiosProgramado.publicacion !== undefined ? { mensajes: { ...p.config?.mensajes, publicacion: cambiosProgramado.publicacion } } : {})
         };
         const cambios = { config, ...(cambiosProgramado.cuentas_snapshot ? { cuentas_snapshot: cambiosProgramado.cuentas_snapshot } : {}) };
         const u = await repo.actualizarSorteoSi(usuarioId, p.id, {}, cambios);

@@ -276,6 +276,8 @@ module.exports = {
     fechaSorteoDe,
     identidadDelSorteo,
     normalizarPremios,
+    texto,
+    LIMITES,
     HORA,
     MODALIDADES
 };

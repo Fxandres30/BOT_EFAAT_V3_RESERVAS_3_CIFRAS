@@ -9,6 +9,8 @@
 //   3. «Guardar cambios» actualiza el MISMO evento y sus grupos; sin
 //      duplicados; reservas y pagos intactos.
 //   4. /sorteos → «En curso» muestra el mismo sorteo; el de otra cuenta no.
+//   5. «Mensaje de publicación»: vacío en un detectado (el bot no guarda el
+//      texto del anuncio), se escribe, se guarda y se vuelve a ver.
 //
 // ENTORNO AISLADO (tests/e2e/entornoPanel.js): no toca Supabase ni WhatsApp.
 //
@@ -18,7 +20,7 @@
 const assert = require("assert");
 const {
     PANEL, tablas: t, registrarUsuario, arrancarEntorno, servirTablas,
-    valorDe, rellenarAria, pulsar, esperarTexto, textoPagina, fechaColombia, crearPasos
+    valorDe, rellenar, rellenarAria, pulsar, esperarTexto, textoPagina, fechaColombia, crearPasos
 } = require("./entornoPanel");
 
 const TOKEN = "e2e-token-activo";
@@ -91,10 +93,12 @@ async function main() {
         assert.strictEqual(await valorDe(page, "Cierre de reservas"), "22:26");
         const premios = await page.evaluate(() => Array.from(document.querySelectorAll('[aria-label="Premio"]'), e => e.value));
         assert.deepStrictEqual(premios, ["Premio mayor"]);
+        assert.strictEqual(await valorDe(page, "Mensaje de publicación"), "", "detectado sin texto: vacío, nada inventado");
         paso("muestra lotería, fecha, hora, valor, grupos, reservas y premios; bloquea la identidad explicando por qué");
 
         // 3. Guardar sobre el MISMO evento (y su otro grupo).
         await rellenarAria(page, "Valor del premio", "150000");
+        await rellenar(page, "Mensaje de publicación", "Chontico Noche: anuncio del grupo");
         await page.evaluate(() => [...document.querySelectorAll('[role="dialog"] button')].find(b => b.textContent.trim() === "Guardar cambios").click());
         await page.waitForFunction(() => !document.querySelector('[role="dialog"]'), { timeout: 60000 });
         for (const id of [EV_G1, EV_G2]) {
@@ -107,6 +111,8 @@ async function main() {
         assert.strictEqual((t.sorteos_programados || []).length, 0, "no se creó ningún sorteo programado");
         assert.strictEqual(JSON.stringify(t[T5K]), tablaAntes, "reservas y pagos intactos");
         assert.strictEqual(t.eventos_bot.find(x => x.id === EV_B).premios[0].premio, 100000, "el de la otra cuenta no cambia");
+        for (const id of [EV_G1, EV_G2]) assert.strictEqual(t.eventos_bot.find(x => x.id === id).publicacion_panel?.texto, "Chontico Noche: anuncio del grupo", id);
+        assert.ok(!t.eventos_bot.find(x => x.id === EV_B).publicacion_panel, "el texto no llega a la otra cuenta");
         paso("«Guardar cambios» actualiza el MISMO evento y su otro grupo; sin duplicados; reservas y pagos intactos");
 
         // 4. /sorteos → «En curso»: el mismo sorteo, editable igual.
@@ -119,6 +125,7 @@ async function main() {
         await page.waitForFunction(() => document.querySelectorAll('[aria-label="Valor del premio"]').length > 0);
         const monto = await page.evaluate(() => document.querySelector('[aria-label="Valor del premio"]').value);
         assert.strictEqual(monto, "150000", "lo guardado");
+        assert.strictEqual(await valorDe(page, "Mensaje de publicación"), "Chontico Noche: anuncio del grupo", "el texto guardado");
         paso("/sorteos → «En curso» lista el mismo sorteo (sin el de otra cuenta) y abre el mismo editor");
 
         assert.deepStrictEqual(page.erroresJs, [], `errores de JavaScript: ${page.erroresJs.join(" | ")}`);

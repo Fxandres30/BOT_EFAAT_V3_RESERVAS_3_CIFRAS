@@ -1,0 +1,33 @@
+-- Texto de la publicación de un sorteo DETECTADO por el bot, escrito desde
+-- el panel («Tablas → Editar sorteo activo»).
+--
+-- Por qué hace falta: los sorteos creados en el panel ya guardan su texto en
+-- sorteos_programados.config.mensajes.publicacion (no cambia nada para
+-- ellos). Los detectados solo viven en eventos_bot y el bot NUNCA guardó el
+-- texto del anuncio de WhatsApp, así que no hay ningún campo donde ponerlo.
+--
+-- Formato: { "identidad": <identidad_evento_real o "evento:<id>">,
+--            "texto": <texto>, "actualizado_en": <ISO> }
+-- La identidad va dentro porque la fila de un grupo se reutiliza (UPDATE)
+-- en el sorteo siguiente: el panel solo muestra el texto si la identidad
+-- coincide con la del sorteo actual. guardarEvento.js no escribe esta
+-- columna, así que la detección no la pisa. Es solo informativa: nada la
+-- envía a WhatsApp.
+--
+-- SOLO AÑADE una columna nullable a public.eventos_bot. No borra, no
+-- renombra, no cambia tipos ni datos existentes (todas quedan en null).
+-- Idempotente. No cambia RLS ni el aislamiento por usuario_id.
+--
+-- El backend funciona SIN esta migración: el texto de un detectado se ve
+-- vacío y guardarlo responde «migracion_pendiente» (503) sin cambiar nada.
+--
+-- Ejecutar manualmente en el SQL Editor de Supabase.
+
+alter table public.eventos_bot add column if not exists publicacion_panel jsonb;
+
+-- Verificación:
+--   select column_name, data_type, is_nullable from information_schema.columns
+--   where table_schema = 'public' and table_name = 'eventos_bot' and column_name = 'publicacion_panel';
+--
+-- Reversión (pierde los textos escritos desde el panel para detectados):
+--   alter table public.eventos_bot drop column if exists publicacion_panel;
