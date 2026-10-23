@@ -100,7 +100,12 @@ async function tablaYEvento(usuarioId, precio) {
 
 const socketDe = (usuarioId) => require("../services/baileys/manager").getSocketActivoDe(usuarioId);
 
-// GET /tablas/compartir/vista-previa?precio= — imagen real, texto y grupos.
+// GET /tablas/compartir/vista-previa?precio=[&sin_imagen=1] — texto y
+// grupos. El panel nuevo pide sin_imagen=1: la imagen es su captura del
+// `div` de la tabla visible.
+// COMPATIBILIDAD TEMPORAL (panel publicado antes de la captura en el
+// navegador): sin sin_imagen=1 se genera la imagen con Puppeteer como
+// antes (imagen / error_imagen). Retirar cuando ese panel ya no exista.
 // NUNCA envía nada.
 router.get("/compartir/vista-previa", exigirUsuario, async (req, res) => {
 
@@ -120,14 +125,15 @@ router.get("/compartir/vista-previa", exigirUsuario, async (req, res) => {
         const { validos, invalidos } = destinos.clasificar(guardados.data || [], disponibles.data);
         const texto = await destinos.textoParaCompartir(usuarioId, t.evento);
 
-        let imagen = null;
-        let errorImagen = null;
-        try {
-            const png = await capturarImagenTabla(Number(precio), usuarioId, t.evento.id ?? null);
-            imagen = `data:image/png;base64,${Buffer.from(png).toString("base64")}`;
-        } catch (err) {
-            console.error("❌ [TABLAS] vista previa sin imagen:", err?.message);
-            errorImagen = "No se pudo generar la imagen de la tabla.";
+        let imagenAntigua = {};
+        if (req.query.sin_imagen !== "1") {
+            try {
+                const png = await capturarImagenTabla(Number(precio), usuarioId, t.evento.id ?? null);
+                imagenAntigua = { imagen: `data:image/png;base64,${Buffer.from(png).toString("base64")}`, error_imagen: null };
+            } catch (err) {
+                console.error("❌ [TABLAS] vista previa (panel anterior) sin imagen:", err?.message);
+                imagenAntigua = { imagen: null, error_imagen: "No se pudo generar la imagen de la tabla." };
+            }
         }
 
         res.json({
@@ -135,15 +141,14 @@ router.get("/compartir/vista-previa", exigirUsuario, async (req, res) => {
             data: {
                 precio: Number(precio),
                 evento: { id: t.evento.id, nombre: t.evento.nombre_evento || null, hora_fin: t.evento.hora_fin || null, hora_cierre: t.evento.hora_cierre || null },
-                imagen,
-                error_imagen: errorImagen,
                 texto: texto.texto,
                 origen_texto: texto.origen,
                 grupos: disponibles.data,
                 seleccion: validos.map(g => g.grupo_id),
                 invalidos,
                 persistencia: guardados.persistencia,
-                sesion_conectada: Boolean(socketDe(usuarioId))
+                sesion_conectada: Boolean(socketDe(usuarioId)),
+                ...imagenAntigua
             }
         });
 
@@ -188,14 +193,22 @@ router.put("/compartir/destinos", exigirUsuario, async (req, res) => {
 
 });
 
-// POST /tablas/compartir con solicitudId — { precio, solicitudId,
-// grupos?, texto?, guardar_destinos? }. Sin `grupos`: los guardados.
+// POST /tablas/compartir con solicitudId — { precio, solicitudId, imagen,
+// grupos?, texto?, guardar_destinos? }. `imagen`: captura PNG (data URL) del
+// `div` de la tabla visible en el panel. Sin `grupos`: los guardados.
+// COMPATIBILIDAD TEMPORAL: si `imagen` NO viene (panel publicado antes de la
+// captura en el navegador), se genera con Puppeteer como antes, con las
+// mismas validaciones. Si viene y no es un PNG válido: 400, nunca Puppeteer.
 async function compartirConDestinos(req, res) {
 
     const usuarioId = req.usuarioId;
     const { precio, solicitudId, grupos, texto, guardar_destinos: guardar } = req.body || {};
 
     if (!SOLICITUD.test(String(solicitudId))) return res.status(400).json({ ok: false, enviado: false, motivo: "faltan_parametros" });
+
+    const imagenDelPanel = req.body && "imagen" in req.body;
+    let imagen = imagenDelPanel ? destinos.imagenPng(req.body.imagen) : null;
+    if (imagenDelPanel && !imagen) return res.status(400).json({ ok: false, enviado: false, motivo: "imagen_invalida" });
 
     const t = await tablaYEvento(usuarioId, precio);
     if (!t.evento) return res.status(t.status).json(t.cuerpo);
@@ -243,8 +256,17 @@ async function compartirConDestinos(req, res) {
 
     try {
 
+        if (!imagen) {
+            try {
+                imagen = await capturarImagenTabla(Number(precio), usuarioId, t.evento.id ?? null);
+            } catch (err) {
+                console.error("❌ [COMPARTIR TABLA] no se pudo generar la imagen (panel anterior):", err?.message);
+                return res.status(502).json({ ok: false, enviado: false, motivo: "error_imagen", ...(aviso ? { aviso } : {}) });
+            }
+        }
+
         const caption = destinos.textoEditado(texto) ?? (await destinos.textoParaCompartir(usuarioId, t.evento)).texto;
-        const r = await compartirEnGrupos({ evento: t.evento, sock, grupos: elegidos, caption, solicitudId });
+        const r = await compartirEnGrupos({ evento: t.evento, sock, grupos: elegidos, caption, solicitudId, imagen });
 
         if (!r.ok) return res.status(502).json({ ok: false, enviado: false, motivo: r.motivo, ...(aviso ? { aviso } : {}) });
 

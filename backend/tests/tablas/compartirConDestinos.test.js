@@ -7,6 +7,11 @@
 // (compartirTabla, destinosCompartir, sorteosActivos, executionGuard);
 // Supabase en memoria, navegador y WhatsApp SIMULADOS: ningún envío real.
 //
+// La imagen de «Compartir» la captura el PANEL (el `div` de la tabla
+// visible) y llega en el cuerpo como PNG: el backend solo la valida y la
+// envía. Puppeteer (simulado aquí) ya solo lo usa la tabla inicial del
+// scheduler y el formato antiguo sin solicitudId.
+//
 //     node backend/tests/tablas/compartirConDestinos.test.js
 // ==========================================================================
 
@@ -49,7 +54,7 @@ inyectar("services/baileys/send.js", {
     sendImage: async ({ sock, jid, image, caption }) => {
         if (sim.retardoMs) await new Promise(r => setTimeout(r, sim.retardoMs));
         if (sim.fallarEn.has(jid)) throw new Error("not-authorized");
-        envios.push({ usuario: sock.usuario, jid, image: image.toString(), caption });
+        envios.push({ usuario: sock.usuario, jid, image: image.toString("base64"), caption });
     },
     sendMessage: async () => { throw new Error("no debe enviarse texto suelto"); }
 });
@@ -103,6 +108,8 @@ require.cache[PUPPETEER] = {
 };
 
 const app = express();
+// Igual que server.js: límite propio para la captura PNG, antes del global.
+app.use("/tablas/compartir", express.json({ limit: "6mb" }));
 app.use(express.json());
 app.use("/tablas", require("../../routes/tablas"));
 
@@ -136,7 +143,13 @@ function escenario() {
 
 let base;
 const h = (jwt) => ({ "content-type": "application/json", "x-service-token": "token-servicio-compartir", authorization: `Bearer ${jwt}` });
+// PNG real de 1x1 (lo que manda el panel tras capturar el `div` de la tabla).
+const PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+const PNG_DATA_URL = `data:image/png;base64,${PNG_B64}`;
+// Los envíos nuevos (con solicitudId) llevan la captura salvo que la prueba
+// mande su propia `imagen` (incluso inválida o ausente con imagen: undefined).
 const llamar = async (metodo, camino, cuerpo, jwt = "jwt-A") => {
+    if (metodo === "POST" && camino === "/tablas/compartir" && cuerpo?.solicitudId !== undefined && !("imagen" in cuerpo)) cuerpo = { ...cuerpo, imagen: PNG_DATA_URL };
     const res = await fetch(base + camino, { method: metodo, headers: h(jwt), ...(cuerpo ? { body: JSON.stringify(cuerpo) } : {}) });
     return { status: res.status, json: await res.json() };
 };
@@ -156,19 +169,20 @@ function diferencia(antes, despues) {
     return null;
 }
 
-const IMG_A = "PNG /tablas/imprimir/5000 ocupados=00,01,02";
-const IMG_B = "PNG /tablas/imprimir/5000 ocupados=00,01,02,03,04";
+// Lo que pinta el Puppeteer simulado (solo scheduler / formato antiguo).
+const IMG_PUPPETEER_A = Buffer.from("PNG /tablas/imprimir/5000 ocupados=00,01,02").toString("base64");
 
 const pruebas = [];
 const prueba = (nombre, fn) => pruebas.push({ nombre, fn });
 
-prueba("1. Vista previa: imagen real de la tabla del cliente, texto habitual, SUS grupos; no envía nada", async () => {
+prueba("1. Vista previa (panel actual, sin_imagen=1): texto y SUS grupos; ni genera imagen ni envía nada", async () => {
     escenario();
-    const r = await llamar("GET", "/tablas/compartir/vista-previa?precio=5000");
+    const capturasAntes = capturas;
+    const r = await llamar("GET", "/tablas/compartir/vista-previa?precio=5000&sin_imagen=1");
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
     const v = r.json.data;
-    assert.ok(v.imagen.startsWith("data:image/png;base64,"));
-    assert.strictEqual(Buffer.from(v.imagen.split(",")[1], "base64").toString(), IMG_A, "la cuadrícula de A");
+    assert.ok(!("imagen" in v), "la imagen no sale del backend");
+    assert.strictEqual(capturas, capturasAntes, "sin Puppeteer");
     assert.ok(v.texto.includes("Chontico Noche"), v.texto);
     assert.strictEqual(v.origen_texto, "habitual");
     assert.deepStrictEqual(v.grupos.map(g => [g.grupo_id, g.nombre]), [["g1@g.us", "Rifa uno"], ["g2@g.us", "Rifa dos"]], "solo autorizados y activos de A");
@@ -200,8 +214,7 @@ prueba("4. Selección inicial confirmada: imagen + caption en el MISMO mensaje a
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
     assert.deepStrictEqual([r.json.enviado, r.json.enviados, r.json.fallidos], [true, 2, 0]);
     assert.deepStrictEqual(envios.map(e => [e.jid, e.caption, e.usuario]), [["g1@g.us", "Texto editado", A], ["g2@g.us", "Texto editado", A]]);
-    assert.ok(envios.every(e => e.image === IMG_A), "imagen real de la tabla de A");
-    assert.strictEqual(capturas > 0, true);
+    assert.ok(envios.every(e => e.image === PNG_B64), "se envía EXACTAMENTE la captura recibida del panel");
     assert.deepStrictEqual(destinosDe(A).map(d => [d.precio, d.grupos]), [[5000, ["g1@g.us", "g2@g.us"]]]);
     assert.strictEqual(diferencia(antes, intocable()), null, "reservas, pagos, números y sorteo intactos");
 });
@@ -215,7 +228,8 @@ prueba("5. Siguientes clics: sin volver a elegir, a los grupos guardados con el 
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
     assert.deepStrictEqual(envios.map(e => e.jid), ["g2@g.us"]);
     assert.ok(envios[0].caption.includes("Chontico Noche") && !envios[0].caption.includes("Solo esta vez"), "texto configurado, no el editado antes");
-    assert.strictEqual(capturas, capturasAntes + 1, "una sola captura de la imagen ACTUAL por envío");
+    assert.strictEqual(envios[0].image, PNG_B64, "la captura de ESTE clic");
+    assert.strictEqual(capturas, capturasAntes, "sin Puppeteer");
     assert.strictEqual((await llamar("GET", "/tablas/compartir/vista-previa?precio=5000")).json.data.seleccion.join(), "g2@g.us");
 });
 
@@ -249,7 +263,6 @@ prueba("7. Aislamiento: selecciones por cliente; A no puede enviar a un grupo de
     const vB = (await llamar("GET", "/tablas/compartir/vista-previa?precio=5000", null, "jwt-B")).json.data;
     assert.deepStrictEqual([vB.grupos.map(g => g.grupo_id), vB.seleccion], [["gb@g.us"], []]);
     assert.ok(!vB.texto.includes("Chontico") && vB.texto.includes("Secreto de B"));
-    assert.strictEqual(Buffer.from(vB.imagen.split(",")[1], "base64").toString(), IMG_B, "imagen de la tabla de B");
     await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: sol(), grupos: ["gb@g.us"], guardar_destinos: true }, "jwt-B");
     assert.deepStrictEqual(envios.map(e => [e.usuario, e.jid]), [[A, "g1@g.us"], [B, "gb@g.us"]], "cada uno con SU WhatsApp y SUS grupos");
     assert.deepStrictEqual([destinosDe(A)[0].grupos, destinosDe(B)[0].grupos], [["g1@g.us"], ["gb@g.us"]]);
@@ -270,17 +283,13 @@ prueba("8. Destinos que ya no están disponibles o sesión desconectada: error c
     assert.strictEqual((await llamar("GET", "/tablas/compartir/vista-previa?precio=5000")).json.data.sesion_conectada, false);
 });
 
-prueba("9. Resultado por grupo: uno falla y se informa; si falla la imagen no se envía nada", async () => {
+prueba("9. Resultado por grupo: uno falla y se informa", async () => {
     escenario();
     sim.fallarEn.add("g2@g.us");
     const r = await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: sol(), grupos: ["g1@g.us", "g2@g.us"] });
     assert.deepStrictEqual([r.json.enviado, r.json.enviados, r.json.fallidos], [true, 1, 1]);
     assert.deepStrictEqual(r.json.resultados.map(x => [x.grupo_id, x.estado]), [["g1@g.us", "enviado"], ["g2@g.us", "fallido"]]);
     assert.ok(/not-authorized/.test(r.json.resultados[1].error));
-    nav.fallar = true;
-    envios.length = 0;
-    const sinImagen = await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: sol(), grupos: ["g1@g.us"] });
-    assert.deepStrictEqual([sinImagen.status, sinImagen.json.motivo, envios.length], [502, "error_imagen", 0]);
 });
 
 prueba("10. Migración 037 sin aplicar: se envía a lo elegido y se avisa; el siguiente clic vuelve a pedir grupos", async () => {
@@ -309,35 +318,111 @@ prueba("12. Compatibilidad: el panel anterior (sin solicitudId) sigue publicando
     escenario();
     const r = await llamar("POST", "/tablas/compartir", { precio: 5000 });
     assert.deepStrictEqual([r.status, r.json.enviado], [200, true]);
-    assert.deepStrictEqual(envios.map(e => e.jid), ["g1@g.us"]);
+    assert.deepStrictEqual(envios.map(e => [e.jid, e.image]), [["g1@g.us", IMG_PUPPETEER_A]], "formato antiguo: imagen del generador anterior");
 });
 
-prueba("13. Sin TABLA_SHARE_SECRET: vista previa, envío con caption y tabla del scheduler funcionan igual", async () => {
+prueba("13. Envío: la captura del panel va como FOTO con el texto como caption, sin Puppeteer ni secreto", async () => {
     escenario();
     assert.strictEqual(process.env.TABLA_SHARE_SECRET, undefined, "el secreto no está en el entorno");
-    const v = (await llamar("GET", "/tablas/compartir/vista-previa?precio=5000")).json.data;
-    assert.strictEqual(Buffer.from(v.imagen.split(",")[1], "base64").toString(), IMG_A);
+    const capturasAntes = capturas;
     const r = await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: sol(), grupos: ["g1@g.us"], texto: "Caption de prueba" });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.deepStrictEqual(envios.map(e => [e.jid, e.image, e.caption]), [["g1@g.us", IMG_A, "Caption de prueba"]], "foto + caption en el mismo envío");
-    // La función que usa el scheduler (INITIAL_TABLE) tampoco depende del secreto.
+    assert.deepStrictEqual(envios.map(e => [e.jid, e.image, e.caption]), [["g1@g.us", PNG_B64, "Caption de prueba"]], "foto + caption en el mismo envío");
+    assert.strictEqual(capturas, capturasAntes, "Compartir no abre ningún navegador");
+});
+
+prueba("14. Imagen presente pero inválida o demasiado grande: 400 imagen_invalida, sin Puppeteer y sin envío", async () => {
+    escenario();
+    const png = Buffer.from(PNG_B64, "base64");
+    const conLado = (ancho) => { const b = Buffer.from(png); b.writeUInt32BE(ancho, 16); return `data:image/png;base64,${b.toString("base64")}`; };
+    const grande = Buffer.concat([png, Buffer.alloc(3 * 1024 * 1024)]);
+    const casos = {
+        no_png: `data:image/jpeg;base64,${PNG_B64}`,
+        no_data_url: PNG_B64,
+        firma_falsa: `data:image/png;base64,${Buffer.from("no soy un png, solo texto largo para pasar el minimo").toString("base64")}`,
+        base64_roto: "data:image/png;base64,@@@@",
+        lado_enorme: conLado(9000),
+        demasiado_grande: `data:image/png;base64,${grande.toString("base64")}`
+    };
+    casos.nula = null;
+    const capturasAntes = capturas;
+    for (const [caso, imagen] of Object.entries(casos)) {
+        const r = await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: sol(), grupos: ["g1@g.us"], imagen });
+        assert.deepStrictEqual([r.status, r.json.motivo], [400, "imagen_invalida"], caso);
+    }
+    assert.strictEqual(envios.length, 0);
+    assert.strictEqual(capturas, capturasAntes, "una imagen inválida nunca cae al flujo de Puppeteer");
+    assert.strictEqual((fake.tablas.automation_actions || []).length, 0, "ni siquiera se registra un intento");
+});
+
+prueba("15. La tabla inicial automática del scheduler (compartirTabla) no cambia", async () => {
+    escenario();
     const { compartirTabla } = require("../../services/compartirTabla");
     const s = await compartirTabla({ evento: fake.tablas.eventos_bot[0], sock: sockets.get(A) });
     assert.deepStrictEqual(s, { enviado: true });
-    assert.strictEqual(envios[1].image, IMG_A);
+    assert.deepStrictEqual(envios.map(e => [e.jid, e.image]), [["g1@g.us", IMG_PUPPETEER_A]]);
 });
 
-prueba("14. Falla cerrado: si la página no recibe los datos interceptados no hay imagen ni envío", async () => {
+// ------------------------------- compatibilidad con el panel publicado ---
+
+prueba("16. Panel publicado (solicitudId SIN imagen): se acepta y la imagen sale del flujo anterior (Puppeteer)", async () => {
     escenario();
-    nav.sinInterceptar = true;
-    try {
-        const v = (await llamar("GET", "/tablas/compartir/vista-previa?precio=5000")).json.data;
-        assert.deepStrictEqual([v.imagen, typeof v.error_imagen], [null, "string"]);
-        const r = await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: sol(), grupos: ["g1@g.us"] });
-        assert.deepStrictEqual([r.status, r.json.motivo, envios.length], [502, "error_imagen", 0]);
-    } finally {
-        nav.sinInterceptar = false;
-    }
+    const capturasAntes = capturas;
+    const r = await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: sol(), grupos: ["g1@g.us"], texto: "Caption antiguo", guardar_destinos: true, imagen: undefined });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(capturas, capturasAntes + 1, "una captura con Puppeteer");
+    assert.deepStrictEqual(envios.map(e => [e.jid, e.image, e.caption]), [["g1@g.us", IMG_PUPPETEER_A, "Caption antiguo"]]);
+    assert.deepStrictEqual(destinosDe(A).map(d => d.grupos), [["g1@g.us"]]);
+    // Un clic posterior del panel publicado (grupos guardados, sin imagen).
+    const r2 = await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: sol(), imagen: undefined });
+    assert.strictEqual(r2.status, 200, JSON.stringify(r2.json));
+    assert.strictEqual(envios.length, 2);
+});
+
+prueba("17. Panel publicado: mismas validaciones (grupos ajenos, sesión, duplicados) y la captura solo tras pasarlas", async () => {
+    escenario();
+    const capturasAntes = capturas;
+    const ajeno = await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: sol(), grupos: ["gb@g.us"], imagen: undefined });
+    assert.deepStrictEqual([ajeno.status, ajeno.json.motivo], [409, "destinos_no_disponibles"]);
+    assert.strictEqual((await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: sol(), imagen: undefined }, "jwt-B")).json.motivo, "sin_destinos");
+    assert.strictEqual(capturas, capturasAntes, "sin validaciones superadas no se abre el navegador");
+    const id = sol();
+    await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: id, grupos: ["g1@g.us"], imagen: undefined });
+    const repetida = await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: id, grupos: ["g1@g.us"], imagen: undefined });
+    assert.strictEqual(repetida.json.resultados[0].estado, "ya_enviado");
+    assert.strictEqual(envios.length, 1, "misma solicitud: un solo envío");
+    sockets.delete(A);
+    const sinSesion = await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: sol(), grupos: ["g1@g.us"], imagen: undefined });
+    assert.deepStrictEqual([sinSesion.status, sinSesion.json.motivo], [409, "sin_sesion_activa"]);
+});
+
+prueba("18. Panel publicado y Puppeteer falla: 502 error_imagen y no se envía nada", async () => {
+    escenario();
+    nav.fallar = true;
+    const r = await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: sol(), grupos: ["g1@g.us"], imagen: undefined });
+    assert.deepStrictEqual([r.status, r.json.motivo, envios.length], [502, "error_imagen", 0]);
+});
+
+prueba("19. Vista previa del panel publicado (sin sin_imagen): sigue trayendo la imagen del flujo anterior", async () => {
+    escenario();
+    const capturasAntes = capturas;
+    const v = (await llamar("GET", "/tablas/compartir/vista-previa?precio=5000")).json.data;
+    assert.strictEqual(Buffer.from(v.imagen.split(",")[1], "base64").toString("base64"), IMG_PUPPETEER_A);
+    assert.strictEqual(v.error_imagen, null);
+    assert.strictEqual(capturas, capturasAntes + 1);
+    nav.fallar = true;
+    const sinImg = (await llamar("GET", "/tablas/compartir/vista-previa?precio=5000")).json.data;
+    assert.deepStrictEqual([sinImg.imagen, typeof sinImg.error_imagen, sinImg.texto.length > 0], [null, "string", true]);
+});
+
+prueba("20. Límite de cuerpo: un PNG de ~2 MB entra por /tablas/compartir; el resto de rutas sigue en 100 KB", async () => {
+    escenario();
+    const grande = Buffer.concat([Buffer.from(PNG_B64, "base64"), Buffer.alloc(2 * 1024 * 1024)]);
+    const r = await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: sol(), grupos: ["g1@g.us"], imagen: `data:image/png;base64,${grande.toString("base64")}` });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(Buffer.from(envios[0].image, "base64").length, grande.length);
+    const res = await fetch(`${base}/tablas/inicializar`, { method: "POST", headers: h("jwt-A"), body: JSON.stringify({ relleno: "x".repeat(200 * 1024) }) });
+    assert.strictEqual(res.status, 413, "el límite global (100 KB) no cambia para otras rutas");
 });
 
 (async () => {

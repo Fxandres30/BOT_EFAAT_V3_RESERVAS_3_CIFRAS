@@ -16,15 +16,19 @@ import {
 // Lo que muestra el modal de «Compartir» (AccionesTabla decide cuál):
 //   enviando   — envío de un clic a los grupos guardados, en curso;
 //   resultado  — cómo fue cada grupo (incluidos los que fallaron);
-//   configurar — vista previa real (imagen + texto), elección de grupos y
-//                confirmación antes de enviar. Cargarla NUNCA envía nada.
+//   configurar — vista previa real (captura del `div` de la tabla visible +
+//                texto), elección de grupos y confirmación antes de enviar.
+//                Cargarla NUNCA envía nada. Se envía la MISMA captura que
+//                se ve en la vista previa.
 export type PanelCompartir =
     | { tipo: "enviando"; grupos?: string[] }
     | { tipo: "resultado"; resultado: ResultadoCompartir }
-    | { tipo: "configurar"; aviso?: string };
+    | { tipo: "configurar"; aviso?: string; imagen?: string };
 
 interface Props {
     precio: number;
+    /** PNG (data URL) del `div` de la tabla visible. */
+    capturarTabla: () => Promise<string>;
     panel: PanelCompartir;
     onCambiar: (panel: PanelCompartir) => void;
     onClose: () => void;
@@ -36,7 +40,7 @@ export function nuevaSolicitud(): string {
     return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 
-export default function CompartirTablaModal({ precio, panel, onCambiar, onClose }: Props) {
+export default function CompartirTablaModal({ precio, capturarTabla, panel, onCambiar, onClose }: Props) {
 
     const enviando = panel.tipo === "enviando";
 
@@ -50,14 +54,14 @@ export default function CompartirTablaModal({ precio, panel, onCambiar, onClose 
         >
             {panel.tipo === "enviando" && (
                 <p role="status" className="text-sm text-gray-700">
-                    Generando la imagen de la tabla y publicándola en {panel.grupos?.length ? `${panel.grupos.length} grupo(s)` : "tus grupos guardados"}… No cierres esta ventana.
+                    Publicando la imagen de la tabla en {panel.grupos?.length ? `${panel.grupos.length} grupo(s)` : "tus grupos guardados"}… No cierres esta ventana.
                 </p>
             )}
             {panel.tipo === "resultado" && (
                 <Resultado resultado={panel.resultado} onCambiarGrupos={() => onCambiar({ tipo: "configurar" })} onClose={onClose} />
             )}
             {panel.tipo === "configurar" && (
-                <Configurar precio={precio} aviso={panel.aviso} onCambiar={onCambiar} onClose={onClose} />
+                <Configurar precio={precio} aviso={panel.aviso} imagenInicial={panel.imagen} capturarTabla={capturarTabla} onCambiar={onCambiar} onClose={onClose} />
             )}
         </Modal>
     );
@@ -113,9 +117,21 @@ function Resultado({ resultado, onCambiarGrupos, onClose }: { resultado: Resulta
 
 type Carga = { tipo: "cargando" } | { tipo: "error"; mensaje: string } | { tipo: "ok"; vista: VistaPreviaCompartir };
 
-function Configurar({ precio, aviso, onCambiar, onClose }: { precio: number; aviso?: string; onCambiar: (p: PanelCompartir) => void; onClose: () => void }) {
+interface PropsConfigurar {
+    precio: number;
+    aviso?: string;
+    imagenInicial?: string;
+    capturarTabla: () => Promise<string>;
+    onCambiar: (p: PanelCompartir) => void;
+    onClose: () => void;
+}
+
+function Configurar({ precio, aviso, imagenInicial, capturarTabla, onCambiar, onClose }: PropsConfigurar) {
 
     const [carga, setCarga] = useState<Carga>({ tipo: "cargando" });
+    // Captura del `div` de la tabla visible: la que se ve aquí es la que se envía.
+    const [imagen, setImagen] = useState<string | null>(imagenInicial || null);
+    const [errorImagen, setErrorImagen] = useState<string | null>(null);
     const [seleccion, setSeleccion] = useState<string[]>([]);
     const [texto, setTexto] = useState("");
     const [confirmando, setConfirmando] = useState(false);
@@ -132,7 +148,14 @@ function Configurar({ precio, aviso, onCambiar, onClose }: { precio: number; avi
             setTexto(r.data.texto);
             setCarga({ tipo: "ok", vista: r.data });
         });
+        if (!imagenInicial) {
+            capturarTabla()
+                .then(png => { if (vigente) setImagen(png); })
+                .catch(e => { if (vigente) setErrorImagen(e instanceof Error ? e.message : "No se pudo generar la imagen de la tabla."); });
+        }
         return () => { vigente = false; };
+    // Se carga una vez al abrir; capturarTabla/imagenInicial no cambian mientras está abierto.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [precio]);
 
     if (carga.tipo === "cargando") return <p role="status" className="text-sm text-gray-600">Generando la vista previa de la tabla…</p>;
@@ -150,18 +173,19 @@ function Configurar({ precio, aviso, onCambiar, onClose }: { precio: number; avi
     }
 
     async function enviar() {
-        if (enviandoRef.current) return;
+        if (enviandoRef.current || !imagen) return;
         enviandoRef.current = true;
         const grupos = [...seleccion];
         onCambiar({ tipo: "enviando", grupos });
         const resultado = await compartirTabla(precio, {
             solicitudId: nuevaSolicitud(),
+            imagen,
             grupos,
             guardarDestinos: true,
             ...(texto.trim() !== vista.texto.trim() ? { texto } : {})
         });
         if (resultado.motivo === "destinos_no_disponibles" || resultado.motivo === "sin_destinos") {
-            onCambiar({ tipo: "configurar", aviso: mensajeCompartir(resultado.motivo) });
+            onCambiar({ tipo: "configurar", imagen, aviso: mensajeCompartir(resultado.motivo) });
             return;
         }
         onCambiar({ tipo: "resultado", resultado });
@@ -175,10 +199,12 @@ function Configurar({ precio, aviso, onCambiar, onClose }: { precio: number; avi
             {vista.invalidos.length > 0 && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{vista.invalidos.length} grupo(s) guardado(s) ya no están disponibles y se quitaron de la selección.</p>}
 
             <section aria-label="Vista previa del mensaje" className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                {vista.imagen
+                {imagen
                     // eslint-disable-next-line @next/next/no-img-element
-                    ? <img src={vista.imagen} alt={`Tabla de $${precio.toLocaleString("es-CO")}`} className="mx-auto max-h-[420px] w-auto rounded-lg" />
-                    : <p className="text-sm text-rose-700" role="alert">{vista.error_imagen || "No se pudo generar la imagen de la tabla."} Al enviar se intentará generar de nuevo; si falla, no se envía nada.</p>}
+                    ? <img src={imagen} alt={`Tabla de $${precio.toLocaleString("es-CO")}`} className="mx-auto max-h-[420px] w-auto rounded-lg" />
+                    : errorImagen
+                        ? <p className="text-sm text-rose-700" role="alert">{errorImagen} Sin imagen no se puede enviar.</p>
+                        : <p className="text-sm text-gray-600" role="status">Capturando la tabla…</p>}
                 <Textarea
                     label="Texto de la publicación (pie de foto)"
                     rows={6}
@@ -214,14 +240,14 @@ function Configurar({ precio, aviso, onCambiar, onClose }: { precio: number; avi
                     <p className="text-indigo-800">Estos grupos quedarán guardados para los próximos «Compartir».</p>
                     <div className="mt-3 flex flex-wrap justify-end gap-2">
                         <Button variant="secondary" onClick={() => setConfirmando(false)}>Volver</Button>
-                        <Button onClick={enviar} disabled={!vista.sesion_conectada}>Confirmar y enviar</Button>
+                        <Button onClick={enviar} disabled={!vista.sesion_conectada || !imagen}>Confirmar y enviar</Button>
                     </div>
                 </div>
             ) : (
                 <div className="flex flex-wrap justify-end gap-2">
                     <Button variant="secondary" onClick={onClose}>Cancelar</Button>
                     {vista.persistencia && <Button variant="secondary" onClick={guardarGrupos} loading={guardando} disabled={!seleccion.length}>Guardar grupos sin enviar</Button>}
-                    <Button onClick={() => setConfirmando(true)} disabled={!seleccion.length || !vista.sesion_conectada}>Continuar</Button>
+                    <Button onClick={() => setConfirmando(true)} disabled={!seleccion.length || !vista.sesion_conectada || !imagen}>Continuar</Button>
                 </div>
             )}
 

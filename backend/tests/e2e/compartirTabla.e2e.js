@@ -1,10 +1,9 @@
 // ==========================================================================
 // PRUEBA DE EXTREMO A EXTREMO — Tablas $5.000 → «Compartir» con grupos de
-// destino, con navegador real (Chrome vía puppeteer), panel Next real, API
-// real (routes/tablas.js) y captura REAL de la imagen de la tabla
-// (services/compartirTabla.js → /tablas/imprimir/5000 del panel), SIN
-// TABLA_SHARE_SECRET: los datos se entregan a la página interceptando su
-// petición, sin enlace firmado ni /tablas/imprimir-datos.
+// destino, con navegador real (Chrome vía puppeteer), panel Next real y API
+// real (routes/tablas.js). La imagen es la captura, EN EL NAVEGADOR, del
+// `div` de la tabla visible (Grid): el backend no abre ningún navegador, no
+// usa página de impresión, /tablas/imprimir-datos ni TABLA_SHARE_SECRET.
 //
 //   1. Primer «Compartir»: sin grupos guardados abre la vista previa (imagen
 //      real + texto debajo) y la lista de grupos; nada se envía al cargar.
@@ -87,6 +86,13 @@ async function main() {
         }
     });
 
+    // Desde aquí, cualquier navegador que abra el BACKEND contaría: «Compartir»
+    // no debe abrir ninguno (el del entorno ya está abierto).
+    const pptr = require("puppeteer");
+    const lanzarOriginal = pptr.launch.bind(pptr);
+    let navegadoresBackend = 0;
+    pptr.launch = (...args) => { navegadoresBackend++; return lanzarOriginal(...args); };
+
     try {
 
         const page = await entorno.nuevaPagina(TOKEN);
@@ -117,7 +123,20 @@ async function main() {
         assert.deepStrictEqual(envios.map(e => e.jid), ["g1@g.us", "g2@g.us"]);
         assert.ok(envios.every(e => e.image.toString("hex").startsWith(PNG) && e.caption === caption), "imagen + caption en el mismo mensaje");
         assert.deepStrictEqual(t.destinos_compartir_tabla.map(d => [d.usuario_id, d.precio, d.grupos]), [[A, 5000, ["g1@g.us", "g2@g.us"]]]);
+        assert.ok(envios.every(e => e.image.equals(Buffer.from(src.split(",")[1], "base64"))), "se envía la MISMA captura que se vio en la vista previa");
         paso("confirmación con los destinos → imagen PNG + caption a cada grupo; resultado por grupo; selección guardada");
+
+        // La foto es el `div` real de la tabla en pantalla (Grid): mismas
+        // proporciones (captura a pixelRatio 2).
+        const caja = await page.evaluate(() => {
+            const div = document.querySelector('[data-numero="00"]').closest("div.rounded-2xl.border");
+            const r = div.getBoundingClientRect();
+            return { ancho: r.width, alto: r.height };
+        });
+        const ancho = envios[0].image.readUInt32BE(16);
+        const alto = envios[0].image.readUInt32BE(20);
+        assert.ok(Math.abs(ancho - caja.ancho * 2) <= 2 && Math.abs(alto - caja.alto * 2) <= 2, `PNG ${ancho}x${alto} vs div ${caja.ancho}x${caja.alto}`);
+        paso(`la imagen enviada es el div de la tabla visible (${ancho}x${alto} px = ${caja.ancho}x${caja.alto} css × 2)`);
 
         // 3. Siguiente clic: directo, sin volver a elegir.
         await pulsar(page, "Cerrar");
@@ -138,7 +157,8 @@ async function main() {
 
         assert.strictEqual(process.env.TABLA_SHARE_SECRET, undefined, "sin secreto en el entorno");
         assert.strictEqual(llamadasImprimirDatos, 0, "ninguna captura pasó por /tablas/imprimir-datos (enlace firmado)");
-        paso("todo sin TABLA_SHARE_SECRET y sin el endpoint con token");
+        assert.strictEqual(navegadoresBackend, 0, "el backend no abrió ningún navegador (sin Puppeteer ni página de impresión)");
+        paso("sin Puppeteer en el backend, sin página de impresión, sin TABLA_SHARE_SECRET ni endpoint con token");
 
         assert.deepStrictEqual(page.erroresJs, [], `errores de JavaScript: ${page.erroresJs.join(" | ")}`);
         paso("sin errores de JavaScript en el navegador");

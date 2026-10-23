@@ -14,6 +14,8 @@ interface Props {
     disponibles: number;
     usuarioId: string | null;
     onReiniciar: () => Promise<void> | void;
+    /** PNG (data URL) del `div` de la tabla visible. */
+    capturarTabla: () => Promise<string>;
 }
 
 export default function AccionesTabla({
@@ -21,7 +23,8 @@ export default function AccionesTabla({
     totalNumeros,
     disponibles,
     usuarioId,
-    onReiniciar
+    onReiniciar,
+    capturarTabla
 }: Props) {
 
     const [confirmandoReinicio, setConfirmandoReinicio] = useState(false);
@@ -53,9 +56,10 @@ export default function AccionesTabla({
 
     }
 
-    // Un clic: imagen actual + texto configurado a los grupos GUARDADOS de
-    // esta tabla. Sin grupos guardados (o si ya no están disponibles) se
-    // abre la configuración: vista previa, grupos y confirmación.
+    // Un clic: captura de la tabla visible + texto configurado a los grupos
+    // GUARDADOS de esta tabla. Sin grupos guardados (o si ya no están
+    // disponibles) se abre la configuración: vista previa, grupos y
+    // confirmación, con esa misma captura.
     async function compartir() {
 
         if (!usuarioId) {
@@ -66,14 +70,24 @@ export default function AccionesTabla({
         if (compartiendoRef.current) return;
         compartiendoRef.current = true;
         setCompartiendo(true);
-        setPanelCompartir({ tipo: "enviando" });
 
         try {
 
-            const resultado = await compartirTabla(precio, { solicitudId: nuevaSolicitud() });
+            let imagen: string;
+
+            try {
+                imagen = await capturarTabla();
+            } catch (e) {
+                setPanelCompartir({ tipo: "resultado", resultado: { enviado: false, motivo: "error_imagen", aviso: e instanceof Error ? e.message : undefined } });
+                return;
+            }
+
+            setPanelCompartir({ tipo: "enviando" });
+
+            const resultado = await compartirTabla(precio, { solicitudId: nuevaSolicitud(), imagen });
 
             if (resultado.motivo === "sin_destinos" || resultado.motivo === "destinos_no_disponibles") {
-                setPanelCompartir({ tipo: "configurar", aviso: resultado.motivo === "sin_destinos" ? "Elige los grupos donde se publicará esta tabla." : mensajeCompartir(resultado.motivo) });
+                setPanelCompartir({ tipo: "configurar", imagen, aviso: resultado.motivo === "sin_destinos" ? "Elige los grupos donde se publicará esta tabla." : mensajeCompartir(resultado.motivo) });
                 return;
             }
 
@@ -147,6 +161,7 @@ export default function AccionesTabla({
             {panelCompartir && (
                 <CompartirTablaModal
                     precio={precio}
+                    capturarTabla={capturarTabla}
                     panel={panelCompartir}
                     onCambiar={setPanelCompartir}
                     onClose={() => setPanelCompartir(null)}

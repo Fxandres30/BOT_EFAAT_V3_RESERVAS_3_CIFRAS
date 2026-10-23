@@ -1,7 +1,8 @@
 // ==========================================================================
-// destinosCompartir.js — grupos de destino y texto del botón «Compartir» de
-// una tabla (Tablas → Compartir). La imagen y el envío siguen siendo los de
-// services/compartirTabla.js (capturarImagenTabla + sendImage); aquí solo:
+// destinosCompartir.js — grupos de destino, texto e imagen del botón
+// «Compartir» de una tabla (Tablas → Compartir). La imagen es la captura PNG
+// del `div` de la tabla visible que manda el panel (aquí solo se valida); el
+// envío es el de services/compartirTabla.js (sendImage). Aquí:
 //
 //   - qué grupos puede elegir el cliente: SUS grupos_autorizados activos
 //     (los mismos que ofrece el formulario de sorteos, sorteos/repo.js);
@@ -79,6 +80,33 @@ function clasificar(grupos, disponibles) {
     };
 }
 
+// Captura PNG de la tabla que manda el panel (data URL base64). Devuelve el
+// Buffer solo si es un PNG real (firma + cabecera IHDR), de tamaño y
+// dimensiones razonables; si no, null. Nunca se interpreta otro formato.
+const MAX_IMAGEN_BYTES = 3 * 1024 * 1024;
+const MAX_LADO_PX = 8000;
+const PREFIJO_PNG = "data:image/png;base64,";
+const FIRMA_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+function imagenPng(dataUrl) {
+
+    if (typeof dataUrl !== "string" || !dataUrl.startsWith(PREFIJO_PNG)) return null;
+
+    const base64 = dataUrl.slice(PREFIJO_PNG.length);
+    if (!base64 || base64.length > Math.ceil(MAX_IMAGEN_BYTES / 3) * 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) return null;
+
+    const buf = Buffer.from(base64, "base64");
+    if (buf.length < 33 || buf.length > MAX_IMAGEN_BYTES) return null;
+    if (!buf.subarray(0, 8).equals(FIRMA_PNG) || buf.toString("ascii", 12, 16) !== "IHDR") return null;
+
+    const ancho = buf.readUInt32BE(16);
+    const alto = buf.readUInt32BE(20);
+    if (!ancho || !alto || ancho > MAX_LADO_PX || alto > MAX_LADO_PX) return null;
+
+    return buf;
+
+}
+
 function textoEditado(valor) {
     if (typeof valor !== "string") return null;
     const t = valor.trim().slice(0, MAX_TEXTO);
@@ -109,6 +137,7 @@ module.exports = {
     guardarDestinos,
     normalizarGrupos,
     clasificar,
+    imagenPng,
     textoEditado,
     textoParaCompartir,
     MAX_TEXTO

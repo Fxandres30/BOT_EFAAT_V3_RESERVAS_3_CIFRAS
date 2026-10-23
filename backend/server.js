@@ -36,6 +36,10 @@ app.use(cors());
 app.use("/analitica", analiticaRoutes);
 require("./analitica/retencion").iniciarRetencion();
 
+// «Compartir tabla» envía la captura PNG de la tabla en base64: límite
+// propio (el global es de 100 KB). routes/tablas.js valida tipo y tamaño.
+app.use("/tablas/compartir", express.json({ limit: "6mb" }));
+
 app.use(express.json());
 
 app.use("/sessions", sessionsRoutes);

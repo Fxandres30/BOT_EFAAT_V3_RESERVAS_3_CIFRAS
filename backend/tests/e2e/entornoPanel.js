@@ -122,6 +122,8 @@ function restEnMemoria(req, res, cuerpo) {
 function arrancarBackend(montarBackend) {
     const express = require("express");
     const app = express();
+    // Igual que server.js: la captura PNG de «Compartir» tiene su propio límite.
+    app.use("/tablas/compartir", express.json({ limit: "6mb" }));
     app.use(express.json());
     app.use("/sorteos", require(r("routes/sorteos.js")));
     if (montarBackend) montarBackend(app, express);

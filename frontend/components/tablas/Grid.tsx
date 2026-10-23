@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type Ref } from "react";
 
 import NumeroCard from "./NumeroCard";
 import NumeroDetalleModal from "./NumeroDetalleModal";
@@ -27,6 +27,8 @@ interface Props {
     /** Representación exportada/compartida: solo la cuadrícula de números,
      *  sin leyenda ni modal de detalle (ver /tablas/imprimir/[precio]). */
     limpio?: boolean;
+    /** El `div` de la tabla tal como se ve: «Compartir» lo captura como PNG. */
+    contenedorRef?: Ref<HTMLDivElement>;
 }
 
 export default function Grid({
@@ -42,7 +44,8 @@ export default function Grid({
     onReservar,
     onMarcarPagado,
     onLiberar,
-    limpio = false
+    limpio = false,
+    contenedorRef
 }: Props) {
 
     const [seleccionado, setSeleccionado] = useState<NumeroReserva | null>(null);
@@ -96,7 +99,7 @@ export default function Grid({
 
     return (
 
-        <div className="border rounded-2xl shadow-sm p-2.5 sm:p-4" style={estiloDiseno}>
+        <div ref={contenedorRef} className="border rounded-2xl shadow-sm p-2.5 sm:p-4" style={estiloDiseno}>
 
             {!limpio && (
                 <div className="flex justify-center sm:justify-start pb-3 sm:pb-4 mb-1 border-b border-gray-100">

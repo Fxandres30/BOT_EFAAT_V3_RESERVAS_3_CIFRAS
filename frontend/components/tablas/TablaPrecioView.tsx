@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Loader2, AlertTriangle, Info, Palette, LibraryBig } from "lucide-react";
 
 import { useTablaPrecio } from "@/hooks/useTablaPrecio";
@@ -17,6 +17,7 @@ import ActividadReciente from "./ActividadReciente";
 import EditorDisenoModal from "./EditorDisenoModal";
 import BibliotecaDisenosModal from "./BibliotecaDisenosModal";
 import { contarPorFiltro, type FiltroEstado } from "./estadoVisual";
+import { capturarTabla } from "@/services/tablas/capturarTabla";
 import type { EventoActivo } from "./types";
 import type { TablaDiseno } from "./disenoTypes";
 
@@ -84,6 +85,9 @@ export default function TablaPrecioView({ precio }: Props) {
 
     const [personalizarAbierto, setPersonalizarAbierto] = useState(false);
     const [bibliotecaAbierta, setBibliotecaAbierta] = useState(false);
+
+    // El `div` de la tabla visible: «Compartir» lo captura tal cual.
+    const tablaRef = useRef<HTMLDivElement>(null);
     const [disenoEnEdicion, setDisenoEnEdicion] = useState<TablaDiseno | null>(null);
 
     if (loading) {
@@ -170,6 +174,7 @@ export default function TablaPrecioView({ precio }: Props) {
                         disponibles={stats.disponibles}
                         usuarioId={usuarioId}
                         onReiniciar={reiniciar}
+                        capturarTabla={() => capturarTabla(tablaRef.current)}
                     />
                 </div>
             </div>
@@ -203,6 +208,7 @@ export default function TablaPrecioView({ precio }: Props) {
             </div>
 
             <Grid
+                contenedorRef={tablaRef}
                 precio={precio}
                 numeros={numeros}
                 paquetes={paquetes}

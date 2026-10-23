@@ -18,11 +18,11 @@ export interface ResultadoCompartir {
     invalidos?: string[];
 }
 
+// Texto y grupos para «Compartir». La imagen NO viene de aquí: es la captura
+// del `div` de la tabla visible (services/tablas/capturarTabla.ts).
 export interface VistaPreviaCompartir {
     precio: number;
     evento: { id: string; nombre: string | null; hora_fin: string | null; hora_cierre: string | null };
-    imagen: string | null;
-    error_imagen: string | null;
     texto: string;
     origen_texto: "sorteo" | "habitual";
     grupos: { grupo_id: string; nombre: string | null }[];
@@ -35,6 +35,8 @@ export interface VistaPreviaCompartir {
 export interface EnvioCompartir {
     /** Uno por pulsación: reintentar la misma no reenvía a un grupo ya hecho. */
     solicitudId: string;
+    /** PNG (data URL) de la tabla visible, capturado al pulsar Compartir. */
+    imagen: string;
     /** Sin grupos: los guardados para esta tabla. */
     grupos?: string[];
     /** Texto editado para este envío; sin él, el configurado. */
@@ -50,8 +52,8 @@ async function json<T>(res: Response): Promise<T> {
     }
 }
 
-// Botón «Compartir»: la MISMA tubería del backend (services/compartirTabla.js:
-// imagen real de la tabla + caption por Baileys) a los grupos elegidos.
+// Botón «Compartir»: envía la captura de la tabla visible con su texto como
+// caption a los grupos elegidos (backend: sendImage de Baileys).
 export async function compartirTabla(precio: number, envio: EnvioCompartir): Promise<ResultadoCompartir> {
 
     const res = await fetchConSesion("/api/tablas/compartir", {
@@ -60,6 +62,7 @@ export async function compartirTabla(precio: number, envio: EnvioCompartir): Pro
         body: JSON.stringify({
             precio,
             solicitudId: envio.solicitudId,
+            imagen: envio.imagen,
             ...(envio.grupos ? { grupos: envio.grupos } : {}),
             ...(envio.texto !== undefined ? { texto: envio.texto } : {}),
             ...(envio.guardarDestinos ? { guardar_destinos: true } : {})
@@ -71,7 +74,8 @@ export async function compartirTabla(precio: number, envio: EnvioCompartir): Pro
 }
 
 export async function vistaPreviaCompartir(precio: number): Promise<{ ok: true; data: VistaPreviaCompartir } | { ok: false; motivo?: string }> {
-    const res = await fetchConSesion(`/api/tablas/compartir/vista-previa?precio=${precio}`);
+    // sin_imagen=1: la imagen es la captura del panel; el backend no la genera.
+    const res = await fetchConSesion(`/api/tablas/compartir/vista-previa?precio=${precio}&sin_imagen=1`);
     return json(res);
 }
 
@@ -94,6 +98,7 @@ export const MENSAJES_COMPARTIR: Record<string, string> = {
     grupos_invalidos: "La selección de grupos no es válida.",
     envio_en_curso: "Ya se está compartiendo esta tabla. Espera a que termine.",
     error_imagen: "No se pudo generar la imagen de la tabla. No se envió nada.",
+    imagen_invalida: "La imagen de la tabla no es válida o es demasiado grande. No se envió nada.",
     tiempo_agotado: "El envío tardó demasiado en responder. Puede que se haya enviado: revisa los grupos antes de reintentar.",
     migracion_pendiente: "Guardar la selección de grupos todavía no está disponible."
 };

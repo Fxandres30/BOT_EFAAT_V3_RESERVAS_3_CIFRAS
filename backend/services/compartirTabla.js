@@ -264,25 +264,19 @@ async function compartirTabla({ evento, sock, idempotencia = null }) {
 }
 
 // compartirEnGrupos — botón «Compartir» con grupos elegidos por el cliente.
-// Captura la imagen UNA vez y la envía con `caption` a cada grupo, en serie.
+// `imagen` es la captura PNG del `div` de la tabla visible en el panel (ya
+// validada por destinosCompartir.imagenPng): se envía tal cual, con
+// `caption`, a cada grupo, en serie. Aquí no se genera ninguna imagen.
 // Cada envío pasa por el ExecutionGuard con la clave de ESTA solicitud
 // (solicitudId, generado por el panel al pulsar): reintentar la misma
 // petición nunca reenvía a un grupo ya hecho; una pulsación nueva sí
 // publica de nuevo. Nunca lanza.
 // -> { ok, motivo?, resultados: [{ grupo_id, nombre, estado: enviado|ya_enviado|en_curso|fallido, error? }] }
-async function compartirEnGrupos({ evento, sock, grupos, caption, solicitudId }) {
+async function compartirEnGrupos({ evento, sock, grupos, caption, solicitudId, imagen }) {
 
     if (!evento?.valor || !evento.usuario_id) return { ok: false, motivo: "evento_invalido", resultados: [] };
     if (!sock) return { ok: false, motivo: "sin_sesion_activa", resultados: [] };
-
-    let imagen;
-
-    try {
-        imagen = await capturarImagenTabla(Number(evento.valor), evento.usuario_id, evento.id ?? null);
-    } catch (err) {
-        console.error("❌ [COMPARTIR TABLA] no se pudo generar la imagen:", err?.message);
-        return { ok: false, motivo: "error_imagen", resultados: [] };
-    }
+    if (!Buffer.isBuffer(imagen) || !imagen.length) return { ok: false, motivo: "imagen_invalida", resultados: [] };
 
     const resultados = [];
 
