@@ -11,7 +11,7 @@ import type { FilaArchivo, FilaAuditoria } from "@/components/tablas/historialDa
 
 export const LIMITE_HISTORIAL = 1000;
 
-const COLUMNAS_AUDITORIA = "id, origen, accion, numero, grupo_nombre, contacto_nombre, contacto_telefono, estado_anterior, estado_nuevo, motivo, observaciones, metodo_pago, resultado, codigo, operador_email, creado_en";
+const COLUMNAS_AUDITORIA = "id, origen, accion, numero, grupo_nombre, contacto_nombre, contacto_telefono, contacto_id, estado_anterior, estado_nuevo, motivo, observaciones, metodo_pago, resultado, codigo, operador_email, creado_en";
 
 export interface EventosHistorial {
     auditoria: FilaAuditoria[];

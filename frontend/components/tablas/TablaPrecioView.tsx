@@ -67,7 +67,7 @@ export default function TablaPrecioView({ precio }: Props) {
 
     // ÚNICA búsqueda del panel: el buscador y los filtros viven en «Historial
     // de números» y filtran a la vez el historial y la cuadrícula, con la
-    // misma regla (historialDatos.coincideFila).
+    // misma regla (historialDatos.aplicarFiltros).
     const [filtros, setFiltros] = useState<FiltrosHistorial>(FILTROS_HISTORIAL_VACIOS);
 
     const coincidentes = useMemo(

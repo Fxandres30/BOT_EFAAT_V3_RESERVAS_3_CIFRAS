@@ -33,6 +33,8 @@ export interface FilaAuditoria {
     grupo_nombre: string | null;
     contacto_nombre: string | null;
     contacto_telefono: string | null;
+    // usuarios.id del comprador (misma identidad que usuario_global_id).
+    contacto_id: string | null;
     estado_anterior: string | null;
     estado_nuevo: string | null;
     motivo: string | null;
@@ -81,6 +83,26 @@ export interface FilaHistorial {
     reserva: { fecha: string; hora: string | null } | null;
     pago: { fecha: string; hora: string | null } | null;
     eventos: EventoHistorial[];
+    // Solo para buscar (no se muestra): quién aparece en la reserva actual y
+    // en cada movimiento, con la identidad real cuando la fuente la guarda.
+    busqueda: FuenteBusqueda[];
+}
+
+// Una persona tal como la registró UNA fuente (reserva actual o un
+// movimiento). `identidad` = usuarios.id (usuario_global_id de la reserva,
+// contacto_id de la auditoría); null si la fuente no la guarda (actividad).
+export interface FuenteBusqueda {
+    identidad: string | null;
+    nombres: string[];
+    // Teléfonos canónicos (telefonoCanonico).
+    telefonos: string[];
+}
+
+// Identidad del directorio de contactos del cliente (GET /contactos).
+export interface ContactoIdentidad {
+    id: string;
+    nombre: string | null;
+    telefono: string | null;
 }
 
 export interface FuentesHistorial {
@@ -88,6 +110,10 @@ export interface FuentesHistorial {
     auditoriaDisponible: boolean;
     actividad: ActividadReserva[];
     archivo: FilaArchivo[];
+    // Opcional: completa nombre y teléfono ACTUALES de las identidades que ya
+    // aparecen en esta tabla (p. ej. una reserva hecha cuando la persona solo
+    // tenía LID y su teléfono se conoció después).
+    contactos?: ContactoIdentidad[];
 }
 
 const TITULO_AUDITORIA: Record<FilaAuditoria["accion"], string> = {
@@ -106,6 +132,36 @@ const TITULO_ACTIVIDAD: Record<string, string> = {
 };
 
 const texto = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
+
+// Teléfono comparable, con la MISMA regla que el backend
+// (identityScanner/normalizarCandidatos.js · limpiarTelefono): parte de
+// usuario del JID sin dispositivo (":N") ni agente ("_N"), solo dígitos, y
+// "57" + 10 dígitos equivale a los 10 dígitos. Un LID ("…@lid") no es un
+// teléfono: null. Un texto con letras (un nombre) tampoco.
+export function telefonoCanonico(valor: unknown): string | null {
+    const crudo = texto(valor);
+    if (!crudo) return null;
+    const [usuario, dominio] = crudo.split("@");
+    if (dominio && dominio.toLowerCase().startsWith("lid")) return null;
+    if (/[a-z]/i.test(usuario)) return null;
+    const digitos = usuario.split(":")[0].split("_")[0].replace(/\D/g, "");
+    if (digitos.length === 12 && digitos.startsWith("57")) return digitos.slice(2);
+    return digitos.length >= 7 && digitos.length <= 15 ? digitos : null;
+}
+
+// Contacto que no es teléfono ni JID (texto libre): se busca como un nombre.
+const contactoTextual = (v: unknown): string | null => {
+    const t = texto(v);
+    return t && !t.includes("@") && /[a-z]/i.test(t) ? t : null;
+};
+
+function fuenteBusqueda(identidad: unknown, nombres: unknown[], telefonos: unknown[]): FuenteBusqueda {
+    return {
+        identidad: texto(identidad),
+        nombres: [...nombres.map(texto), ...telefonos.map(contactoTextual)].filter(Boolean) as string[],
+        telefonos: [...new Set(telefonos.map(telefonoCanonico).filter(Boolean) as string[])]
+    };
+}
 
 function desdeAuditoria(a: FilaAuditoria): EventoHistorial {
     return {
@@ -189,19 +245,37 @@ function duplicaAuditoria(a: ActividadReserva): boolean {
 export function construirHistorial(numeros: NumeroReserva[], fuentes: FuentesHistorial, estadoDe: (n: NumeroReserva) => EstadoNumero): FilaHistorial[] {
 
     const eventos = new Map<string, EventoHistorial[]>();
-    const agregar = (numero: string | null, e: EventoHistorial) => {
+    const personas = new Map<string, FuenteBusqueda[]>();
+    const agregar = (numero: string | null, e: EventoHistorial, persona: FuenteBusqueda) => {
         if (!numero) return;
-        const lista = eventos.get(numero) || [];
-        lista.push(e);
-        eventos.set(numero, lista);
+        eventos.set(numero, [...(eventos.get(numero) || []), e]);
+        personas.set(numero, [...(personas.get(numero) || []), persona]);
     };
 
-    if (fuentes.auditoriaDisponible) fuentes.auditoria.forEach(a => agregar(a.numero, desdeAuditoria(a)));
+    if (fuentes.auditoriaDisponible) fuentes.auditoria.forEach(a => agregar(a.numero, desdeAuditoria(a),
+        fuenteBusqueda(a.contacto_id, [a.contacto_nombre], [a.contacto_telefono])));
     fuentes.actividad
         .filter(a => a.numero && a.tipo in TITULO_ACTIVIDAD)
         .filter(a => !(fuentes.auditoriaDisponible && duplicaAuditoria(a)))
-        .forEach(a => agregar(a.numero, desdeActividad(a)));
-    fuentes.archivo.forEach(a => agregar(a.numero, desdeArchivo(a)));
+        .forEach(a => agregar(a.numero, desdeActividad(a),
+            fuenteBusqueda(null, [a.detalle?.comprador], [a.detalle?.contacto])));
+    fuentes.archivo.forEach(a => {
+        const f = a.fila || {};
+        agregar(a.numero, desdeArchivo(a), fuenteBusqueda(f.usuario_global_id, [f.comprador, f.nombre], [f.telefono, f.contacto]));
+    });
+
+    // Directorio: nombre y teléfono actuales de cada identidad.
+    const directorio = new Map((fuentes.contactos || []).map(c => [c.id, c]));
+    const completar = (p: FuenteBusqueda): FuenteBusqueda => {
+        const c = p.identidad ? directorio.get(p.identidad) : undefined;
+        if (!c) return p;
+        const tel = telefonoCanonico(c.telefono);
+        return {
+            identidad: p.identidad,
+            nombres: c.nombre ? [...p.nombres, c.nombre] : p.nombres,
+            telefonos: tel && !p.telefonos.includes(tel) ? [...p.telefonos, tel] : p.telefonos
+        };
+    };
 
     const filas: FilaHistorial[] = [];
 
@@ -224,7 +298,11 @@ export function construirHistorial(numeros: NumeroReserva[], fuentes: FuentesHis
             sorteo: ocupado ? texto(n.nombre_evento) : null,
             reserva: ocupado && n.fecha_reserva ? { fecha: n.fecha_reserva, hora: n.hora_reserva } : null,
             pago: ocupado && n.fecha_pago ? { fecha: n.fecha_pago, hora: n.hora_pago } : null,
-            eventos: lista
+            eventos: lista,
+            busqueda: [
+                ...(ocupado ? [fuenteBusqueda(n.usuario_global_id, [n.comprador, n.nombre], [n.telefono, n.contacto])] : []),
+                ...(personas.get(n.numero) || [])
+            ].map(completar)
         });
 
     }
@@ -253,14 +331,60 @@ export function fechaColombia(iso: string): string | null {
 
 const normalizar = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-// ÚNICA regla de búsqueda y filtros del panel de la tabla: la usan el
-// historial (filtrarHistorial) y la cuadrícula (numerosCoincidentes). El
-// estado se compara con el estado ACTUAL; un número que coincide conserva
-// todos sus movimientos (el filtro nunca recorta su historial).
-export function coincideFila(fila: FilaHistorial, f: FiltrosHistorial): boolean {
+export type TipoConsulta = "vacia" | "numero" | "telefono" | "texto";
 
-    const q = normalizar(f.texto.trim());
-    const qDigitos = q.replace(/\D/g, "");
+// Qué se está buscando. 1 a 3 dígitos = número de la tabla ("7" -> "07").
+// Solo dígitos y separadores de teléfono (espacios, guiones, paréntesis, +)
+// con 7 o más dígitos = teléfono. Lo demás = nombre o contacto escrito.
+export function tipoConsulta(consulta: string): { tipo: TipoConsulta; valor: string } {
+    const q = consulta.trim();
+    if (!q) return { tipo: "vacia", valor: "" };
+    if (/^\d{1,3}$/.test(q)) return { tipo: "numero", valor: q };
+    if (/^[\d\s+\-().]+$/.test(q)) {
+        const tel = telefonoCanonico(q);
+        if (tel) return { tipo: "telefono", valor: tel };
+    }
+    return { tipo: "texto", valor: normalizar(q) };
+}
+
+const esNumero = (numero: string, q: string) =>
+    numero === q || (q.length < numero.length && numero === q.padStart(numero.length, "0"));
+
+// Números que cumplen la BÚSQUEDA (sin estado/grupo/fecha). Teléfono: igual,
+// nunca «contiene». Nombre: contiene, sin tildes. Una coincidencia en una
+// fuente con identidad trae TODOS los números de esa misma identidad en
+// esta tabla (relación real usuario_global_id / contacto_id), sea cual sea
+// su estado; nunca se une a dos personas porque se parezcan.
+function numerosPorConsulta(filas: FilaHistorial[], consulta: string): Set<string> | null {
+
+    const { tipo, valor } = tipoConsulta(consulta);
+    if (tipo === "vacia") return null;
+
+    if (tipo === "numero") return new Set(filas.filter(f => esNumero(f.numero, valor)).map(f => f.numero));
+
+    const coincide = (p: FuenteBusqueda) => tipo === "telefono"
+        ? p.telefonos.includes(valor)
+        : p.nombres.some(n => normalizar(n).includes(valor));
+
+    const directos = new Set<string>();
+    const identidades = new Set<string>();
+
+    for (const fila of filas) {
+        for (const p of fila.busqueda) {
+            if (!coincide(p)) continue;
+            directos.add(fila.numero);
+            if (p.identidad) identidades.add(p.identidad);
+        }
+    }
+
+    return new Set(filas
+        .filter(f => directos.has(f.numero) || f.busqueda.some(p => p.identidad && identidades.has(p.identidad)))
+        .map(f => f.numero));
+
+}
+
+// Estado (ACTUAL), grupo y fecha de una fila.
+function cumpleFiltros(fila: FilaHistorial, f: FiltrosHistorial): boolean {
 
     if (f.estado !== "todos" && fila.estado !== f.estado) return false;
 
@@ -272,23 +396,23 @@ export function coincideFila(fila: FilaHistorial, f: FiltrosHistorial): boolean 
         if (!fechas.includes(f.fecha)) return false;
     }
 
-    if (q) {
-        // Número: exacto con sus ceros ("07"; "7" también lo encuentra);
-        // nombre o contacto: contiene.
-        if (fila.numero === q || (/^\d+$/.test(q) && q.length < fila.numero.length && fila.numero === q.padStart(fila.numero.length, "0"))) return true;
-        const nombres = [fila.cliente, ...fila.eventos.map(e => e.cliente)].filter(Boolean) as string[];
-        const contactos = [fila.contacto, ...fila.eventos.map(e => e.contacto)].filter(Boolean) as string[];
-        const enNombre = nombres.some(n => normalizar(n).includes(q));
-        const enContacto = contactos.some(c => normalizar(c).includes(q) || (qDigitos.length >= 3 && c.replace(/\D/g, "").includes(qDigitos)));
-        if (!enNombre && !enContacto) return false;
-    }
-
     return true;
 
 }
 
+// ÚNICA regla de búsqueda y filtros del panel de la tabla: la usan el
+// historial (filtrarHistorial) y la cuadrícula (numerosCoincidentes). Un
+// número que coincide conserva todos sus movimientos.
+function aplicarFiltros(filas: FilaHistorial[], f: FiltrosHistorial): Set<string> {
+    const porConsulta = numerosPorConsulta(filas, f.texto);
+    return new Set(filas
+        .filter(fila => (!porConsulta || porConsulta.has(fila.numero)) && cumpleFiltros(fila, f))
+        .map(fila => fila.numero));
+}
+
 export function filtrarHistorial(filas: FilaHistorial[], f: FiltrosHistorial): FilaHistorial[] {
-    return filas.filter(fila => coincideFila(fila, f));
+    const set = aplicarFiltros(filas, f);
+    return filas.filter(fila => set.has(fila.numero));
 }
 
 export function hayFiltrosActivos(f: FiltrosHistorial): boolean {
@@ -297,24 +421,19 @@ export function hayFiltrosActivos(f: FiltrosHistorial): boolean {
 
 // Números de la cuadrícula que cumplen los filtros (null = sin filtros: se
 // ven todos). Un número sin historial (libre y sin movimientos) se evalúa
-// solo con su estado actual. Solo considera los números recibidos: los de la
-// tabla de este precio y de este cliente.
+// solo con su número y su estado actual. Solo considera los números
+// recibidos: los de la tabla de este precio y de este cliente.
 export function numerosCoincidentes(numeros: NumeroReserva[], filas: FilaHistorial[], f: FiltrosHistorial, estadoDe: (n: NumeroReserva) => EstadoNumero): Set<string> | null {
 
     if (!hayFiltrosActivos(f)) return null;
 
     const porNumero = new Map(filas.map(fila => [fila.numero, fila]));
-    const resultado = new Set<string>();
+    const todas = numeros.map((n): FilaHistorial => porNumero.get(n.numero) ?? {
+        numero: n.numero, estado: estadoDe(n), cliente: null, contacto: null, grupo: null,
+        sorteo: null, reserva: null, pago: null, eventos: [], busqueda: []
+    });
 
-    for (const n of numeros) {
-        const fila = porNumero.get(n.numero) ?? {
-            numero: n.numero, estado: estadoDe(n), cliente: null, contacto: null, grupo: null,
-            sorteo: null, reserva: null, pago: null, eventos: []
-        };
-        if (coincideFila(fila, f)) resultado.add(n.numero);
-    }
-
-    return resultado;
+    return aplicarFiltros(todas, f);
 
 }
 

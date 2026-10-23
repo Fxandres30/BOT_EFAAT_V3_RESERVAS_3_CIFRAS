@@ -27,7 +27,8 @@ import {
 
 import { derivarPaquetes } from "@/components/tablas/derivarPaquetes";
 import { estadoEfectivo } from "@/components/tablas/estadoVisual";
-import { construirHistorial } from "@/components/tablas/historialDatos";
+import { construirHistorial, type ContactoIdentidad } from "@/components/tablas/historialDatos";
+import { obtenerContactos } from "@/services/contactos/obtenerContactos";
 import type { NumeroReserva, EventoActivo, ActividadReserva } from "@/components/tablas/types";
 
 // Único hook fuente-de-verdad de la pantalla /tablas/:precio. Todo lo que
@@ -194,6 +195,31 @@ export function useTablaPrecio(precio: number) {
 
     }, [usuarioId, config, cargar]);
 
+    // Directorio de contactos del cliente (backend GET /contactos, filtrado
+    // por el token): solo aporta el nombre y teléfono ACTUALES de las
+    // identidades que ya aparecen en esta tabla, para la búsqueda del
+    // historial. Una vez por usuario; si falla, la búsqueda sigue con los
+    // datos de la tabla.
+    const [contactos, setContactos] = useState<ContactoIdentidad[]>([]);
+
+    useEffect(() => {
+
+        if (!usuarioId) return;
+
+        let vivo = true;
+
+        obtenerContactos(usuarioId)
+            .then(r => {
+                if (vivo) setContactos(r.contactos.map(c => ({ id: c.id, nombre: c.nombre, telefono: c.telefono })));
+            })
+            .catch(() => {
+                console.warn("[historial] sin directorio de contactos: se busca solo con los datos de la tabla.");
+            });
+
+        return () => { vivo = false; };
+
+    }, [usuarioId]);
+
     const coincidePrecio = Boolean(
         eventoActivo && Number(eventoActivo.valor) === precio
     );
@@ -228,8 +254,9 @@ export function useTablaPrecio(precio: number) {
         auditoria: eventosHistorial.auditoria,
         auditoriaDisponible: eventosHistorial.auditoriaDisponible,
         actividad,
-        archivo: eventosHistorial.archivo
-    }, estadoEfectivo), [numeros, actividad, eventosHistorial]);
+        archivo: eventosHistorial.archivo,
+        contactos
+    }, estadoEfectivo), [numeros, actividad, eventosHistorial, contactos]);
 
     const recientes = useMemo(() => {
 
