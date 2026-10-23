@@ -60,7 +60,7 @@ function dependenciasReales() {
     return {
         supabase: require("../lib/supabase"),
         guardarEvento: require("../bot/funciones/eventos/guardarEvento").guardarEvento,
-        consultarEvento: require("../bot/funciones/eventos/consultarEvento").consultarEvento,
+        consultarEventoDelSorteo: require("../bot/funciones/eventos/consultarEvento").consultarEventoDelSorteo,
         abrirGrupo: require("../bot/funciones/eventos/grupos/abrirGrupo").abrirGrupo,
         sendMessage: require("../services/baileys/send").sendMessage,
         ejecutarUnaVez: require("../automation/executionGuard").ejecutarUnaVez,
@@ -116,7 +116,14 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
     // otros sorteos del mismo cliente. La imagen de WhatsApp lo lee del
     // sorteo a partir del evento firmado en el token (/tablas/imprimir-datos).
 
-    const eventoAnterior = await deps.consultarEvento(grupoId, usuarioId);
+    // Un sorteo distinto nunca reescribe la fila de otro: solo se reutiliza
+    // la fila de ESTE sorteo (reintento). Sin ella, guardarEvento crea una
+    // nueva y la del sorteo anterior queda intacta con sus reservas.
+    const buscarEventoDelSorteo = deps.consultarEventoDelSorteo ||
+        require("../bot/funciones/eventos/consultarEvento").consultarEventoDelSorteo;
+    const previo = await buscarEventoDelSorteo(grupoId, usuarioId, sorteo.identidad_evento_real);
+    if (!previo.ok) return { estado: "fallido", ultimo_error: "No se pudo comprobar el evento del grupo; se reintentará." };
+    const eventoAnterior = previo.data;
 
     const guardado = await deps.guardarEvento({
         sock,

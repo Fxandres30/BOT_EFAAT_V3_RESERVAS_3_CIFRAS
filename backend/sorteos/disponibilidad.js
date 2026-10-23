@@ -139,31 +139,40 @@ async function revisarGrupo({ usuarioId, grupoId, identidad, autorizados, public
     const momento = publicarEn ? new Date(publicarEn) : ahora;
     const futuro = Boolean(publicarEn);
 
-    const propio = (data || []).find(f => f.usuario_id === usuarioId) || null;
+    // Cada sorteo programado tiene su propia fila: el grupo puede conservar
+    // las de sorteos anteriores (cerrados). Cuentan TODAS las activas de
+    // otra identidad, no una fila cualquiera del cliente.
+    const propias = (data || []).filter(f => f.usuario_id === usuarioId);
+    const propio = propias.find(f => f.activo) || propias[0] || null;
+    const activosDistintos = propias.filter(f => f.activo && f.identidad_evento_real !== identidad);
     let espera = null;
 
-    if (propio?.activo && propio.identidad_evento_real !== identidad) {
+    if (activosDistintos.length) {
 
-        const nombre = `${propio.nombre_evento || "sin nombre"} ${propio.hora_fin || ""}`.trim();
-        const cierreActual = cierreDeEvento(propio, ahora);
+        const nombreDe = (f) => `${f.nombre_evento || "sin nombre"} ${f.hora_fin || ""}`.trim();
 
         if (!futuro) {
             return {
-                bloqueo: `El grupo todavía tiene abierto el sorteo «${nombre}». No se reemplaza: se publicará en cuanto cierre.`,
+                bloqueo: `El grupo todavía tiene abierto el sorteo «${nombreDe(activosDistintos[0])}». No se reemplaza: se publicará en cuanto cierre.`,
                 tipo: "sorteo_activo", espera: null, avisos: [], eventoActual: propio
             };
         }
 
-        if (seguiraAbierto(propio, momento, ahora)) {
+        const abierto = activosDistintos.find(f => seguiraAbierto(f, momento, ahora));
+
+        if (abierto) {
+            const cierreActual = cierreDeEvento(abierto, ahora);
             return {
                 bloqueo: cierreActual
-                    ? `El sorteo actual «${nombre}» sigue abierto hasta el ${legible(cierreActual)}, después de la publicación programada (${legible(momento)}). Programa la publicación después de ese cierre.`
-                    : `El grupo tiene un sorteo activo («${nombre}») sin hora de cierre conocida. Espera a que cierre o programa la publicación para después del cierre.`,
-                tipo: "sorteo_activo", espera: null, avisos: [], eventoActual: propio
+                    ? `El sorteo actual «${nombreDe(abierto)}» sigue abierto hasta el ${legible(cierreActual)}, después de la publicación programada (${legible(momento)}). Programa la publicación después de ese cierre.`
+                    : `El grupo tiene un sorteo activo («${nombreDe(abierto)}») sin hora de cierre conocida. Espera a que cierre o programa la publicación para después del cierre.`,
+                tipo: "sorteo_activo", espera: null, avisos: [], eventoActual: abierto
             };
         }
 
-        espera = `Hoy está activo «${nombre}» (cierra el ${legible(cierreActual)}); este sorteo se publicará después, el ${legible(momento)}. El sorteo actual no se modifica.`;
+        espera = activosDistintos
+            .map(f => `Hoy está activo «${nombreDe(f)}» (cierra el ${legible(cierreDeEvento(f, ahora))}); este sorteo se publicará después, el ${legible(momento)}. El sorteo actual no se modifica.`)
+            .join(" ");
 
     }
 

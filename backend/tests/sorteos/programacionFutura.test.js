@@ -236,12 +236,15 @@ prueba("P1. el publicador no publica antes de la fecha y publica en la fecha cor
     assert.strictEqual(grupoDe(s.id, "g1@g.us").estado, "pendiente");
     Object.assign(actualDb(), { activo: false, estado: "cerrado" });   // el worker lo cerró a su hora
     const filasActual = JSON.stringify(fake.tablas[T5K].filter(f => f.usuario_id === A));
+    const anterior = JSON.stringify(actualDb());
     await publicador.tick(sock(), { ahora: EN_PUBLICACION, deps: d.d });
     assert.deepStrictEqual(d.enviados.map(e => e.jid), ["g1@g.us"]);
     assert.strictEqual(grupoDe(s.id, "g1@g.us").estado, "publicado");
     assert.strictEqual(sorteoDb(s.id).estado, "publicado");
-    const ev = fake.tablas.eventos_bot.find(e => e.grupo_id === "g1@g.us" && e.usuario_id === A);
-    assert.strictEqual(ev.identidad_evento_real, s.identidad_evento_real);
+    // Fila propia del sorteo nuevo; la del anterior queda intacta.
+    const ev = fake.tablas.eventos_bot.find(e => e.grupo_id === "g1@g.us" && e.usuario_id === A && e.identidad_evento_real === s.identidad_evento_real);
+    assert.ok(ev, "el sorteo nuevo tiene su propia fila");
+    assert.strictEqual(JSON.stringify(actualDb()), anterior, "la fila del sorteo anterior no se reescribe");
     assert.strictEqual(ev.fecha_evento, "2026-10-22");
     assert.strictEqual(JSON.stringify(fake.tablas[T5K].filter(f => f.usuario_id === A)), filasActual, "las reservas y pagos del sorteo anterior no se tocan");
 });
