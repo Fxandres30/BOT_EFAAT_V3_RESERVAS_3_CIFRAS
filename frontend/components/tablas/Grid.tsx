@@ -6,7 +6,6 @@ import NumeroCard from "./NumeroCard";
 import NumeroDetalleModal from "./NumeroDetalleModal";
 import Leyenda from "./Leyenda";
 import type { NumeroReserva, PaqueteReserva, EventoActivo } from "./types";
-import { estadoVisualSimplificado, type FiltroEstado } from "./estadoVisual";
 import type { TablaDisenoConfig } from "./disenoTypes";
 import { cssVarsFromConfig } from "./disenoCssVars";
 import type { DatosLiberar, DatosPago, DatosReserva, Resultado } from "@/services/tablas/reservaManual";
@@ -17,8 +16,9 @@ interface Props {
     paquetes: PaqueteReserva[];
     eventoActivo: EventoActivo | null;
     coincidePrecio: boolean;
-    busqueda: string;
-    filtro: FiltroEstado;
+    /** Números que cumplen la búsqueda y los filtros de «Historial de
+     *  números» (historialDatos.numerosCoincidentes); null o ausente = todos. */
+    coincidentes?: Set<string> | null;
     accionando: string | null;
     diseno: TablaDisenoConfig;
     onReservar: (numero: string, datos: DatosReserva) => Promise<Resultado>;
@@ -38,8 +38,7 @@ export default function Grid({
     paquetes,
     eventoActivo,
     coincidePrecio,
-    busqueda,
-    filtro,
+    coincidentes = null,
     accionando,
     diseno,
     onReservar,
@@ -63,34 +62,10 @@ export default function Grid({
         return mapa;
     }, [paquetes]);
 
-    const visibles = useMemo(() => {
-
-        const termino = busqueda.trim().toLowerCase();
-
-        return numeros.filter((n) => {
-
-            const estado = estadoVisualSimplificado(n);
-
-            if (filtro !== "todos" && estado !== filtro)
-                return false;
-
-            if (!termino)
-                return true;
-
-            const campos = [
-                n.numero,
-                n.comprador,
-                n.contacto,
-                n.telefono,
-                n.grupo_nombre,
-                paquetePorNumero.get(n.numero)?.cliente
-            ];
-
-            return campos.some(campo => campo?.toLowerCase().includes(termino));
-
-        });
-
-    }, [numeros, busqueda, filtro, numerosEnGrupo, paquetePorNumero]);
+    const visibles = useMemo(
+        () => (coincidentes ? numeros.filter(n => coincidentes.has(n.numero)) : numeros),
+        [numeros, coincidentes]
+    );
 
     const estiloDiseno = {
         ...cssVarsFromConfig(diseno),

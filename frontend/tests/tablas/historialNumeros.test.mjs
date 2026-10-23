@@ -238,6 +238,86 @@ prueba("la sección no consulta Supabase ni escribe: recibe los datos de useTabl
     assert.ok(!/onMarcarPagado|onLiberar|onReservar/.test(src), "el historial es de solo lectura");
 });
 
+// ---- Búsqueda única: la misma consulta filtra historial y cuadrícula ----
+
+const coinc = parcial => {
+    const r = H.numerosCoincidentes(NUMEROS, FILAS, { ...H.FILTROS_HISTORIAL_VACIOS, ...parcial }, estadoReal);
+    return r && [...r].sort();
+};
+
+prueba("cuadrícula: sin filtros -> null (se ven todos); limpiar restaura null", () => {
+    assert.strictEqual(coinc({}), null);
+    assert.strictEqual(coinc({ texto: "   " }), null);
+    assert.deepStrictEqual(coinc({ texto: "07" }), ["07"]);
+    assert.strictEqual(H.numerosCoincidentes(NUMEROS, FILAS, H.FILTROS_HISTORIAL_VACIOS, estadoReal), null);
+});
+
+prueba("cuadrícula e historial dan el mismo resultado para la misma consulta", () => {
+    for (const q of [{ texto: "7" }, { texto: "perez" }, { texto: "300 111" }, { estado: "pagado" }, { grupo: "Grupo B" }, { fecha: "2026-10-21" }, { texto: "eva", grupo: "Sorteos Ana" }]) {
+        assert.deepStrictEqual(coinc(q), filtrar(q), JSON.stringify(q));
+    }
+});
+
+prueba("cuadrícula: el filtro de estado incluye números libres sin historial", () => {
+    // 00 está libre y sin movimientos: no sale en el historial, sí en la cuadrícula.
+    assert.deepStrictEqual(coinc({ estado: "libre" }), ["00", "33", "45"]);
+    assert.deepStrictEqual(filtrar({ estado: "libre" }), ["33", "45"]);
+    // «0» es el número 00 sin su cero inicial; el 07 sale por su teléfono.
+    assert.deepStrictEqual(coinc({ texto: "0" }), ["00", "07"]);
+});
+
+prueba("el filtro de estado no recorta los movimientos de un número", () => {
+    const [f45] = H.filtrarHistorial(FILAS, { ...H.FILTROS_HISTORIAL_VACIOS, estado: "libre", texto: "45" });
+    const completo = FILAS.find(f => f.numero === "45");
+    assert.deepStrictEqual(f45.eventos, completo.eventos);
+    // Un número antes pagado y hoy libre aparece con «todos» (no se pierde).
+    assert.ok(filtrar({ texto: "dani" }).includes("45"));
+    assert.ok(!filtrar({ texto: "dani", estado: "pagado" }).includes("45"));
+});
+
+prueba("aislamiento: la cuadrícula solo devuelve números de la tabla recibida", () => {
+    const otraTabla = H.construirHistorial([fila("99", { estado: "pagado", comprador: "Ana Pérez" })], sinAuditoria, estadoReal);
+    const r = H.numerosCoincidentes(NUMEROS, otraTabla, { ...H.FILTROS_HISTORIAL_VACIOS, texto: "ana" }, estadoReal);
+    assert.ok(!r.has("99"));
+});
+
+prueba("un solo buscador: sin FiltrosBar, la cuadrícula no filtra por su cuenta y el estado vive en la vista", () => {
+    const leer = r => fs.readFileSync(path.join(FRONT, r), "utf8");
+    assert.ok(!fs.existsSync(path.join(FRONT, "components/tablas/FiltrosBar.tsx")));
+    const vista = leer("components/tablas/TablaPrecioView.tsx");
+    assert.ok(!/FiltrosBar|busqueda/.test(vista));
+    assert.strictEqual((vista.match(/useState<FiltrosHistorial>/g) || []).length, 1);
+    assert.ok(/coincidentes=\{coincidentes\}/.test(vista) && /filtros=\{filtros\}/.test(vista) && /onFiltrosChange=\{setFiltros\}/.test(vista));
+    const grid = leer("components/tablas/Grid.tsx");
+    assert.ok(!/busqueda|toLowerCase|includes\(termino/.test(grid), "Grid no debe tener búsqueda propia");
+    const hist = leer("components/tablas/HistorialNumeros.tsx");
+    assert.ok(!/useState<FiltrosHistorial>/.test(hist), "el historial no guarda una búsqueda propia");
+    assert.strictEqual((hist.match(/type="search"/g) || []).length, 1);
+    // El buscador va antes de los filtros de estado, grupo y fecha.
+    const pos = ['type="search"', "Filtrar por estado actual", "Filtrar por grupo", "Filtrar por fecha"].map(t => hist.indexOf(t));
+    assert.ok(pos.every(p => p > 0));
+    assert.deepStrictEqual([...pos].sort((a, b) => a - b), pos);
+});
+
+prueba("fila: muestra la hora ORIGINAL de reserva (no la del pago), sin convertir zona horaria", () => {
+    const f12 = FILAS.find(f => f.numero === "12");   // reservado 09:00:00, pagado 10:30:00
+    assert.strictEqual(H.etiquetaReserva(f12.reserva), "Reserva: 2026-10-21 09:00");
+    const f07 = FILAS.find(f => f.numero === "07");   // 14:05:09 hora de Colombia, tal cual
+    assert.strictEqual(H.etiquetaReserva(f07.reserva), "Reserva: 2026-10-22 14:05");
+    // Movimientos posteriores (archivo, auditoría) no cambian la hora de reserva.
+    assert.ok(f07.eventos.length > 0);
+    assert.strictEqual(H.etiquetaReserva({ fecha: "2026-10-22", hora: "5:07:00" }), "Reserva: 2026-10-22 05:07");
+});
+
+prueba("fila: sin hora registrada -> «Hora no registrada»; sin reserva actual -> nada", () => {
+    assert.strictEqual(H.etiquetaReserva({ fecha: "2026-10-22", hora: null }), "Reserva: 2026-10-22 · Hora no registrada");
+    assert.strictEqual(H.etiquetaReserva({ fecha: "2026-10-22", hora: "" }), "Reserva: 2026-10-22 · Hora no registrada");
+    assert.strictEqual(H.etiquetaReserva(FILAS.find(f => f.numero === "33").reserva), null);
+    const src = fs.readFileSync(path.join(FRONT, "components/tablas/HistorialNumeros.tsx"), "utf8");
+    assert.ok(/\{etiquetaReserva\(fila\.reserva\) \|\| ""\}/.test(src), "la fila usa la hora de reserva");
+    assert.ok(!/etiquetaReserva\(fila\.pago\)/.test(src));
+});
+
 let fallos = 0;
 for (const { n, fn } of pruebas) {
     try { await fn(); console.log(`  ok  ${n}`); }

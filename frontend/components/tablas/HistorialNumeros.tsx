@@ -7,8 +7,10 @@ import BotonContraer from "./BotonContraer";
 import { ESTADOS_META_VISUAL, ESTADO_INTERNO_META, bucketEstado } from "./estadoVisual";
 import {
     FILTROS_HISTORIAL_VACIOS,
+    etiquetaReserva,
     filtrarHistorial,
     gruposDelHistorial,
+    hayFiltrosActivos,
     type EventoHistorial,
     type FilaHistorial,
     type FiltroEstadoHistorial,
@@ -20,6 +22,10 @@ import type { EstadoNumero } from "./types";
 interface Props {
     filas: FilaHistorial[];
     auditoriaDisponible: boolean;
+    // Estado compartido con la cuadrícula (vive en TablaPrecioView): este es
+    // el único buscador del panel.
+    filtros: FiltrosHistorial;
+    onFiltrosChange: (filtros: FiltrosHistorial) => void;
     expandido: boolean;
     onToggleExpandido: () => void;
 }
@@ -61,18 +67,17 @@ function EstadoBadge({ estado }: { estado: EstadoNumero }) {
 
 const sinDato = <span className="text-gray-400">—</span>;
 
-export default function HistorialNumeros({ filas, auditoriaDisponible, expandido, onToggleExpandido }: Props) {
+export default function HistorialNumeros({ filas, auditoriaDisponible, filtros, onFiltrosChange, expandido, onToggleExpandido }: Props) {
 
-    const [filtros, setFiltros] = useState<FiltrosHistorial>(FILTROS_HISTORIAL_VACIOS);
     const [visibles, setVisibles] = useState(POR_PAGINA);
     const [abierto, setAbierto] = useState<string | null>(null);
 
     const grupos = useMemo(() => gruposDelHistorial(filas), [filas]);
     const filtradas = useMemo(() => filtrarHistorial(filas, filtros), [filas, filtros]);
-    const hayFiltros = filtros.texto || filtros.estado !== "todos" || filtros.grupo || filtros.fecha;
+    const hayFiltros = hayFiltrosActivos(filtros);
 
     function cambiar(parcial: Partial<FiltrosHistorial>) {
-        setFiltros((f) => ({ ...f, ...parcial }));
+        onFiltrosChange({ ...filtros, ...parcial });
         setVisibles(POR_PAGINA);
     }
 
@@ -101,19 +106,19 @@ export default function HistorialNumeros({ filas, auditoriaDisponible, expandido
                         </span>
                     </p>
 
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_auto] mb-4">
+                    <label className="relative block min-w-0 mb-2">
+                        <span className="sr-only">Buscar por número, nombre o contacto</span>
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                            type="search"
+                            value={filtros.texto}
+                            onChange={(e) => cambiar({ texto: e.target.value })}
+                            placeholder="Buscar número (07 o 7), nombre o teléfono/contacto"
+                            className="w-full h-11 pl-9 pr-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                    </label>
 
-                        <label className="relative min-w-0">
-                            <span className="sr-only">Buscar por número, nombre o contacto</span>
-                            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input
-                                type="search"
-                                value={filtros.texto}
-                                onChange={(e) => cambiar({ texto: e.target.value })}
-                                placeholder="Número, nombre o contacto"
-                                className="w-full h-10 pl-9 pr-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-blue-500"
-                            />
-                        </label>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(3,minmax(0,1fr))_auto] mb-2">
 
                         <select
                             aria-label="Filtrar por estado actual"
@@ -121,7 +126,7 @@ export default function HistorialNumeros({ filas, auditoriaDisponible, expandido
                             onChange={(e) => cambiar({ estado: e.target.value as FiltroEstadoHistorial })}
                             className="h-10 px-3 rounded-xl border border-gray-200 text-sm bg-white min-w-0"
                         >
-                            <option value="todos">Todos los estados</option>
+                            <option value="todos">Estado actual: todos</option>
                             {ESTADOS_FILTRO.map((e) => <option key={e} value={e}>{ESTADO_INTERNO_META[e].label}</option>)}
                         </select>
 
@@ -155,6 +160,11 @@ export default function HistorialNumeros({ filas, auditoriaDisponible, expandido
                         ) : <span className="hidden lg:block" />}
 
                     </div>
+
+                    <p className="text-xs text-gray-500 mb-4">
+                        La búsqueda y los filtros se aplican también a la cuadrícula.
+                        {filtros.estado !== "todos" && " El estado filtra por el estado actual: los números que tuvieron ese estado antes siguen visibles con «Estado actual: todos», y cada número conserva todos sus movimientos."}
+                    </p>
 
                     {filas.length === 0 ? (
 
@@ -230,7 +240,7 @@ function FilaNumero({ fila, abierta, onAlternar }: { fila: FilaHistorial; abiert
                 <span className="flex-1 min-w-0 text-sm text-gray-700 truncate">
                     {[fila.cliente, fila.contacto, fila.grupo].filter(Boolean).join(" · ") || <span className="text-gray-400">Sin reserva actual</span>}
                 </span>
-                <span className="hidden sm:block text-xs text-gray-500 shrink-0">{fechaHora(fila.reserva) || ""}</span>
+                <span className="hidden sm:block text-xs text-gray-500 shrink-0">{etiquetaReserva(fila.reserva) || ""}</span>
                 <span className="text-xs text-gray-400 shrink-0">{fila.eventos.length} mov.</span>
             </button>
 

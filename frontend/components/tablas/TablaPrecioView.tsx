@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Loader2, AlertTriangle, Info, Palette, LibraryBig } from "lucide-react";
+import { Loader2, AlertTriangle, Info, Palette, LibraryBig, Filter } from "lucide-react";
 
 import { useTablaPrecio } from "@/hooks/useTablaPrecio";
 import { useTablaDiseno } from "@/hooks/useTablaDiseno";
@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import AccionesTabla from "./AccionesTabla";
 import StatsBar from "./StatsBar";
-import FiltrosBar from "./FiltrosBar";
 import Grid from "./Grid";
 import HistorialNumeros from "./HistorialNumeros";
 import ReservasRecientes from "./ReservasRecientes";
@@ -18,7 +17,8 @@ import GruposPanel from "./GruposPanel";
 import ActividadReciente from "./ActividadReciente";
 import EditorDisenoModal from "./EditorDisenoModal";
 import BibliotecaDisenosModal from "./BibliotecaDisenosModal";
-import { contarPorFiltro, type FiltroEstado } from "./estadoVisual";
+import { estadoEfectivo } from "./estadoVisual";
+import { FILTROS_HISTORIAL_VACIOS, numerosCoincidentes, type FiltrosHistorial } from "./historialDatos";
 import { capturarTabla } from "@/services/tablas/capturarTabla";
 import type { EventoActivo } from "./types";
 import type { TablaDiseno } from "./disenoTypes";
@@ -66,10 +66,15 @@ export default function TablaPrecioView({ precio }: Props) {
         if (!r.ok) alert(r.mensaje);
     }
 
-    const [busqueda, setBusqueda] = useState("");
-    const [filtro, setFiltro] = useState<FiltroEstado>("todos");
+    // ÚNICA búsqueda del panel: el buscador y los filtros viven en «Historial
+    // de números» y filtran a la vez el historial y la cuadrícula, con la
+    // misma regla (historialDatos.coincideFila).
+    const [filtros, setFiltros] = useState<FiltrosHistorial>(FILTROS_HISTORIAL_VACIOS);
 
-    const conteosFiltro = useMemo(() => contarPorFiltro(numeros), [numeros]);
+    const coincidentes = useMemo(
+        () => numerosCoincidentes(numeros, historial, filtros, estadoEfectivo),
+        [numeros, historial, filtros]
+    );
 
     // Secciones contraídas/abiertas: preferencia visual recordada por usuario.
     const { secciones, alternar: alternarSeccion } = useSeccionesPanel(usuarioId);
@@ -186,14 +191,6 @@ export default function TablaPrecioView({ precio }: Props) {
                 </div>
             </div>
 
-            <FiltrosBar
-                busqueda={busqueda}
-                onBusquedaChange={setBusqueda}
-                filtro={filtro}
-                onFiltroChange={setFiltro}
-                conteos={conteosFiltro}
-            />
-
             <div className="flex flex-wrap items-center gap-2">
                 {personalizada && <Badge tone="primary" size="sm">Diseño personalizado</Badge>}
                 <Button
@@ -214,6 +211,22 @@ export default function TablaPrecioView({ precio }: Props) {
                 </Button>
             </div>
 
+            {coincidentes && (
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-blue-50 border border-blue-100 text-blue-800 text-sm rounded-xl px-3 py-2 min-w-0">
+                    <span className="flex items-center gap-2 min-w-0">
+                        <Filter size={14} className="shrink-0" />
+                        Cuadrícula filtrada desde «Historial de números»: {coincidentes.size} de {numeros.length} números.
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => setFiltros(FILTROS_HISTORIAL_VACIOS)}
+                        className="text-blue-700 font-medium hover:underline"
+                    >
+                        Mostrar todos
+                    </button>
+                </div>
+            )}
+
             <Grid
                 contenedorRef={tablaRef}
                 precio={precio}
@@ -221,8 +234,7 @@ export default function TablaPrecioView({ precio }: Props) {
                 paquetes={paquetes}
                 eventoActivo={eventoActivo}
                 coincidePrecio={coincidePrecio}
-                busqueda={busqueda}
-                filtro={filtro}
+                coincidentes={coincidentes}
                 accionando={accionando}
                 diseno={diseno}
                 onReservar={reservar}
@@ -233,6 +245,8 @@ export default function TablaPrecioView({ precio }: Props) {
             <HistorialNumeros
                 filas={historial}
                 auditoriaDisponible={auditoriaDisponible}
+                filtros={filtros}
+                onFiltrosChange={setFiltros}
                 expandido={secciones.historial}
                 onToggleExpandido={() => alternarSeccion("historial")}
             />

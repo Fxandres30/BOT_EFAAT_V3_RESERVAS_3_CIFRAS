@@ -37,8 +37,6 @@ export default function TablaImprimible({ numerosDisponibles, numerosOcupados, d
                 paquetes={[]}
                 eventoActivo={null}
                 coincidePrecio={true}
-                busqueda=""
-                filtro="todos"
                 accionando={null}
                 diseno={config}
                 onReservar={sinAccion}

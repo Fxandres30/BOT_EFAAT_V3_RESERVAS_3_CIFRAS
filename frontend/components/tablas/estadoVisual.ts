@@ -83,8 +83,9 @@ export const ESTADOS_META_VISUAL: Record<EstadoVisual, EstadoMeta> = {
 };
 
 // Metadatos por estado REAL (incluye en_proceso/bloqueado). Solo se usa
-// para detalle administrativo puntual (p. ej. iconos internos), nunca
-// para pintar la cuadrícula, los filtros, la leyenda o el resumen.
+// para detalle administrativo puntual (p. ej. iconos internos) y para el
+// filtro por estado real de «Historial de números»; nunca para pintar la
+// cuadrícula, la leyenda o el resumen.
 export const ESTADO_INTERNO_META: Record<EstadoNumero, { label: string; icon: LucideIcon }> = {
     libre: { label: "Disponible", icon: Circle },
     reservado: { label: "Reservado", icon: Clock },
@@ -92,27 +93,3 @@ export const ESTADO_INTERNO_META: Record<EstadoNumero, { label: string; icon: Lu
     en_proceso: { label: "En proceso", icon: CircleDot },
     bloqueado: { label: "Bloqueado", icon: Lock }
 };
-
-export const FILTROS_ESTADO = [
-    { valor: "todos", label: "Todos" },
-    { valor: "libre", label: "Disponibles" },
-    { valor: "reservado", label: "Reservados" },
-    { valor: "pagado", label: "Pagados" }
-] as const;
-
-export type FiltroEstado = (typeof FILTROS_ESTADO)[number]["valor"];
-
-// Conteo de cada chip de FiltrosBar. Vive acá (y no en cada componente)
-// para que "Reservados" siempre agrupe en_proceso/bloqueado de la misma
-// forma en la barra de filtros, el resumen y la cuadrícula.
-export function contarPorFiltro(numeros: NumeroReserva[]): Record<FiltroEstado, number> {
-
-    const conteos: Record<FiltroEstado, number> = { todos: numeros.length, libre: 0, reservado: 0, pagado: 0 };
-
-    numeros.forEach((n) => {
-        conteos[estadoVisualSimplificado(n)]++;
-    });
-
-    return conteos;
-
-}

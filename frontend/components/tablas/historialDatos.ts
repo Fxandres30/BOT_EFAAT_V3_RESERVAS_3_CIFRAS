@@ -253,37 +253,68 @@ export function fechaColombia(iso: string): string | null {
 
 const normalizar = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-export function filtrarHistorial(filas: FilaHistorial[], f: FiltrosHistorial): FilaHistorial[] {
+// ÚNICA regla de búsqueda y filtros del panel de la tabla: la usan el
+// historial (filtrarHistorial) y la cuadrícula (numerosCoincidentes). El
+// estado se compara con el estado ACTUAL; un número que coincide conserva
+// todos sus movimientos (el filtro nunca recorta su historial).
+export function coincideFila(fila: FilaHistorial, f: FiltrosHistorial): boolean {
 
     const q = normalizar(f.texto.trim());
     const qDigitos = q.replace(/\D/g, "");
 
-    return filas.filter((fila) => {
+    if (f.estado !== "todos" && fila.estado !== f.estado) return false;
 
-        if (f.estado !== "todos" && fila.estado !== f.estado) return false;
+    const grupos = [fila.grupo, ...fila.eventos.map(e => e.grupo)].filter(Boolean) as string[];
+    if (f.grupo && !grupos.includes(f.grupo)) return false;
 
-        const grupos = [fila.grupo, ...fila.eventos.map(e => e.grupo)].filter(Boolean) as string[];
-        if (f.grupo && !grupos.includes(f.grupo)) return false;
+    if (f.fecha) {
+        const fechas = [fila.reserva?.fecha, fila.pago?.fecha, ...fila.eventos.map(e => fechaColombia(e.en))];
+        if (!fechas.includes(f.fecha)) return false;
+    }
 
-        if (f.fecha) {
-            const fechas = [fila.reserva?.fecha, fila.pago?.fecha, ...fila.eventos.map(e => fechaColombia(e.en))];
-            if (!fechas.includes(f.fecha)) return false;
-        }
+    if (q) {
+        // Número: exacto con sus ceros ("07"; "7" también lo encuentra);
+        // nombre o contacto: contiene.
+        if (fila.numero === q || (/^\d+$/.test(q) && q.length < fila.numero.length && fila.numero === q.padStart(fila.numero.length, "0"))) return true;
+        const nombres = [fila.cliente, ...fila.eventos.map(e => e.cliente)].filter(Boolean) as string[];
+        const contactos = [fila.contacto, ...fila.eventos.map(e => e.contacto)].filter(Boolean) as string[];
+        const enNombre = nombres.some(n => normalizar(n).includes(q));
+        const enContacto = contactos.some(c => normalizar(c).includes(q) || (qDigitos.length >= 3 && c.replace(/\D/g, "").includes(qDigitos)));
+        if (!enNombre && !enContacto) return false;
+    }
 
-        if (q) {
-            // Número: exacto con sus ceros ("07"; "7" también lo encuentra);
-            // nombre o contacto: contiene.
-            if (fila.numero === q || (/^\d+$/.test(q) && q.length < fila.numero.length && fila.numero === q.padStart(fila.numero.length, "0"))) return true;
-            const nombres = [fila.cliente, ...fila.eventos.map(e => e.cliente)].filter(Boolean) as string[];
-            const contactos = [fila.contacto, ...fila.eventos.map(e => e.contacto)].filter(Boolean) as string[];
-            const enNombre = nombres.some(n => normalizar(n).includes(q));
-            const enContacto = contactos.some(c => normalizar(c).includes(q) || (qDigitos.length >= 3 && c.replace(/\D/g, "").includes(qDigitos)));
-            if (!enNombre && !enContacto) return false;
-        }
+    return true;
 
-        return true;
+}
 
-    });
+export function filtrarHistorial(filas: FilaHistorial[], f: FiltrosHistorial): FilaHistorial[] {
+    return filas.filter(fila => coincideFila(fila, f));
+}
+
+export function hayFiltrosActivos(f: FiltrosHistorial): boolean {
+    return Boolean(f.texto.trim() || f.estado !== "todos" || f.grupo || f.fecha);
+}
+
+// Números de la cuadrícula que cumplen los filtros (null = sin filtros: se
+// ven todos). Un número sin historial (libre y sin movimientos) se evalúa
+// solo con su estado actual. Solo considera los números recibidos: los de la
+// tabla de este precio y de este cliente.
+export function numerosCoincidentes(numeros: NumeroReserva[], filas: FilaHistorial[], f: FiltrosHistorial, estadoDe: (n: NumeroReserva) => EstadoNumero): Set<string> | null {
+
+    if (!hayFiltrosActivos(f)) return null;
+
+    const porNumero = new Map(filas.map(fila => [fila.numero, fila]));
+    const resultado = new Set<string>();
+
+    for (const n of numeros) {
+        const fila = porNumero.get(n.numero) ?? {
+            numero: n.numero, estado: estadoDe(n), cliente: null, contacto: null, grupo: null,
+            sorteo: null, reserva: null, pago: null, eventos: []
+        };
+        if (coincideFila(fila, f)) resultado.add(n.numero);
+    }
+
+    return resultado;
 
 }
 
@@ -294,4 +325,17 @@ export function gruposDelHistorial(filas: FilaHistorial[]): string[] {
         f.eventos.forEach(e => e.grupo && set.add(e.grupo));
     }
     return [...set].sort((a, b) => a.localeCompare(b, "es"));
+}
+
+// Texto de la reserva en la fila del historial. Sale de fecha_reserva +
+// hora_reserva de la fila actual: reservarNumeros.js los escribe una sola vez,
+// al pasar el número de libre a reservado (bot o panel), ya en hora de
+// Colombia; los pagos solo tocan fecha_pago/hora_pago. Se muestran tal cual,
+// sin convertir zonas horarias. null = número sin reserva actual.
+export function etiquetaReserva(reserva: FilaHistorial["reserva"]): string | null {
+    if (!reserva) return null;
+    const m = reserva.hora?.match(/^(\d{1,2}):(\d{2})/);
+    return m
+        ? `Reserva: ${reserva.fecha} ${m[1].padStart(2, "0")}:${m[2]}`
+        : `Reserva: ${reserva.fecha} · Hora no registrada`;
 }
