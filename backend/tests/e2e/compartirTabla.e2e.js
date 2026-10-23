@@ -2,7 +2,9 @@
 // PRUEBA DE EXTREMO A EXTREMO — Tablas $5.000 → «Compartir» con grupos de
 // destino, con navegador real (Chrome vía puppeteer), panel Next real, API
 // real (routes/tablas.js) y captura REAL de la imagen de la tabla
-// (services/compartirTabla.js → /tablas/imprimir/5000 del panel).
+// (services/compartirTabla.js → /tablas/imprimir/5000 del panel), SIN
+// TABLA_SHARE_SECRET: los datos se entregan a la página interceptando su
+// petición, sin enlace firmado ni /tablas/imprimir-datos.
 //
 //   1. Primer «Compartir»: sin grupos guardados abre la vista previa (imagen
 //      real + texto debajo) y la lista de grupos; nada se envía al cargar.
@@ -21,7 +23,7 @@
 const assert = require("assert");
 const path = require("path");
 
-process.env.TABLA_SHARE_SECRET = "secreto-e2e";
+delete process.env.TABLA_SHARE_SECRET;
 process.env.FRONTEND_URL = "http://127.0.0.1:3100";
 
 const {
@@ -45,7 +47,11 @@ registrarUsuario(TOKEN, A, "compartir@prueba.local");
 // WhatsApp simulado (el socket de A); nada sale de esta máquina.
 const envios = [];
 inyectar("services/baileys/send.js", {
-    sendImage: async ({ jid, image, caption }) => { envios.push({ jid, image, caption }); },
+    sendImage: async ({ jid, image, caption }) => {
+        envios.push({ jid, image, caption });
+        // Con E2E_CAPTURAS=<carpeta> se guarda la foto enviada para revisarla.
+        if (process.env.E2E_CAPTURAS) require("fs").writeFileSync(path.join(process.env.E2E_CAPTURAS, `enviada-${envios.length}.png`), image);
+    },
     sendMessage: async () => { throw new Error("no debe enviarse texto suelto"); }
 });
 inyectar("services/baileys/manager.js", { getSocketActivoDe: (u) => (u === A ? { usuario: A } : null) });
@@ -72,7 +78,14 @@ async function main() {
 
     servirTablas([T5K, "eventos_bot", "reservas_actividad", "tablas_cliente", "tabla_configuracion_visual", "tabla_disenos"]);
 
-    const entorno = await arrancarEntorno({ montarBackend: (app) => app.use("/tablas", require(path.join(RAIZ, "routes/tablas.js"))) });
+    // Cuenta las llamadas al endpoint con token: la captura ya no debe usarlo.
+    let llamadasImprimirDatos = 0;
+    const entorno = await arrancarEntorno({
+        montarBackend: (app) => {
+            app.use("/tablas/imprimir-datos", (req, res, next) => { llamadasImprimirDatos++; next(); });
+            app.use("/tablas", require(path.join(RAIZ, "routes/tablas.js")));
+        }
+    });
 
     try {
 
@@ -122,6 +135,10 @@ async function main() {
         assert.strictEqual(envios.length, 4, "abrir «Cambiar grupos» no envía");
         assert.strictEqual(JSON.stringify(t[T5K]), reservasAntes, "reservas y pagos intactos");
         paso("«Cambiar grupos» abre la configuración con la selección guardada; nada se envía");
+
+        assert.strictEqual(process.env.TABLA_SHARE_SECRET, undefined, "sin secreto en el entorno");
+        assert.strictEqual(llamadasImprimirDatos, 0, "ninguna captura pasó por /tablas/imprimir-datos (enlace firmado)");
+        paso("todo sin TABLA_SHARE_SECRET y sin el endpoint con token");
 
         assert.deepStrictEqual(page.erroresJs, [], `errores de JavaScript: ${page.erroresJs.join(" | ")}`);
         paso("sin errores de JavaScript en el navegador");

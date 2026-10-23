@@ -9,7 +9,8 @@
 // documentado "automation/ nunca requiere nada bajo bot/".
 //
 // Pipeline: resolver imagen real (Puppeteer sobre la página real del
-// panel, /tablas/imprimir/[precio]) + texto real (catálogo global de
+// panel, /tablas/imprimir/[precio], con los datos entregados en el proceso:
+// sin enlace firmado ni TABLA_SHARE_SECRET) + texto real (catálogo global de
 // variables, backend/shared/variables) -> enviar por WhatsApp (Baileys,
 // services/baileys/send.js, sin duplicar el envío).
 // ==========================================================================
@@ -115,10 +116,30 @@ function construirTextoCompartir(evento) {
 // impresión solo pinta número+estado, igual que la celda cerrada del
 // panel real: el nombre/teléfono del cliente nunca aparece en la cara de
 // la celda, solo en el modal de detalle, que esta captura nunca abre).
+//
+// SIN ENLACE FIRMADO (2026-10-22): los datos de la tabla se leen aquí, en
+// el proceso, y se entregan a la página interceptando su petición a
+// /api/tablas/imprimir. Así no hace falta TABLA_SHARE_SECRET ni ningún
+// token, y la cuadrícula nunca viaja por un endpoint público. El "token"
+// de la URL es solo el parámetro que la página exige para renderizar: no
+// autoriza nada (si la intercepción fallara, el backend lo rechazaría y no
+// habría imagen).
+const RUTA_DATOS_PAGINA = "/api/tablas/imprimir";
+
 async function capturarImagenTabla(precio, usuarioId, eventoId = null) {
 
-    const { token } = generarTokenImprimir(precio, usuarioId, eventoId);
-    const url = `${FRONTEND_URL}/tablas/imprimir/${precio}?token=${token}`;
+    if (!usuarioId || !USUARIO_VALIDO.test(String(usuarioId))) {
+        throw new Error("No se puede generar la imagen sin el dueño de la tabla.");
+    }
+
+    // Perezoso: lee tablas del cliente (bot/funciones/eventos) solo al capturar.
+    const { datosTablaImprimir } = require("./datosTablaImprimir");
+    const datos = await datosTablaImprimir(usuarioId, Number(precio), eventoId != null && EVENTO_VALIDO.test(String(eventoId)) ? String(eventoId) : null);
+
+    if (!datos.ok) throw new Error(datos.error);
+
+    const cuerpoDatos = JSON.stringify(datos.data);
+    const url = `${FRONTEND_URL}/tablas/imprimir/${Number(precio)}?token=directo`;
 
     // Flags defensivos estándar para Chromium headless en un VPS/entorno
     // virtualizado sin GPU (Windows o Linux) — mitigación conocida para el
@@ -139,6 +160,17 @@ async function capturarImagenTabla(precio, usuarioId, eventoId = null) {
 
         const page = await browser.newPage();
         await page.setViewport({ width: 900, height: 1000, deviceScaleFactor: 2 });
+
+        await page.setRequestInterception(true);
+        page.on("request", (req) => {
+            let ruta = "";
+            try { ruta = new URL(req.url()).pathname; } catch { /* URL no estándar: se deja pasar */ }
+            if (ruta === RUTA_DATOS_PAGINA) {
+                req.respond({ status: 200, contentType: "application/json", body: cuerpoDatos });
+            } else {
+                req.continue();
+            }
+        });
 
         await page.goto(url, { waitUntil: "networkidle0", timeout: 20000 });
 

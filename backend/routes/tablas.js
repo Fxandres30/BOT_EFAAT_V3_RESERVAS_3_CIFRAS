@@ -17,11 +17,9 @@ const supabase = require("../lib/supabase");
 // Precio -> tabla física SEGÚN EL CLIENTE (tablas_cliente, migración 027;
 // sin ella, la configuración base de siempre).
 const { obtenerConfiguracionCliente, inicializarCliente, prepararCuadricula } = require("../bot/funciones/eventos/tablasCliente");
-const tablaEventoRepo = require("../automation/repo/tablaEvento");
 const { compartirTabla, compartirEnGrupos, capturarImagenTabla, verificarTokenImprimirDetalle } = require("../services/compartirTabla");
+const { datosTablaImprimir } = require("../services/datosTablaImprimir");
 const destinos = require("../services/destinosCompartir");
-const { disenoDelEvento } = require("../sorteos/repo");
-const { normalizarConfigDiseno } = require("../sorteos/disenoTabla");
 
 // Mismo criterio real que frontend/services/tablas/obtenerEventoActivo.ts
 // (a lo sumo un evento "activo" por tabla+usuario) — reproducido aquí para
@@ -45,10 +43,10 @@ async function obtenerEventoActivoReal(tabla, usuarioId) {
 
 }
 
-// GET /tablas/imprimir-datos?precio=&token= — SOLO lo usa Puppeteer
-// (compartirTabla.js), nunca el navegador de un cliente real. El token
-// firmado (HMAC, corta duración) es lo único que autoriza esta lectura —
-// sin él, no se expone ningún dato.
+// GET /tablas/imprimir-datos?precio=&token= — lectura con enlace firmado
+// (HMAC, corta duración, TABLA_SHARE_SECRET). La captura de «Compartir» YA
+// NO la usa: compartirTabla.js entrega los datos a la página directamente.
+// Se conserva por compatibilidad; sin el token correcto no expone nada.
 router.get("/imprimir-datos", async (req, res) => {
 
     try {
@@ -65,44 +63,11 @@ router.get("/imprimir-datos", async (req, res) => {
             return res.status(401).json({ error: "Token inválido o expirado." });
         }
 
-        const config = await obtenerConfiguracionCliente(usuarioId, precio);
+        const r = await datosTablaImprimir(usuarioId, precio, firmado.eventoId);
 
-        if (!config) {
-            return res.status(404).json({ error: "No existe una tabla configurada para este precio." });
-        }
+        if (!r.ok) return res.status(r.status).json({ error: r.error });
 
-        // Solo número + estado — nunca nombre/teléfono/contacto real: esta
-        // imagen se difunde a un grupo completo, no es una vista admin.
-        const { numerosDisponibles, numerosOcupados } = await tablaEventoRepo.obtenerNumeros(config.tabla, usuarioId);
-
-        // Estilo: el guardado en el SORTEO programado de ese evento (el
-        // mismo que se vio en la vista previa); si el evento no viene de un
-        // sorteo programado, el diseño activo de la tabla de ese precio.
-        // Sin diseño o si no es válido: null (la página usa el de por defecto).
-        let diseno;
-
-        if (firmado.eventoId) {
-            const r = await disenoDelEvento(usuarioId, firmado.eventoId);
-            if (r.ok && r.data) diseno = r.data.config ?? null;
-        }
-
-        if (diseno === undefined) {
-            const { data: visual } = await supabase
-                .from("tabla_configuracion_visual")
-                .select("config")
-                .eq("usuario_id", usuarioId)
-                .eq("precio", precio)
-                .maybeSingle();
-            diseno = visual?.config;
-        }
-
-        res.json({
-            numerosDisponibles,
-            numerosOcupados,
-            cifras: config.cifras,
-            cantidad: config.cantidad,
-            diseno: normalizarConfigDiseno(diseno)
-        });
+        res.json(r.data);
 
     } catch (err) {
 

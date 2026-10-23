@@ -17,7 +17,8 @@ const express = require("express");
 
 const { crearFake } = require("../sorteos/fakeSupabaseSorteos");
 
-process.env.TABLA_SHARE_SECRET = "secreto-de-prueba";
+// Sin TABLA_SHARE_SECRET a propósito: la captura ya no usa enlaces firmados.
+delete process.env.TABLA_SHARE_SECRET;
 process.env.SESSIONS_API_TOKEN = "token-servicio-compartir";
 
 const RAIZ = path.resolve(__dirname, "../..");
@@ -55,9 +56,12 @@ inyectar("services/baileys/send.js", {
 const sockets = new Map();
 inyectar("services/baileys/manager.js", { getSocketActivoDe: (u) => sockets.get(u) || null });
 
-// Navegador simulado: la "imagen" lleva el dueño y el evento firmados en la URL.
+// Navegador simulado que hace lo mismo que la página real de impresión: al
+// cargar pide sus datos a /api/tablas/imprimir y pinta lo que recibe. Si la
+// petición no se intercepta (llegaría al backend sin token válido), no hay
+// imagen. La "imagen" es la ruta de la página + los datos recibidos.
 let capturas = 0;
-const nav = { fallar: false };
+const nav = { fallar: false, sinInterceptar: false };
 const PUPPETEER = require.resolve("puppeteer", { paths: [RAIZ] });
 require.cache[PUPPETEER] = {
     id: PUPPETEER, filename: PUPPETEER, loaded: true,
@@ -65,11 +69,32 @@ require.cache[PUPPETEER] = {
         launch: async () => {
             capturas++;
             let url = "";
+            let interceptar = false;
+            let manejador = null;
+            let pintado = null;
             return {
                 newPage: async () => ({
                     setViewport: async () => {},
-                    goto: async (u) => { if (nav.fallar) throw new Error("timeout"); url = u; },
-                    waitForSelector: async () => ({ screenshot: async () => Buffer.from(`PNG ${new URL(url).pathname} ${new URL(url).searchParams.get("token").split(".")[1]}`) })
+                    setRequestInterception: async (v) => { interceptar = v; },
+                    on: (ev, fn) => { if (ev === "request") manejador = fn; },
+                    goto: async (u) => {
+                        if (nav.fallar) throw new Error("timeout");
+                        url = u;
+                        const origen = new URL(u).origin;
+                        const precio = new URL(u).pathname.split("/").pop();
+                        await new Promise((ok) => {
+                            const req = {
+                                url: () => `${origen}/api/tablas/imprimir?precio=${precio}&token=directo`,
+                                respond: ({ body }) => { pintado = JSON.parse(body); ok(); },
+                                continue: () => ok()
+                            };
+                            if (interceptar && manejador && !nav.sinInterceptar) manejador(req); else req.continue();
+                        });
+                    },
+                    waitForSelector: async () => {
+                        if (!pintado) throw new Error("la página no recibió datos");
+                        return { screenshot: async () => Buffer.from(`PNG ${new URL(url).pathname} ocupados=${pintado.numerosOcupados.join(",")}`) };
+                    }
                 }),
                 close: async () => {}
             };
@@ -106,7 +131,7 @@ function escenario() {
         premios: [{ tipo: "otro", nombre: "Mayor", premio: 100000 }], tabla: T5K, cifras: 2, cantidad_numeros: 100, creado_en: "2026-10-22T12:00:00Z"
     });
     t.eventos_bot = [ev(EV_A, A, "g1@g.us", "Chontico Noche"), ev(EV_B, B, "gb@g.us", "Secreto de B")];
-    t[T5K] = [A, B].flatMap(u => Array.from({ length: 100 }, (_, i) => ({ numero: String(i).padStart(2, "0"), estado: i < 3 ? "pagado" : "libre", usuario_id: u })));
+    t[T5K] = [A, B].flatMap(u => Array.from({ length: 100 }, (_, i) => ({ numero: String(i).padStart(2, "0"), estado: i < (u === A ? 3 : 5) ? "pagado" : "libre", usuario_id: u })));
 }
 
 let base;
@@ -119,7 +144,20 @@ let n = 0;
 const sol = () => `00000000-0000-4000-9000-${String(++n).padStart(12, "0")}`;
 const destinosDe = (u) => (fake.tablas.destinos_compartir_tabla || []).filter(d => d.usuario_id === u);
 // Lo que compartir NUNCA debe tocar (reservas, pagos, números, eventos...).
-const intocable = () => JSON.stringify([fake.tablas[T5K], fake.tablas.eventos_bot, fake.tablas.grupos_autorizados, fake.tablas.sorteos_programados || null]);
+const intocable = () => JSON.stringify({ [T5K]: fake.tablas[T5K], eventos_bot: fake.tablas.eventos_bot, grupos_autorizados: fake.tablas.grupos_autorizados, sorteos_programados: fake.tablas.sorteos_programados || null });
+// Primera diferencia (tabla + fila) entre dos instantáneas de intocable().
+function diferencia(antes, despues) {
+    const a = JSON.parse(antes), d = JSON.parse(despues);
+    for (const t of Object.keys(a)) {
+        const fa = a[t] || [], fd = d[t] || [];
+        if (fa.length !== fd.length) return `${t}: ${fa.length} -> ${fd.length} filas`;
+        for (let i = 0; i < fa.length; i++) if (JSON.stringify(fa[i]) !== JSON.stringify(fd[i])) return `${t}[${i}]: ${JSON.stringify(fa[i])} -> ${JSON.stringify(fd[i])}`;
+    }
+    return null;
+}
+
+const IMG_A = "PNG /tablas/imprimir/5000 ocupados=00,01,02";
+const IMG_B = "PNG /tablas/imprimir/5000 ocupados=00,01,02,03,04";
 
 const pruebas = [];
 const prueba = (nombre, fn) => pruebas.push({ nombre, fn });
@@ -130,7 +168,7 @@ prueba("1. Vista previa: imagen real de la tabla del cliente, texto habitual, SU
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
     const v = r.json.data;
     assert.ok(v.imagen.startsWith("data:image/png;base64,"));
-    assert.strictEqual(Buffer.from(v.imagen.split(",")[1], "base64").toString(), `PNG /tablas/imprimir/5000 ${A}`, "la cuadrícula de A");
+    assert.strictEqual(Buffer.from(v.imagen.split(",")[1], "base64").toString(), IMG_A, "la cuadrícula de A");
     assert.ok(v.texto.includes("Chontico Noche"), v.texto);
     assert.strictEqual(v.origen_texto, "habitual");
     assert.deepStrictEqual(v.grupos.map(g => [g.grupo_id, g.nombre]), [["g1@g.us", "Rifa uno"], ["g2@g.us", "Rifa dos"]], "solo autorizados y activos de A");
@@ -162,10 +200,10 @@ prueba("4. Selección inicial confirmada: imagen + caption en el MISMO mensaje a
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
     assert.deepStrictEqual([r.json.enviado, r.json.enviados, r.json.fallidos], [true, 2, 0]);
     assert.deepStrictEqual(envios.map(e => [e.jid, e.caption, e.usuario]), [["g1@g.us", "Texto editado", A], ["g2@g.us", "Texto editado", A]]);
-    assert.ok(envios.every(e => e.image === `PNG /tablas/imprimir/5000 ${A}`), "imagen real de la tabla de A");
+    assert.ok(envios.every(e => e.image === IMG_A), "imagen real de la tabla de A");
     assert.strictEqual(capturas > 0, true);
     assert.deepStrictEqual(destinosDe(A).map(d => [d.precio, d.grupos]), [[5000, ["g1@g.us", "g2@g.us"]]]);
-    assert.strictEqual(intocable(), antes, "reservas, pagos, números y sorteo intactos");
+    assert.strictEqual(diferencia(antes, intocable()), null, "reservas, pagos, números y sorteo intactos");
 });
 
 prueba("5. Siguientes clics: sin volver a elegir, a los grupos guardados con el texto configurado", async () => {
@@ -211,7 +249,7 @@ prueba("7. Aislamiento: selecciones por cliente; A no puede enviar a un grupo de
     const vB = (await llamar("GET", "/tablas/compartir/vista-previa?precio=5000", null, "jwt-B")).json.data;
     assert.deepStrictEqual([vB.grupos.map(g => g.grupo_id), vB.seleccion], [["gb@g.us"], []]);
     assert.ok(!vB.texto.includes("Chontico") && vB.texto.includes("Secreto de B"));
-    assert.ok(Buffer.from(vB.imagen.split(",")[1], "base64").toString().endsWith(B), "imagen de la tabla de B");
+    assert.strictEqual(Buffer.from(vB.imagen.split(",")[1], "base64").toString(), IMG_B, "imagen de la tabla de B");
     await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: sol(), grupos: ["gb@g.us"], guardar_destinos: true }, "jwt-B");
     assert.deepStrictEqual(envios.map(e => [e.usuario, e.jid]), [[A, "g1@g.us"], [B, "gb@g.us"]], "cada uno con SU WhatsApp y SUS grupos");
     assert.deepStrictEqual([destinosDe(A)[0].grupos, destinosDe(B)[0].grupos], [["g1@g.us"], ["gb@g.us"]]);
@@ -272,6 +310,34 @@ prueba("12. Compatibilidad: el panel anterior (sin solicitudId) sigue publicando
     const r = await llamar("POST", "/tablas/compartir", { precio: 5000 });
     assert.deepStrictEqual([r.status, r.json.enviado], [200, true]);
     assert.deepStrictEqual(envios.map(e => e.jid), ["g1@g.us"]);
+});
+
+prueba("13. Sin TABLA_SHARE_SECRET: vista previa, envío con caption y tabla del scheduler funcionan igual", async () => {
+    escenario();
+    assert.strictEqual(process.env.TABLA_SHARE_SECRET, undefined, "el secreto no está en el entorno");
+    const v = (await llamar("GET", "/tablas/compartir/vista-previa?precio=5000")).json.data;
+    assert.strictEqual(Buffer.from(v.imagen.split(",")[1], "base64").toString(), IMG_A);
+    const r = await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: sol(), grupos: ["g1@g.us"], texto: "Caption de prueba" });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.deepStrictEqual(envios.map(e => [e.jid, e.image, e.caption]), [["g1@g.us", IMG_A, "Caption de prueba"]], "foto + caption en el mismo envío");
+    // La función que usa el scheduler (INITIAL_TABLE) tampoco depende del secreto.
+    const { compartirTabla } = require("../../services/compartirTabla");
+    const s = await compartirTabla({ evento: fake.tablas.eventos_bot[0], sock: sockets.get(A) });
+    assert.deepStrictEqual(s, { enviado: true });
+    assert.strictEqual(envios[1].image, IMG_A);
+});
+
+prueba("14. Falla cerrado: si la página no recibe los datos interceptados no hay imagen ni envío", async () => {
+    escenario();
+    nav.sinInterceptar = true;
+    try {
+        const v = (await llamar("GET", "/tablas/compartir/vista-previa?precio=5000")).json.data;
+        assert.deepStrictEqual([v.imagen, typeof v.error_imagen], [null, "string"]);
+        const r = await llamar("POST", "/tablas/compartir", { precio: 5000, solicitudId: sol(), grupos: ["g1@g.us"] });
+        assert.deepStrictEqual([r.status, r.json.motivo, envios.length], [502, "error_imagen", 0]);
+    } finally {
+        nav.sinInterceptar = false;
+    }
 });
 
 (async () => {
