@@ -19,11 +19,13 @@ import {
     reservarNumeroManual,
     pagarNumeroManual,
     liberarNumeroManual,
+    obtenerContextoNumero,
     type DatosReserva,
     type DatosPago,
     type DatosLiberar,
     type Resultado
 } from "@/services/tablas/reservaManual";
+import { procesarOperacion, type DatosOperacion, type NumeroSeleccionable, type OperacionLote, type ResultadoOperacion } from "@/services/tablas/pagoLote";
 
 import { derivarPaquetes } from "@/components/tablas/derivarPaquetes";
 import { estadoEfectivo } from "@/components/tablas/estadoVisual";
@@ -51,6 +53,8 @@ export function useTablaPrecio(precio: number) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [accionando, setAccionando] = useState<string | null>(null);
+    // Operación por lote en curso: una segunda (doble clic) no se lanza.
+    const loteEnCurso = useRef(false);
 
     // Sin filas visibles: qué dice el backend (cuadrícula creada, migración
     // pendiente, RLS que oculta las filas...). null mientras haya filas.
@@ -323,6 +327,36 @@ export function useTablaPrecio(precio: number) {
         marcarPagado: async (numero: string, datos?: DatosPago): Promise<Resultado> => {
             if (!usuarioId) return sinSesion;
             return ejecutar(numero, () => pagarNumeroManual(precio, numero, datos));
+        },
+
+        // Varios números (o uno, desde las acciones rápidas): la MISMA
+        // operación de un número, en serie, y una sola recarga al final.
+        // null = ya había un lote en curso (no se lanza).
+        procesarLote: async (operacion: OperacionLote, incluidos: NumeroSeleccionable[], datos: DatosOperacion, solicitudLote: string, alAvanzar?: (hechos: number, total: number) => void): Promise<ResultadoOperacion | null> => {
+            if (!usuarioId || loteEnCurso.current) return null;
+            loteEnCurso.current = true;
+            setAccionando("lote");
+            try {
+                return await procesarOperacion({
+                    operacion,
+                    incluidos,
+                    ops: {
+                        pagar: (numero, d) => pagarNumeroManual(precio, numero, d),
+                        liberar: (numero, d) => liberarNumeroManual(precio, numero, d),
+                        estadoReal: async (numero) => {
+                            const r = await obtenerContextoNumero(precio, numero);
+                            return r.ok ? { ok: true, estado: r.estado } : { ok: false, mensaje: r.mensaje };
+                        }
+                    },
+                    datos,
+                    solicitudLote,
+                    alAvanzar
+                });
+            } finally {
+                await cargar(usuarioId, config);
+                setAccionando(null);
+                loteEnCurso.current = false;
+            }
         },
 
         // Libera una reserva, anula un pago o desbloquea, según el estado real.

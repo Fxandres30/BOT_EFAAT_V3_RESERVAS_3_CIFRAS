@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { ChevronRight, History, Info, Search, X } from "lucide-react";
 
 import BotonContraer from "./BotonContraer";
+import AccionesNumero from "./AccionesNumero";
+import type { AccionRapida } from "@/services/tablas/pagoLote";
 import { ESTADOS_META_VISUAL, ESTADO_INTERNO_META, bucketEstado } from "./estadoVisual";
 import {
     FILTROS_HISTORIAL_VACIOS,
@@ -28,6 +30,13 @@ interface Props {
     onFiltrosChange: (filtros: FiltrosHistorial) => void;
     expandido: boolean;
     onToggleExpandido: () => void;
+    /** Acciones rápidas por número (etiqueta de estado). Ausente = sin ellas. */
+    onAccion?: (numero: string, accion: AccionRapida) => void;
+    /** Hay una operación en curso: las acciones rápidas esperan. */
+    ocupado?: boolean;
+    /** Modo «Seleccionar» (compartido con la cuadrícula): null = inactivo. */
+    seleccion?: Set<string> | null;
+    onAlternarSeleccion?: (numero: string) => void;
 }
 
 const POR_PAGINA = 30;
@@ -67,7 +76,7 @@ function EstadoBadge({ estado }: { estado: EstadoNumero }) {
 
 const sinDato = <span className="text-gray-400">—</span>;
 
-export default function HistorialNumeros({ filas, auditoriaDisponible, filtros, onFiltrosChange, expandido, onToggleExpandido }: Props) {
+export default function HistorialNumeros({ filas, auditoriaDisponible, filtros, onFiltrosChange, expandido, onToggleExpandido, onAccion, ocupado = false, seleccion = null, onAlternarSeleccion }: Props) {
 
     const [visibles, setVisibles] = useState(POR_PAGINA);
     const [abierto, setAbierto] = useState<string | null>(null);
@@ -188,6 +197,10 @@ export default function HistorialNumeros({ filas, auditoriaDisponible, filtros, 
                                         fila={fila}
                                         abierta={abierto === fila.numero}
                                         onAlternar={() => setAbierto(abierto === fila.numero ? null : fila.numero)}
+                                        onAccion={onAccion}
+                                        ocupado={ocupado}
+                                        seleccionado={seleccion && onAlternarSeleccion ? seleccion.has(fila.numero) : undefined}
+                                        onAlternarSeleccion={onAlternarSeleccion}
                                     />
                                 ))}
                             </ul>
@@ -219,7 +232,16 @@ export default function HistorialNumeros({ filas, auditoriaDisponible, filtros, 
 
 }
 
-function FilaNumero({ fila, abierta, onAlternar }: { fila: FilaHistorial; abierta: boolean; onAlternar: () => void }) {
+function FilaNumero({ fila, abierta, onAlternar, onAccion, ocupado, seleccionado, onAlternarSeleccion }: {
+    fila: FilaHistorial;
+    abierta: boolean;
+    onAlternar: () => void;
+    onAccion?: Props["onAccion"];
+    ocupado: boolean;
+    /** undefined = no se está seleccionando. */
+    seleccionado?: boolean;
+    onAlternarSeleccion?: (numero: string) => void;
+}) {
 
     const idDetalle = `historial-${fila.numero}`;
 
@@ -227,22 +249,49 @@ function FilaNumero({ fila, abierta, onAlternar }: { fila: FilaHistorial; abiert
 
         <li className="min-w-0">
 
-            <button
-                type="button"
-                onClick={onAlternar}
-                aria-expanded={abierta}
-                aria-controls={idDetalle}
-                className="w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-gray-50 min-w-0"
-            >
-                <ChevronRight size={15} className={`shrink-0 text-gray-400 transition-transform ${abierta ? "rotate-90" : ""}`} />
-                <span className="font-mono font-bold text-gray-900 w-10 shrink-0">{fila.numero}</span>
-                <EstadoBadge estado={fila.estado} />
-                <span className="flex-1 min-w-0 text-sm text-gray-700 truncate">
-                    {[fila.cliente, fila.contacto, fila.grupo].filter(Boolean).join(" · ") || <span className="text-gray-400">Sin reserva actual</span>}
-                </span>
-                <span className="hidden sm:block text-xs text-gray-500 shrink-0">{etiquetaReserva(fila.reserva) || ""}</span>
-                <span className="text-xs text-gray-400 shrink-0">{fila.eventos.length} mov.</span>
-            </button>
+            {/* Tres controles separados (nunca anidados): marcar en la
+                selección, expandir la fila y las acciones de su estado. */}
+            <div className={`flex items-center min-w-0 pr-2 ${seleccionado ? "bg-indigo-50/60" : ""}`}>
+
+                {seleccionado !== undefined && (
+                    <label className="pl-3 py-2.5 flex items-center shrink-0 cursor-pointer">
+                        <span className="sr-only">Seleccionar el número {fila.numero}</span>
+                        <input
+                            type="checkbox"
+                            checked={seleccionado}
+                            onChange={() => onAlternarSeleccion?.(fila.numero)}
+                            className="h-4 w-4 accent-indigo-600"
+                        />
+                    </label>
+                )}
+
+                <button
+                    type="button"
+                    onClick={onAlternar}
+                    aria-expanded={abierta}
+                    aria-controls={idDetalle}
+                    className="flex-1 text-left px-3 py-2.5 flex items-center gap-3 hover:bg-gray-50 min-w-0"
+                >
+                    <ChevronRight size={15} className={`shrink-0 text-gray-400 transition-transform ${abierta ? "rotate-90" : ""}`} />
+                    <span className="font-mono font-bold text-gray-900 w-10 shrink-0">{fila.numero}</span>
+                    {!onAccion && <EstadoBadge estado={fila.estado} />}
+                    <span className="flex-1 min-w-0 text-sm text-gray-700 truncate">
+                        {[fila.cliente, fila.contacto, fila.grupo].filter(Boolean).join(" · ") || <span className="text-gray-400">Sin reserva actual</span>}
+                    </span>
+                    <span className="hidden sm:block text-xs text-gray-500 shrink-0">{etiquetaReserva(fila.reserva) || ""}</span>
+                    <span className="text-xs text-gray-400 shrink-0">{fila.eventos.length} mov.</span>
+                </button>
+
+                {onAccion && (
+                    <AccionesNumero
+                        numero={fila.numero}
+                        estado={fila.estado}
+                        deshabilitado={ocupado}
+                        onAccion={(accion) => onAccion(fila.numero, accion)}
+                    />
+                )}
+
+            </div>
 
             {abierta && (
 

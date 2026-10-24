@@ -9,6 +9,9 @@ interface Props {
     enGrupo: boolean;
     atenuado: boolean;
     deOtroEvento: boolean;
+    /** Modo «Seleccionar» de Tablas: undefined = la cuadrícula no está en
+     *  ese modo (la celda se ve exactamente como siempre). */
+    seleccionado?: boolean;
     onClick: () => void;
 }
 
@@ -17,6 +20,7 @@ export default function NumeroCard({
     enGrupo,
     atenuado,
     deOtroEvento,
+    seleccionado,
     onClick
 }: Props) {
 
@@ -43,7 +47,9 @@ export default function NumeroCard({
             id={`numero-${numero.numero}`}
             data-numero={numero.numero}
             data-estado={estadoReal}
-            aria-label={`Número ${numero.numero}: ${meta.label}${enGrupo ? ", pertenece a un grupo" : ""}${deOtroEvento ? ", de otro evento" : ""}`}
+            data-seleccionado={seleccionado ? "" : undefined}
+            aria-pressed={seleccionado === undefined ? undefined : seleccionado}
+            aria-label={`Número ${numero.numero}: ${meta.label}${enGrupo ? ", pertenece a un grupo" : ""}${deOtroEvento ? ", de otro evento" : ""}${seleccionado ? ", seleccionado" : ""}`}
             title={`${numero.numero} · ${meta.label}${numero.comprador ? ` · ${numero.comprador}` : ""}`}
             onClick={onClick}
             className={`
@@ -57,6 +63,19 @@ export default function NumeroCard({
                 ${atenuado ? "opacity-30 saturate-50" : ""}
             `}
         >
+
+            {/* La marca de selección son elementos HIJOS, no estilos del botón:
+                el botón tiene transición, y al ocultar la selección para
+                «Compartir» un anillo en el propio botón se capturaba a mitad
+                de la animación. Un hijo se quita del DOM al instante. */}
+            {seleccionado && (
+                <>
+                    <span aria-hidden="true" className="pointer-events-none absolute -inset-1 rounded-[inherit] ring-4 ring-indigo-500" />
+                    <span aria-hidden="true" className="pointer-events-none absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-indigo-600 text-white text-[11px] font-bold leading-5 text-center shadow">
+                        ✓
+                    </span>
+                </>
+            )}
 
             {/* Sin indicadores visuales de grupo / otro evento en la celda:
                 la cara del número solo muestra su estado (Disponible /

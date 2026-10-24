@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Loader2, AlertTriangle, Info, Palette, LibraryBig, Filter } from "lucide-react";
 
 import { useTablaPrecio } from "@/hooks/useTablaPrecio";
@@ -10,6 +11,7 @@ import { Badge } from "@/components/ui/Badge";
 import AccionesTabla, { BotonIcono } from "./AccionesTabla";
 import StatsBar from "./StatsBar";
 import Grid from "./Grid";
+import SeleccionPagos, { DialogoOperacion } from "./SeleccionPagos";
 import HistorialNumeros from "./HistorialNumeros";
 import AyudaContextual from "@/components/aprende/AyudaContextual";
 import ReservasRecientes from "./ReservasRecientes";
@@ -22,6 +24,7 @@ import { FILTROS_HISTORIAL_VACIOS, numerosCoincidentes, type FiltrosHistorial } 
 import { capturarTabla } from "@/services/tablas/capturarTabla";
 import type { EventoActivo } from "./types";
 import type { TablaDiseno } from "./disenoTypes";
+import type { OperacionLote } from "@/services/tablas/pagoLote";
 
 interface Props {
     precio: number;
@@ -47,6 +50,7 @@ export default function TablaPrecioView({ precio }: Props) {
         accionando,
         reservar,
         marcarPagado,
+        procesarLote,
         liberar,
         reiniciar
     } = useTablaPrecio(precio);
@@ -101,6 +105,37 @@ export default function TablaPrecioView({ precio }: Props) {
     // El `div` de la tabla visible: «Compartir» lo captura tal cual.
     const tablaRef = useRef<HTMLDivElement>(null);
     const [disenoEnEdicion, setDisenoEnEdicion] = useState<TablaDiseno | null>(null);
+
+    // «Seleccionar» (pago por lote). Ligada al precio: al cambiar de tabla
+    // la selección no se arrastra. Se conserva al filtrar la cuadrícula.
+    const [seleccionDe, setSeleccionDe] = useState<{ precio: number; activo: boolean; numeros: string[] }>({ precio, activo: false, numeros: [] });
+    const modoSeleccion = seleccionDe.precio === precio ? seleccionDe : { precio, activo: false, numeros: [] as string[] };
+    const conjuntoSeleccion = useMemo(() => new Set(modoSeleccion.numeros), [modoSeleccion.numeros]);
+    const cambiarSeleccion = (cambio: Partial<{ activo: boolean; numeros: string[] }>) =>
+        setSeleccionDe(prev => ({ ...(prev.precio === precio ? prev : { precio, activo: false, numeros: [] }), ...cambio }));
+    const alternarSeleccion = (numero: string) =>
+        cambiarSeleccion({ numeros: conjuntoSeleccion.has(numero) ? modoSeleccion.numeros.filter(n => n !== numero) : [...modoSeleccion.numeros, numero] });
+
+    // Estado efectivo de cada número: lo que clasifican la selección y las
+    // acciones rápidas (el servidor vuelve a comprobarlo al operar).
+    const seleccionables = useMemo(() => numeros.map(n => ({ numero: n.numero, estado: estadoEfectivo(n) })), [numeros]);
+
+    // Acciones rápidas de «Historial de números»: una operación sobre un
+    // solo número (mismo diálogo y misma ruta que el lote) o su detalle.
+    const [accionRapida, setAccionRapida] = useState<{ operacion: OperacionLote; numero: string } | null>(null);
+    const [detalle, setDetalle] = useState<string | null>(null);
+
+    // Mientras «Compartir» captura la tabla, sin marcas de selección: la
+    // imagen que reciben los grupos es siempre la cuadrícula limpia.
+    const [capturando, setCapturando] = useState(false);
+    async function capturarSinSeleccion() {
+        flushSync(() => setCapturando(true));
+        try {
+            return await capturarTabla(tablaRef.current);
+        } finally {
+            setCapturando(false);
+        }
+    }
 
     if (loading) {
 
@@ -183,7 +218,7 @@ export default function TablaPrecioView({ precio }: Props) {
                 disponibles={stats.disponibles}
                 usuarioId={usuarioId}
                 onReiniciar={reiniciar}
-                capturarTabla={() => capturarTabla(tablaRef.current)}
+                capturarTabla={capturarSinSeleccion}
                 segundaFila={
                     <>
                         <BotonIcono
@@ -221,8 +256,22 @@ export default function TablaPrecioView({ precio }: Props) {
                 </div>
             )}
 
+            <SeleccionPagos
+                activo={modoSeleccion.activo}
+                numeros={seleccionables}
+                seleccion={modoSeleccion.numeros}
+                onActivar={() => cambiarSeleccion({ activo: true, numeros: [] })}
+                onSalir={() => cambiarSeleccion({ activo: false, numeros: [] })}
+                onLimpiar={() => cambiarSeleccion({ numeros: [] })}
+                onProcesar={procesarLote}
+            />
+
             <Grid
                 contenedorRef={tablaRef}
+                seleccion={modoSeleccion.activo && !capturando ? conjuntoSeleccion : null}
+                onAlternarSeleccion={alternarSeleccion}
+                detalle={detalle}
+                onDetalleChange={setDetalle}
                 precio={precio}
                 numeros={numeros}
                 paquetes={paquetes}
@@ -243,7 +292,22 @@ export default function TablaPrecioView({ precio }: Props) {
                 onFiltrosChange={setFiltros}
                 expandido={secciones.historial}
                 onToggleExpandido={() => alternarSeccion("historial")}
+                ocupado={accionando !== null}
+                onAccion={(numero, accion) => (accion === "detalle" ? setDetalle(numero) : setAccionRapida({ operacion: accion, numero }))}
+                seleccion={modoSeleccion.activo ? conjuntoSeleccion : null}
+                onAlternarSeleccion={alternarSeleccion}
             />
+
+            {accionRapida && (
+                <DialogoOperacion
+                    key={`${accionRapida.operacion}:${accionRapida.numero}`}
+                    operacion={accionRapida.operacion}
+                    numeros={seleccionables}
+                    seleccion={[accionRapida.numero]}
+                    onProcesar={procesarLote}
+                    onClose={() => setAccionRapida(null)}
+                />
+            )}
 
             <ReservasRecientes
                 precio={precio}
