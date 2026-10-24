@@ -8,6 +8,8 @@
 //   editar: solo antes de publicar en ningún grupo; sube la versión y vuelve
 //   a borrador (hay que revisar la vista previa y confirmar otra vez).
 //   cancelar: nunca deshace lo ya publicado; cancela lo pendiente.
+//   eliminar: solo sin ninguna actividad; archivar: oculta sin borrar
+//   (ver administracion.js).
 // ==========================================================================
 
 const repo = require("./repo");
@@ -45,6 +47,7 @@ async function reinicioDiferible(usuarioId, reinicio, porSorteo, publicarEn) {
 const tablasCliente = require("../bot/funciones/eventos/tablasCliente");
 // Sorteo ACTIVO de una tabla, sea cual sea su origen (bot o panel).
 const sorteosActivos = require("./sorteosActivos");
+const administracion = require("./administracion");
 
 const ESTADOS_EDITABLES = ["borrador", "programado"];
 
@@ -422,50 +425,9 @@ async function editar(usuarioId, id, entrada = {}) {
 
 }
 
-async function cancelar(usuarioId, id) {
+// Cancelar, eliminar, archivar y el detalle: sorteos/administracion.js.
 
-    const actual = await repo.obtenerSorteo(usuarioId, id);
-    if (!actual.ok) return actual;
-
-    const { estado } = actual.data;
-
-    if (estado === "cancelado") return actual;
-
-    // Sin publicar y con reservas anticipadas: cancelar las dejaría sin
-    // sorteo. Primero se resuelven (D3).
-    if (reservasAnticipadas.ESTADOS_SIN_PUBLICAR.includes(estado)) {
-        const bloqueo = await bloqueoPorAnticipadas(usuarioId, actual.data, (n) =>
-            `No se puede cancelar: el sorteo tiene ${n} reserva(s) anticipada(s). Libéralas antes desde Tablas.`);
-        if (bloqueo) return bloqueo;
-    }
-
-    // Grupos todavía no publicados: se cancelan (el publicador solo toma
-    // 'pendiente'/'fallido', así que ya no se publicarán).
-    for (const g of actual.data.grupos) {
-        if (g.estado === "pendiente" || g.estado === "fallido") {
-            await repo.marcarGrupo(usuarioId, g.id, { estado: "cancelado" });
-        }
-    }
-
-    const publicados = actual.data.grupos.filter(g => g.estado === "publicado").length;
-
-    if (ESTADOS_EDITABLES.includes(estado)) {
-        const r = await repo.actualizarSorteoSi(usuarioId, id, { estados: ESTADOS_EDITABLES }, { estado: "cancelado", cancelado_en: new Date().toISOString() });
-        if (!r.ok && r.motivo !== "conflicto") return r;
-    }
-
-    const final = await repo.obtenerSorteo(usuarioId, id);
-    if (!final.ok) return final;
-
-    return {
-        ok: true,
-        data: final.data,
-        // Lo ya publicado NO se deshace: el sorteo sigue vivo en esos grupos
-        // y se cierra con las reglas normales.
-        aviso: publicados ? `Ya estaba publicado en ${publicados} grupo(s): ahí sigue activo hasta su cierre.` : null
-    };
-
-}
+const REINTENTO_MANUAL = "reintento manual solicitado";
 
 // Reintento MANUAL de un grupo en revisión (p. ej. no se supo si el anuncio
 // llegó): el administrador decide; nunca se reintenta solo.
@@ -478,13 +440,25 @@ async function reintentarGrupo(usuarioId, id, grupoId) {
     if (!g) return falla("no_encontrado");
     if (g.estado !== "requiere_revision" && g.estado !== "fallido") return falla("estado_invalido", { estado: g.estado });
     if (actual.data.estado === "cancelado") return falla("estado_invalido", { estado: "cancelado" });
+    if (actual.data.archivado_en) return falla("estado_invalido", { estado: "archivado" });
 
-    await repo.marcarGrupo(usuarioId, g.id, {
+    // Ya pedido y todavía sin tomar por el publicador (doble clic): nada más.
+    if (g.estado === "fallido" && g.ultimo_error === REINTENTO_MANUAL) {
+        return { ok: true, data: actual.data, aviso: "El reintento ya estaba pedido; se publicará en el próximo ciclo." };
+    }
+
+    // Condicionado al estado leído: un doble clic (o una cancelación a la
+    // vez) no suma dos reintentos ni revive un grupo cancelado.
+    const marcado = await repo.marcarGrupoSi(usuarioId, g.id, [g.estado], {
         estado: "fallido",
-        ultimo_error: "reintento manual solicitado",
+        ultimo_error: REINTENTO_MANUAL,
         intentos: 0,
         reintentos_manuales: (Number(g.reintentos_manuales) || 0) + 1
     });
+    if (!marcado.ok) return marcado;
+    if (!marcado.data) return falla("conflicto");
+
+    await repo.registrarHistorial(usuarioId, id, "reintentar", "pedido", { grupo_id: g.grupo_id, grupo_nombre: g.grupo_nombre || null, estado_previo: g.estado });
 
     if (["publicado", "publicado_parcial", "fallido"].includes(actual.data.estado)) {
         await repo.actualizarSorteoSi(usuarioId, id, { estados: ["publicado", "publicado_parcial", "fallido"] }, { estado: "publicando" });
@@ -561,6 +535,14 @@ const activos = {
     editar: (usuarioId, id, entrada) => sorteosActivos.editar(usuarioId, id, entrada, { ahora: reloj.ahora(), resolverDiseno })
 };
 
+// Administración de las programaciones (estados, detalle, cancelar,
+// eliminar, archivar), con el reloj del servicio.
+const cancelar = (usuarioId, id) => administracion.cancelar(usuarioId, id, { ahora: reloj.ahora() });
+const eliminar = (usuarioId, id, entrada) => administracion.eliminar(usuarioId, id, entrada, { ahora: reloj.ahora() });
+const archivar = (usuarioId, id, entrada) => administracion.archivar(usuarioId, id, entrada, { ahora: reloj.ahora() });
+const gestion = (usuarioId) => administracion.listar(usuarioId, { ahora: reloj.ahora() });
+const detalle = (usuarioId, id) => administracion.detalle(usuarioId, id, { ahora: reloj.ahora() });
+
 module.exports = {
     activos,
     crearSorteo,
@@ -568,6 +550,10 @@ module.exports = {
     confirmar,
     editar,
     cancelar,
+    eliminar,
+    archivar,
+    gestion,
+    detalle,
     reintentarGrupo,
     listarSorteos: repo.listarSorteos,
     obtenerSorteo: repo.obtenerSorteo,

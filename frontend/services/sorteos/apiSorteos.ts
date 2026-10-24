@@ -70,7 +70,88 @@ export interface Sorteo {
     confirmado_version: number | null;
     plantilla_id: string | null;
     grupos?: GrupoSorteo[];
+    confirmado_en?: string | null;
+    cancelado_en?: string | null;
+    ultimo_error?: string | null;
+    creado_en?: string;
+    actualizado_en?: string;
+    /** Migración 038: oculta del listado, sin borrar nada. */
+    archivado_en?: string | null;
 }
+
+/**
+ * Estado OPERATIVO del sorteo, leído de eventos_bot (backend
+ * sorteos/administracion.js). Distinto del estado de la programación:
+ * «publicado» no significa «terminado».
+ */
+export type EstadoOperativo = "pendiente" | "en_curso" | "terminado" | "cancelado" | "sin_publicar" | "desconocido";
+
+export interface GrupoGestion {
+    id: string;
+    grupo_id: string;
+    nombre: string | null;
+    estado: EstadoGrupo;
+    en_espera: boolean;
+    intentos: number;
+    reintentos_manuales: number;
+    publicado_en: string | null;
+    actualizado_en: string | null;
+    ultimo_error: string | null;
+    /** Evento del grupo: no creado, abierto, cerrado o ya de otro sorteo. */
+    evento: "sin_evento" | "abierto" | "cerrado" | "reutilizado";
+    explicacion: string;
+    /** Qué debe hacer el administrador, o null si nada. */
+    intervencion: string | null;
+    puede_reintentar: boolean;
+}
+
+export interface AccionesSorteo {
+    vista_previa: boolean;
+    confirmar: boolean;
+    editar: boolean;
+    cancelar: boolean;
+    eliminar: boolean;
+    archivar: boolean;
+    restaurar: boolean;
+}
+
+export interface ImpactoSorteo {
+    lectura_ok: boolean;
+    grupos: { total: number; pendientes: number; publicando: number; publicados: number; fallidos: number; en_revision: number; cancelados: number; con_evento: number };
+    intentos: number;
+    reintentos_manuales: number;
+    eventos: { total: number; abiertos: number };
+    reservas: { reservados: number; pagados: number; otros: number; total: number };
+    anticipadas: number;
+    reinicio_hecho: boolean;
+}
+
+export interface GestionSorteo {
+    operativo: { estado: EstadoOperativo; reservas: "abiertas" | "cerradas" | null; detalle: string };
+    impacto: ImpactoSorteo;
+    /** Lo que el backend permite en este estado (y vuelve a validar). */
+    acciones: AccionesSorteo;
+    eliminacion: { posible: boolean; bloqueos: string[]; alternativa: "cancelar" | "archivar" | null };
+    grupos: GrupoGestion[];
+    necesita_intervencion: boolean;
+    ultimo_error: string | null;
+    ultima_actualizacion: string | null;
+    archivado_en: string | null;
+}
+
+export interface SorteoGestionado extends Sorteo {
+    grupos: GrupoSorteo[];
+    gestion: GestionSorteo;
+}
+
+export interface DetalleSorteo extends SorteoGestionado {
+    historial: { en: string; tipo: string; texto: string }[];
+    /** false: el historial de operaciones (migración 038) no está disponible. */
+    historial_completo: boolean;
+}
+
+/** Recuento de lo que hizo una cancelación. */
+export interface ResultadoCancelacion { cancelados: number; en_curso: number; publicados: number; en_revision: number; eventos_abiertos: number }
 
 /** Campo de un sorteo activo: si se puede editar con el sorteo en curso y por qué. */
 export interface CampoActivo { editable: boolean; motivo?: string }
@@ -230,8 +311,8 @@ export interface HorarioLoteria {
 export interface ErrorCampo { campo: string; mensaje: string }
 
 export type Respuesta<T> =
-    | { ok: true; data: T; aviso?: string; meta?: ResumenGrupos }
-    | { ok: false; motivo: string; errores?: ErrorCampo[]; bloqueos?: string[]; error?: string; migracion?: string; status?: number; mensaje?: string };
+    | { ok: true; data: T; aviso?: string; meta?: ResumenGrupos; resultado?: ResultadoCancelacion }
+    | { ok: false; motivo: string; errores?: ErrorCampo[]; bloqueos?: string[]; error?: string; migracion?: string; status?: number; mensaje?: string; alternativa?: "cancelar" | "archivar" | null };
 
 const MENSAJES: Record<string, string> = {
     sin_sesion: "Tu sesión expiró. Vuelve a iniciar sesión.",
@@ -248,8 +329,14 @@ const MENSAJES: Record<string, string> = {
     nombre_duplicado: "Ya existe una plantilla con ese nombre.",
     migracion_pendiente: "Esta función todavía no está disponible. Inténtalo más tarde.",
     validacion: "Revisa los campos marcados.",
-    reservas_anticipadas: "El sorteo tiene reservas anticipadas: libéralas antes desde Tablas."
+    reservas_anticipadas: "El sorteo tiene reservas anticipadas: libéralas antes desde Tablas.",
+    no_eliminable: "Esta programación tiene actividad y no se puede eliminar.",
+    nada_que_cancelar: "No queda nada pendiente que cancelar.",
+    conflicto: "La programación cambió mientras tanto. Recarga y vuelve a intentarlo."
 };
+
+// Rechazos que traen del servidor un mensaje concreto (cantidades, motivos).
+const CON_MENSAJE = new Set(["reservas_anticipadas", "no_eliminable", "nada_que_cancelar", "estado_invalido"]);
 
 // Lo que ve el cliente cuando falla algo interno (servidor, configuración,
 // base de datos): nunca detalles técnicos. Esos van a la consola.
@@ -268,8 +355,7 @@ export function categoriaFallo(r: { motivo: string; status?: number }): string {
 }
 
 export function describirError(r: { motivo: string; error?: string; migracion?: string; status?: number; mensaje?: string }): string {
-    // Este rechazo trae del servidor la cantidad de reservas afectadas.
-    if (r.motivo === "reservas_anticipadas" && r.mensaje) return r.mensaje;
+    if (CON_MENSAJE.has(r.motivo) && r.mensaje) return r.mensaje;
     const conocido = MENSAJES[r.motivo];
     if (!conocido || r.motivo === "migracion_pendiente") {
         console.warn("[EFAAT] error interno:", { categoria: categoriaFallo(r), motivo: r.motivo, status: r.status, migracion: r.migracion });
@@ -323,6 +409,12 @@ export const apiSorteos = {
     confirmar: (id: string, version: number, reinicio?: { confirmado: boolean }) =>
         llamar<Sorteo>("POST", `/${id}/confirmar`, { version, confirmacion: true, ...(reinicio ? { reinicio } : {}) }),
     cancelar: (id: string) => llamar<Sorteo>("POST", `/${id}/cancelar`),
+    /** Listado de la pantalla de programados (estados, impacto y acciones). */
+    gestion: () => llamar<SorteoGestionado[]>("GET", "/gestion"),
+    detalle: (id: string) => llamar<DetalleSorteo>("GET", `/${id}/detalle`),
+    /** Solo sin actividad; `version` = la que se vio al confirmar. */
+    eliminar: (id: string, version: number) => llamar<{ id: string; eliminado: true; nombre: string | null }>("POST", `/${id}/eliminar`, { version, confirmacion: true }),
+    archivar: (id: string, archivar: boolean) => llamar<Sorteo>("POST", `/${id}/archivar`, { archivar }),
     reintentarGrupo: (id: string, grupoId: string) => llamar<Sorteo>("POST", `/${id}/grupos/reintentar`, { grupo_id: grupoId }),
     grupos: () => llamar<GrupoAutorizado[]>("GET", "/grupos"),
     plantillas: () => llamar<Plantilla[]>("GET", "/plantillas"),

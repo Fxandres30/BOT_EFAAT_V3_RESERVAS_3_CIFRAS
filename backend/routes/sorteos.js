@@ -27,12 +27,14 @@ const ESTADO_HTTP = {
     conflicto: 409,
     nombre_duplicado: 409,
     reservas_anticipadas: 409,
+    no_eliminable: 409,
+    nada_que_cancelar: 409,
     migracion_pendiente: 503
 };
 
 function responder(res, r, exito = 200) {
 
-    if (r?.ok) return res.status(exito).json({ ok: true, data: r.data, ...(r.aviso ? { aviso: r.aviso } : {}), ...(r.meta ? { meta: r.meta } : {}) });
+    if (r?.ok) return res.status(exito).json({ ok: true, data: r.data, ...(r.aviso ? { aviso: r.aviso } : {}), ...(r.meta ? { meta: r.meta } : {}), ...(r.resultado ? { resultado: r.resultado } : {}) });
 
     const { ok, ...detalle } = r || {};
     // Nunca se reenvía al navegador un mensaje interno de base de datos.
@@ -98,12 +100,20 @@ router.put("/activos/:id", conId(async (req, res) => responder(res, await servic
 
 // -------------------------------------------------------------- sorteos ---
 router.get("/", seguro(async (req, res) => responder(res, await servicio.listarSorteos(req.usuarioId))));
+// Listado de la pantalla de programados: con grupos, estado operativo,
+// impacto y acciones permitidas (Tablas sigue usando el listado simple).
+router.get("/gestion", seguro(async (req, res) => responder(res, await servicio.gestion(req.usuarioId))));
 router.post("/", seguro(async (req, res) => responder(res, await servicio.crearSorteo(req.usuarioId, req.body || {}), 201)));
 router.get("/:id", conId(async (req, res) => responder(res, await servicio.obtenerSorteo(req.usuarioId, req.params.id))));
 router.put("/:id", conId(async (req, res) => responder(res, await servicio.editar(req.usuarioId, req.params.id, req.body || {}))));
 router.get("/:id/vista-previa", conId(async (req, res) => responder(res, await servicio.vistaPrevia(req.usuarioId, req.params.id))));
 router.post("/:id/confirmar", conId(async (req, res) => responder(res, await servicio.confirmar(req.usuarioId, req.params.id, req.body || {}))));
+router.get("/:id/detalle", conId(async (req, res) => responder(res, await servicio.detalle(req.usuarioId, req.params.id))));
 router.post("/:id/cancelar", conId(async (req, res) => responder(res, await servicio.cancelar(req.usuarioId, req.params.id))));
+// Exige { version, confirmacion: true }: la versión que se vio al confirmar.
+router.post("/:id/eliminar", conId(async (req, res) => responder(res, await servicio.eliminar(req.usuarioId, req.params.id, req.body || {}))));
+// { archivar: true | false } (false = restaurar).
+router.post("/:id/archivar", conId(async (req, res) => responder(res, await servicio.archivar(req.usuarioId, req.params.id, { archivar: req.body?.archivar !== false }))));
 router.post("/:id/grupos/reintentar", conId(async (req, res) => responder(res, await servicio.reintentarGrupo(req.usuarioId, req.params.id, String(req.body?.grupo_id || "")))));
 
 module.exports = router;

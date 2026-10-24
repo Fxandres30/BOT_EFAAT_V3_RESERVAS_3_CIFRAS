@@ -92,21 +92,35 @@ const { consultarMisNumerosPorEstado } = require(r("bot/funciones/consultas/cons
 const { estadoDelSorteo } = require(r("bot/funciones/eventos/sorteoReal.js"));
 
 // Reinicio del panel (navegador), transpilado con el TypeScript del frontend.
-function cargarReinicioPanel() {
+// Su módulo puro (impactoReinicio.ts) se carga real; lo demás, simulado.
+function transpilar(archivo, requerir) {
     const ts = require(path.join(FRONT, "node_modules/typescript"));
-    const fuente = fs.readFileSync(path.join(FRONT, "services/tablas/reiniciarTabla.ts"), "utf8");
+    const fuente = fs.readFileSync(path.join(FRONT, archivo), "utf8");
     const { outputText } = ts.transpileModule(fuente, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } });
     const modulo = { exports: {} };
+    new Function("require", "module", "exports", outputText)(requerir, modulo, modulo.exports);
+    return modulo.exports;
+}
+function cargarReinicioPanel() {
+    const impacto = transpilar("services/tablas/impactoReinicio.ts", (spec) => { throw new Error("módulo no previsto: " + spec); });
     const requerir = (spec) => ({
         "@/lib/supabase": { supabase: fake.client },
-        "./tablasCliente": { obtenerTablaConfigCliente: async () => ({ tabla: T5K, cifras: 2, cantidad: 100 }) },
+        "./tablasCliente": {
+            obtenerTablaConfigCliente: async () => ({ tabla: T5K, cifras: 2, cantidad: 100 }),
+            obtenerTablasCliente: async () => [{ precio: 3000, tabla: T5K }, { precio: 5000, tabla: T5K }]
+        },
         "./registrarActividad": { registrarActividad: async () => {} },
-        "./prepararCuadricula": { prepararCuadricula: async () => ({}), diagnosticar: () => ({ tipo: "lista" }) }
+        "./prepararCuadricula": { prepararCuadricula: async () => ({}), diagnosticar: () => ({ tipo: "lista" }) },
+        "./impactoReinicio": impacto
     })[spec] || (() => { throw new Error("módulo no previsto: " + spec); })();
-    new Function("require", "module", "exports", outputText)(requerir, modulo, modulo.exports);
-    return modulo.exports.reiniciarTabla;
+    return transpilar("services/tablas/reiniciarTabla.ts", requerir);
 }
-const reiniciarTablaPanel = cargarReinicioPanel();
+const { reiniciarTabla: reiniciarTablaPanel, revisarReinicio: revisarReinicioPanel } = cargarReinicioPanel();
+// La confirmación que da el diálogo tras revisar (texto, anticipadas, huella).
+async function confirmacionPanel(aceptaAnticipadas = true) {
+    const r = await revisarReinicioPanel(3000, A);
+    return { texto: "REINICIAR", aceptaAnticipadas, huella: r.impacto.huella };
+}
 
 // Sorteo programado del 20/12 (siempre en el futuro respecto al reloj real
 // que usa la reserva manual); se publica a las 08:00 de Colombia.
@@ -427,32 +441,89 @@ prueba("7b. otro sorteo con «Reiniciar»: no se confirma con anticipadas; si ya
     assert.strictEqual(envios, 0, "G no publicó");
 });
 
-prueba("7c. reinicio del panel (Tablas, navegador): con anticipadas no reinicia y lo explica", async () => {
+prueba("7c. reinicio del panel (Tablas): con anticipadas solo con confirmación expresa; con ella se reinicia y el sorteo programado sigue", async () => {
     sembrar();
     const s = await programar();
     await reservar("52", { sorteoProgramadoId: s.id, grupoId: "g1@g.us" });
     fila("53").estado = "reservado";   // reserva normal de otro sorteo ya terminado
+    fila("53", T5K, B).estado = "reservado";   // el MISMO número en la cuadrícula de B
     const antes = JSON.stringify(fake.tablas[T5K]);
-    await assert.rejects(() => reiniciarTablaPanel(3000, A), /1 reserva\(s\) anticipada\(s\)/);
+    const deB = JSON.stringify(fake.tablas[T5K].filter(f => f.usuario_id === B));
+
+    // El diálogo muestra el impacto: 1 anticipada de su sorteo programado.
+    const r = await revisarReinicioPanel(3000, A);
+    assert.strictEqual(r.impacto.totalAnticipadas, 1);
+    assert.deepStrictEqual(r.impacto.anticipadas.map(a => [a.sorteoId, a.cantidad]), [[s.id, 1]]);
+    assert.strictEqual(r.impacto.porEstado.reservado, 2);
+    assert.deepStrictEqual(r.impacto.preciosCompartidos, [5000], "avisa de los otros precios que usan la tabla");
+
+    // Sin confirmación, sin el texto o sin aceptar las anticipadas: nada cambia.
+    await assert.rejects(() => reiniciarTablaPanel(3000, A), /Confirma el reinicio/);
+    await assert.rejects(() => reiniciarTablaPanel(3000, A, { texto: "reinicio", aceptaAnticipadas: true, huella: r.impacto.huella }), /Falta la confirmación/);
+    const sinAceptar = await confirmacionPanel(false);
+    await assert.rejects(() => reiniciarTablaPanel(3000, A, sinAceptar), /1 reserva\(s\) anticipada\(s\): confirma expresamente/);
     assert.strictEqual(JSON.stringify(fake.tablas[T5K]), antes, "no se tocó ninguna fila");
+
+    // Con la confirmación completa: se reinicia, anticipada incluida.
+    const hecho = await reiniciarTablaPanel(3000, A, await confirmacionPanel(true));
+    assert.deepStrictEqual([hecho.accion, hecho.filas, hecho.noTocadas, hecho.anticipadasEliminadas], ["reiniciada", 100, 0, 1]);
+    assert.ok(fake.tablas[T5K].filter(f => f.usuario_id === A).every(f => f.estado === "libre"), "las 100 de A, libres");
+    assert.strictEqual(JSON.stringify(fake.tablas[T5K].filter(f => f.usuario_id === B)), deB, "las de B no se tocan (su 53 sigue reservado)");
+    const sorteo = fake.tablas.sorteos_programados.find(x => x.id === s.id);
+    assert.strictEqual(sorteo.estado, "programado", "el sorteo programado no se cancela ni se borra");
 });
 
-prueba("7d. reinicio del panel con una anticipada que aparece entre la comprobación y la escritura: no se libera", async () => {
+prueba("7d. reinicio del panel: lo que cambia después de revisar no se borra (huella y UPDATE condicionado al estado)", async () => {
     sembrar();
     const s = await programar();
     fila("54").estado = "reservado";
-    // Tras la comprobación (2.ª lectura de la tabla) entra una reserva anticipada.
-    let lecturas = 0;
-    fake.control.despuesDeLeer = (tabla) => {
-        if (tabla !== T5K || ++lecturas !== 2) return;
-        Object.assign(fila("55"), { estado: "reservado", identidad_evento_real: s.identidad_evento_real, usuario_global_id: C1 });
+
+    // a) Entra una anticipada DESPUÉS de revisar y ANTES de confirmar: la huella cambia, nada se toca.
+    const confirmacion = await confirmacionPanel(true);
+    Object.assign(fila("55"), { estado: "reservado", identidad_evento_real: s.identidad_evento_real, usuario_global_id: C1 });
+    const antes = JSON.stringify(fake.tablas[T5K]);
+    await assert.rejects(() => reiniciarTablaPanel(3000, A, confirmacion), /La tabla cambió desde que revisaste/);
+    assert.strictEqual(JSON.stringify(fake.tablas[T5K]), antes, "nada se modificó");
+
+    // b) Entra DURANTE la escritura (antes del primer UPDATE): esa fila no coincide con su estado revisado y no se toca.
+    const otra = await confirmacionPanel(true);
+    let escrituras = 0;
+    fake.control.antesDeEscribir = (tabla) => {
+        if (tabla !== T5K || ++escrituras !== 1) return;
+        Object.assign(fila("56"), { estado: "reservado", identidad_evento_real: s.identidad_evento_real, usuario_global_id: C1 });
     };
-    await reiniciarTablaPanel(3000, A);
-    fake.control.despuesDeLeer = null;
+    const hecho = await reiniciarTablaPanel(3000, A, otra);
+    fake.control.antesDeEscribir = null;
     assert.strictEqual(fila("54").estado, "libre", "el resto sí se reinicia");
-    assert.strictEqual(fila("55").estado, "reservado", "la anticipada se excluye del UPDATE");
-    assert.strictEqual(fila("55").identidad_evento_real, s.identidad_evento_real);
+    assert.strictEqual(fila("55").estado, "libre", "la anticipada revisada y aceptada se elimina");
+    assert.strictEqual(fila("56").estado, "reservado", "la que entró durante la escritura no se toca");
+    assert.strictEqual(fila("56").identidad_evento_real, s.identidad_evento_real);
+    assert.strictEqual(hecho.noTocadas, 1, "y se informa");
     assert.strictEqual(fila("54", T5K, B).estado, "libre");
+});
+
+prueba("7f. un sorteo programado 'fallido' que SÍ llegó a publicarse (tiene evento) no tiene reservas anticipadas", async () => {
+    sembrar();
+    const anticipadas = require(r("sorteos/reservasAnticipadas.js"));
+    const s = await programar();
+    await reservar("57", { sorteoProgramadoId: s.id, grupoId: "g1@g.us" });
+    assert.strictEqual((await anticipadas.anticipadasEnTabla(A, T5K)).total, 1, "sin evento: anticipada");
+
+    // Caso de producción (Medellín, 23/10): la publicación automática falló,
+    // pero el sorteo se publicó igual (evento con su identidad) y ya cerró.
+    fake.tablas.sorteos_programados.find(x => x.id === s.id).estado = "fallido";
+    fake.tablas.eventos_bot.push({ id: "ev-publicado-a-mano", usuario_id: A, grupo_id: "g1@g.us", activo: false, estado: "cerrado", identidad_evento_real: s.identidad_evento_real, tabla: T5K, creado_en: new Date() });
+
+    assert.strictEqual((await anticipadas.anticipadasEnTabla(A, T5K)).total, 0, "con evento: ya no es anticipada");
+    assert.strictEqual((await anticipadas.anticipadasDelSorteo(A, fake.tablas.sorteos_programados.find(x => x.id === s.id))).total, 0);
+    assert.ok(!(await anticipadas.sorteosSinPublicar(A)).data.some(x => x.id === s.id), "no figura como sin publicar");
+    const revision = await revisarReinicioPanel(3000, A);
+    assert.strictEqual(revision.impacto.totalAnticipadas, 0, "el reinicio del panel tampoco la cuenta");
+
+    // Si no se puede comprobar el evento, falla cerrado.
+    fake.control.fallarTabla = "eventos_bot";
+    assert.strictEqual((await anticipadas.anticipadasEnTabla(A, T5K)).ok, false);
+    fake.control.fallarTabla = null;
 });
 
 prueba("7e. liberación por vencimiento: una anticipada empieza a vencer al publicarse, no cuando se tomó", async () => {

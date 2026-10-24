@@ -176,8 +176,95 @@ async function actualizarSorteoSi(usuarioId, id, { version, estados }, cambios) 
 
 }
 
+// Archivar / restaurar (columna archivado_en, migración 038), condicionado
+// al estado leído y a que no lo haya hecho otra petición antes.
+async function marcarArchivado(usuarioId, id, { estado, archivado, ahora = new Date() }) {
+
+    let query = supabase.from("sorteos_programados")
+        .update({ archivado_en: archivado ? ahora.toISOString() : null, actualizado_en: new Date().toISOString() })
+        .eq("usuario_id", usuarioId).eq("id", id).eq("estado", estado);
+
+    query = archivado ? query.is("archivado_en", null) : query.not("archivado_en", "is", null);
+
+    const { data, error } = await query.select("id");
+
+    // Columna inexistente (Postgres o PostgREST): la 038 no está aplicada.
+    if (error && ["42703", "PGRST204"].includes(error.code)) return { ok: false, motivo: "migracion_pendiente", migracion: "038" };
+    if (error) return resultado(null, error);
+
+    return data?.length ? { ok: true, data: data[0] } : { ok: false, motivo: "conflicto" };
+
+}
+
+// DELETE condicionado, igual que actualizarSorteoSi. Los grupos se borran
+// en cascada (FK de la 024); el segundo DELETE solo limpia por si acaso.
+async function eliminarSorteoSi(usuarioId, id, { version, estados }) {
+
+    let query = supabase.from("sorteos_programados").delete()
+        .eq("usuario_id", usuarioId).eq("id", id).eq("version", version);
+
+    if (estados?.length) query = query.in("estado", estados);
+
+    const { data, error } = await query.select("id");
+
+    if (error) return resultado(null, error);
+    if (!data?.length) return { ok: false, motivo: "conflicto" };
+
+    await supabase.from("sorteos_programados_grupos").delete().eq("usuario_id", usuarioId).eq("sorteo_id", id);
+
+    return { ok: true, data: data[0] };
+
+}
+
 async function gruposDelSorteo(usuarioId, sorteoId) {
     const { data, error } = await supabase.from("sorteos_programados_grupos").select("*")
+        .eq("usuario_id", usuarioId).eq("sorteo_id", sorteoId).order("creado_en", { ascending: true });
+    return resultado(data || [], error);
+}
+
+// Grupos de varios sorteos en una sola consulta (listado del panel).
+async function gruposDeSorteos(usuarioId, sorteoIds) {
+    if (!sorteoIds.length) return { ok: true, data: [] };
+    const { data, error } = await supabase.from("sorteos_programados_grupos").select("*")
+        .eq("usuario_id", usuarioId).in("sorteo_id", sorteoIds).order("creado_en", { ascending: true });
+    return resultado(data || [], error);
+}
+
+// Filas de eventos_bot del cliente con esas identidades (el sorteo ya
+// existe en esos grupos, abierto o cerrado).
+async function eventosPorIdentidad(usuarioId, identidades) {
+    if (!identidades.length) return { ok: true, data: [] };
+    const { data, error } = await supabase.from("eventos_bot").select("*")
+        .eq("usuario_id", usuarioId).in("identidad_evento_real", identidades);
+    return resultado(data || [], error);
+}
+
+// Números NO libres de esas identidades en una tabla física del cliente.
+async function numerosPorIdentidad(usuarioId, tabla, identidades) {
+    if (!tabla || !identidades.length) return { ok: true, data: [] };
+    const { data, error } = await supabase.from(tabla).select("identidad_evento_real, estado")
+        .eq("usuario_id", usuarioId).in("identidad_evento_real", identidades).neq("estado", "libre");
+    return resultado(data || [], error);
+}
+
+// ---------------------------------------------- historial (migración 038) ---
+
+// Registro de lo que hizo el administrador (cancelar, eliminar, archivar…)
+// con el resultado REAL. Sin la 038 queda en el log del proceso; nunca
+// hace fallar la operación, que ya se hizo.
+async function registrarHistorial(usuarioId, sorteoId, accion, resultadoAccion, detalle = {}) {
+    const fila = { usuario_id: usuarioId, sorteo_id: sorteoId, accion, resultado: resultadoAccion, detalle };
+    try {
+        const { error } = await supabase.from("sorteos_programados_historial").insert(fila);
+        if (!error) return;
+        console.log(`📝 [SORTEOS HISTORIAL] (sin guardar: ${error.code || error.message}) ${JSON.stringify(fila)}`);
+    } catch (err) {
+        console.log(`📝 [SORTEOS HISTORIAL] (sin guardar: ${err?.message}) ${JSON.stringify(fila)}`);
+    }
+}
+
+async function historialDelSorteo(usuarioId, sorteoId) {
+    const { data, error } = await supabase.from("sorteos_programados_historial").select("*")
         .eq("usuario_id", usuarioId).eq("sorteo_id", sorteoId).order("creado_en", { ascending: true });
     return resultado(data || [], error);
 }
@@ -241,6 +328,16 @@ async function marcarGrupo(usuarioId, filaId, cambios) {
         .update({ ...cambios, actualizado_en: new Date().toISOString() })
         .eq("usuario_id", usuarioId).eq("id", filaId);
     return resultado(true, error);
+}
+
+// Como marcarGrupo, pero solo si el grupo sigue en uno de esos estados:
+// una cancelación y el publicador nunca se pisan. data = ¿se cambió?
+async function marcarGrupoSi(usuarioId, filaId, estados, cambios) {
+    const { data, error } = await supabase.from("sorteos_programados_grupos")
+        .update({ ...cambios, actualizado_en: new Date().toISOString() })
+        .eq("usuario_id", usuarioId).eq("id", filaId).in("estado", estados)
+        .select("id");
+    return resultado((data || []).length > 0, error);
 }
 
 // Estados de un sorteo programado cuya fila de eventos_bot ya puede existir.
@@ -346,11 +443,19 @@ module.exports = {
     obtenerSorteo,
     listarSorteos,
     actualizarSorteoSi,
+    eliminarSorteoSi,
+    marcarArchivado,
     gruposDelSorteo,
+    gruposDeSorteos,
+    eventosPorIdentidad,
+    numerosPorIdentidad,
+    registrarHistorial,
+    historialDelSorteo,
     reemplazarGrupos,
     sorteosParaPublicar,
     sorteosPublicados,
     reclamarGrupo,
     marcarGrupo,
+    marcarGrupoSi,
     esEventoDeSorteoProgramado
 };

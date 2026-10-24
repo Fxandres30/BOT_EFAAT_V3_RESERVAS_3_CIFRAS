@@ -52,6 +52,7 @@ export default function TablaPrecioView({ precio }: Props) {
         marcarPagado,
         procesarLote,
         liberar,
+        revisarReinicio,
         reiniciar
     } = useTablaPrecio(precio);
 
@@ -217,6 +218,7 @@ export default function TablaPrecioView({ precio }: Props) {
                 totalNumeros={stats.total}
                 disponibles={stats.disponibles}
                 usuarioId={usuarioId}
+                onRevisarReinicio={revisarReinicio}
                 onReiniciar={reiniciar}
                 capturarTabla={capturarSinSeleccion}
                 segundaFila={

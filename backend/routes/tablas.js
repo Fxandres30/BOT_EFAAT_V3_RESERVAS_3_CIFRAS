@@ -16,10 +16,11 @@ const { exigirUsuario } = require("../middleware/autenticacionUsuario");
 const supabase = require("../lib/supabase");
 // Precio -> tabla física SEGÚN EL CLIENTE (tablas_cliente, migración 027;
 // sin ella, la configuración base de siempre).
-const { obtenerConfiguracionCliente, inicializarCliente, prepararCuadricula } = require("../bot/funciones/eventos/tablasCliente");
+const { obtenerConfiguracionCliente, listarConfiguracionesCliente, inicializarCliente, prepararCuadricula } = require("../bot/funciones/eventos/tablasCliente");
 const { compartirTabla, compartirEnGrupos, capturarImagenTabla, verificarTokenImprimirDetalle } = require("../services/compartirTabla");
 const { datosTablaImprimir } = require("../services/datosTablaImprimir");
 const destinos = require("../services/destinosCompartir");
+const compartirManual = require("../services/compartirManual");
 
 // Mismo criterio real que frontend/services/tablas/obtenerEventoActivo.ts
 // (a lo sumo un evento "activo" por tabla+usuario) — reproducido aquí para
@@ -193,8 +194,54 @@ router.put("/compartir/destinos", exigirUsuario, async (req, res) => {
 
 });
 
+// POST /tablas/compartir-manual/analizar — { texto, precio? } — «Compartir
+// sorteo manual»: qué anuncia el texto (mismo detector del bot), qué tabla
+// le corresponde y si el sorteo activo de esa tabla es ese. SOLO LECTURA:
+// el envío es POST /tablas/compartir (abajo) con el texto como pie de foto.
+router.post("/compartir-manual/analizar", exigirUsuario, async (req, res) => {
+
+    try {
+
+        const usuarioId = req.usuarioId;
+        const { texto, precio } = req.body || {};
+
+        if (typeof texto !== "string" || !texto.trim()) return res.status(400).json({ ok: false, motivo: "texto_vacio" });
+        if (texto.trim().length > destinos.MAX_TEXTO) return res.status(400).json({ ok: false, motivo: "texto_largo", maximo: destinos.MAX_TEXTO });
+        if (precio != null && !precioValido(precio)) return res.status(400).json({ ok: false, motivo: "faltan_parametros" });
+
+        const precios = (await listarConfiguracionesCliente(usuarioId)).map(c => c.precio);
+
+        const data = await compartirManual.analizar({
+            texto,
+            precios,
+            precioElegido: precio ?? null,
+            leerSorteo: async (p) => (await tablaYEvento(usuarioId, p)).evento || null,
+            // Grupos donde ESTE sorteo está activo: ahí se registran las
+            // reservas que lleguen en respuesta a la publicación.
+            gruposDelSorteo: async (evento) => {
+                if (!evento.identidad_evento_real) return evento.grupo_id ? [evento.grupo_id] : [];
+                const { data: filas, error } = await supabase.from("eventos_bot").select("grupo_id")
+                    .eq("usuario_id", usuarioId).eq("activo", true).eq("identidad_evento_real", evento.identidad_evento_real);
+                if (error) throw error;
+                return [...new Set((filas || []).map(f => f.grupo_id).filter(Boolean))];
+            }
+        });
+
+        res.json({ ok: true, data });
+
+    } catch (err) {
+
+        console.error("❌ [TABLAS] error en /compartir-manual/analizar:", err.message);
+        res.status(500).json({ ok: false, motivo: "error_interno" });
+
+    }
+
+});
+
 // POST /tablas/compartir con solicitudId — { precio, solicitudId, imagen,
-// grupos?, texto?, guardar_destinos? }. `imagen`: captura PNG (data URL) del
+// grupos?, texto?, guardar_destinos?, evento_id? }. `evento_id` (lo manda
+// «Compartir sorteo manual»): el sorteo revisado en el panel; si el activo
+// de la tabla ya es otro, no se envía (409 sorteo_cambio). `imagen`: captura PNG (data URL) del
 // `div` de la tabla visible en el panel. Sin `grupos`: los guardados.
 // COMPATIBILIDAD TEMPORAL: si `imagen` NO viene (panel publicado antes de la
 // captura en el navegador), se genera con Puppeteer como antes, con las
@@ -212,6 +259,7 @@ async function compartirConDestinos(req, res) {
 
     const t = await tablaYEvento(usuarioId, precio);
     if (!t.evento) return res.status(t.status).json(t.cuerpo);
+    if (req.body.evento_id !== undefined && String(req.body.evento_id) !== String(t.evento.id)) return res.status(409).json({ ok: false, enviado: false, motivo: "sorteo_cambio" });
 
     const disponibles = await destinos.gruposDisponibles(usuarioId);
     if (!disponibles.ok) return res.status(500).json({ ok: false, enviado: false, motivo: "error_grupos" });

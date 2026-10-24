@@ -4,13 +4,15 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { Button, PageHeader, Tabs } from "@/components/ui";
-import { apiSorteos, describirError, type CuentaPago, type Plantilla, type Sorteo, type SorteoActivo } from "@/services/sorteos/apiSorteos";
+import { apiSorteos, describirError, type CuentaPago, type Plantilla, type SorteoActivo, type SorteoGestionado } from "@/services/sorteos/apiSorteos";
 
 import FormularioSorteo from "./FormularioSorteo";
 import VistaPreviaModal from "./VistaPreviaModal";
 import ListaSorteos from "./ListaSorteos";
 import ListaActivos from "./ListaActivos";
 import EditarSorteoActivoModal from "./EditarSorteoActivoModal";
+import DetalleSorteoModal from "./DetalleSorteoModal";
+import EliminarSorteoModal from "./EliminarSorteoModal";
 import PlantillasPanel from "./PlantillasPanel";
 import CuentasPanel from "./CuentasPanel";
 import styles from "./Sorteos.module.css";
@@ -20,7 +22,11 @@ type Pestana = "en_curso" | "programados" | "plantillas" | "cuentas";
 export default function SorteosPage() {
 
     const [pestana, setPestana] = useState<Pestana>("programados");
-    const [sorteos, setSorteos] = useState<Sorteo[]>([]);
+    const [sorteos, setSorteos] = useState<SorteoGestionado[]>([]);
+    const [verArchivados, setVerArchivados] = useState(false);
+    const [detalle, setDetalle] = useState<string | null>(null);
+    const [eliminando, setEliminando] = useState<SorteoGestionado | null>(null);
+    const [aviso, setAviso] = useState<string | null>(null);
     // Sorteos en curso de cualquier origen (bot o panel).
     const [activos, setActivos] = useState<SorteoActivo[]>([]);
     const [errorActivos, setErrorActivos] = useState<string | null>(null);
@@ -28,12 +34,14 @@ export default function SorteosPage() {
     const [plantillas, setPlantillas] = useState<Plantilla[]>([]);
     const [cuentas, setCuentas] = useState<CuentaPago[]>([]);
     const [error, setError] = useState<string | null>(null);
-    const [formulario, setFormulario] = useState<{ abierto: boolean; sorteo: Sorteo | null }>({ abierto: false, sorteo: null });
+    const [formulario, setFormulario] = useState<{ abierto: boolean; sorteo: { id: string; version: number } | null }>({ abierto: false, sorteo: null });
     const [vistaPrevia, setVistaPrevia] = useState<string | null>(null);
 
     const cargar = useCallback(async () => {
 
-        const [s, p, c, a] = await Promise.all([apiSorteos.listar(), apiSorteos.plantillas(), apiSorteos.cuentas(), apiSorteos.activos()]);
+        // gestion(): cada programación con sus grupos, su estado operativo y
+        // las acciones que el backend permite (una sola petición).
+        const [s, p, c, a] = await Promise.all([apiSorteos.gestion(), apiSorteos.plantillas(), apiSorteos.cuentas(), apiSorteos.activos()]);
 
         if (a.ok) { setActivos(a.data); setErrorActivos(null); }
         else setErrorActivos(describirError(a));
@@ -42,15 +50,16 @@ export default function SorteosPage() {
 
         setError(null);
 
-        // El listado trae los sorteos; el detalle (grupos) de cada uno se
-        // pide aparte para mostrar el estado por grupo.
-        const detalles = await Promise.all(s.data.map(x => apiSorteos.obtener(x.id)));
-        setSorteos(detalles.map((d, i) => (d.ok ? d.data : s.data[i])));
+        setSorteos(s.data);
 
         if (p.ok) setPlantillas(p.data);
         if (c.ok) setCuentas(c.data);
 
     }, []);
+
+    // Archivadas: fuera de la lista principal, sin borrar nada.
+    const vigentes = sorteos.filter(s => !s.archivado_en);
+    const archivadas = sorteos.filter(s => s.archivado_en);
 
     useEffect(() => {
 
@@ -82,7 +91,7 @@ export default function SorteosPage() {
                 onValueChange={v => setPestana(v as Pestana)}
                 items={[
                     { value: "en_curso", label: `En curso (${activos.length})` },
-                    { value: "programados", label: `Programados (${sorteos.length})` },
+                    { value: "programados", label: `Programados (${vigentes.length})` },
                     { value: "plantillas", label: `Plantillas (${plantillas.length})` },
                     { value: "cuentas", label: `Cuentas de pago (${cuentas.length})` }
                 ]}
@@ -94,12 +103,26 @@ export default function SorteosPage() {
                     : <ListaActivos activos={activos} onEditar={setEditandoActivo} />
             )}
             {pestana === "programados" && (
-                <ListaSorteos
-                    sorteos={sorteos}
-                    onVistaPrevia={setVistaPrevia}
-                    onEditar={s => setFormulario({ abierto: true, sorteo: s })}
-                    onActualizado={cargar}
-                />
+                <>
+                    {aviso && <p className={`${styles.alerta} ${styles.alertaAviso}`} role="status">{aviso}</p>}
+                    {(archivadas.length > 0 || verArchivados) && (
+                        <div className={styles.acciones}>
+                            <Button size="sm" variant={verArchivados ? "secondary" : "ghost"} onClick={() => setVerArchivados(v => !v)}>
+                                {verArchivados ? "Ver programaciones vigentes" : `Ver archivadas (${archivadas.length})`}
+                            </Button>
+                        </div>
+                    )}
+                    <ListaSorteos
+                        key={verArchivados ? "archivadas" : "vigentes"}
+                        sorteos={verArchivados ? archivadas : vigentes}
+                        archivados={verArchivados}
+                        onVistaPrevia={setVistaPrevia}
+                        onEditar={s => setFormulario({ abierto: true, sorteo: s })}
+                        onDetalle={setDetalle}
+                        onEliminar={s => { setAviso(null); setEliminando(s); }}
+                        onActualizado={cargar}
+                    />
+                </>
             )}
             {pestana === "plantillas" && <PlantillasPanel plantillas={plantillas} onActualizado={cargar} />}
             {pestana === "cuentas" && <CuentasPanel cuentas={cuentas} onActualizado={cargar} />}
@@ -122,6 +145,17 @@ export default function SorteosPage() {
                     eventoId={editandoActivo}
                     onClose={() => { setEditandoActivo(null); cargar(); }}
                     onGuardado={() => { setEditandoActivo(null); cargar(); }}
+                />
+            )}
+
+            {detalle && <DetalleSorteoModal key={detalle} sorteoId={detalle} onClose={() => setDetalle(null)} />}
+
+            {eliminando && (
+                <EliminarSorteoModal
+                    key={eliminando.id}
+                    sorteo={eliminando}
+                    onClose={() => setEliminando(null)}
+                    onHecho={m => { setEliminando(null); setAviso(m); cargar(); }}
                 />
             )}
 

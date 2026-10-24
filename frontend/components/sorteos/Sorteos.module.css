@@ -60,6 +60,51 @@
     gap: 8px;
 }
 
+.insignias {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.grupoDetalle {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--efaat-border);
+}
+
+.grupoDetalle p {
+    margin: 0;
+}
+
+.datos {
+    display: grid;
+    grid-template-columns: minmax(140px, max-content) 1fr;
+    gap: 4px 12px;
+    margin: 0;
+    font-size: var(--efaat-text-sm);
+}
+
+.datos dt {
+    color: var(--efaat-text-secondary);
+}
+
+.datos dd {
+    margin: 0;
+    color: var(--efaat-text);
+}
+
+.lineaTiempo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    padding-left: 18px;
+    font-size: var(--efaat-text-sm);
+    color: var(--efaat-text);
+}
+
 .tarjetaTitulo {
     margin: 0;
     font-size: var(--efaat-text-md);

@@ -3,17 +3,22 @@
 import { useRef, useState, type ReactNode } from "react";
 import { RotateCcw, Pencil, Share2, Users, type LucideIcon } from "lucide-react";
 
-import ConfirmDialog from "./ConfirmDialog";
+import ReinicioTablaModal from "./ReinicioTablaModal";
 import AnuncioSorteoModal from "./AnuncioSorteoModal";
 import CompartirTablaModal, { nuevaSolicitud, type PanelCompartir } from "./CompartirTablaModal";
 import { compartirTabla, mensajeCompartir } from "@/services/tablas/compartirTabla";
+import type { ConfirmacionReinicio, ResultadoReinicio, RevisionReinicio } from "@/services/tablas/reiniciarTabla";
 
 interface Props {
     precio: number;
-    totalNumeros: number;
-    disponibles: number;
+    /** Ya no se usan aquí (el diálogo de reinicio lee el estado real). */
+    totalNumeros?: number;
+    disponibles?: number;
     usuarioId: string | null;
-    onReiniciar: () => Promise<void> | void;
+    /** Impacto del reinicio (solo lectura) para el diálogo. */
+    onRevisarReinicio: () => Promise<RevisionReinicio>;
+    /** Reinicio con la confirmación del diálogo (lanza si no se hizo). */
+    onReiniciar: (confirmacion?: ConfirmacionReinicio) => Promise<ResultadoReinicio>;
     /** PNG (data URL) del `div` de la tabla visible. */
     capturarTabla: () => Promise<string>;
     /** Acciones de la vista (Personalizar, Diseños…) que van en la segunda
@@ -23,42 +28,19 @@ interface Props {
 
 export default function AccionesTabla({
     precio,
-    totalNumeros,
-    disponibles,
     usuarioId,
+    onRevisarReinicio,
     onReiniciar,
     capturarTabla,
     segundaFila
 }: Props) {
 
     const [confirmandoReinicio, setConfirmandoReinicio] = useState(false);
-    const [reiniciando, setReiniciando] = useState(false);
     const [compartiendo, setCompartiendo] = useState(false);
     const [panelCompartir, setPanelCompartir] = useState<PanelCompartir | null>(null);
     // Bloqueo síncrono: dos clics seguidos no lanzan dos envíos.
     const compartiendoRef = useRef(false);
     const [editandoAnuncio, setEditandoAnuncio] = useState(false);
-
-    async function confirmarReinicio() {
-
-        setReiniciando(true);
-
-        try {
-
-            await onReiniciar();
-            setConfirmandoReinicio(false);
-
-        } catch (e) {
-
-            alert(e instanceof Error ? e.message : "No se pudo reiniciar la tabla.");
-
-        } finally {
-
-            setReiniciando(false);
-
-        }
-
-    }
 
     // Un clic: captura de la tabla visible + texto configurado a los grupos
     // GUARDADOS de esta tabla. Sin grupos guardados (o si ya no están
@@ -161,16 +143,15 @@ export default function AccionesTabla({
 
             </div>
 
-            <ConfirmDialog
-                abierto={confirmandoReinicio}
-                titulo={`¿Reiniciar la tabla $${precio.toLocaleString("es-CO")}?`}
-                descripcion="Esto deja las 100 celdas de esta tabla como 'Disponible' otra vez: se borran cliente, contacto, grupo, evento y fechas de cada reserva. Solo afecta tus propias filas."
-                detalle={`Ahora mismo hay ${totalNumeros - disponibles} de ${totalNumeros} números ocupados (reservados, pagados, en proceso o bloqueados). Todos volverán a estar disponibles.`}
-                textoConfirmar="Sí, reiniciar"
-                cargando={reiniciando}
-                onConfirmar={confirmarReinicio}
-                onCancelar={() => setConfirmandoReinicio(false)}
-            />
+            {/* Revisión del impacto y confirmación explícita (ver ReinicioTablaModal). */}
+            {confirmandoReinicio && (
+                <ReinicioTablaModal
+                    precio={precio}
+                    onRevisar={onRevisarReinicio}
+                    onReiniciar={onReiniciar}
+                    onClose={() => setConfirmandoReinicio(false)}
+                />
+            )}
 
             {/* «Editar» prepara el anuncio del sorteo en un modal de esta
                 misma pantalla (sin navegar). Se monta por apertura. */}

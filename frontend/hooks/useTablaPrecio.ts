@@ -10,7 +10,7 @@ import { obtenerTabla } from "@/services/tablas/obtenerTabla";
 import { obtenerEventoActivo } from "@/services/tablas/obtenerEventoActivo";
 import { obtenerActividad } from "@/services/tablas/obtenerActividad";
 import { obtenerEventosHistorial, LIMITE_HISTORIAL, type EventosHistorial } from "@/services/tablas/obtenerHistorial";
-import { reiniciarTabla } from "@/services/tablas/reiniciarTabla";
+import { reiniciarTabla, revisarReinicio, type ConfirmacionReinicio, type ResultadoReinicio, type RevisionReinicio } from "@/services/tablas/reiniciarTabla";
 import { prepararCuadricula, diagnosticar, type DiagnosticoCuadricula } from "@/services/tablas/prepararCuadricula";
 // Reservar, registrar el pago, liberar y desbloquear pasan por el backend
 // (mismas reglas que el bot + auditoría): el navegador ya no escribe en la
@@ -365,9 +365,17 @@ export function useTablaPrecio(precio: number) {
             return ejecutar(numero, () => liberarNumeroManual(precio, numero, datos));
         },
 
-        reiniciar: async () => {
-            if (!usuarioId) return;
-            await ejecutar("*", () => reiniciarTabla(precio, usuarioId));
+        // Impacto del reinicio (solo lectura) para el diálogo de confirmación.
+        revisarReinicio: async (): Promise<RevisionReinicio> => {
+            if (!usuarioId) throw new Error("Tu sesión expiró. Vuelve a iniciar sesión.");
+            return revisarReinicio(precio, usuarioId);
+        },
+
+        // Con números ya existentes exige la confirmación del diálogo (texto,
+        // anticipadas aceptadas y la huella revisada). Recarga al terminar.
+        reiniciar: async (confirmacion?: ConfirmacionReinicio): Promise<ResultadoReinicio> => {
+            if (!usuarioId) throw new Error("Tu sesión expiró. Vuelve a iniciar sesión.");
+            return ejecutar("*", () => reiniciarTabla(precio, usuarioId, confirmacion));
         }
 
     };

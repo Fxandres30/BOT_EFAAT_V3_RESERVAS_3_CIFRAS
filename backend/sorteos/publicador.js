@@ -284,6 +284,14 @@ async function verificarParaReinicio({ usuarioId, sorteo, deps }) {
 
 }
 
+async function sigueVigente(usuarioId, sorteo, estados) {
+    const fresco = await repo.obtenerSorteo(usuarioId, sorteo.id);
+    if (!fresco.ok) return false;
+    const s = fresco.data;
+    return estados.includes(s.estado) && s.version === sorteo.version && s.confirmado_version === s.version
+        && s.grupos.some(g => g.estado === "pendiente" || g.estado === "fallido");
+}
+
 // Reinicio de la tabla elegido al programar: se hace UNA vez, en el proceso
 // de publicación (un minuto antes del anuncio o, si el bot no estaba, justo
 // antes), con la función segura de la 030 (transacción, filas bloqueadas,
@@ -303,6 +311,11 @@ async function prepararPublicacion({ usuarioId, sorteo, ahora, deps, estados = [
     const fecha = fechaSorteoDe(sorteo.config, sorteo.publicar_en);
     const cierre = sorteo.config.hora_cierre ? instanteBogota(fecha, sorteo.config.hora_cierre) : null;
     if (cierre && ahora.getTime() >= cierre.getTime()) return { ok: true, sorteo };
+
+    // Justo antes de tocar la tabla se relee la programación: si se canceló,
+    // eliminó o editó después de leerla en este ciclo (o ya no le queda
+    // ningún grupo por publicar), no se reinicia nada en su nombre.
+    if (!(await sigueVigente(usuarioId, sorteo, estados))) return { ok: false, descartado: true };
 
     const problema = await verificarParaReinicio({ usuarioId, sorteo, deps });
     if (problema) return { ok: false, abortar: `No se reinició la tabla ni se publicó: ${problema} No se modificó nada.` };
@@ -370,7 +383,7 @@ async function publicarPendientes({ sock, deps, ahora }) {
         if (new Date(sorteo.publicar_en).getTime() > ahora.getTime()) {
             if (sorteo.estado === "programado" && reinicioPendiente(sorteo)) {
                 const previo = await prepararPublicacion({ usuarioId, sorteo, ahora, deps, estados: ["programado"] });
-                informe.push({ sorteo: sorteo.id, estado: previo.ok ? "tabla_reiniciada" : "reinicio_pendiente", error: previo.espera || previo.abortar || null });
+                informe.push({ sorteo: sorteo.id, estado: previo.ok ? "tabla_reiniciada" : previo.descartado ? "descartado" : "reinicio_pendiente", error: previo.espera || previo.abortar || null });
             }
             continue;
         }
@@ -386,6 +399,13 @@ async function publicarPendientes({ sock, deps, ahora }) {
 
         const preparado = await prepararPublicacion({ usuarioId, sorteo, ahora, deps });
 
+        // Cancelada o cambiada entretanto: nada que hacer en su nombre.
+        if (preparado.descartado) {
+            informe.push({ sorteo: sorteo.id, estado: "descartado", error: null });
+            await finalizarSorteo(usuarioId, sorteo.id);
+            continue;
+        }
+
         if (!preparado.ok) {
             // Nada se publica ni se reinicia en este ciclo. En espera: los
             // grupos siguen pendientes con la explicación. Abortado: quedan
@@ -393,8 +413,9 @@ async function publicarPendientes({ sock, deps, ahora }) {
             const cambios = preparado.abortar
                 ? { estado: "requiere_revision", ultimo_error: preparado.abortar }
                 : { ultimo_error: preparado.espera };
+            // Condicionado: un grupo cancelado entretanto sigue cancelado.
             for (const g of grupos.data) {
-                if (g.estado === "pendiente" || g.estado === "fallido") await repo.marcarGrupo(usuarioId, g.id, cambios);
+                if (g.estado === "pendiente" || g.estado === "fallido") await repo.marcarGrupoSi(usuarioId, g.id, [g.estado], cambios);
             }
             await repo.actualizarSorteoSi(usuarioId, sorteo.id, { estados: ["publicando"] }, { ultimo_error: cambios.ultimo_error });
             informe.push({ sorteo: sorteo.id, estado: preparado.abortar ? "requiere_revision" : "en_espera", error: cambios.ultimo_error });

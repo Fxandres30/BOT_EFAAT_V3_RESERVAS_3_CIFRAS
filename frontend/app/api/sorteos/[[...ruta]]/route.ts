@@ -44,6 +44,8 @@ function destino(metodo: Metodo, ruta: string[]): string | null {
         if (a === "grupos") return metodo === "GET" ? "/grupos" : null;
         // Sorteos activos de cualquier origen (bot o panel).
         if (a === "activos") return metodo === "GET" ? "/activos" : null;
+        // Programados con estados, impacto y acciones permitidas.
+        if (a === "gestion") return metodo === "GET" ? "/gestion" : null;
         if (a === "plantillas" || a === "cuentas" || a === "loterias") return metodo === "GET" || metodo === "POST" ? `/${a}` : null;
         if (UUID.test(a)) return metodo === "GET" || metodo === "PUT" ? `/${a}` : null;
         return null;
@@ -54,7 +56,8 @@ function destino(metodo: Metodo, ruta: string[]): string | null {
         if (a === "loterias" && UUID.test(b)) return metodo === "PATCH" || metodo === "DELETE" ? `/${a}/${b}` : null;
         if ((a === "plantillas" || a === "cuentas") && UUID.test(b)) return metodo === "PATCH" ? `/${a}/${b}` : null;
         if (UUID.test(a) && b === "vista-previa") return metodo === "GET" ? `/${a}/vista-previa` : null;
-        if (UUID.test(a) && (b === "confirmar" || b === "cancelar")) return metodo === "POST" ? `/${a}/${b}` : null;
+        if (UUID.test(a) && b === "detalle") return metodo === "GET" ? `/${a}/detalle` : null;
+        if (UUID.test(a) && (b === "confirmar" || b === "cancelar" || b === "eliminar" || b === "archivar")) return metodo === "POST" ? `/${a}/${b}` : null;
         return null;
     }
 

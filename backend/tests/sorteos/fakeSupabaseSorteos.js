@@ -141,6 +141,10 @@ function crearFake() {
 
             }
 
+            // Gancho de pruebas: otra escritura concurrente justo ANTES de un
+            // UPDATE (p. ej. una reserva que entra durante un reinicio).
+            if (q.op === "update" && typeof control.antesDeEscribir === "function") control.antesDeEscribir(tabla);
+
             let res = filas.filter(f => q.filtros.every(fn => fn(f)));
 
             if (q.op === "delete") {

@@ -11,6 +11,10 @@
 // Como la identidad todavía no está activa en eventos_bot, la 030 las
 // clasificaría como «liberables»: cualquier reinicio de la tabla debe
 // comprobar antes anticipadasEnTabla() y no tocar nada si hay alguna.
+//
+// Solo es anticipada mientras su sorteo NO tenga evento: en cuanto existe
+// una fila de eventos_bot con su identidad (publicado, aunque el sorteo
+// programado quedara en 'fallido'), son reservas de un sorteo publicado.
 // ==========================================================================
 
 const supabase = require("../lib/supabase");
@@ -26,6 +30,30 @@ function reinicioPendiente(config) {
     return t.reiniciar === true && !t.reiniciado_en;
 }
 
+// Identidades que YA tienen evento (eventos_bot) del cliente: su sorteo se
+// publicó (aunque fuera a mano o a medias, y quizá ya cerró). Un sorteo
+// programado que quedó en 'fallido' o 'publicando' con evento no tiene
+// reservas anticipadas: sus reservas son de un sorteo publicado. null si no
+// se pudo leer (quien llama falla cerrado).
+async function identidadesConEvento(usuarioId, identidades) {
+    if (!identidades.length) return new Set();
+    const { data, error } = await supabase.from("eventos_bot")
+        .select("identidad_evento_real")
+        .eq("usuario_id", usuarioId)
+        .in("identidad_evento_real", identidades);
+    if (error) return null;
+    return new Set((data || []).map(e => e.identidad_evento_real));
+}
+
+// Quita de la lista los sorteos cuya identidad ya tiene evento.
+async function sinEvento(usuarioId, sorteos) {
+    const conEvento = await identidadesConEvento(usuarioId, [...new Set(sorteos.map(s => s.identidad_evento_real).filter(Boolean))]);
+    if (!conEvento) return { ok: false };
+    return { ok: true, data: sorteos.filter(s => !conEvento.has(s.identidad_evento_real)) };
+}
+
+// Sorteos programados del cliente que nunca llegaron a publicarse (estado
+// sin publicar y sin ningún evento con su identidad).
 async function sorteosSinPublicar(usuarioId) {
 
     const { data, error } = await supabase.from("sorteos_programados")
@@ -35,7 +63,7 @@ async function sorteosSinPublicar(usuarioId) {
 
     if (error) return { ok: false, error };
 
-    return { ok: true, data: data || [] };
+    return sinEvento(usuarioId, data || []);
 
 }
 
@@ -47,7 +75,7 @@ async function anticipadasEnTabla(usuarioId, tabla, { sorteos = null } = {}) {
 
     if (!usuarioId || !tabla) return { ok: false };
 
-    const lista = sorteos ? { ok: true, data: sorteos } : await sorteosSinPublicar(usuarioId);
+    const lista = sorteos ? await sinEvento(usuarioId, sorteos) : await sorteosSinPublicar(usuarioId);
     if (!lista.ok) return { ok: false };
 
     const porIdentidad = new Map(lista.data.filter(s => s.identidad_evento_real).map(s => [s.identidad_evento_real, s]));

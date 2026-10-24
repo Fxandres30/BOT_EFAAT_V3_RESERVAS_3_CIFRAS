@@ -182,13 +182,34 @@ ${vista}`);
         // 8. Recargar y cancelar: sin duplicados ni publicaciones.
         await page.reload({ waitUntil: "domcontentloaded" });
         await esperarTexto(page, "Programado");
-        await pulsar(page, "Cancelar");
-        await esperarTexto(page, "Cancelado");
+        await pulsar(page, "Cancelar programación");
+        await esperarTexto(page, "Sorteo cancelado");
         assert.strictEqual(t.sorteos_programados.length, 1);
         assert.strictEqual(t.sorteos_programados[0].estado, "cancelado");
         assert.strictEqual((t.sorteos_programados_grupos || []).filter(g => g.sorteo_id === prog.id).length, 2, "sin grupos duplicados");
         assert.strictEqual((t.automation_actions || []).length, 0);
         paso("cancelar: estado cancelado, sin filas duplicadas ni publicaciones");
+
+        // 8b. Detalles: estados y línea de tiempo.
+        await pulsar(page, "Detalles e historial");
+        await esperarTexto(page, "Historial");
+        const detalle = await textoPagina(page);
+        assert.ok(/Programación: Cancelado/.test(detalle) && /Confirmada la versión 2/.test(detalle), detalle);
+        await pulsar(page, "Cerrar");
+        paso("detalles: estado de la programación, estado operativo e historial");
+
+        // 8c. Eliminar: la confirmación muestra sorteo, grupos, publicaciones y reservas.
+        await pulsar(page, "Eliminar…");
+        await esperarTexto(page, "Eliminar definitivamente");
+        const confirmacion = await textoPagina(page);
+        assert.ok(/Grupos \(2\) · publicaciones realizadas: 0/.test(confirmacion), confirmacion);
+        assert.ok(/Grupo Prueba Uno/.test(confirmacion) && /Reservas relacionadas/.test(confirmacion));
+        await pulsar(page, "Eliminar definitivamente");
+        await esperarTexto(page, "Programación eliminada");
+        assert.strictEqual(t.sorteos_programados.length, 0);
+        assert.strictEqual((t.sorteos_programados_grupos || []).filter(g => g.sorteo_id === prog.id).length, 0);
+        assert.ok(t.reservas_dos_cifras.every(f => f.estado === "libre"), "la tabla no se toca");
+        paso("eliminar sin actividad: confirmación con impacto; se borra solo la programación");
 
         // 9. Aislamiento: el panel no habló con ningún Supabase real.
         assert.ok(peticionesSupabase.every(p => !/sorteos_programados|cuentas_pago/.test(p)), "el panel no escribe sorteos directo en la base");
