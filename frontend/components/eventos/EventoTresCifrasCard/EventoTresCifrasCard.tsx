@@ -102,6 +102,9 @@ export default function EventoTresCifrasCard({ evento, modalidad }: Props) {
                 </button>
             )}
 
+            {/* Cerrar, desactivar, cancelar o eliminar: Sorteos → «Administrar». */}
+            <Link href="/sorteos?vista=administrar" prefetch={false} className={styles.administrar}>Gestionar sorteo</Link>
+
         </article>
     );
 

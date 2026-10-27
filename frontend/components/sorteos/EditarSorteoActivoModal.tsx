@@ -5,7 +5,8 @@ import { Lock, Plus, Trash2 } from "lucide-react";
 
 import { Modal, Button, Input, Select, Textarea, IconButton, Badge } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
-import { apiSorteos, describirError, type CuentaPago, type ErrorCampo, type SorteoActivo } from "@/services/sorteos/apiSorteos";
+import { apiSorteos, describirError, type CuentaPago, type ErrorCampo, type SorteoActivo, type SorteoEnGrupos } from "@/services/sorteos/apiSorteos";
+import { BotonesSorteo, ConfirmarAccionSorteo, type AccionPendiente } from "./AccionesSorteo";
 import { listarDisenos } from "@/services/tablas/disenos";
 import { TABLA_DISENO_PRESETS } from "@/services/tablas/disenoDefaults";
 import type { TablaDiseno } from "@/components/tablas/disenoTypes";
@@ -53,8 +54,27 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
     const [error, setError] = useState<string | null>(null);
     const [aviso, setAviso] = useState<string | null>(null);
     const [guardando, setGuardando] = useState(false);
+    // Cerrar, desactivar, cancelar o eliminar desde aquí (AccionesSorteo).
+    const [accion, setAccion] = useState<AccionPendiente | null>(null);
+    const [accionHecha, setAccionHecha] = useState<string | null>(null);
 
     const sorteo = carga.tipo === "ok" ? carga.sorteo : null;
+
+    // El sorteo activo con la forma que usan las acciones de estado: todos
+    // sus grupos están en curso (si no, no sería un sorteo activo).
+    const enGrupos: SorteoEnGrupos | null = sorteo ? {
+        id: sorteo.id,
+        identidad: sorteo.identidad ?? null,
+        nombre: sorteo.nombre,
+        fecha_evento: sorteo.fecha_evento,
+        hora_fin: sorteo.hora_fin,
+        hora_cierre: sorteo.hora_cierre,
+        valor: sorteo.valor,
+        estado: "en_curso",
+        reservados: sorteo.reservados,
+        pagados: sorteo.pagados,
+        grupos: sorteo.grupos.map(g => ({ evento_id: g.evento_id, grupo_id: g.grupo_id, grupo_nombre: g.grupo_nombre, estado: "en_curso", abierto_whatsapp: g.abierto }))
+    } : null;
 
     useEffect(() => {
 
@@ -147,7 +167,7 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
                 <>
                     <Button variant="secondary" onClick={onClose} disabled={guardando}>Cancelar</Button>
                     {carga.tipo === "error" && <Button variant="secondary" onClick={() => { setCarga({ tipo: "cargando" }); setIntento(n => n + 1); }}>Reintentar</Button>}
-                    <Button onClick={guardar} loading={guardando} disabled={!sorteo}>Guardar cambios</Button>
+                    <Button onClick={guardar} loading={guardando} disabled={!sorteo || Boolean(accionHecha)}>Guardar cambios</Button>
                 </>
             }
         >
@@ -155,8 +175,27 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
                 <p className={styles.ayuda} role="status">Cargando el sorteo activo…</p>
             ) : carga.tipo === "error" ? (
                 <p className={`${styles.alerta} ${styles.alertaError}`} role="alert">No se pudo cargar el sorteo: {carga.mensaje}</p>
+            ) : accionHecha ? (
+                <p className={`${styles.alerta} ${styles.alertaInfo}`} role="status">{accionHecha}</p>
             ) : sorteo && (
                 <div className={styles.stack}>
+
+                    {enGrupos && (
+                        <section className={styles.seccion} aria-label="Estado del sorteo">
+                            <h3 className={styles.seccionTitulo}>Estado del sorteo</h3>
+                            <p className={styles.ayuda}>Cerrar, desactivar (en un grupo o en todos), cancelar o eliminar. Las reservas y los pagos se conservan.</p>
+                            {accion ? (
+                                <ConfirmarAccionSorteo
+                                    key={`${accion.eventoId}-${accion.accion}-${accion.alcance}`}
+                                    pendiente={accion}
+                                    onVolver={() => setAccion(null)}
+                                    onHecho={m => { setAccion(null); setAccionHecha(m); }}
+                                />
+                            ) : (
+                                <BotonesSorteo sorteo={enGrupos} onAccion={setAccion} />
+                            )}
+                        </section>
+                    )}
 
                     {error && <p className={`${styles.alerta} ${styles.alertaError}`} role="alert">{error}</p>}
                     {aviso && <p className={`${styles.alerta} ${styles.alertaInfo}`}>{aviso}</p>}

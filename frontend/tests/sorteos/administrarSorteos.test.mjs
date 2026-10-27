@@ -109,6 +109,36 @@ await prueba("Eventos: los sorteos eliminados (lógico) no se muestran; el resto
     assert.deepStrictEqual(r.map(e => e.id), [1, 4]);
 });
 
+// Regresión (27/10, producción): las acciones existían solo en Sorteos →
+// «Administrar»; el camino que usa el administrador (Eventos → «Administrar»
+// → Tablas → «Editar») no las mostraba. Se comprueba en el código fuente
+// que ese camino y las tarjetas de Eventos las ofrecen.
+const leer = (rel) => fs.readFileSync(path.join(FRONT, rel), "utf8");
+
+await prueba("«Editar sorteo activo» (Eventos → Administrar → Tablas → Editar) muestra las acciones de estado", async () => {
+    const fuente = leer("components/sorteos/EditarSorteoActivoModal.tsx");
+    assert.match(fuente, /<BotonesSorteo\b/);
+    assert.match(fuente, /<ConfirmarAccionSorteo\b/);
+    assert.match(fuente, /Estado del sorteo/);
+    const acciones = leer("components/sorteos/AccionesSorteo.tsx");
+    for (const texto of ["Cerrar aquí", "Desactivar aquí", "Reabrir aquí", "Desactivar en todos", "Cancelar sorteo", "Eliminar"]) {
+        assert.ok(acciones.includes(texto), texto);
+    }
+});
+
+await prueba("Eventos: cada tarjeta enlaza a Sorteos → «Administrar» y la página abre esa pestaña con ?vista=administrar", async () => {
+    for (const tarjeta of ["components/eventos/EventoCard/EventoCard.tsx", "components/eventos/EventoTresCifrasCard/EventoTresCifrasCard.tsx"]) {
+        assert.match(leer(tarjeta), /href="\/sorteos\?vista=administrar"/, tarjeta);
+    }
+    const pagina = leer("components/sorteos/SorteosPage.tsx");
+    assert.match(pagina, /useSearchParams\(\)\?\.get\("vista"\)/);
+    assert.match(leer("app/sorteos/page.tsx"), /<Suspense\b/);
+});
+
+await prueba("Backend sin la versión nueva: «Administrar» lo dice explícitamente (no un error genérico)", async () => {
+    assert.match(leer("components/sorteos/SorteosPage.tsx"), /e\.status === 404\) setErrorEnGrupos\("el servidor del bot todavía ejecuta la versión anterior/);
+});
+
 const fallidas = resultados.filter(x => !x).length;
 console.log(`\n============================\nTOTAL: ${resultados.length}  ✅ PASA: ${resultados.length - fallidas}  ❌ FALLA: ${fallidas}\n============================`);
 process.exit(fallidas ? 1 : 0);

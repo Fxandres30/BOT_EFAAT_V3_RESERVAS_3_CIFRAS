@@ -184,6 +184,12 @@ export default function EventoCard({ evento }: Props) {
                 </Link>
             )}
 
+            {/* Cerrar, desactivar (en un grupo o en todos), cancelar o
+                eliminar el sorteo: Sorteos → «Administrar». */}
+            <Link href="/sorteos?vista=administrar" prefetch={false} className={styles.administrar}>
+                Gestionar sorteo
+            </Link>
+
         </article>
     );
 }

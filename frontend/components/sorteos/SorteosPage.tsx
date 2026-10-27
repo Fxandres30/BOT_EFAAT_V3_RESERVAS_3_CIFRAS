@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
 
 import { Button, PageHeader, Tabs } from "@/components/ui";
@@ -22,7 +23,10 @@ type Pestana = "en_curso" | "administrar" | "programados" | "plantillas" | "cuen
 
 export default function SorteosPage() {
 
-    const [pestana, setPestana] = useState<Pestana>("programados");
+    // /sorteos?vista=administrar abre directamente «Administrar» (enlace
+    // «Gestionar sorteo» de Eventos).
+    const vista = useSearchParams()?.get("vista");
+    const [pestana, setPestana] = useState<Pestana>(vista === "administrar" || vista === "en_curso" ? vista : "programados");
     const [sorteos, setSorteos] = useState<SorteoGestionado[]>([]);
     const [verArchivados, setVerArchivados] = useState(false);
     const [detalle, setDetalle] = useState<string | null>(null);
@@ -52,6 +56,9 @@ export default function SorteosPage() {
         else setErrorActivos(describirError(a));
 
         if (e.ok) { setEnGrupos(e.data); setErrorEnGrupos(null); }
+        // El backend anterior no tiene /sorteos/eventos: la ruta cae en
+        // /sorteos/:id y responde 404. El nuevo nunca responde 404 aquí.
+        else if (e.status === 404) setErrorEnGrupos("el servidor del bot todavía ejecuta la versión anterior. Reinicia el backend (PM2) con el código nuevo para administrar los sorteos.");
         else setErrorEnGrupos(describirError(e));
 
         if (!s.ok) { setError(describirError(s)); return; }

@@ -168,6 +168,8 @@ export interface SorteoActivo {
     id: string;
     origen: "detectado" | "panel";
     sorteo_programado_id: string | null;
+    /** identidad_evento_real: une las filas (grupos) del mismo sorteo. */
+    identidad?: string | null;
     nombre: string | null;
     fecha_evento: string | null;
     hora_fin: string | null;
