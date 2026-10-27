@@ -411,6 +411,23 @@ export default function MensajesPage() {
                 </div>
             )}
 
+            {/* Un estado de pago apagado deja SIN respuesta a «¿qué debo?» a
+                los clientes en ese estado (backend: responderResultado.js).
+                Se avisa para que no parezca una falla del bot. */}
+            {estadosCargados && (() => {
+                const apagados = TIPOS_NUMEROS_PAGOS.filter(t => t.id.startsWith("consulta_pago_") && !estaHabilitado(t.id));
+                if (!apagados.length) return null;
+                return (
+                    <div className={styles.alert} role="status">
+                        <AlertTriangle size={15} />
+                        <span>
+                            Respuestas de pago desactivadas: {apagados.map(t => t.nombre.replace("Consulta de pago — ", "")).join(", ")}.
+                            {" "}Los clientes en {apagados.length === 1 ? "ese estado" : "esos estados"} no reciben respuesta a «¿qué debo?», «¿cuánto me falta?» o «¿estoy al día?». Actívalas en «Números y pagos».
+                        </span>
+                    </div>
+                );
+            })()}
+
 
             {usuarioId && (() => {
                 const activadas = estaHabilitado(TIPO_REACCIONES);
