@@ -4,12 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { Button, PageHeader, Tabs } from "@/components/ui";
-import { apiSorteos, describirError, type CuentaPago, type Plantilla, type SorteoActivo, type SorteoGestionado } from "@/services/sorteos/apiSorteos";
+import { apiSorteos, describirError, type CuentaPago, type Plantilla, type SorteoActivo, type SorteoEnGrupos, type SorteoGestionado } from "@/services/sorteos/apiSorteos";
 
 import FormularioSorteo from "./FormularioSorteo";
 import VistaPreviaModal from "./VistaPreviaModal";
 import ListaSorteos from "./ListaSorteos";
 import ListaActivos from "./ListaActivos";
+import AdministrarSorteos from "./AdministrarSorteos";
 import EditarSorteoActivoModal from "./EditarSorteoActivoModal";
 import DetalleSorteoModal from "./DetalleSorteoModal";
 import EliminarSorteoModal from "./EliminarSorteoModal";
@@ -17,7 +18,7 @@ import PlantillasPanel from "./PlantillasPanel";
 import CuentasPanel from "./CuentasPanel";
 import styles from "./Sorteos.module.css";
 
-type Pestana = "en_curso" | "programados" | "plantillas" | "cuentas";
+type Pestana = "en_curso" | "administrar" | "programados" | "plantillas" | "cuentas";
 
 export default function SorteosPage() {
 
@@ -31,6 +32,10 @@ export default function SorteosPage() {
     const [activos, setActivos] = useState<SorteoActivo[]>([]);
     const [errorActivos, setErrorActivos] = useState<string | null>(null);
     const [editandoActivo, setEditandoActivo] = useState<string | null>(null);
+    // Sorteos en los grupos (activos y recientes) para cerrar, reabrir,
+    // desactivar, cancelar o eliminar.
+    const [enGrupos, setEnGrupos] = useState<SorteoEnGrupos[]>([]);
+    const [errorEnGrupos, setErrorEnGrupos] = useState<string | null>(null);
     const [plantillas, setPlantillas] = useState<Plantilla[]>([]);
     const [cuentas, setCuentas] = useState<CuentaPago[]>([]);
     const [error, setError] = useState<string | null>(null);
@@ -41,10 +46,13 @@ export default function SorteosPage() {
 
         // gestion(): cada programación con sus grupos, su estado operativo y
         // las acciones que el backend permite (una sola petición).
-        const [s, p, c, a] = await Promise.all([apiSorteos.gestion(), apiSorteos.plantillas(), apiSorteos.cuentas(), apiSorteos.activos()]);
+        const [s, p, c, a, e] = await Promise.all([apiSorteos.gestion(), apiSorteos.plantillas(), apiSorteos.cuentas(), apiSorteos.activos(), apiSorteos.eventos()]);
 
         if (a.ok) { setActivos(a.data); setErrorActivos(null); }
         else setErrorActivos(describirError(a));
+
+        if (e.ok) { setEnGrupos(e.data); setErrorEnGrupos(null); }
+        else setErrorEnGrupos(describirError(e));
 
         if (!s.ok) { setError(describirError(s)); return; }
 
@@ -91,6 +99,7 @@ export default function SorteosPage() {
                 onValueChange={v => setPestana(v as Pestana)}
                 items={[
                     { value: "en_curso", label: `En curso (${activos.length})` },
+                    { value: "administrar", label: `Administrar (${enGrupos.length})` },
                     { value: "programados", label: `Programados (${vigentes.length})` },
                     { value: "plantillas", label: `Plantillas (${plantillas.length})` },
                     { value: "cuentas", label: `Cuentas de pago (${cuentas.length})` }
@@ -101,6 +110,9 @@ export default function SorteosPage() {
                 errorActivos
                     ? <p className={`${styles.alerta} ${styles.alertaError}`} role="alert">No se pudieron cargar los sorteos en curso: {errorActivos}</p>
                     : <ListaActivos activos={activos} onEditar={setEditandoActivo} />
+            )}
+            {pestana === "administrar" && (
+                <AdministrarSorteos sorteos={enGrupos} error={errorEnGrupos} onEditar={setEditandoActivo} onActualizado={cargar} />
             )}
             {pestana === "programados" && (
                 <>

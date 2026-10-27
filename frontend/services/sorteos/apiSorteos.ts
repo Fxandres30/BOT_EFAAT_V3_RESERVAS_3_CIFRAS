@@ -40,6 +40,9 @@ export interface ConfigSorteo {
     /** Reinicio de la tabla: solo si se elige expresamente. Los bloqueados a
      *  mano se conservan salvo liberar_bloqueados (solo con reiniciar). */
     tabla?: { reiniciar: boolean; liberar_bloqueados?: boolean };
+    /** Si al publicar el grupo sigue con otro sorteo propio abierto: false =
+     *  esperar a que cierre; true = sustituirlo en ese grupo. */
+    sustituir_activo?: boolean;
     diseno?: DisenoSorteo;
     mensajes: { publicacion: string; aviso_cierre: string };
     recordatorios: Recordatorio[];
@@ -154,7 +157,7 @@ export interface DetalleSorteo extends SorteoGestionado {
 export interface ResultadoCancelacion { cancelados: number; en_curso: number; publicados: number; en_revision: number; eventos_abiertos: number }
 
 /** Campo de un sorteo activo: si se puede editar con el sorteo en curso y por qué. */
-export interface CampoActivo { editable: boolean; motivo?: string }
+export interface CampoActivo { editable: boolean; motivo?: string; requiere_confirmacion?: boolean }
 
 /**
  * Sorteo ACTIVO de una tabla (eventos_bot), lo haya detectado el bot o
@@ -190,12 +193,47 @@ export interface SorteoActivo {
 
 /** Lo que se puede cambiar de un sorteo activo; `base` = lo que se vio al abrirlo. */
 export interface EdicionActivo {
+    /** Corrección de identidad (lotería, fecha, hora, valor): exige
+     *  confirmar_identidad; las reservas y pagos siguen al sorteo corregido. */
+    nombre?: string;
+    fecha_evento?: string;
+    hora_fin?: string;
+    valor?: number;
+    confirmar_identidad?: boolean;
     premios?: Premio[];
     hora_cierre?: string;
     cuentas?: string[];
     diseno?: DisenoSorteo;
     publicacion?: string;
     base: { premios: Premio[]; hora_cierre: string | null; publicacion?: string };
+}
+
+/** Estado de un sorteo en un grupo, para administrarlo. */
+export type EstadoEventoGrupo = "en_curso" | "cerrado" | "desactivado" | "cancelado" | "sustituido";
+
+/** Sorteo ya en los grupos (activo o reciente) con el estado de cada grupo. */
+export interface SorteoEnGrupos {
+    id: string;
+    identidad: string | null;
+    nombre: string | null;
+    fecha_evento: string | null;
+    hora_fin: string | null;
+    hora_cierre: string | null;
+    valor: number | null;
+    estado: EstadoEventoGrupo;
+    reservados: number;
+    pagados: number;
+    grupos: { evento_id: string; grupo_id: string; grupo_nombre: string | null; estado: EstadoEventoGrupo; abierto_whatsapp: boolean }[];
+}
+
+export type AccionEvento = "cerrar" | "reabrir" | "desactivar" | "cancelar" | "eliminar";
+
+export interface ResultadoAccionEvento {
+    accion: AccionEvento;
+    alcance: "grupo" | "todos";
+    grupos: { evento_id: string; grupo_id: string; estado: string }[];
+    whatsapp: { grupo_id: string; whatsapp: string; error?: string | null }[];
+    publicaciones_detenidas: number;
 }
 
 export interface VistaPrevia {
@@ -402,6 +440,10 @@ export const apiSorteos = {
     activos: (precio?: number) => llamar<SorteoActivo[]>("GET", `/activos${precio ? `?precio=${precio}` : ""}`),
     obtenerActivo: (id: string) => llamar<SorteoActivo>("GET", `/activos/${id}`),
     editarActivo: (id: string, cambios: EdicionActivo) => llamar<SorteoActivo>("PUT", `/activos/${id}`, cambios),
+    /** Sorteos en los grupos (activos e inactivos recientes) para administrarlos. */
+    eventos: () => llamar<SorteoEnGrupos[]>("GET", "/eventos"),
+    accionEvento: (eventoId: string, cuerpo: { accion: AccionEvento; alcance?: "grupo" | "todos"; hora_cierre?: string; sustituir?: boolean; cerrar_grupo_whatsapp?: boolean }) =>
+        llamar<ResultadoAccionEvento>("POST", `/eventos/${eventoId}/accion`, cuerpo),
     obtener: (id: string) => llamar<Sorteo>("GET", `/${id}`),
     crear: (config: ConfigSorteo & { plantilla_id?: string | null }) => llamar<Sorteo>("POST", "", config),
     editar: (id: string, config: ConfigSorteo & { version: number; plantilla_id?: string | null }) => llamar<Sorteo>("PUT", `/${id}`, config),

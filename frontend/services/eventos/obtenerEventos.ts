@@ -50,6 +50,9 @@ export async function obtenerEventos(cliente: ClienteEventos = supabase){
 
     }
 
-    return data;
+    // Eliminados desde «Administrar» (eliminación lógica, backend
+    // sorteos/gestionEventos.js): se conservan en la base, no se muestran.
+    return (data || []).filter((e: { estado?: string | null; cierre_motivo?: string | null }) =>
+        e.estado !== "eliminado" && !String(e.cierre_motivo || "").startsWith("panel:eliminado"));
 
 }

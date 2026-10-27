@@ -37,6 +37,13 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
     const [intento, setIntento] = useState(0);
     const [premios, setPremios] = useState<PremioForm[]>([]);
     const [horaCierre, setHoraCierre] = useState("");
+    // Identidad del sorteo (lotería, fecha, hora, valor): corregible con
+    // confirmación expresa; sus reservas y pagos siguen al sorteo corregido.
+    const [nombre, setNombre] = useState("");
+    const [fecha, setFecha] = useState("");
+    const [horaFin, setHoraFin] = useState("");
+    const [valor, setValor] = useState("");
+    const [confirmarIdentidad, setConfirmarIdentidad] = useState(false);
     const [cuentasSel, setCuentasSel] = useState<string[]>([]);
     const [diseno, setDiseno] = useState("guardado");
     const [publicacion, setPublicacion] = useState("");
@@ -62,6 +69,11 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
             const s = r.data;
             setPremios(s.premios.length ? s.premios.map(p => ({ nombre: p.nombre, premio: p.premio ? String(p.premio) : "", tipo: p.tipo || "otro" })) : [{ nombre: "", premio: "", tipo: "otro" }]);
             setHoraCierre(s.hora_cierre ? s.hora_cierre.slice(0, 5) : "");
+            setNombre(s.nombre || "");
+            setFecha(s.fecha_evento || "");
+            setHoraFin(s.hora_fin ? s.hora_fin.slice(0, 5) : "");
+            setValor(s.valor ? String(s.valor) : "");
+            setConfirmarIdentidad(false);
             setCuentasSel(s.cuentas_ids || []);
             setDiseno(s.diseno ? disenoAForm(s.diseno) : "guardado");
             setPublicacion(s.publicacion || "");
@@ -83,6 +95,15 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
 
     const errorDe = (campo: string) => errores.filter(e => e.campo === campo).map(e => e.mensaje).join(" ") || undefined;
 
+    // Campos de identidad que el usuario cambió (solo esos se envían).
+    const identidadCambiada = sorteo ? {
+        ...(nombre.trim() !== (sorteo.nombre || "") ? { nombre: nombre.trim() } : {}),
+        ...(fecha !== (sorteo.fecha_evento || "") ? { fecha_evento: fecha } : {}),
+        ...(horaFin !== (sorteo.hora_fin ? sorteo.hora_fin.slice(0, 5) : "") ? { hora_fin: horaFin } : {}),
+        ...(Number(valor) !== (sorteo.valor || 0) ? { valor: Number(valor) } : {})
+    } : {};
+    const cambiaIdentidad = Object.keys(identidadCambiada).length > 0;
+
     async function guardar() {
 
         if (!sorteo) return;
@@ -93,6 +114,7 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
         setAviso(null);
 
         const r = await apiSorteos.editarActivo(sorteo.id, {
+            ...(cambiaIdentidad ? { ...identidadCambiada, confirmar_identidad: confirmarIdentidad } : {}),
             premios: premios.filter(p => p.nombre.trim()).map(p => ({ nombre: p.nombre, premio: Number(p.premio) || null, tipo: p.tipo })),
             hora_cierre: horaCierre,
             ...(sorteo.campos.cuentas.editable ? { cuentas: cuentasSel } : {}),
@@ -120,7 +142,7 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
             onClose={onClose}
             size="lg"
             title="Editar sorteo activo"
-            description="Cambia lo que se puede cambiar con el sorteo en curso. Las reservas y los pagos no se tocan y no se envía ningún mensaje."
+            description="Cambia lo que se puede cambiar con el sorteo en curso. Las reservas y los pagos conservan sus números, estados e importes, y no se envía ningún mensaje."
             footer={
                 <>
                     <Button variant="secondary" onClick={onClose} disabled={guardando}>Cancelar</Button>
@@ -144,12 +166,30 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
                         <p>En curso: <b>{sorteo.reservados}</b> reservado(s) y <b>{sorteo.pagados}</b> pagado(s). Guardar no los modifica.</p>
                     </div>
 
-                    <section className={styles.seccion} aria-label="Datos fijos del sorteo en curso">
+                    <section className={styles.seccion} aria-label="Datos del sorteo en curso">
                         <h3 className={styles.seccionTitulo}>Datos del sorteo</h3>
-                        <Fijo etiqueta="Lotería o nombre del sorteo" valor={sorteo.nombre || "—"} motivo={sorteo.campos.nombre.motivo} />
-                        <Fijo etiqueta="Fecha del sorteo" valor={fechaLegible(sorteo.fecha_evento)} motivo={sorteo.campos.fecha_evento.motivo} />
-                        <Fijo etiqueta="Hora del sorteo" valor={sorteo.hora_fin || "—"} motivo={sorteo.campos.hora_fin.motivo} />
-                        <Fijo etiqueta="Valor por número" valor={sorteo.valor ? `$${sorteo.valor.toLocaleString("es-CO")}` : "—"} motivo={sorteo.campos.valor.motivo} />
+                        {sorteo.campos.nombre.editable ? (
+                            <>
+                                <Input label="Lotería o nombre del sorteo" value={nombre} onChange={e => setNombre(e.target.value)} error={errorDe("nombre")} />
+                                <Input label="Fecha del sorteo" type="date" value={fecha} onChange={e => setFecha(e.target.value)} error={errorDe("fecha_evento")} />
+                                <Input label="Hora del sorteo" type="time" value={horaFin} onChange={e => setHoraFin(e.target.value)} error={errorDe("hora_fin")} />
+                                <Input label="Valor por número (COP)" type="number" min={0} value={valor} onChange={e => setValor(e.target.value)} error={errorDe("valor")} />
+                                <p className={styles.ayuda}>{sorteo.campos.nombre.motivo}</p>
+                                {cambiaIdentidad && (
+                                    <label className={styles.check}>
+                                        <input type="checkbox" checked={confirmarIdentidad} onChange={e => setConfirmarIdentidad(e.target.checked)} />
+                                        Confirmo la corrección: las {sorteo.reservados} reserva(s) y {sorteo.pagados} pago(s) pasan al sorteo corregido en sus {sorteo.grupos.length} grupo(s)
+                                    </label>
+                                )}
+                            </>
+                        ) : (
+                            <>
+                                <Fijo etiqueta="Lotería o nombre del sorteo" valor={sorteo.nombre || "—"} motivo={sorteo.campos.nombre.motivo} />
+                                <Fijo etiqueta="Fecha del sorteo" valor={fechaLegible(sorteo.fecha_evento)} motivo={sorteo.campos.fecha_evento.motivo} />
+                                <Fijo etiqueta="Hora del sorteo" valor={sorteo.hora_fin || "—"} motivo={sorteo.campos.hora_fin.motivo} />
+                                <Fijo etiqueta="Valor por número" valor={sorteo.valor ? `$${sorteo.valor.toLocaleString("es-CO")}` : "—"} motivo={sorteo.campos.valor.motivo} />
+                            </>
+                        )}
                         <Fijo etiqueta="Tabla de números" valor={`${sorteo.cantidad_numeros || "—"} números`} motivo={sorteo.campos.tabla.motivo} />
                         <Fijo etiqueta="Grupos" valor={sorteo.grupos.map(g => g.grupo_nombre || g.grupo_id).join(" · ") || "—"} motivo={sorteo.campos.grupos.motivo} />
                     </section>

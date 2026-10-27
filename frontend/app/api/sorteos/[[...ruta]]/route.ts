@@ -46,6 +46,8 @@ function destino(metodo: Metodo, ruta: string[]): string | null {
         if (a === "activos") return metodo === "GET" ? "/activos" : null;
         // Programados con estados, impacto y acciones permitidas.
         if (a === "gestion") return metodo === "GET" ? "/gestion" : null;
+        // Sorteos en los grupos (activos y recientes) para administrarlos.
+        if (a === "eventos") return metodo === "GET" ? "/eventos" : null;
         if (a === "plantillas" || a === "cuentas" || a === "loterias") return metodo === "GET" || metodo === "POST" ? `/${a}` : null;
         if (UUID.test(a)) return metodo === "GET" || metodo === "PUT" ? `/${a}` : null;
         return null;
@@ -63,6 +65,11 @@ function destino(metodo: Metodo, ruta: string[]): string | null {
 
     if (ruta.length === 3 && a === "loterias" && UUID.test(b) && c === "horario") {
         return metodo === "GET" ? `/loterias/${b}/horario` : null;
+    }
+
+    // Cerrar, reabrir, desactivar, cancelar o eliminar un sorteo en los grupos.
+    if (ruta.length === 3 && a === "eventos" && UUID.test(b) && c === "accion") {
+        return metodo === "POST" ? `/eventos/${b}/accion` : null;
     }
 
     if (ruta.length === 3 && UUID.test(a) && b === "grupos" && c === "reintentar") {

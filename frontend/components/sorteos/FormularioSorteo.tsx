@@ -61,6 +61,9 @@ const VACIO = {
     reiniciarTabla: false,
     // Bloqueados a mano: se conservan salvo que se elija liberarlos.
     liberarBloqueados: false,
+    // Si a la hora de publicar el grupo sigue con otro sorteo abierto: por
+    // defecto se espera a que cierre; marcado, lo sustituye en ese grupo.
+    sustituirActivo: false,
     // Estilo: "actual" | "preset:<key>" | "biblioteca:<id>".
     diseno: "actual",
     mensajePublicacion: "",
@@ -127,6 +130,7 @@ function desdeConfig(config: ConfigSorteo, extra: Partial<Form> = {}): Form {
         fechaSorteo: config.fecha_sorteo || colombiaDesdeIso(config.publicar_en).slice(0, 10),
         reiniciarTabla: config.tabla?.reiniciar === true,
         liberarBloqueados: config.tabla?.reiniciar === true && config.tabla?.liberar_bloqueados === true,
+        sustituirActivo: config.sustituir_activo === true,
         diseno: disenoAForm(config.diseno),
         mensajePublicacion: config.mensajes?.publicacion || "",
         avisoCierre: config.mensajes?.aviso_cierre || "",
@@ -151,6 +155,7 @@ function aConfig(f: Form, disenoGuardado?: DisenoSorteo | null): ConfigSorteo {
         publicar_en: isoDesdeColombia(f.publicarEn),
         fecha_sorteo: f.fechaSorteo || (f.publicarEn ? f.publicarEn.slice(0, 10) : null),
         tabla: { reiniciar: f.reiniciarTabla, liberar_bloqueados: f.reiniciarTabla && f.liberarBloqueados },
+        sustituir_activo: f.sustituirActivo,
         diseno: formADiseno(f.diseno, disenoGuardado),
         mensajes: { publicacion: f.mensajePublicacion, aviso_cierre: f.avisoCierre },
         recordatorios: f.recordatorios.map(r => ({ minutos_antes_cierre: Number(r.minutos), texto: r.texto })),
@@ -623,6 +628,17 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
                             </label>
                         </>
                     )}
+                </section>
+
+                <section className={styles.seccion}>
+                    <h3 className={styles.seccionTitulo}>Si el grupo tiene otro sorteo abierto</h3>
+                    <label className={styles.check}>
+                        <input type="checkbox" checked={form.sustituirActivo} onChange={e => cambiar("sustituirActivo", e.target.checked)} />
+                        Sustituir el sorteo activo al publicar
+                    </label>
+                    <p className={styles.ayuda}>
+                        Sin marcar, la publicación espera a que el sorteo actual del grupo cierre (también puedes cerrarlo o desactivarlo desde «Administrar»). Marcado, a la hora de publicar el sorteo actual se cierra solo en ese grupo, sin mensaje de cierre y sin perder sus reservas ni pagos.
+                    </p>
                 </section>
 
                 <section className={styles.seccion}>
