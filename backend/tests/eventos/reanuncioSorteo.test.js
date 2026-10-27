@@ -91,13 +91,17 @@ async function sorteoPublicado({ conLibres = true } = {}) {
         tabla.ocupados = NUMEROS;
     }
 
-    const fila = () => fakeSupabase._filas("eventos_bot").find(f => f.grupo_id === GRUPO);
+    // Fila VIGENTE del grupo (la activa o la más reciente), igual que
+    // consultarEvento.js: un sorteo distinto crea su propia fila y la del
+    // anterior se conserva con su historial.
+    const filasGrupo = () => fakeSupabase._filas("eventos_bot").filter(f => f.grupo_id === GRUPO);
+    const fila = () => filasGrupo().find(f => f.activo === true) || filasGrupo()[filasGrupo().length - 1];
     const aperturas = () => llamadas.groupSettingUpdate.filter(x => x.ajuste === "not_announcement").length;
     const ciclos = () => fakeSupabase._filas("event_sessions").length;
 
     assert.strictEqual(aperturas(), 1);
 
-    return { ...entorno, sock, llamadas, fila, aperturas, ciclos };
+    return { ...entorno, sock, llamadas, fila, filasGrupo, aperturas, ciclos };
 
 }
 
@@ -177,6 +181,12 @@ prueba("5. NUEVO sorteo (otra lotería) tras uno lleno y cerrado -> abre normalm
     assert.strictEqual(e.fila().abierto, true);
     assert.match(e.fila().nombre_evento, /sinuano noche/i);
     assert.strictEqual(e.ciclos(), 2, "nuevo ciclo de automatización");
+
+    // El sorteo anterior (cerrado, con su historial) conserva su propia fila.
+    const anterior = e.filasGrupo().find(f => f.id !== e.fila().id);
+    assert.ok(anterior, "la fila del sorteo anterior no se reescribe");
+    assert.strictEqual(anterior.activo, false);
+    assert.match(anterior.nombre_evento, /manizales/i);
 
 });
 

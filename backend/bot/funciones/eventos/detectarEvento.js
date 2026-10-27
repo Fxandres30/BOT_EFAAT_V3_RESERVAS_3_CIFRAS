@@ -1,10 +1,10 @@
 const supabase = require("../../../lib/supabase");
 const { extraerEvento } = require("./extraerEvento");
-const { consultarEvento } = require("./consultarEvento");
+const { consultarEvento, consultarEventoDelSorteo } = require("./consultarEvento");
 const { guardarEvento } = require("./guardarEvento");
 const { obtenerConfiguracionCliente } = require("./tablasCliente");
 const { abrirGrupo } = require("./grupos/abrirGrupo");
-const { esMismoSorteo, fechaSorteoAnunciado, buscarSorteoVigente } = require("./identidadEventoReal");
+const { esMismoSorteo, fechaSorteoAnunciado, buscarSorteoVigente, crearIdentidadEventoReal } = require("./identidadEventoReal");
 const { consultarDisponibilidad } = require("../consultas/consultarDisponibilidad");
 
 // Sorteos creados y programados desde el panel (backend/sorteos). Solo se
@@ -84,6 +84,83 @@ async function estadoTerminado(evento) {
     }
 
     return null;
+
+}
+
+// ¿El sorteo de esta fila ya tiene números reservados o pagados (o en
+// proceso)? Un sorteo así tiene historial que conservar: un anuncio de OTRO
+// sorteo nunca reescribe su fila. Ante un error de lectura se responde que sí
+// (lo seguro: se crea una fila nueva y la anterior queda intacta).
+async function sorteoTieneNumeros(evento) {
+
+    if (!evento?.identidad_evento_real || !evento?.tabla || !evento?.usuario_id) return false;
+
+    try {
+
+        const { data, error } = await supabase
+            .from(evento.tabla)
+            .select("numero")
+            .eq("usuario_id", evento.usuario_id)
+            .eq("identidad_evento_real", evento.identidad_evento_real)
+            .neq("estado", "libre")
+            .limit(1);
+
+        if (error) return true;
+
+        return (data || []).length > 0;
+
+    } catch {
+
+        return true;
+
+    }
+
+}
+
+// El sorteo anterior del grupo deja de estar vigente EN ESTE GRUPO porque se
+// anunció otro: se cierra su fila (reservas y pagos intactos, siguen con su
+// identidad). Nunca cierra el grupo de WhatsApp (el anuncio nuevo lo abre)
+// ni toca las filas de ese sorteo en otros grupos.
+async function sustituirEnGrupo(evento, motivo) {
+
+    const base = { activo: false, estado: "cerrado", actualizado_en: new Date().toISOString() };
+
+    let { error } = await supabase
+        .from("eventos_bot")
+        .update({ ...base, cierre_estado: "cerrado", cierre_motivo: motivo, cerrado_en: new Date().toISOString() })
+        .eq("id", evento.id);
+
+    // Sin la migración 023 (columnas de cierre por grupo).
+    if (error?.code === "42703") ({ error } = await supabase.from("eventos_bot").update(base).eq("id", evento.id));
+
+    if (error) {
+        console.error(`❌ No se pudo cerrar el sorteo anterior (${evento.id}) del grupo:`, error.message);
+        return false;
+    }
+
+    console.log(`🔁 Sorteo anterior ${evento.nombre_evento || ""} ${evento.hora_fin || ""} cerrado en este grupo (${motivo}); sus reservas y pagos se conservan.`);
+
+    return true;
+
+}
+
+// Quien publicó el anuncio ¿puede reemplazar un sorteo programado desde el
+// panel? Solo la propia cuenta del bot (fromMe) o un administrador del grupo:
+// un cliente que reenvía un anuncio viejo nunca lo reemplaza.
+async function remitenteAutorizado(ctx, grupoId) {
+
+    if (ctx.message?.key?.fromMe) return true;
+
+    const jid = ctx.message?.key?.participant || null;
+    if (!jid) return false;
+
+    try {
+        const { esAdministrador } = require("../admins/esAdministrador");
+        const r = await esAdministrador({ sock: ctx.sock, grupoId, jid });
+        return r?.esAdministrador === true;
+    } catch {
+        return false;
+    }
 
 }
 
@@ -257,11 +334,76 @@ async function detectarEvento(ctx) {
         // el administrador). Un anuncio escrito en el grupo nunca lo
         // reemplaza ni lo reabre: se trata como un re-anuncio. Se reconoce
         // por su identidad, aunque el envío del anuncio quedara incierto.
+        // Identidad del sorteo que anuncia ESTE mensaje (la misma que
+        // calculará guardarEvento).
+        const identidadAnunciada = sorteoVigente?.identidad_evento_real || crearIdentidadEventoReal({
+            usuario_id: duenoSesion,
+            nombre_evento: eventoCompleto.nombre,
+            hora_fin: eventoCompleto.hora,
+            valor: eventoCompleto.valor,
+            fecha_evento: sorteoVigente?.fecha_evento || fechaSorteo
+        });
+
+        const otroSorteo = Boolean(eventoAnterior) && eventoAnterior.identidad_evento_real !== identidadAnunciada &&
+            !esMismoSorteo(eventoAnterior, { usuario_id: duenoSesion, nombre_evento: eventoCompleto.nombre, hora_fin: eventoCompleto.hora, valor: eventoCompleto.valor, fecha_evento: fechaSorteo });
+
+        // Un anuncio del MISMO sorteo programado es un re-anuncio: no lo
+        // reemplaza ni lo reabre. Un anuncio de OTRO sorteo es una decisión
+        // explícita del administrador (corregir una lotería o cambiar el
+        // sorteo vigente): prevalece si lo publica la cuenta del bot o un
+        // administrador del grupo, sin esperar al cierre del anterior.
         if (eventoAnterior?.activo && await esEventoDeSorteoProgramado(eventoAnterior)) {
 
-            console.log(`⏭️ Anuncio detectado en un grupo con un sorteo programado activo (${eventoAnterior.nombre_evento} ${eventoAnterior.hora_fin}) — no se reemplaza.`);
+            if (!otroSorteo || !(await remitenteAutorizado(ctx, grupoId))) {
 
-            return eventoAnterior;
+                console.log(`⏭️ Anuncio detectado en un grupo con un sorteo programado activo (${eventoAnterior.nombre_evento} ${eventoAnterior.hora_fin}) — no se reemplaza${otroSorteo ? " (no lo publicó un administrador)" : ""}.`);
+
+                return eventoAnterior;
+
+            }
+
+            console.log(`🔁 Anuncio de OTRO sorteo publicado por un administrador en un grupo con un sorteo programado activo — se sustituye en este grupo.`);
+
+        }
+
+        // ¿Qué fila se guarda?
+        //   - Mismo sorteo (re-anuncio): su fila, como siempre.
+        //   - Otro sorteo y el anterior todavía SIN números (detección
+        //     equivocada que se corrige con un anuncio nuevo): se corrige la
+        //     misma fila.
+        //   - Otro sorteo y el anterior CON reservas/pagos o ya terminado:
+        //     fila NUEVA. La del anterior se conserva (historial, pagos
+        //     pendientes, contadores) y, si seguía activo, se cierra en este
+        //     grupo. Nunca se reasignan sus reservas al sorteo nuevo.
+        let filaAGuardar = eventoAnterior;
+        let sustituir = null;
+
+        if (otroSorteo) {
+
+            let filaDelSorteo = null;
+
+            try {
+                const previa = await consultarEventoDelSorteo(grupoId, duenoSesion, identidadAnunciada);
+                filaDelSorteo = previa?.ok ? previa.data : null;
+            } catch {
+                filaDelSorteo = null;
+            }
+
+            if (filaDelSorteo) {
+
+                filaAGuardar = filaDelSorteo;
+                if (eventoAnterior.activo && eventoAnterior.id !== filaDelSorteo.id) sustituir = eventoAnterior;
+
+            } else if (eventoAnterior.activo && !(await sorteoTieneNumeros(eventoAnterior))) {
+
+                console.log(`✏️ Corrección del sorteo del grupo (${eventoAnterior.nombre_evento} ${eventoAnterior.hora_fin} → ${eventoCompleto.nombre} ${eventoCompleto.hora}): todavía no tenía números, se corrige la misma fila.`);
+
+            } else {
+
+                filaAGuardar = null;
+                if (eventoAnterior.activo) sustituir = eventoAnterior;
+
+            }
 
         }
 
@@ -274,7 +416,7 @@ async function detectarEvento(ctx) {
             sock,
             grupoId,
             evento: eventoCompleto,
-            eventoAnterior,
+            eventoAnterior: filaAGuardar,
             sorteoVigente,
             fechaSorteo
 
@@ -285,6 +427,12 @@ async function detectarEvento(ctx) {
             console.log("❌ No se pudo guardar el evento");
             return null;
 
+        }
+
+        // Solo después de guardar el nuevo: si guardar falla, el grupo sigue
+        // con su sorteo de siempre.
+        if (sustituir) {
+            await sustituirEnGrupo(sustituir, `sustituido por el anuncio de ${eventoCompleto.nombre || "otro sorteo"} ${eventoCompleto.hora || ""}`.trim());
         }
 
         console.log("✅ Evento guardado correctamente");

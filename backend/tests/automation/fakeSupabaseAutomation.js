@@ -85,9 +85,14 @@ function crearFakeSupabaseAutomation() {
         // reservas_actividad, para que repo/tablaEvento.js (solo lectura)
         // pueda probarse contra el mismo fake.
         reservas_dos_cifras: [],
+        "5k_15k_reservas_2_cifras": [],
         // Recordatorios según el estado real: repo/estadoSorteo.js lee
         // grupos.announce (¿el grupo está cerrado en WhatsApp?). Solo lectura.
-        grupos: []
+        grupos: [],
+        // Sorteos programados desde el panel (024): solo para que el detector
+        // reconozca un sorteo programado activo (sorteos/repo.js).
+        sorteos_programados: [],
+        sorteos_programados_grupos: []
     };
 
     // Corrección quirúrgica Fase 2B: para probar "otro error de Supabase
@@ -160,6 +165,7 @@ function crearFakeSupabaseAutomation() {
         const filtrosLt = [];
         const filtrosGte = [];
         const filtrosIs = [];
+        const filtrosNeq = [];
         let ordenCampo = null;
         let ordenAsc = true;
         let limiteN = null;
@@ -174,7 +180,8 @@ function crearFakeSupabaseAutomation() {
                 // que en SQL jamás es true) — fiel al supabase-js real, ver
                 // repo/messages.js (obtenerMensajesActivos: usuario_id null =
                 // mensaje GLOBAL).
-                filtrosIs.every(([c, v]) => (v === null ? (fila[c] === null || fila[c] === undefined) : fila[c] === v));
+                filtrosIs.every(([c, v]) => (v === null ? (fila[c] === null || fila[c] === undefined) : fila[c] === v)) &&
+                filtrosNeq.every(([c, v]) => fila[c] !== v);
 
         }
 
@@ -209,6 +216,11 @@ function crearFakeSupabaseAutomation() {
 
             is(campo, valor) {
                 filtrosIs.push([campo, valor]);
+                return builder;
+            },
+
+            neq(campo, valor) {
+                filtrosNeq.push([campo, valor]);
                 return builder;
             },
 

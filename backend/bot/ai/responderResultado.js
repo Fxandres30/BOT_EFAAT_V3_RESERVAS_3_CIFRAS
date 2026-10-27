@@ -110,7 +110,15 @@ async function responderResultado(ctx) {
     // con su mensaje fijo: una plantilla de estado no contesta eso.
     const esPreguntaPuntualDePago = resultado.tipo === "consulta_pago" && resultado.modo !== "resumen";
 
-    const puedeUsarPlantillas = (!esAgotado || tipoPresentacion === "disponibilidad_agotada") && !esPreguntaPuntualDePago;
+    // Pendientes en OTROS sorteos del cliente (resolverConsulta.js). Una
+    // plantilla de "pago completo"/"sin saldo" diría "no debes nada": con
+    // deuda en otro sorteo se usa el mensaje fijo, que dice ambas cosas. En
+    // las demás, el detalle se añade después del texto de la plantilla.
+    const textoOtros = resultado.tipo === "consulta_pago" ? (resultado.textoOtrosPendientes || "") : "";
+    const plantillaContradiria = Boolean(textoOtros) &&
+        (resultado.estadoPago === "pago_completo" || resultado.estadoPago === "sin_saldo");
+
+    const puedeUsarPlantillas = (!esAgotado || tipoPresentacion === "disponibilidad_agotada") && !esPreguntaPuntualDePago && !plantillaContradiria;
 
     let config = null;
     let habilitadas = [];
@@ -153,7 +161,7 @@ async function responderResultado(ctx) {
 
             if (resultadoPlantilla) {
 
-                texto = resultadoPlantilla;
+                texto = textoOtros ? `${resultadoPlantilla}\n\n${textoOtros}` : resultadoPlantilla;
                 plantillaUtilizada = true;
                 plantillaId = plantilla.id;
 
