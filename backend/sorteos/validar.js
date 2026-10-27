@@ -228,6 +228,11 @@ function validarSorteo(entrada = {}, { ahora = new Date() } = {}) {
             liberar_bloqueados: entrada.tabla?.reiniciar === true && entrada.tabla?.liberar_bloqueados === true
         },
         diseno: diseno.eleccion,
+        // «Sustituir el sorteo activo al publicar»: si a la hora de publicar
+        // el grupo sigue con otro sorteo propio abierto, el publicador lo
+        // cierra en ESE grupo (sus reservas y pagos se conservan) en vez de
+        // esperar. Por defecto, espera.
+        sustituir_activo: entrada.sustituir_activo === true,
         mensajes,
         recordatorios: recordatorios.sort((a, b) => b.minutos_antes_cierre - a.minutos_antes_cierre),
         reservas: { liberar_no_pagados: liberar, vencimiento_minutos: liberar ? vencimiento : null }

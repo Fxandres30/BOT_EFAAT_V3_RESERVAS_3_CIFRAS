@@ -118,7 +118,16 @@ async function revisarTabla({ usuarioId, tabla, cifras, cantidad, identidad, seR
 //           "otra_cuenta" | "programado_solapado"
 //   espera: texto cuando hoy hay un sorteo activo que habrá cerrado antes de
 //           la publicación (no bloquea: "Programado").
-async function revisarGrupo({ usuarioId, grupoId, identidad, autorizados, publicarEn = null, ahora = new Date(), sorteoId = null, cierreNuevo = null }) {
+// sustituir: el sorteo eligió «Sustituir el sorteo activo al publicar»
+// (config.sustituir_activo): un sorteo PROPIO distinto que siga abierto no
+// es una espera, lo cerrará el publicador en este grupo al publicar.
+//
+// Un sorteo propio que seguirá abierto en la fecha de publicación ya no
+// BLOQUEA la programación (2026-10-27): es un conflicto que el
+// administrador resuelve (cerrarlo, desactivarlo o elegir sustituirlo) y el
+// publicador espera mientras tanto. Devuelve `conflictos` (filas propias
+// activas distintas) para que el publicador pueda sustituirlas.
+async function revisarGrupo({ usuarioId, grupoId, identidad, autorizados, publicarEn = null, ahora = new Date(), sorteoId = null, cierreNuevo = null, sustituir = false }) {
 
     if (!autorizados.has(grupoId)) {
         return { bloqueo: "El grupo no está autorizado para este usuario.", tipo: "no_autorizado", espera: null, avisos: [] };
@@ -153,21 +162,21 @@ async function revisarGrupo({ usuarioId, grupoId, identidad, autorizados, public
 
         if (!futuro) {
             return {
-                bloqueo: `El grupo todavía tiene abierto el sorteo «${nombreDe(activosDistintos[0])}». No se reemplaza: se publicará en cuanto cierre.`,
-                tipo: "sorteo_activo", espera: null, avisos: [], eventoActual: propio
+                bloqueo: `El grupo todavía tiene abierto el sorteo «${nombreDe(activosDistintos[0])}». No se reemplaza: se publicará en cuanto cierre (o ciérralo o desactívalo desde «Sorteos en curso»).`,
+                tipo: "sorteo_activo", espera: null, avisos: [], eventoActual: propio, conflictos: activosDistintos
             };
         }
 
-        const abierto = activosDistintos.find(f => seguiraAbierto(f, momento, ahora));
+        const abiertos = activosDistintos.filter(f => seguiraAbierto(f, momento, ahora));
 
-        if (abierto) {
+        if (abiertos.length) {
+            const abierto = abiertos[0];
             const cierreActual = cierreDeEvento(abierto, ahora);
-            return {
-                bloqueo: cierreActual
-                    ? `El sorteo actual «${nombreDe(abierto)}» sigue abierto hasta el ${legible(cierreActual)}, después de la publicación programada (${legible(momento)}). Programa la publicación después de ese cierre.`
-                    : `El grupo tiene un sorteo activo («${nombreDe(abierto)}») sin hora de cierre conocida. Espera a que cierre o programa la publicación para después del cierre.`,
-                tipo: "sorteo_activo", espera: null, avisos: [], eventoActual: abierto
-            };
+            const hasta = cierreActual ? `sigue abierto hasta el ${legible(cierreActual)}` : "no tiene hora de cierre conocida";
+            espera = sustituir
+                ? `El sorteo actual «${nombreDe(abierto)}» ${hasta}. Al publicar (${legible(momento)}), este sorteo lo SUSTITUIRÁ en este grupo: «${nombreDe(abierto)}» se cerrará aquí sin perder sus reservas ni pagos.`
+                : `El sorteo actual «${nombreDe(abierto)}» ${hasta}, después de la publicación programada (${legible(momento)}). La publicación esperará a que cierre; para publicar a su hora, ciérralo o desactívalo desde «Sorteos en curso» o marca «Sustituir el sorteo activo al publicar». Si no se resuelve antes del cierre de reservas de este sorteo, quedará en revisión.`;
+            return { bloqueo: null, tipo: null, espera, avisos: [], eventoActual: abierto, conflictos: activosDistintos };
         }
 
         espera = activosDistintos
@@ -203,7 +212,7 @@ async function revisarGrupo({ usuarioId, grupoId, identidad, autorizados, public
         }
     }
 
-    return { bloqueo: null, tipo: null, espera, avisos: [], eventoActual: propio };
+    return { bloqueo: null, tipo: null, espera, avisos: [], eventoActual: propio, conflictos: activosDistintos };
 
 }
 

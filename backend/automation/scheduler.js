@@ -28,6 +28,7 @@
 // nada lo hace: ver docs/EFAAT_AUTOMATION_PHASE_4B_IMPLEMENTATION.md).
 // ==========================================================================
 
+const { cierreSilencioso, motivoGestion } = require("../shared/eventos/estadosGestion");
 const eventSessionsRepo = require("./repo/eventSessions");
 const eventosBotRepo = require("./repo/eventosBot");
 const automationConfigRepo = require("./repo/automationConfig");
@@ -584,7 +585,13 @@ async function evaluarActualizacion(evento, eventSession, sock, opciones = {}) {
 // solo reacciona a ella.
 async function ejecutarCierre(evento, eventSession, sock) {
 
-    const config = await automationConfigRepo.obtenerConfiguracion(evento.usuario_id, evento.grupo_id);
+    // Desactivado, cancelado, eliminado o sustituido por otro sorteo desde la
+    // administración: el ciclo termina sin anunciar un "cierre" que no hubo.
+    const silencioso = cierreSilencioso(evento);
+
+    const config = silencioso ? null : await automationConfigRepo.obtenerConfiguracion(evento.usuario_id, evento.grupo_id);
+
+    if (silencioso) console.log(`🤖 [AUTOMATION] ciclo ${eventSession.id} terminado sin mensaje de cierre (${motivoGestion(evento)}).`);
 
     if (config && config.mensaje_cierre && config.mensaje_cierre.activo === true) {
 

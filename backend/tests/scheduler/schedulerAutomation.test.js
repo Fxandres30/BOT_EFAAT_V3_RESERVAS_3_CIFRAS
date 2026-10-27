@@ -330,6 +330,39 @@ async function main() {
     });
 
     // ---------------------------------------------------------------
+    // 5a) desactivado / cancelado / sustituido desde la administración:
+    //     el ciclo termina SIN mensaje de cierre (no hubo un cierre real)
+    // ---------------------------------------------------------------
+    await test("5a) sorteo desactivado, cancelado o sustituido: el ciclo se cierra sin CLOSE_MESSAGE", async () => {
+
+        for (const fin of [
+            { estado: "desactivado", cierre_motivo: "panel:desactivado" },
+            { estado: "cancelado", cierre_motivo: "panel:cancelado" },
+            { estado: "cerrado", cierre_motivo: "panel:desactivado" },
+            { estado: "cerrado", cierre_motivo: "sustituido por el anuncio de Cauca 10:30 PM" }
+        ]) {
+
+            const { fakeSupabase, scheduler, crearFakeSock } = crearEntorno();
+
+            const evento = crearEventoBot(fakeSupabase, { activo: false, abierto: false, ...fin });
+            const eventSession = crearEventSession(fakeSupabase, evento);
+            crearConfig(fakeSupabase, { mensaje_cierre: { activo: true, categoria: "urgencia" } });
+            crearMensaje(fakeSupabase, { tipo: "CLOSE_MESSAGE", categoria: "urgencia", texto: "Cerramos {nombre_evento}" });
+
+            const { sock, llamadas } = crearFakeSock({ sessionId: SESSION_ID });
+
+            acelerarTimers();
+            await scheduler.tick(sock, { ahora: AHORA });
+            restaurarTimers();
+
+            assert.strictEqual(llamadas.sendMessage.length, 0, JSON.stringify(fin));
+            assert.strictEqual(fakeSupabase._filas("event_sessions").find(f => f.id === eventSession.id).estado, "cerrado", "el ciclo termina");
+
+        }
+
+    });
+
+    // ---------------------------------------------------------------
     // 5b) sin evento_bot.activo=false, CLOSE_MESSAGE nunca se dispara solo por la hora
     // ---------------------------------------------------------------
     await test("5b) el Scheduler NUNCA decide el cierre por su cuenta: con activo=true no hay CLOSE_MESSAGE aunque ya pasó hora_cierre", async () => {

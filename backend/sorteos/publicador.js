@@ -33,6 +33,7 @@ const { mensajeRecordatorio, mensajeAvisoCierre } = require("./mensajes");
 const { partesBogota, instanteBogota, fechaSorteoDe, identidadDelSorteo } = require("./validar");
 const { decidirRecordatoriosSegunEstado } = require("../automation/eventRules");
 const { leerEstadoParaRecordatorios } = require("../automation/repo/estadoSorteo");
+const { cierreSilencioso } = require("../shared/eventos/estadosGestion");
 
 const MAX_INTENTOS_AUTOMATICOS = 5;
 const VENTANA_RECORDATORIO_MS = 10 * 60 * 1000;
@@ -109,7 +110,23 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
 
     // Conflictos EN ESTE MOMENTO: un sorteo distinto todavía abierto en el
     // grupo nunca se reemplaza; se espera a que cierre.
-    const rg = await revisarGrupo({ usuarioId, grupoId, identidad: sorteo.identidad_evento_real, autorizados, ahora });
+    let rg = await revisarGrupo({ usuarioId, grupoId, identidad: sorteo.identidad_evento_real, autorizados, ahora });
+
+    // «Sustituir el sorteo activo al publicar» (decisión del administrador
+    // al programar): el sorteo PROPIO distinto que sigue abierto se cierra
+    // en ESTE grupo (sin aviso de cierre; reservas y pagos intactos, sus
+    // otros grupos siguen) y se publica a su hora. Nunca el de otra cuenta.
+    if (rg.bloqueo && rg.tipo === "sorteo_activo" && config.sustituir_activo === true && rg.conflictos?.length) {
+        for (const viejo of rg.conflictos) {
+            const motivo = `sustituido por el sorteo programado ${config.nombre || ""} ${config.hora_fin || ""}`.trim();
+            const cambios = { activo: false, estado: "cerrado", cierre_estado: "cerrado", cierre_motivo: motivo, cerrado_en: ahora.toISOString(), actualizado_en: ahora.toISOString() };
+            let { error } = await deps.supabase.from("eventos_bot").update(cambios).eq("usuario_id", usuarioId).eq("id", viejo.id).eq("activo", true);
+            if (error?.code === "42703") ({ error } = await deps.supabase.from("eventos_bot").update({ activo: false, estado: "cerrado", actualizado_en: ahora.toISOString() }).eq("usuario_id", usuarioId).eq("id", viejo.id));
+            if (error) return { estado: "fallido", ultimo_error: `No se pudo sustituir el sorteo actual del grupo (${error.message}); se reintentará.` };
+        }
+        rg = await revisarGrupo({ usuarioId, grupoId, identidad: sorteo.identidad_evento_real, autorizados, ahora });
+    }
+
     if (rg.bloqueo && TIPOS_ESPERA.has(rg.tipo)) {
         return {
             estado: "pendiente",
@@ -539,7 +556,7 @@ async function procesarPublicados({ sock, deps, ahora }) {
 
                 }
 
-            } else if (ev.estado === "cerrado" && sorteo.config.mensajes?.aviso_cierre) {
+            } else if (ev.estado === "cerrado" && !cierreSilencioso(ev) && sorteo.config.mensajes?.aviso_cierre) {
 
                 if (!deps.puedeActuar(sock)) return { ok: true, envios };
 

@@ -17,10 +17,14 @@
 //   - activo/estado: activo=true y estado distinto de "cerrado".
 //
 // Qué se puede editar con el sorteo en curso (y por qué el resto no):
-//   - nombre/lotería, fecha, hora del sorteo y valor forman las identidades
-//     del sorteo: identidad_evento_real (con ella se guardan reservas y
-//     pagos) e identidad del ciclo del scheduler (mensajes por grupo).
-//     Cambiarlos separaría reservas o repetiría mensajes: BLOQUEADOS.
+//   - nombre/lotería, fecha, hora del sorteo y valor forman la identidad
+//     del sorteo (identidad_evento_real: con ella se guardan reservas y
+//     pagos). Se pueden CORREGIR (p. ej. una lotería detectada por error)
+//     con una confirmación expresa (confirmar_identidad): la identidad
+//     corregida se aplica a la vez a todos sus grupos, a sus reservas y
+//     pagos y a su programación, sin cambiar ningún estado ni importe. Se
+//     rechaza si chocaría con otro sorteo existente o si el valor cambia la
+//     tabla de números y ya hay números tomados.
 //   - tabla y cantidad de números: nunca con el sorteo en curso.
 //   - grupos: añadir o quitar publicaría o retiraría el sorteo: BLOQUEADO.
 //   - premios y cierre de reservas: editables (validados).
@@ -43,20 +47,27 @@ const supabase = require("../lib/supabase");
 const repo = require("./repo");
 const tablasCliente = require("../bot/funciones/eventos/tablasCliente");
 const { normalizarPremios, instanteBogota, partesBogota, HORA, texto, LIMITES } = require("./validar");
+const { crearIdentidadEventoReal } = require("../bot/funciones/eventos/identidadEventoReal");
 
 // Columna inexistente (migración 036 sin aplicar), en Postgres o PostgREST.
 const SIN_COLUMNA = new Set(["42703", "PGRST204"]);
 
-const MOTIVO_IDENTIDAD = "Forma la identidad del sorteo en curso: con ella se guardan sus reservas y pagos y se programan los mensajes de cada grupo. Cambiarlo separaría las reservas existentes. Para cambiarlo, deja cerrar este sorteo y crea uno nuevo.";
+const MOTIVO_IDENTIDAD = "Forma la identidad del sorteo en curso: con ella se guardan sus reservas y pagos. Corregirlo exige confirmarlo: sus reservas y pagos pasan al sorteo corregido (mismos números, estados e importes) en todos sus grupos.";
 
-const CAMPOS_BLOQUEADOS = {
+// Campos de identidad: editables con confirmación (ver editar()).
+const CAMPOS_IDENTIDAD = {
     nombre: MOTIVO_IDENTIDAD,
     fecha_evento: MOTIVO_IDENTIDAD,
     hora_fin: MOTIVO_IDENTIDAD,
-    valor: `${MOTIVO_IDENTIDAD} Además, el valor decide la tabla de números.`,
-    tabla: "La tabla de números no cambia mientras el sorteo está en curso.",
-    grupos: "Añadir o quitar grupos publicaría o retiraría el sorteo en WhatsApp; no se hace desde la edición."
+    valor: `${MOTIVO_IDENTIDAD} Si el nuevo valor usa otra tabla de números, solo se puede mientras el sorteo no tenga números tomados.`
 };
+
+const CAMPOS_BLOQUEADOS = {
+    tabla: "La tabla de números no cambia mientras el sorteo está en curso (la decide el valor).",
+    grupos: "Añadir o quitar grupos publicaría o retiraría el sorteo en WhatsApp; no se hace desde la edición. Para desactivarlo en un grupo usa «Desactivar en este grupo»."
+};
+
+const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
 const falla = (motivo, extra = {}) => ({ ok: false, motivo, ...extra });
 
@@ -148,6 +159,7 @@ async function vista(usuarioId, filas) {
         publicacion: desdePanel ? (programado.config?.mensajes?.publicacion || "") : publicacionDetectado(filas),
         recordatorios: desdePanel ? (programado.config?.recordatorios || []) : null,
         campos: {
+            ...Object.fromEntries(Object.entries(CAMPOS_IDENTIDAD).map(([c, motivo]) => [c, { editable: true, requiere_confirmacion: true, motivo }])),
             ...Object.fromEntries(Object.entries(CAMPOS_BLOQUEADOS).map(([c, motivo]) => [c, { editable: false, motivo }])),
             premios: { editable: true },
             hora_cierre: { editable: true, motivo: "Debe ser posterior a este momento y no después de la hora del sorteo." },
@@ -228,13 +240,30 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
     const actual = await vista(usuarioId, filas);
     const errores = [];
 
-    // Campos de identidad, tabla o grupos: si llegan DISTINTOS, se rechaza
-    // explicando por qué (nunca se ignoran en silencio).
+    // Tabla o grupos: si llegan DISTINTOS, se rechaza explicando por qué
+    // (nunca se ignoran en silencio).
     const comparables = { nombre: actual.nombre, fecha_evento: actual.fecha_evento, hora_fin: actual.hora_fin, valor: actual.valor, tabla: actual.tabla, grupos: actual.grupos.map(g => g.grupo_id).sort() };
     for (const [campo, motivo] of Object.entries(CAMPOS_BLOQUEADOS)) {
         if (entrada[campo] === undefined) continue;
-        const enviado = campo === "grupos" ? [...(entrada.grupos || [])].sort() : campo === "valor" ? digitos(entrada.valor) : entrada[campo];
+        const enviado = campo === "grupos" ? [...(entrada.grupos || [])].sort() : entrada[campo];
         if (!igual(enviado, comparables[campo])) errores.push({ campo, mensaje: motivo });
+    }
+
+    // Identidad (lotería, fecha, hora, valor): se valida aquí y se aplica
+    // al final (corregirIdentidad), solo con confirmación expresa.
+    const identidadNueva = {};
+    for (const campo of Object.keys(CAMPOS_IDENTIDAD)) {
+        if (entrada[campo] === undefined) continue;
+        const enviado = campo === "valor" ? digitos(entrada.valor) : texto(entrada[campo], LIMITES.nombre);
+        if (igual(enviado, comparables[campo])) continue;
+        if (campo === "nombre" && !enviado) errores.push({ campo, mensaje: "Escribe el nombre de la lotería." });
+        else if (campo === "fecha_evento" && !FECHA.test(enviado)) errores.push({ campo, mensaje: "Fecha inválida (AAAA-MM-DD)." });
+        else if (campo === "hora_fin" && !HORA.test(enviado)) errores.push({ campo, mensaje: "Hora del sorteo inválida (HH:MM, 24 h)." });
+        else if (campo === "valor" && !(enviado > 0)) errores.push({ campo, mensaje: "El valor por número debe ser mayor que cero." });
+        else identidadNueva[campo] = enviado;
+    }
+    if (Object.keys(identidadNueva).length && entrada.confirmar_identidad !== true) {
+        for (const campo of Object.keys(identidadNueva)) errores.push({ campo, mensaje: CAMPOS_IDENTIDAD[campo], requiere_confirmacion: true });
     }
 
     const base = entrada.base || {};
@@ -256,7 +285,7 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
         const fecha = actual.fecha_evento || partesBogota(ahora).fecha;
         const instante = HORA.test(hc) ? instanteBogota(fecha, hc) : null;
         if (!instante) errores.push({ campo: "hora_cierre", mensaje: "Hora de cierre inválida (formato HH:MM, 24 h)." });
-        else if (actual.hora_fin && hc > String(actual.hora_fin).slice(0, 5)) errores.push({ campo: "hora_cierre", mensaje: "El cierre no puede ser posterior a la hora del sorteo." });
+        else if ((identidadNueva.hora_fin || actual.hora_fin) && hc > String(identidadNueva.hora_fin || actual.hora_fin).slice(0, 5)) errores.push({ campo: "hora_cierre", mensaje: "El cierre no puede ser posterior a la hora del sorteo." });
         else if (instante.getTime() <= ahora.getTime() + 60 * 1000) errores.push({ campo: "hora_cierre", mensaje: "El cierre debe ser al menos 1 minuto en el futuro: uno pasado cerraría el sorteo con reservas en curso." });
         else cambiosEvento.hora_cierre = hc;
     }
@@ -305,8 +334,17 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
 
     if (errores.length) return falla("validacion", { errores });
 
-    if (!Object.keys(cambiosEvento).length && !Object.keys(cambiosProgramado).length) {
+    if (!Object.keys(cambiosEvento).length && !Object.keys(cambiosProgramado).length && !Object.keys(identidadNueva).length) {
         return { ok: true, data: actual, aviso: "No había cambios que guardar." };
+    }
+
+    // Corrección de identidad (confirmada): primero, para que los demás
+    // cambios se guarden ya sobre el sorteo corregido.
+    if (Object.keys(identidadNueva).length) {
+        const c = await corregirIdentidad(usuarioId, filas, actual, identidadNueva, programado);
+        if (!c.ok) return c;
+        actual.identidad = c.identidad;
+        actual.tabla = c.tabla;
     }
 
     // Reservas y pagos ANTES: el guardado no toca la tabla de números.
@@ -324,8 +362,9 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
 
     // Sorteo del panel: su configuración sigue al evento (recordatorios y
     // aviso de cierre se calculan con ella).
-    if (programado?.ok) {
-        const p = programado.data;
+    if (programado?.ok && (Object.keys(cambiosEvento).length || Object.keys(cambiosProgramado).length)) {
+        const fresco = await repo.obtenerSorteo(usuarioId, programado.data.id);
+        const p = fresco.ok ? fresco.data : programado.data;
         const config = {
             ...p.config,
             ...(cambiosEvento.premios ? { premios: cambiosEvento.premios } : {}),
@@ -350,4 +389,111 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
 
 }
 
-module.exports = { listar, obtener, editar, CAMPOS_BLOQUEADOS };
+// --------------------------------------------- corrección de identidad ---
+
+// Aplica lotería/fecha/hora/valor corregidos al sorteo `filas` (todos sus
+// grupos), a sus reservas y pagos (misma tabla, mismos números, estados e
+// importes: solo cambia la identidad que los une al sorteo) y a su
+// programación del panel. No hay transacciones en PostgREST: el orden
+// protege la integridad —
+//   1. comprobaciones (choque con otro sorteo, tabla, números tomados);
+//   2. filas del sorteo en eventos_bot (las reservas nuevas ya usan la
+//      identidad corregida);
+//   3. reservas y pagos con la identidad anterior (dos pasadas: la segunda
+//      recoge una reserva que entrara durante la primera). Si falla, se
+//      restauran las filas del paso 2 y no queda nada a medias;
+//   4. programación del panel (si la hay) y texto guardado del detectado.
+async function corregirIdentidad(usuarioId, filas, actual, nuevo, programado) {
+
+    const base = filas[0];
+    const identidadAnterior = base.identidad_evento_real || null;
+    const datos = {
+        nombre_evento: nuevo.nombre ?? base.nombre_evento,
+        hora_fin: nuevo.hora_fin ?? (base.hora_fin ? String(base.hora_fin).slice(0, 5) : base.hora_fin),
+        valor: nuevo.valor ?? digitos(base.valor),
+        fecha_evento: nuevo.fecha_evento ?? (base.fecha_evento ? String(base.fecha_evento).slice(0, 10) : null)
+    };
+    const identidad = crearIdentidadEventoReal({ usuario_id: usuarioId, ...datos });
+
+    if (identidad === identidadAnterior) return { ok: true, identidad, tabla: actual.tabla };
+
+    // ¿Chocaría con otro sorteo del cliente? (misma lotería, fecha, hora y valor)
+    const { data: otros, error: e1 } = await supabase.from("eventos_bot").select("id")
+        .eq("usuario_id", usuarioId).eq("identidad_evento_real", identidad);
+    if (e1) return falla("error_supabase", { error: e1.message });
+    if ((otros || []).some(o => !filas.some(f => f.id === o.id))) {
+        return falla("conflicto", { mensaje: "Ya existe otro sorteo con esa lotería, fecha, hora y valor. Corrige otro dato o administra ese sorteo." });
+    }
+
+    // Tabla del nuevo valor.
+    let tabla = actual.tabla;
+    let extraTabla = {};
+    if (nuevo.valor !== undefined) {
+        const conf = await tablasCliente.obtenerConfiguracionCliente(usuarioId, nuevo.valor);
+        if (!conf) return falla("validacion", { errores: [{ campo: "valor", mensaje: `No tienes una tabla configurada para $${nuevo.valor}.` }] });
+        if (conf.tabla !== actual.tabla) {
+            const tomados = await contarNumeros(usuarioId, actual.tabla, identidadAnterior);
+            if (tomados.reservados + tomados.pagados > 0) {
+                return falla("validacion", { errores: [{ campo: "valor", mensaje: `Ese valor usa otra tabla de números y este sorteo ya tiene ${tomados.reservados} reservado(s) y ${tomados.pagados} pagado(s). Desactívalo y crea un sorteo nuevo con ese valor.` }] });
+            }
+            tabla = conf.tabla;
+            extraTabla = { tabla: conf.tabla, cifras: conf.cifras, cantidad_numeros: conf.cantidad };
+        }
+    }
+
+    // La identidad nueva no puede tener ya números en la tabla (serían de otro sorteo).
+    const ajenos = await contarNumeros(usuarioId, tabla, identidad);
+    if (ajenos.reservados + ajenos.pagados > 0) {
+        return falla("conflicto", { mensaje: "La tabla ya tiene números de un sorteo con esa lotería, fecha, hora y valor. No se cambió nada." });
+    }
+
+    const respaldo = filas.map(f => ({ id: f.id, nombre_evento: f.nombre_evento, hora_fin: f.hora_fin, valor: f.valor, fecha_evento: f.fecha_evento, identidad_evento_real: f.identidad_evento_real, tabla: f.tabla, cifras: f.cifras, cantidad_numeros: f.cantidad_numeros }));
+    const ids = filas.map(f => f.id);
+
+    const { error: e2 } = await supabase.from("eventos_bot")
+        .update({ ...datos, identidad_evento_real: identidad, ...extraTabla, actualizado_en: new Date().toISOString() })
+        .eq("usuario_id", usuarioId).in("id", ids);
+    if (e2) return falla("error_supabase", { error: e2.message });
+
+    if (identidadAnterior) {
+        const cambiosNumeros = { identidad_evento_real: identidad, ...(nuevo.nombre ? { nombre_evento: datos.nombre_evento } : {}) };
+        for (let pasada = 0; pasada < 2; pasada++) {
+            const { error: e3 } = await supabase.from(actual.tabla).update(cambiosNumeros)
+                .eq("usuario_id", usuarioId).eq("identidad_evento_real", identidadAnterior);
+            if (e3) {
+                for (const r of respaldo) {
+                    const { id, ...campos } = r;
+                    await supabase.from("eventos_bot").update(campos).eq("usuario_id", usuarioId).eq("id", id);
+                }
+                return falla("error_supabase", { error: e3.message, mensaje: "No se pudieron trasladar las reservas al sorteo corregido; no se cambió nada." });
+            }
+        }
+    }
+
+    if (programado?.ok) {
+        const p = programado.data;
+        const config = {
+            ...p.config,
+            ...(nuevo.nombre !== undefined ? { nombre: datos.nombre_evento } : {}),
+            ...(nuevo.hora_fin !== undefined ? { hora_fin: datos.hora_fin } : {}),
+            ...(nuevo.valor !== undefined ? { valor: datos.valor } : {}),
+            ...(nuevo.fecha_evento !== undefined ? { fecha_sorteo: datos.fecha_evento } : {})
+        };
+        const u = await repo.actualizarSorteoSi(usuarioId, p.id, {}, { config, identidad_evento_real: identidad, ...(extraTabla.tabla ? { tabla: extraTabla.tabla, cifras: extraTabla.cifras, cantidad_numeros: extraTabla.cantidad_numeros } : {}) });
+        if (!u.ok) console.error("⚠️ [SORTEOS ACTIVOS] identidad corregida, pero no se pudo actualizar la programación del panel:", u.motivo);
+    }
+
+    // Texto guardado desde el panel (detectados): sigue a su sorteo.
+    for (const f of filas) {
+        if (f.publicacion_panel?.identidad === identidadAnterior) {
+            await supabase.from("eventos_bot").update({ publicacion_panel: { ...f.publicacion_panel, identidad } }).eq("usuario_id", usuarioId).eq("id", f.id);
+        }
+    }
+
+    console.log(`✏️ [SORTEOS ACTIVOS] identidad corregida en ${ids.length} grupo(s): ${identidadAnterior} -> ${identidad}`);
+
+    return { ok: true, identidad, tabla };
+
+}
+
+module.exports = { listar, obtener, editar, CAMPOS_BLOQUEADOS, CAMPOS_IDENTIDAD, filasActivas };

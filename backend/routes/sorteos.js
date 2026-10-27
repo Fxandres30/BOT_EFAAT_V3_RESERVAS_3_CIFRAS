@@ -88,6 +88,12 @@ router.get("/cuentas", seguro(async (req, res) => responder(res, await servicio.
 router.post("/cuentas", seguro(async (req, res) => responder(res, await servicio.crearCuenta(req.usuarioId, req.body || {}), 201)));
 router.patch("/cuentas/:id", conId(async (req, res) => responder(res, await servicio.actualizarCuenta(req.usuarioId, req.params.id, req.body || {}))));
 
+// ---------------------------------------- administración de sorteos ---
+// Sorteos ya en los grupos (activos e inactivos recientes) y sus acciones:
+// cerrar, reabrir, desactivar (grupo o todos), cancelar, eliminar (lógico).
+router.get("/eventos", seguro(async (req, res) => responder(res, await servicio.eventos.listar(req.usuarioId))));
+router.post("/eventos/:id/accion", conId(async (req, res) => responder(res, await servicio.eventos.aplicar(req.usuarioId, req.params.id, req.body || {}))));
+
 // ------------------------------------------------------ sorteos activos ---
 // El sorteo en curso de cada tabla, lo haya detectado el bot o creado el
 // panel (eventos_bot). Antes que "/:id". ?precio= limita a esa tabla.

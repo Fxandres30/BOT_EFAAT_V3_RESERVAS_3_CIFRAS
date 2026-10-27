@@ -46,6 +46,7 @@ async function reinicioDiferible(usuarioId, reinicio, porSorteo, publicarEn) {
 }
 const tablasCliente = require("../bot/funciones/eventos/tablasCliente");
 // Sorteo ACTIVO de una tabla, sea cual sea su origen (bot o panel).
+const gestionEventos = require("./gestionEventos");
 const sorteosActivos = require("./sorteosActivos");
 const administracion = require("./administracion");
 
@@ -259,7 +260,8 @@ async function vistaPrevia(usuarioId, id) {
         if (g.estado === "cancelado") continue;
         const r = await revisarGrupo({
             usuarioId, grupoId: g.grupo_id, identidad: sorteo.identidad_evento_real, autorizados: setAutorizados,
-            publicarEn, ahora: reloj.ahora(), sorteoId: sorteo.id, cierreNuevo
+            publicarEn, ahora: reloj.ahora(), sorteoId: sorteo.id, cierreNuevo,
+            sustituir: sorteo.config.sustituir_activo === true
         });
         grupos.push({
             grupo_id: g.grupo_id,
@@ -535,6 +537,15 @@ const activos = {
     editar: (usuarioId, id, entrada) => sorteosActivos.editar(usuarioId, id, entrada, { ahora: reloj.ahora(), resolverDiseno })
 };
 
+// Sorteos ya en los grupos (eventos_bot): cerrar, reabrir, desactivar (en
+// un grupo o en todos), cancelar y eliminar (lógico). Ver gestionEventos.js.
+const socketActivoDe = (usuarioId) => require("../services/baileys/manager").getSocketActivoDe(usuarioId);
+const eventos = {
+    listar: (usuarioId) => gestionEventos.listar(usuarioId, { ahora: reloj.ahora() }),
+    aplicar: (usuarioId, id, entrada) => gestionEventos.aplicar(usuarioId, id, entrada, { ahora: reloj.ahora(), socketDe: eventos._socketDe })
+};
+eventos._socketDe = socketActivoDe;
+
 // Administración de las programaciones (estados, detalle, cancelar,
 // eliminar, archivar), con el reloj del servicio.
 const cancelar = (usuarioId, id) => administracion.cancelar(usuarioId, id, { ahora: reloj.ahora() });
@@ -545,6 +556,7 @@ const detalle = (usuarioId, id) => administracion.detalle(usuarioId, id, { ahora
 
 module.exports = {
     activos,
+    eventos,
     crearSorteo,
     vistaPrevia,
     confirmar,

@@ -1,6 +1,7 @@
 const supabase = require("../../../lib/supabase");
 const { reservaPerteneceAUsuario } = require("../usuarios/obtenerUsuarioGlobal");
 const { soloDelCliente } = require("../reservas/filtroCliente");
+const { sinDeuda } = require("../../../shared/eventos/estadosGestion");
 
 // READ-ONLY. Busca por usuario_global_id (el identificador de dueño que
 // reservarNumeros.js ya escribe en cada reserva) Y, como respaldo, por
@@ -133,7 +134,6 @@ async function consultarMisNumerosPorEstado({ evento, usuario }) {
 // eliminado, nunca se modifica nada.
 // ==========================================================================
 const DIAS_OTROS_SORTEOS = 30;
-const ESTADOS_SIN_DEUDA = new Set(["cancelado", "eliminado"]);
 
 function momentoDe(fila) {
     const fechas = [fila.actualizado_en, fila.creado_en, fila.fecha_evento]
@@ -160,7 +160,7 @@ async function leerPendientesOtrosSorteos({ evento, usuario, ahora = new Date() 
 
     const { data: eventos, error } = await supabase
         .from("eventos_bot")
-        .select("id, grupo_id, nombre_evento, hora_fin, fecha_evento, valor, tabla, identidad_evento_real, estado, creado_en, actualizado_en")
+        .select("*")
         .eq("usuario_id", evento.usuario_id)
         .order("creado_en", { ascending: false })
         .limit(200);
@@ -178,7 +178,7 @@ async function leerPendientesOtrosSorteos({ evento, usuario, ahora = new Date() 
     for (const e of eventos || []) {
         if (!e.identidad_evento_real || !e.tabla) continue;
         if (e.identidad_evento_real === evento.identidad_evento_real) continue;
-        if (ESTADOS_SIN_DEUDA.has(e.estado)) continue;
+        if (sinDeuda(e)) continue;
         if (momentoDe(e) < limite) continue;
         if (!porIdentidad.has(e.identidad_evento_real)) porIdentidad.set(e.identidad_evento_real, e);
     }
@@ -186,7 +186,7 @@ async function leerPendientesOtrosSorteos({ evento, usuario, ahora = new Date() 
     // Una fila cancelada/eliminada en un grupo anula la deuda de ese sorteo
     // aunque otra fila del mismo sorteo siga sin ese estado.
     for (const e of eventos || []) {
-        if (ESTADOS_SIN_DEUDA.has(e.estado)) porIdentidad.delete(e.identidad_evento_real);
+        if (sinDeuda(e)) porIdentidad.delete(e.identidad_evento_real);
     }
 
     if (!porIdentidad.size) return [];

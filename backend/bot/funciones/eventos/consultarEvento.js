@@ -1,4 +1,5 @@
 const supabase = require("../../../lib/supabase");
+const { eliminado } = require("../../../shared/eventos/estadosGestion");
 
 // Sorteo (eventos_bot) de un grupo PARA UN CLIENTE. usuarioId es el dueño
 // validado de la sesión que recibió el mensaje (sock.context.usuarioId) o
@@ -39,7 +40,9 @@ async function consultarEvento(grupoId, usuarioId) {
 
     }
 
-    const filas = data || [];
+    // Un sorteo eliminado desde el panel (eliminación lógica) ya no es el
+    // sorteo de nadie: se ignora su fila.
+    const filas = (data || []).filter(f => !eliminado(f));
 
     return filas.find(f => f.activo === true) || filas[0] || null;
 

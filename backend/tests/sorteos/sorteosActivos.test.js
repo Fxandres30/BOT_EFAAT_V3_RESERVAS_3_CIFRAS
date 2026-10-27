@@ -124,7 +124,10 @@ prueba("1. Tabla $5.000: el sorteo DETECTADO por el bot aparece como activo, con
     assert.deepStrictEqual(s.premios, PREMIOS_DET);
     assert.deepStrictEqual([s.reservados, s.pagados], [1, 2]);
     assert.strictEqual(s.cuentas, null, "los detectados no guardan cuentas (no se inventan)");
-    assert.strictEqual(s.campos.nombre.editable, false);
+    // Lotería/fecha/hora/valor: corregibles con confirmación expresa.
+    assert.strictEqual(s.campos.nombre.editable, true);
+    assert.strictEqual(s.campos.nombre.requiere_confirmacion, true);
+    assert.strictEqual(s.campos.grupos.editable, false);
     assert.strictEqual(s.campos.cuentas.editable, false);
     assert.ok(/no guardan cuentas/.test(s.campos.cuentas.motivo));
     assert.strictEqual(s.campos.premios.editable, true);
@@ -165,7 +168,7 @@ prueba("3. Editar el sorteo DETECTADO de $5.000: mismo ID, todos sus grupos, sin
     assert.strictEqual(ev(EV_B).premios, PREMIOS_DET, "el de B no se toca");
 });
 
-prueba("4. Campos peligrosos (lotería, valor, fecha, grupos): rechazados con su motivo y sin cambiar nada", async () => {
+prueba("4. Campos de identidad SIN confirmar y grupos: rechazados con su motivo y sin cambiar nada", async () => {
     escenario();
     const antes = JSON.stringify(fake.tablas.eventos_bot);
     const b = { premios: PREMIOS_DET, hora_cierre: "22:26" };
@@ -366,6 +369,56 @@ prueba("15. Texto: aislamiento por cliente, cambio concurrente y migración 036 
     assert.strictEqual(JSON.stringify(fake.tablas.eventos_bot), antes, "ni el texto ni los premios");
     // Sin la migración, editar premios sin tocar el texto sigue funcionando.
     assert.strictEqual((await put(`/activos/${EV_DET_G1}`, { publicacion: "", premios: [{ nombre: "Otro", premio: 1 }], base: { premios: PREMIOS_DET, hora_cierre: "22:26" } })).status, 200);
+});
+
+
+prueba("16. Corregir la lotería CON confirmación: todos los grupos, reservas y pagos pasan al sorteo corregido sin cambiar estados", async () => {
+    escenario();
+    const b = { premios: PREMIOS_DET, hora_cierre: "22:26" };
+    const estadosAntes = fake.tablas[T5K].filter(f => f.usuario_id === A).map(f => `${f.numero}:${f.estado}:${f.comprador || ""}`).join(",");
+    const r1 = await put(`/activos/${EV_DET_G1}`, { nombre: "Chontico Día", confirmar_identidad: true, base: b });
+    assert.strictEqual(r1.status, 200, JSON.stringify(r1.json));
+    const nueva = ev(EV_DET_G1).identidad_evento_real;
+    assert.notStrictEqual(nueva, "det-a");
+    for (const id of [EV_DET_G1, EV_DET_G2]) {
+        assert.strictEqual(ev(id).nombre_evento, "Chontico Día", id);
+        assert.strictEqual(ev(id).identidad_evento_real, nueva, "todos los grupos con la identidad corregida");
+    }
+    const tomados = fake.tablas[T5K].filter(f => f.usuario_id === A && f.estado !== "libre");
+    assert.strictEqual(tomados.length, 3);
+    assert.ok(tomados.every(f => f.identidad_evento_real === nueva), "reservas y pagos siguen al sorteo");
+    assert.strictEqual(fake.tablas[T5K].filter(f => f.usuario_id === A).map(f => `${f.numero}:${f.estado}:${f.comprador || ""}`).join(","), estadosAntes, "mismos números, estados y compradores");
+    assert.deepStrictEqual([r1.json.data.reservados, r1.json.data.pagados], [1, 2], "contadores reales conservados");
+    assert.strictEqual(fake.tablas[T5K].find(f => f.usuario_id === B && f.numero === "01").identidad_evento_real, "det-b", "otro cliente intacto");
+});
+
+prueba("17. Corrección de hora/fecha del sorteo del PANEL: su programación sigue al evento (misma identidad)", async () => {
+    escenario();
+    const b = { premios: [{ tipo: "otro", nombre: "Seco", premio: 50000 }], hora_cierre: "22:26" };
+    const r1 = await put(`/activos/${EV_PANEL}`, { hora_fin: "23:00", fecha_evento: "2026-10-16", confirmar_identidad: true, base: b });
+    assert.strictEqual(r1.status, 200, JSON.stringify(r1.json));
+    const sp = fake.tablas.sorteos_programados.find(x => x.id === SP_PANEL);
+    assert.strictEqual(sp.identidad_evento_real, ev(EV_PANEL).identidad_evento_real);
+    assert.strictEqual(sp.config.hora_fin, "23:00");
+    assert.strictEqual(sp.config.fecha_sorteo, "2026-10-16");
+});
+
+prueba("18. Corrección que chocaría con OTRO sorteo existente o cambia de tabla con números tomados: rechazada, nada cambia", async () => {
+    escenario();
+    const b = { premios: PREMIOS_DET, hora_cierre: "22:26" };
+    const antes = JSON.stringify([fake.tablas.eventos_bot, fake.tablas[T5K]]);
+    // Valor $1.000 usa otra tabla y el sorteo ya tiene números tomados.
+    const r1 = await put(`/activos/${EV_DET_G1}`, { valor: 1000, confirmar_identidad: true, base: b });
+    assert.strictEqual(r1.status, 400, JSON.stringify(r1.json));
+    assert.ok(r1.json.errores.some(e => e.campo === "valor" && /otra tabla/.test(e.mensaje)));
+    // Choque: otro evento del cliente ya tiene la identidad resultante.
+    const { crearIdentidadEventoReal } = require(r("bot/funciones/eventos/identidadEventoReal.js"));
+    fake.tablas.eventos_bot.push({ ...ev(EV_CERRADO), id: "e0000000-0000-4000-8000-0000000000d1", identidad_evento_real: crearIdentidadEventoReal({ usuario_id: A, nombre_evento: "Otra", hora_fin: "22:30", valor: 5000, fecha_evento: "2026-10-15" }) });
+    const antes2 = JSON.stringify([fake.tablas.eventos_bot, fake.tablas[T5K]]);
+    const r2 = await put(`/activos/${EV_DET_G1}`, { nombre: "Otra", confirmar_identidad: true, base: b });
+    assert.strictEqual(r2.status, 409, JSON.stringify(r2.json));
+    assert.strictEqual(JSON.stringify([fake.tablas.eventos_bot, fake.tablas[T5K]]), antes2);
+    assert.ok(antes.length > 0);
 });
 
 (async () => {

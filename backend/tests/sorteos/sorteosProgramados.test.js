@@ -280,14 +280,18 @@ prueba("F2-7. cancelar antes de publicar: nunca se publica", async () => {
     assert.ok(c.data.grupos.every(g => g.estado === "cancelado"));
 });
 
-prueba("F2-8. grupo con OTRO sorteo activo: no se reemplaza (revisión), los demás grupos sí se publican", async () => {
+prueba("F2-8. grupo con OTRO sorteo activo: no bloquea la programación ni se reemplaza solo; se explica la espera y cómo resolverla", async () => {
     escenario();
     fake.tablas.eventos_bot.push({ id: "ev-otro", grupo_id: "g2@g.us", usuario_id: A, activo: true, identidad_evento_real: "otro", nombre_evento: "Boyacá", hora_fin: "22:40" });
     const c = await servicio.crearSorteo(A, entrada());
     const vp = await servicio.vistaPrevia(A, c.data.id);
-    assert.ok(vp.data.bloqueos.some(b => /sorteo activo/.test(b)));
-    assert.strictEqual(vp.data.puede_confirmar, false);
-    assert.strictEqual((await servicio.confirmar(A, c.data.id, { version: 1, confirmacion: true })).motivo, "bloqueado");
+    assert.deepStrictEqual(vp.data.bloqueos, []);
+    const g2 = vp.data.grupos.find(g => g.grupo_id === "g2@g.us");
+    assert.strictEqual(g2.estado_previo, "programado");
+    assert.ok(/Boyacá/.test(g2.motivo) && /esperará a que cierre/.test(g2.motivo), g2.motivo);
+    assert.strictEqual(vp.data.puede_confirmar, true);
+    assert.ok((await servicio.confirmar(A, c.data.id, { version: 1, confirmacion: true })).ok);
+    assert.strictEqual(fake.tablas.eventos_bot.find(e => e.id === "ev-otro").activo, true, "el sorteo activo no se toca al programar");
 });
 
 prueba("F2-9. tabla con números de OTRO sorteo: bloqueo (nunca se reinicia sola)", async () => {

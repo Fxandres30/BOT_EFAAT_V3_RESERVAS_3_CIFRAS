@@ -185,23 +185,36 @@ prueba("F3. sin conflictos en el grupo: «Listo para publicar»", async () => {
     assert.strictEqual(v.data.grupos[0].estado_previo, "listo");
 });
 
-prueba("F4. conflicto REAL: el sorteo actual seguirá abierto en la fecha de publicación -> bloqueado y explicado", async () => {
+prueba("F4. el sorteo actual seguirá abierto en la fecha de publicación: NO bloquea la programación; se explica la espera y cómo resolverla", async () => {
     escenario();
     Object.assign(actualDb(), { fecha_evento: "2026-10-22", hora_cierre: "20:00" });
     const c = await servicio.crearSorteo(A, entrada());
     const v = await servicio.vistaPrevia(A, c.data.id);
-    assert.strictEqual(v.data.estado_publicacion, "bloqueado");
-    assert.strictEqual(v.data.grupos[0].estado_previo, "bloqueado");
-    assert.ok(/sigue abierto hasta/.test(v.data.grupos[0].bloqueo) && /Programa la publicación después/.test(v.data.grupos[0].bloqueo), v.data.grupos[0].bloqueo);
-    assert.strictEqual((await servicio.confirmar(A, c.data.id, { version: 1, confirmacion: true })).motivo, "bloqueado");
+    assert.strictEqual(v.data.estado_publicacion, "programado", JSON.stringify(v.data.bloqueos));
+    assert.strictEqual(v.data.grupos[0].estado_previo, "programado");
+    assert.ok(/sigue abierto hasta/.test(v.data.grupos[0].motivo) && /esperará a que cierre/.test(v.data.grupos[0].motivo) && /Sustituir el sorteo activo/.test(v.data.grupos[0].motivo), v.data.grupos[0].motivo);
+    const conf = await servicio.confirmar(A, c.data.id, { version: 1, confirmacion: true });
+    assert.ok(conf.ok, JSON.stringify(conf));
+    assert.strictEqual(actualDb().activo, true, "programar no toca el sorteo actual");
 });
 
-prueba("F5. sorteo actual sin hora de cierre conocida: conservador, bloquea", async () => {
+prueba("F4b. con «Sustituir el sorteo activo al publicar»: la vista previa lo anuncia", async () => {
+    escenario();
+    Object.assign(actualDb(), { fecha_evento: "2026-10-22", hora_cierre: "20:00" });
+    const c = await servicio.crearSorteo(A, entrada({ sustituir_activo: true }));
+    assert.strictEqual(c.data.config.sustituir_activo, true);
+    const v = await servicio.vistaPrevia(A, c.data.id);
+    assert.strictEqual(v.data.estado_publicacion, "programado");
+    assert.ok(/lo SUSTITUIRÁ en este grupo/.test(v.data.grupos[0].motivo), v.data.grupos[0].motivo);
+});
+
+prueba("F5. sorteo actual sin hora de cierre conocida: tampoco bloquea; queda programado con la espera explicada", async () => {
     escenario();
     Object.assign(actualDb(), { hora_cierre: null });
     const c = await servicio.crearSorteo(A, entrada());
     const v = await servicio.vistaPrevia(A, c.data.id);
-    assert.strictEqual(v.data.estado_publicacion, "bloqueado");
+    assert.strictEqual(v.data.estado_publicacion, "programado");
+    assert.ok(/no tiene hora de cierre conocida/.test(v.data.grupos[0].motivo));
 });
 
 prueba("F6. dos sorteos programados en el mismo grupo con periodos solapados: el segundo se bloquea; sin solape, no", async () => {
@@ -282,6 +295,25 @@ prueba("P3. si el conflicto no se resuelve antes del cierre del nuevo: queda en 
     assert.ok(sorteoDb(s.id));
     assert.strictEqual(d.enviados.length, 0);
     assert.strictEqual(actualDb().activo, true, "el sorteo actual sigue como estaba");
+});
+
+
+prueba("P4. «Sustituir el sorteo activo al publicar»: a su hora cierra el actual SOLO en ese grupo y publica; reservas y pagos del actual intactos", async () => {
+    escenario();
+    const s = await programar({ sustituir_activo: true });
+    const d = deps();
+    const filasActual = JSON.stringify(fake.tablas[T5K].filter(f => f.usuario_id === A));
+    await publicador.tick(sock(), { ahora: EN_PUBLICACION, deps: d.d });
+    assert.strictEqual(grupoDe(s.id, "g1@g.us").estado, "publicado", grupoDe(s.id, "g1@g.us").ultimo_error);
+    assert.strictEqual(d.enviados.length, 1);
+    assert.strictEqual(actualDb().activo, false, "el anterior deja de estar activo en el grupo");
+    assert.ok(/^sustituido/.test(actualDb().cierre_motivo));
+    assert.strictEqual(JSON.stringify(fake.tablas[T5K].filter(f => f.usuario_id === A)), filasActual, "reservas y pagos del anterior no se tocan");
+    const vigente = await consultarEvento("g1@g.us", A);
+    assert.strictEqual(vigente.identidad_evento_real, s.identidad_evento_real, "el sorteo vigente del grupo es el nuevo");
+    // Un segundo ciclo no vuelve a publicar.
+    await publicador.tick(sock(), { ahora: new Date("2026-10-22T13:05:00Z"), deps: d.d });
+    assert.strictEqual(d.enviados.length, 1, "sin duplicados");
 });
 
 // -------------------------------------------- R. reinicio a la publicación ---
