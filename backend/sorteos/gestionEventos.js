@@ -141,22 +141,37 @@ async function listar(usuarioId, { ahora = new Date() } = {}) {
 
 // ------------------------------------------------------------ escritura ---
 
+// Columna que el error dice que no existe (Postgres 42703 o caché de
+// PostgREST PGRST204), o null si el mensaje no la nombra.
+function columnaFaltante(error) {
+    const m = String(error?.message || "").match(/'(\w+)' column|column "?(?:\w+\.)?(\w+)"? (?:of relation|does not exist)/i);
+    return m ? (m[1] || m[2]) : null;
+}
+
 // UPDATE de UNA fila del cliente, tolerante a una base sin las columnas
 // opcionales y a una restricción antigua sobre `estado` (en ese caso se
 // guarda "cerrado" y el motivo real queda en cierre_motivo).
+// Solo se omite la columna que falta: sin la 039 (archivado_en) se siguen
+// escribiendo las de cierre de la 023, porque cierre_motivo es lo que marca
+// un sorteo eliminado/cancelado/desactivado y lo que se limpia al reabrir.
 async function actualizarFila(usuarioId, id, cambios) {
 
     const escribir = (c) => supabase.from("eventos_bot").update(c).eq("usuario_id", usuarioId).eq("id", id);
 
-    let { error } = await escribir(cambios);
+    let datos = cambios;
+    let { error } = await escribir(datos);
 
-    if (error && SIN_COLUMNA.has(error.code)) {
-        const basico = Object.fromEntries(Object.entries(cambios).filter(([k]) => !OPCIONALES.includes(k)));
-        ({ error } = await escribir(basico));
+    while (error && SIN_COLUMNA.has(error.code)) {
+        const columna = columnaFaltante(error);
+        const quitar = columna && OPCIONALES.includes(columna) && columna in datos ? [columna] : OPCIONALES;
+        const siguiente = Object.fromEntries(Object.entries(datos).filter(([k]) => !quitar.includes(k)));
+        if (Object.keys(siguiente).length === Object.keys(datos).length) break;
+        datos = siguiente;
+        ({ error } = await escribir(datos));
     }
 
-    if (error?.code === "23514" && !["abierto", "cerrado"].includes(cambios.estado)) {
-        ({ error } = await escribir({ ...cambios, estado: "cerrado" }));
+    if (error?.code === "23514" && !["abierto", "cerrado"].includes(datos.estado)) {
+        ({ error } = await escribir({ ...datos, estado: "cerrado" }));
     }
 
     return error ? { ok: false, error: error.message } : { ok: true };

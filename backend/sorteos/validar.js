@@ -46,9 +46,15 @@ function partesBogota(fecha) {
 
 // "YYYY-MM-DD" + "HH:MM[:SS]" en hora de Colombia (UTC-5, sin horario de
 // verano) -> Date. Misma función para validar y para el publicador.
+// `hora`: "HH:MM", "HH:MM:SS" o sin cero inicial ("8:36:42"), que es como
+// reservarNumeros.js la escribe (toLocaleTimeString "es-CO"). Antes una
+// reserva hecha antes de las 10:00 daba null y nunca vencía si la base
+// devolvía el texto tal cual (una columna `time` de Postgres lo rellena).
 function instanteBogota(fecha, hora) {
     if (!fecha || !hora) return null;
-    const h = String(hora).length === 5 ? `${hora}:00` : String(hora).slice(0, 8);
+    const m = String(hora).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return null;
+    const h = `${m[1].padStart(2, "0")}:${m[2]}:${m[3] || "00"}`;
     const d = new Date(`${fecha}T${h}-05:00`);
     return Number.isNaN(d.getTime()) ? null : d;
 }

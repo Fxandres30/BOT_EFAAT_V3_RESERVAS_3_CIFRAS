@@ -49,7 +49,7 @@ const NAV: NavItem[] = [
   { href: "/variables-globales", label: "Variables globales", icon: Puzzle },
   { href: "/contactos", label: "Contactos", icon: Users },
   { href: "/eventos", label: "Eventos", icon: Target },
-  { href: "/sorteos", label: "Sorteos programados", icon: CalendarClock },
+  { href: "/sorteos", label: "Sorteos", icon: CalendarClock },
   { href: "/loterias", label: "Calendario de loterías", icon: CalendarDays },
   { href: "/automatizacion", label: "Automatización", icon: Bot },
   { href: "/lector-pagos", label: "Lector de pagos", icon: ScanLine },

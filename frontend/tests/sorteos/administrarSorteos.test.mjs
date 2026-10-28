@@ -127,11 +127,16 @@ await prueba("«Editar sorteo activo» (Eventos → Administrar → Tablas → E
 });
 
 await prueba("Eventos: cada tarjeta enlaza a Sorteos → «Administrar» y la página abre esa pestaña con ?vista=administrar", async () => {
+    // El enlace lleva además ESE sorteo (?sorteo=), ver estadoEvento.ts y
+    // frontend/tests/eventos/estadoEvento.test.mjs.
     for (const tarjeta of ["components/eventos/EventoCard/EventoCard.tsx", "components/eventos/EventoTresCifrasCard/EventoTresCifrasCard.tsx"]) {
-        assert.match(leer(tarjeta), /href="\/sorteos\?vista=administrar"/, tarjeta);
+        assert.match(leer(tarjeta), /href=\{enlaceAdministrar\(evento\??\.id\)\}/, tarjeta);
     }
+    assert.match(leer("components/eventos/estadoEvento.ts"), /`\/sorteos\?vista=administrar&sorteo=\$\{encodeURIComponent\(eventoId\)\}`/);
     const pagina = leer("components/sorteos/SorteosPage.tsx");
-    assert.match(pagina, /useSearchParams\(\)\?\.get\("vista"\)/);
+    assert.match(pagina, /useSearchParams\(\)/);
+    assert.match(pagina, /params\?\.get\("vista"\)/);
+    assert.match(pagina, /params\?\.get\("sorteo"\)/);
     assert.match(leer("app/sorteos/page.tsx"), /<Suspense\b/);
 });
 

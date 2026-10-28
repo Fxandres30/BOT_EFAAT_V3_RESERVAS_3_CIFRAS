@@ -17,6 +17,7 @@ export interface GrupoAsociado {
     activo?: boolean;
     abierto?: boolean;
     estado?: string;
+    cierre_motivo?: string | null;
 }
 
 export interface EventoCompartido extends Evento {
@@ -71,7 +72,8 @@ export function agruparEventos(eventos: Evento[]): EventoCompartido[] {
                 grupo_nombre: f.grupo_nombre,
                 activo: f.activo,
                 abierto: f.abierto,
-                estado: f.estado
+                estado: f.estado,
+                cierre_motivo: f.cierre_motivo
             }))
         };
 

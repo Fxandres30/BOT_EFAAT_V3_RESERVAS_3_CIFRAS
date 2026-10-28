@@ -50,6 +50,9 @@ export interface Evento {
 
     abierto?: boolean;
 
+    /** Cómo terminó (023): "panel:desactivado", "sustituido por …", etc. */
+    cierre_motivo?: string | null;
+
 }
 
 export interface EventoProps {

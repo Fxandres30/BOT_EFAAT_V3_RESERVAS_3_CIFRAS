@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Settings2 } from "lucide-react";
 
 import { Badge, Card, EmptyState, Modal } from "@/components/ui";
@@ -11,16 +11,33 @@ import styles from "./Sorteos.module.css";
 interface Props {
     sorteos: SorteoEnGrupos[];
     error: string | null;
+    /** La primera carga terminó (antes, «no encontrado» no significa nada). */
+    cargado?: boolean;
+    /** Evento (eventos_bot.id de cualquiera de sus grupos) a resaltar: el
+     *  que se abrió con «Administrar sorteo» desde Eventos. */
+    destacado?: string | null;
     onEditar: (eventoId: string) => void;
     onActualizado: () => void;
 }
 
 // Sorteos que ya están en los grupos (detectados o publicados), activos y
 // recientes, con acciones por grupo o para todo el sorteo (AccionesSorteo).
-export default function AdministrarSorteos({ sorteos, error, onEditar, onActualizado }: Props) {
+export default function AdministrarSorteos({ sorteos, error, cargado = true, destacado = null, onEditar, onActualizado }: Props) {
 
     const [pendiente, setPendiente] = useState<AccionPendiente | null>(null);
     const [resultado, setResultado] = useState<string | null>(null);
+
+    const esDestacado = (s: SorteoEnGrupos) => !!destacado && (s.id === destacado || s.grupos.some(g => g.evento_id === destacado));
+    const hayDestacado = sorteos.some(esDestacado);
+    const tarjetaDestacada = useRef<HTMLDivElement>(null);
+    const desplazado = useRef(false);
+
+    // Una sola vez por visita: llevar la vista al sorteo abierto desde Eventos.
+    useEffect(() => {
+        if (!hayDestacado || desplazado.current) return;
+        desplazado.current = true;
+        tarjetaDestacada.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, [hayDestacado]);
 
     if (error) return <p className={`${styles.alerta} ${styles.alertaError}`} role="alert">No se pudieron cargar los sorteos: {error}</p>;
 
@@ -32,9 +49,15 @@ export default function AdministrarSorteos({ sorteos, error, onEditar, onActuali
         <div className={styles.lista}>
 
             {resultado && <p className={`${styles.alerta} ${styles.alertaInfo}`} role="status">{resultado}</p>}
+            {destacado && cargado && !hayDestacado && (
+                <p className={`${styles.alerta} ${styles.alertaAviso}`} role="status">
+                    El sorteo que abriste desde Eventos no aparece aquí: se eliminó o terminó hace más de 30 días. Estos son tus sorteos en los grupos.
+                </p>
+            )}
 
             {sorteos.map(s => (
-                <Card key={s.identidad || s.id} padding="md" className={styles.tarjeta}>
+                <div key={s.identidad || s.id} ref={esDestacado(s) ? tarjetaDestacada : undefined} className={esDestacado(s) ? styles.destacado : undefined}>
+                <Card padding="md" className={styles.tarjeta}>
                     <div className={styles.tarjetaCabecera}>
                         <h3 className={styles.tarjetaTitulo}>{s.nombre || "Sorteo sin nombre"}</h3>
                         <Badge tone={ESTADO_SORTEO[s.estado]?.tono || "neutral"} dot>{ESTADO_SORTEO[s.estado]?.texto || s.estado}</Badge>
@@ -45,6 +68,7 @@ export default function AdministrarSorteos({ sorteos, error, onEditar, onActuali
                     </div>
                     <BotonesSorteo sorteo={s} onEditar={onEditar} onAccion={p => { setResultado(null); setPendiente(p); }} />
                 </Card>
+                </div>
             ))}
 
             {pendiente && (

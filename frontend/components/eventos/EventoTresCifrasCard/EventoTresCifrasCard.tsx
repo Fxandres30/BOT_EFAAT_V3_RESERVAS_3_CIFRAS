@@ -9,6 +9,7 @@ import type { Evento } from "../types";
 import type { Modalidad } from "../modalidad";
 import type { EventoCompartido } from "../agruparEventos";
 import GruposAsociados from "../GruposAsociados/GruposAsociados";
+import { ETIQUETA_ESTADO, enlaceAdministrar, estadoSorteo } from "../estadoEvento";
 
 import styles from "./EventoTresCifrasCard.module.css";
 
@@ -22,7 +23,7 @@ interface Props {
 export default function EventoTresCifrasCard({ evento, modalidad }: Props) {
 
     const gratis = modalidad === "tres_gratis";
-    const abierto = (evento.estado || "").toLowerCase() === "abierto";
+    const estado = ETIQUETA_ESTADO[estadoSorteo((evento as EventoCompartido).grupos ?? [evento])];
     const premios = Array.isArray(evento.premios) ? (evento.premios as unknown as { nombre?: string; premio?: number }[]) : [];
     const precio = Number(String(evento.valor ?? "").replace(/[^\d]/g, ""));
 
@@ -35,7 +36,7 @@ export default function EventoTresCifrasCard({ evento, modalidad }: Props) {
         <article className={`${styles.card} ${gratis ? styles.gratis : styles.pago}`}>
 
             <div className={styles.top}>
-                <StatusBadge status={abierto ? "active" : "inactive"} label={evento.estado ? evento.estado.charAt(0).toUpperCase() + evento.estado.slice(1) : "Sin estado"} size="sm" />
+                <StatusBadge status={estado.kind} label={estado.texto} size="sm" />
                 <span className={gratis ? styles.chipGratis : styles.chipPago}>
                     {gratis ? <Gift size={12} /> : <CircleDollarSign size={12} />}
                     {gratis ? "GRATIS" : `PAGO${precio ? ` · $${precio.toLocaleString("es-CO")}` : ""}`}
@@ -94,16 +95,18 @@ export default function EventoTresCifrasCard({ evento, modalidad }: Props) {
                 </details>
             )}
 
-            {administrable ? (
-                <Link href={`/tablas/${precio}`} prefetch={false} className={styles.administrar}>Administrar</Link>
-            ) : (
-                <button type="button" className={styles.administrar} disabled title="Falta la tabla de reservas 000–999 para esta modalidad">
-                    Administrar
-                </button>
-            )}
-
-            {/* Cerrar, desactivar, cancelar o eliminar: Sorteos → «Administrar». */}
-            <Link href="/sorteos?vista=administrar" prefetch={false} className={styles.administrar}>Gestionar sorteo</Link>
+            {/* «Administrar sorteo»: gestión real de ESTE sorteo (Sorteos →
+                «Administrar»); la tabla de reservas es otra cosa. */}
+            <div className={styles.enlaces}>
+                <Link href={enlaceAdministrar(evento.id)} prefetch={false} className={`${styles.administrar} ${styles.administrarPrincipal}`}>Administrar sorteo</Link>
+                {administrable ? (
+                    <Link href={`/tablas/${precio}`} prefetch={false} className={styles.administrar}>Ver tabla de reservas</Link>
+                ) : (
+                    <button type="button" className={styles.administrar} disabled title="Falta la tabla de reservas 000–999 para esta modalidad">
+                        Ver tabla de reservas
+                    </button>
+                )}
+            </div>
 
         </article>
     );

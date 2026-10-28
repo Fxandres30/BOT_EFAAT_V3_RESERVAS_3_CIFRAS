@@ -153,3 +153,9 @@
 .administrar:hover:not(:disabled) { background: var(--efaat-surface-muted); }
 .administrar:disabled { color: var(--efaat-text-muted); cursor: not-allowed; }
 .administrar:focus-visible { outline: none; box-shadow: var(--efaat-focus-ring); }
+
+/* «Administrar sorteo» (acción principal) y «Ver tabla de reservas». */
+.enlaces { display: flex; flex-wrap: wrap; gap: 8px; }
+.enlaces > * { flex: 1 1 140px; }
+.administrarPrincipal { border-color: var(--efaat-primary); background: var(--efaat-primary); color: var(--efaat-text-on-primary); }
+.administrarPrincipal:hover { background: var(--efaat-primary-hover); }

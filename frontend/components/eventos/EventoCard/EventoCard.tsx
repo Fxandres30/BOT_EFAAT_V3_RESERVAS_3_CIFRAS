@@ -15,25 +15,17 @@ import {
 
 import Link from "next/link";
 
-import { StatusBadge, type StatusKind } from "@/components/ui/Badge";
+import { StatusBadge } from "@/components/ui/Badge";
 import { formatHora12 } from "@/lib/formatHora";
 import { obtenerTablaConfig } from "@/lib/tablasConfig";
 
 import GruposAsociados from "../GruposAsociados/GruposAsociados";
+import { ETIQUETA_ESTADO, enlaceAdministrar, estadoSorteo } from "../estadoEvento";
 
 import styles from "./EventoCard.module.css";
 
 interface Props {
     evento: any;
-}
-
-function estadoInfo(estado?: string): { kind: StatusKind; label: string } {
-    const e = (estado || "").toLowerCase();
-
-    if (e === "abierto") return { kind: "active", label: "Abierto" };
-    if (e === "cerrado") return { kind: "inactive", label: "Cerrado" };
-
-    return { kind: "inactive", label: estado ? String(estado) : "Sin estado" };
 }
 
 function iconoPremio(tipo: string) {
@@ -50,7 +42,8 @@ function iconoPremio(tipo: string) {
 
 export default function EventoCard({ evento }: Props) {
 
-    const estado = estadoInfo(evento?.estado);
+    // Estado del sorteo en todos sus grupos (como lo entiende el backend).
+    const estado = ETIQUETA_ESTADO[estadoSorteo(Array.isArray(evento?.grupos) ? evento.grupos : [evento ?? {}])];
 
     const reservados = evento?.reservados ?? 0;
     const total = evento?.cantidad_numeros ?? 100;
@@ -62,7 +55,7 @@ export default function EventoCard({ evento }: Props) {
         <article className={styles.card}>
 
             <div className={styles.top}>
-                <StatusBadge status={estado.kind} label={estado.label} size="sm" />
+                <StatusBadge status={estado.kind} label={estado.texto} size="sm" />
                 <h3 className={styles.name}>{evento?.nombre_evento}</h3>
             </div>
 
@@ -173,22 +166,24 @@ export default function EventoCard({ evento }: Props) {
                 </details>
             )}
 
-            {/* Detalle existente de 2 cifras: la tabla de reservas de su precio. */}
-            {obtenerTablaConfig(Number(String(evento?.valor ?? "").replace(/[^\d]/g, ""))) && (
-                <Link
-                    href={`/tablas/${String(evento.valor).replace(/[^\d]/g, "")}`}
-                    prefetch={false}
-                    className={styles.administrar}
-                >
-                    Administrar
+            {/* «Administrar sorteo»: cerrar, reabrir, desactivar (en un grupo
+                o en todos), cancelar, eliminar o editar ESTE sorteo (Sorteos →
+                «Administrar», con su tarjeta resaltada). Antes «Administrar»
+                llevaba a la tabla de reservas, que no tiene esas acciones. */}
+            <div className={styles.enlaces}>
+                <Link href={enlaceAdministrar(evento?.id)} prefetch={false} className={`${styles.administrar} ${styles.administrarPrincipal}`}>
+                    Administrar sorteo
                 </Link>
-            )}
-
-            {/* Cerrar, desactivar (en un grupo o en todos), cancelar o
-                eliminar el sorteo: Sorteos → «Administrar». */}
-            <Link href="/sorteos?vista=administrar" prefetch={false} className={styles.administrar}>
-                Gestionar sorteo
-            </Link>
+                {obtenerTablaConfig(Number(String(evento?.valor ?? "").replace(/[^\d]/g, ""))) && (
+                    <Link
+                        href={`/tablas/${String(evento.valor).replace(/[^\d]/g, "")}`}
+                        prefetch={false}
+                        className={styles.administrar}
+                    >
+                        Ver tabla de reservas
+                    </Link>
+                )}
+            </div>
 
         </article>
     );

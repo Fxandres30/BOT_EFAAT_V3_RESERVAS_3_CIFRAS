@@ -8,8 +8,9 @@ import styles from "./Sorteos.module.css";
 
 // Acciones de estado de un sorteo que ya está en los grupos (cerrar,
 // reabrir, desactivar en un grupo o en todos, cancelar, eliminar). Las
-// usan la pestaña Sorteos → «Administrar» y el editor del sorteo activo
-// (Eventos → «Administrar» → Tablas → «Editar»). Toda acción la decide y
+// usan la pestaña Sorteos → «Administrar» (a la que lleva «Administrar
+// sorteo» de Eventos) y el editor del sorteo activo (Tablas → «Editar»).
+// Toda acción la decide y
 // valida el backend (sorteos/gestionEventos.js); aquí solo se confirma.
 
 export const fechaLegible = (f: string | null) => (f ? f.split("-").reverse().join("/") : "sin fecha");

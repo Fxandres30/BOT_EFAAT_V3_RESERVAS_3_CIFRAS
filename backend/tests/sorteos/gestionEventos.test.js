@@ -268,6 +268,91 @@ prueba("11. Base con una restricción antigua sobre «estado»: se guarda «cerr
     assert.ok(cierreSilencioso(ev(EV_G1)), "se reconoce como desactivado por cierre_motivo");
 });
 
+// Base sin la migración 039 (como producción el 28/10): eventos_bot no tiene
+// archivado_en, pero sí las columnas de cierre de la 023. Opcionalmente con
+// una restricción CHECK antigua sobre «estado».
+function sinMigracion039({ conCheck = false } = {}) {
+    const original = fake.client.from;
+    fake.client.from = (t) => {
+        const q = original(t);
+        if (t !== "eventos_bot") return q;
+        const update = q.update.bind(q);
+        const fallo = (error) => ({ eq() { return this; }, then(ok) { return Promise.resolve({ data: null, error }).then(ok); } });
+        q.update = (v) => {
+            if ("archivado_en" in v) return fallo({ code: "PGRST204", message: "Could not find the 'archivado_en' column of 'eventos_bot' in the schema cache" });
+            if (conCheck && ["desactivado", "cancelado", "eliminado"].includes(v.estado)) return fallo({ code: "23514", message: "check constraint" });
+            return update(v);
+        };
+        return q;
+    };
+    return () => { fake.client.from = original; };
+}
+
+prueba("12. Sin la 039: eliminar conserva el motivo (aunque haya CHECK sobre estado) y queda oculto; solo se omite archivado_en", async () => {
+    escenario();
+    const antes = numeros();
+    const restaurar = sinMigracion039({ conCheck: true });
+    try {
+        const r1 = await accion(EV_G1, { accion: "eliminar" });
+        assert.strictEqual(r1.status, 200, JSON.stringify(r1.json));
+    } finally {
+        restaurar();
+    }
+    for (const id of [EV_G1, EV_G2]) {
+        assert.strictEqual(ev(id).activo, false);
+        assert.strictEqual(ev(id).cierre_motivo, "panel:eliminado", "el motivo es lo único que distingue el eliminado");
+        assert.strictEqual(ev(id).cierre_estado, "cerrado");
+        assert.ok(!("archivado_en" in ev(id)) || ev(id).archivado_en == null);
+    }
+    assert.ok(!(await get("/eventos")).json.data.some(s => s.identidad === "id-actual"), "no aparece en el panel");
+    assert.strictEqual((await consultarEvento("g1@g.us", A)).id, EV_VIEJO, "el grupo vuelve a su sorteo anterior");
+    assert.strictEqual(numeros(), antes, "reservas y pagos intactos");
+});
+
+prueba("13. Sin la 039: reabrir un sorteo cancelado limpia el motivo y el cierre (vuelve a ser deuda y a avisar su cierre)", async () => {
+    escenario();
+    const restaurar = sinMigracion039();
+    try {
+        assert.strictEqual((await accion(EV_G1, { accion: "cancelar" })).status, 200);
+        const r2 = await accion(EV_G1, { accion: "reabrir", alcance: "todos", hora_cierre: "22:00" });
+        assert.strictEqual(r2.status, 200, JSON.stringify(r2.json));
+    } finally {
+        restaurar();
+    }
+    for (const id of [EV_G1, EV_G2]) {
+        assert.strictEqual(ev(id).activo, true);
+        assert.strictEqual(ev(id).cierre_motivo, null, "sin el motivo «panel:cancelado» de antes");
+        assert.strictEqual(ev(id).cierre_estado, null);
+        assert.strictEqual(ev(id).cerrado_en, null);
+        assert.ok(!cierreSilencioso(ev(id)), "su cierre se anunciará como siempre");
+    }
+    const otros = await consultarPendientesOtrosSorteos({ evento: { usuario_id: A, identidad_evento_real: "otro" }, usuario: { id: "u1" }, ahora: T0 });
+    assert.ok(otros.some(o => o.identidad === "id-actual"), "sus reservas vuelven a ser deuda");
+    // Panel: en curso en sus dos grupos, con los mismos contadores.
+    const actual = (await get("/eventos")).json.data.find(s => s.identidad === "id-actual");
+    assert.strictEqual(actual.estado, "en_curso");
+    assert.deepStrictEqual(actual.grupos.map(g => g.estado), ["en_curso", "en_curso"]);
+    assert.deepStrictEqual([actual.reservados, actual.pagados], [1, 1]);
+    assert.strictEqual((await consultarEvento("g2@g.us", A)).id, EV_G2, "vuelve a ser el sorteo vigente del grupo");
+});
+
+prueba("14. Sin la 039: otro cliente no puede eliminar, cancelar ni reabrir (404) y nada cambia", async () => {
+    escenario();
+    const antes = JSON.stringify(fake.tablas.eventos_bot);
+    const numerosAntes = numeros();
+    const restaurar = sinMigracion039({ conCheck: true });
+    try {
+        for (const cuerpo of [{ accion: "eliminar" }, { accion: "cancelar" }, { accion: "desactivar", alcance: "todos" }, { accion: "reabrir", hora_cierre: "22:00" }]) {
+            const r1 = await accion(EV_G1, cuerpo, "jwt-B");
+            assert.strictEqual(r1.status, 404, `${cuerpo.accion}: ${JSON.stringify(r1.json)}`);
+        }
+    } finally {
+        restaurar();
+    }
+    assert.strictEqual(JSON.stringify(fake.tablas.eventos_bot), antes);
+    assert.strictEqual(numeros(), numerosAntes);
+});
+
 (async () => {
     const app = express();
     app.use(express.json());
