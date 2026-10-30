@@ -132,20 +132,30 @@ const RUTA_DATOS_PAGINA = "/api/tablas/imprimir";
 // capturarTabla.ts: html-to-image sobre la cuadrícula, fondo de la tarjeta,
 // su margen y pixelRatio 2). Chromium solo abre la página, la ejecuta y
 // recoge el PNG, que pasa por la misma validación que el de «Compartir»
-// (destinosCompartir.imagenPng). Ventana de 900 px = ANCHO_IMPRESION de
-// TablaImprimible: la cuadrícula queda con el ancho del panel (672 px).
-const ANCHO_VENTANA = 900;
+// (destinosCompartir.imagenPng).
+//
+// La tabla depende de la VENTANA (tamaño del número en vw, margen por
+// breakpoint) y de la COLUMNA del panel (ancho de la cuadrícula). Por eso se
+// abre con el perfil del dispositivo donde se revisó el sorteo; sin perfil,
+// como «Compartir» en escritorio (a 900 px el vw recortaba los números).
+const ANCHO_VENTANA = 1366;
 const LOCAL = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\]|0\.0\.0\.0)$/i;
+
+// Error de CONFIGURACIÓN del servidor: repetir no lo arregla (publicador.js
+// no gasta reintentos automáticos con él).
+function errorConfiguracion(mensaje) {
+    return Object.assign(new Error(mensaje), { configuracion: true });
+}
 
 // Panel que abre Chromium. Sin valor por defecto: antes, sin FRONTEND_URL
 // se abría http://localhost:3000, que en el servidor no es el panel.
 function urlDelPanel() {
     const valor = String(process.env.FRONTEND_URL || "").trim();
-    if (!valor) throw new Error("Falta FRONTEND_URL: el servidor no sabe dónde está el panel de EFAAT para generar la imagen de la tabla.");
+    if (!valor) throw errorConfiguracion("Falta FRONTEND_URL: el servidor no sabe dónde está el panel de EFAAT para generar la imagen de la tabla.");
     let url;
-    try { url = new URL(valor); } catch { throw new Error(`FRONTEND_URL no es una dirección válida («${valor}»).`); }
+    try { url = new URL(valor); } catch { throw errorConfiguracion(`FRONTEND_URL no es una dirección válida («${valor}»).`); }
     if (process.env.NODE_ENV === "production" && LOCAL.test(url.hostname)) {
-        throw new Error(`FRONTEND_URL apunta a ${url.host}, que en producción no es el panel de EFAAT: debe ser la dirección pública del panel.`);
+        throw errorConfiguracion(`FRONTEND_URL apunta a ${url.host}, que en producción no es el panel de EFAAT: debe ser la dirección pública del panel.`);
     }
     return url.origin;
 }
@@ -155,7 +165,10 @@ function urlDelPanel() {
 // (sorteos/servicio.probarImagen) para ver, ANTES de publicar, la misma
 // imagen con el diseño guardado en el sorteo; la página y la captura son
 // las de siempre.
-async function capturarImagenTabla(precio, usuarioId, eventoId = null, { datos: datosDados = null } = {}) {
+// `captura` (opcional): { ventana, contenido } guardado en el sorteo.
+// `disenoSorteo` (opcional): el diseño guardado en el sorteo programado, para
+// que la publicación capture antes de crear o tocar su evento.
+async function capturarImagenTabla(precio, usuarioId, eventoId = null, { datos: datosDados = null, captura = null, disenoSorteo = null } = {}) {
 
     if (!usuarioId || !USUARIO_VALIDO.test(String(usuarioId))) {
         throw new Error("No se puede generar la imagen sin el dueño de la tabla.");
@@ -165,12 +178,12 @@ async function capturarImagenTabla(precio, usuarioId, eventoId = null, { datos: 
     const { datosTablaImprimir } = require("./datosTablaImprimir");
     const datos = datosDados
         ? { ok: true, data: datosDados }
-        : await datosTablaImprimir(usuarioId, Number(precio), eventoId != null && EVENTO_VALIDO.test(String(eventoId)) ? String(eventoId) : null);
+        : await datosTablaImprimir(usuarioId, Number(precio), eventoId != null && EVENTO_VALIDO.test(String(eventoId)) ? String(eventoId) : null, { disenoSorteo });
 
     if (!datos.ok) throw new Error(datos.error);
 
     const panel = urlDelPanel();
-    const cuerpoDatos = JSON.stringify(datos.data);
+    const cuerpoDatos = JSON.stringify(captura ? { ...datos.data, anchoContenido: captura.contenido } : datos.data);
     const url = `${panel}/tablas/imprimir/${Number(precio)}?token=directo`;
 
     // Flags defensivos estándar para Chromium headless en un VPS/entorno
@@ -192,7 +205,7 @@ async function capturarImagenTabla(precio, usuarioId, eventoId = null, { datos: 
 
         const page = await browser.newPage();
         // La resolución la fija capturarTabla (pixelRatio 2), no la ventana.
-        await page.setViewport({ width: ANCHO_VENTANA, height: 1000, deviceScaleFactor: 1 });
+        await page.setViewport({ width: captura?.ventana || ANCHO_VENTANA, height: 1000, deviceScaleFactor: 1 });
 
         await page.setRequestInterception(true);
         page.on("request", (req) => {

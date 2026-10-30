@@ -212,12 +212,12 @@ prueba("todos libres → «✅ Reserva realizada» de siempre + reacción ✅ al
     assert.deepStrictEqual([estadoDe("23").estado, estadoDe("45").estado], ["reservado", "reservado"]);
 });
 
-prueba("todos ocupados por otras personas → «❌ Los números solicitados ya están ocupados» de siempre + reacción ❌", async () => {
+prueba("todos ocupados por otras personas → «❌ No se pudo reservar» con los ocupados + reacción ❌", async () => {
     reiniciar({ 23: ocupado("reservado"), 45: ocupado("pagado") });
     const ctx = ctxMensaje("23 45");
     await eventHandler(ctx);
     assert.strictEqual(mensajes().length, 1);
-    assert.ok(mensajes()[0].text.startsWith("❌ Los números solicitados ya están ocupados."));
+    assert.ok(mensajes()[0].text.startsWith("❌ No se pudo reservar"), mensajes()[0].text);
     assert.deepStrictEqual(reacciones().map(x => [x.emoji, x.mensaje]), [["❌", ctx.message.key.id]]);
     assert.strictEqual(estadoDe("23").usuario_global_id, OTRO, "no se tocó ninguna reserva ajena");
 });
@@ -226,7 +226,7 @@ prueba("mixto (uno libre, uno ocupado) → la misma respuesta de siempre, SIN re
     reiniciar({ 45: ocupado() });
     await eventHandler(ctxMensaje("23 45"));
     assert.strictEqual(mensajes().length, 1);
-    assert.ok(/Reserva realizada/.test(mensajes()[0].text) && /Ya estaban ocupados/.test(mensajes()[0].text));
+    assert.ok(/Reserva parcial/.test(mensajes()[0].text) && /ya están ocupados/.test(mensajes()[0].text), mensajes()[0].text);
     assert.strictEqual(reacciones().length, 0);
 });
 

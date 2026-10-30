@@ -158,7 +158,7 @@ async function main() {
         await marcar(page, "Grupo Cinco");
         await marcar(page, "Nequi Prueba");
         await pulsar(page, "Guardar y ver vista previa");
-        await esperarTexto(page, "Imagen que se enviará (generada por el servidor)");
+        await page.waitForSelector('img[alt="Imagen de la tabla que se compartirá por WhatsApp"]', { timeout: 60000 });
         await marcar(page, "Revisé la fecha");
         await pulsar(page, "Publicar ahora");
         await esperarTexto(page, "Enviado en 1 de 1 grupo(s).");

@@ -34,7 +34,7 @@ export default function ImprimirTablaPage() {
     const token = searchParams.get("token");
     const precio = Number(params.precio);
 
-    const [datos, setDatos] = useState<{ numerosDisponibles: string[]; numerosOcupados: string[]; diseno?: TablaDisenoConfig | null } | null>(null);
+    const [datos, setDatos] = useState<{ numerosDisponibles: string[]; numerosOcupados: string[]; numerosPagados?: string[]; diseno?: TablaDisenoConfig | null; anchoContenido?: number | null } | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     // La imagen NO la toma el servidor: Chromium llama a esta función, que es
@@ -104,7 +104,9 @@ export default function ImprimirTablaPage() {
         <TablaImprimible
             numerosDisponibles={datos.numerosDisponibles}
             numerosOcupados={datos.numerosOcupados}
+            numerosPagados={datos.numerosPagados}
             diseno={datos.diseno}
+            anchoContenido={datos.anchoContenido}
             imprimir
             contenedorRef={cuadriculaRef}
             capturaLista

@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import type { TablaDisenoConfig } from "@/components/tablas/disenoTypes";
+import type { PerfilCaptura } from "@/services/tablas/perfilCaptura";
 
 // Cliente del panel para sorteos programados, plantillas y cuentas de pago.
 // Cada petición lleva el access_token de la sesión de Supabase Auth; el
@@ -94,6 +95,8 @@ export interface Sorteo {
  */
 export type EstadoOperativo = "pendiente" | "en_curso" | "terminado" | "cancelado" | "sin_publicar" | "desconocido";
 
+export type EtapaPublicacion = "evento_creado" | "publicacion_enviada" | "publicacion_confirmada" | "publicacion_fallida" | "requiere_intervencion";
+
 export interface GrupoGestion {
     id: string;
     grupo_id: string;
@@ -107,6 +110,10 @@ export interface GrupoGestion {
     ultimo_error: string | null;
     /** Evento del grupo: no creado, abierto, cerrado o ya de otro sorteo. */
     evento: "sin_evento" | "abierto" | "cerrado" | "reutilizado";
+    /** Punto real de la publicación: lo que está hecho y confirmado. Opcional:
+     *  un backend anterior no lo envía. */
+    etapa?: EtapaPublicacion | EstadoGrupo;
+    resumen?: string;
     explicacion: string;
     /** Qué debe hacer el administrador, o null si nada. */
     intervencion: string | null;
@@ -255,7 +262,7 @@ export interface VistaPrevia {
     hora_cierre: string | null;
     diseno: DisenoSorteo;
     /** Mismos datos que la imagen compartida (número + libre u ocupado). */
-    numeros: { numerosDisponibles: string[]; numerosOcupados: string[] };
+    numeros: { numerosDisponibles: string[]; numerosOcupados: string[]; numerosPagados?: string[] };
     cantidad_numeros: number;
     cuentas: CuentaPago[];
     reinicio: ReinicioTabla | null;
@@ -478,13 +485,14 @@ export const apiSorteos = {
     crear: (config: ConfigSorteo & { plantilla_id?: string | null }) => llamar<Sorteo>("POST", "", config),
     editar: (id: string, config: ConfigSorteo & { version: number; plantilla_id?: string | null }) => llamar<Sorteo>("PUT", `/${id}`, config),
     vistaPrevia: (id: string) => llamar<VistaPrevia>("GET", `/${id}/vista-previa`),
-    confirmar: (id: string, version: number, reinicio?: { confirmado: boolean }) =>
-        llamar<Sorteo>("POST", `/${id}/confirmar`, { version, confirmacion: true, ...(reinicio ? { reinicio } : {}) }),
+    confirmar: (id: string, version: number, reinicio?: { confirmado: boolean }, captura?: PerfilCaptura) =>
+        llamar<Sorteo>("POST", `/${id}/confirmar`, { version, confirmacion: true, ...(reinicio ? { reinicio } : {}), ...(captura ? { captura } : {}) }),
     cancelar: (id: string) => llamar<Sorteo>("POST", `/${id}/cancelar`),
     /** «Sorteo instantáneo»: confirma y publica YA con el publicador de siempre.
-     *  `imagen`: la captura de la vista previa (capturarTabla, la de «Compartir»), que se envía tal cual. */
-    publicarAhora: (id: string, version: number, imagen: string, reinicio?: { confirmado: boolean }) =>
-        llamar<ResultadoPublicacionInmediata>("POST", `/${id}/publicar-ahora`, { version, confirmacion: true, imagen, ...(reinicio ? { reinicio } : {}) }),
+     *  `imagen`: la captura de la vista previa (capturarTabla, la de «Compartir»), que se envía tal cual.
+     *  `captura`: su perfil, para que los reintentos del servidor salgan iguales. */
+    publicarAhora: (id: string, version: number, imagen: string, reinicio?: { confirmado: boolean }, captura?: PerfilCaptura) =>
+        llamar<ResultadoPublicacionInmediata>("POST", `/${id}/publicar-ahora`, { version, confirmacion: true, imagen, ...(reinicio ? { reinicio } : {}), ...(captura ? { captura } : {}) }),
     /** Listado de la pantalla de programados (estados, impacto y acciones). */
     gestion: () => llamar<SorteoGestionado[]>("GET", "/gestion"),
     detalle: (id: string) => llamar<DetalleSorteo>("GET", `/${id}/detalle`),

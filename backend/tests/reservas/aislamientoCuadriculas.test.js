@@ -135,7 +135,7 @@ prueba("evento SIN usuario_id: reservar, consultar y pagar se rechazan sin tocar
     console.error = () => {};
     try {
         assert.deepStrictEqual(await reservar(huerfano, ["31", "32"]), []);
-        assert.deepStrictEqual(await consultarReservas(huerfano, ["30"]), []);
+        assert.strictEqual(await consultarReservas(huerfano, ["30"]), null, "rechazada: no se confunde con «sin filas»");
         const disp = await consultarDisponibilidad({ evento: huerfano });
         assert.deepStrictEqual(disp, { numerosDisponibles: [], numerosOcupados: [] });
         assert.deepStrictEqual(await consultarMisNumeros({ evento: huerfano, usuario: COMPRADOR }), []);

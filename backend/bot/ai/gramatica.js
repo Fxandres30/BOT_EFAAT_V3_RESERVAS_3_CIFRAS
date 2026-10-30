@@ -229,6 +229,11 @@ function calcularNumerosRelevantes(ctx, resultado) {
         numerosOcupados = resultado?.ocupados
             || (resultado?.ok === false ? numerosSolicitados : []);
 
+        // Las plantillas numero_ocupado/todos_ocupados listan
+        // {{numeros_solicitados}}: si alguno de los pedidos ya era del
+        // cliente, no se le dice que está ocupado.
+        if (resultado?.ok === false && resultado?.ocupados) numerosSolicitados = resultado.ocupados;
+
     } else if (tipo === "mis_numeros" || tipo === "mis_reservas") {
 
         numerosReservados = resultado?.numerosDelUsuario || [];

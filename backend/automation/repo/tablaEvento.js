@@ -15,7 +15,9 @@
 
 const supabase = require("../../lib/supabase");
 
-// obtenerNumeros(nombreTabla, usuarioId) -> { numerosDisponibles, numerosOcupados }
+// obtenerNumeros(nombreTabla, usuarioId) -> { numerosDisponibles, numerosOcupados, numerosPagados }
+// numerosPagados es un subconjunto de numerosOcupados: la imagen de la tabla
+// los pinta como «Pagado», igual que Tablas.
 //
 // nombreTabla es SIEMPRE evento.tabla (el nombre real de la tabla de
 // reservas de ESTE evento) — nunca inventado, nunca hardcodeado aquí.
@@ -27,7 +29,7 @@ const supabase = require("../../lib/supabase");
 async function obtenerNumeros(nombreTabla, usuarioId) {
 
     if (!nombreTabla || !usuarioId) {
-        return { numerosDisponibles: [], numerosOcupados: [] };
+        return { numerosDisponibles: [], numerosOcupados: [], numerosPagados: [] };
     }
 
     const { data, error } = await supabase
@@ -48,7 +50,11 @@ async function obtenerNumeros(nombreTabla, usuarioId) {
         .filter(r => r.estado !== "libre")
         .map(r => r.numero);
 
-    return { numerosDisponibles, numerosOcupados };
+    const numerosPagados = filas
+        .filter(r => r.estado === "pagado")
+        .map(r => r.numero);
+
+    return { numerosDisponibles, numerosOcupados, numerosPagados };
 
 }
 

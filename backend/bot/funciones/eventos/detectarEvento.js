@@ -5,6 +5,7 @@ const { guardarEvento } = require("./guardarEvento");
 const { obtenerConfiguracionCliente } = require("./tablasCliente");
 const { abrirGrupo } = require("./grupos/abrirGrupo");
 const { esMismoSorteo, fechaSorteoAnunciado, buscarSorteoVigente, crearIdentidadEventoReal } = require("./identidadEventoReal");
+const { finDelEvento } = require("../../../shared/eventos/estadosGestion");
 const { consultarDisponibilidad } = require("../consultas/consultarDisponibilidad");
 
 // Sorteos creados y programados desde el panel (backend/sorteos). Solo se
@@ -389,6 +390,16 @@ async function detectarEvento(ctx) {
                 filaDelSorteo = null;
             }
 
+            // Re-anuncio de un sorteo que este grupo ya terminó: igual que
+            // arriba, no se reactiva.
+            if (finDelEvento(filaDelSorteo)) {
+
+                console.log(`⏭️ Re-anuncio de un sorteo ya ${finDelEvento(filaDelSorteo)} en este grupo (${filaDelSorteo.nombre_evento} ${filaDelSorteo.hora_fin}) — no se reactiva.`);
+
+                return eventoAnterior;
+
+            }
+
             if (filaDelSorteo) {
 
                 filaAGuardar = filaDelSorteo;
@@ -523,8 +534,8 @@ if (!grupoAbierto) {
         // No se pudo registrar ni tras los reintentos: se deja constancia
         // clara en el log. El evento sigue existiendo (activo=true) y
         // podrá autocorregirse si el mismo mensaje se detecta de nuevo en
-        // el grupo (guardarEvento vuelve a escribir abierto=true y se
-        // reintenta abrir). No se inventa un estado nuevo para esto.
+        // el grupo (se reintenta abrir y se registra abierto=true al
+        // confirmarlo). No se inventa un estado nuevo para esto.
         console.error(`⚠️ Evento ${eventoGuardado.id}: quedó sin poder registrar el fallo de apertura tras los reintentos.`);
 
     }
@@ -532,6 +543,17 @@ if (!grupoAbierto) {
 } else {
 
     console.log("🔓 Grupo abierto correctamente");
+
+    // guardarEvento ya no reescribe `abierto`: si la fila venía con una
+    // apertura pendiente, se registra aquí, tras la confirmación de WhatsApp.
+    if (eventoGuardado.abierto === false) {
+
+        const { error: errorApertura } = await supabase.from("eventos_bot").update({ abierto: true }).eq("id", eventoGuardado.id).eq("activo", true);
+
+        if (errorApertura) console.error(`❌ No se pudo registrar abierto=true del evento ${eventoGuardado.id} (lo hará el worker):`, errorApertura.message);
+        else eventoGuardado.abierto = true;
+
+    }
 
     // Escaneo incremental de ESE grupo — solo después de la confirmación
     // de arriba. No bloqueante: nunca debe retrasar el flujo de detección

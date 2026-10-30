@@ -202,7 +202,8 @@ function aplicarPlantilla(plantilla, variables, opcionesMostrar = {}, catalogoEx
 // ctx.consulta (igual que ya hace contextBuilder.js) y el campo real
 // "resultado.ok", nunca un "resultado.tipo" inexistente:
 //   ctx.reserva, ok:true  -> reserva_completa (todo reservado) | reserva_parcial (algo ocupado)
-//   ctx.reserva, ok:false -> numero_ocupado (1 solo número pedido) | todos_ocupados (varios)
+//   ctx.reserva, ok:false -> numero_ocupado (1 número ocupado) | todos_ocupados (varios)
+//   ctx.reserva, errorTecnico -> ninguno: no hay nada ocupado que informar
 //   ctx.consulta          -> ya trae su propio "tipo" correcto (resolverConsulta.js)
 function calcularTipoPresentacion(ctx, resultado) {
 
@@ -216,9 +217,11 @@ function calcularTipoPresentacion(ctx, resultado) {
 
         }
 
-        const solicitados = extraerNumeros(ctx.textoOriginal || "", ctx?.evento?.cifras);
+        if (resultado?.errorTecnico) return null;
 
-        return solicitados.length === 1
+        const ocupados = resultado?.ocupados || extraerNumeros(ctx.textoOriginal || "", ctx?.evento?.cifras);
+
+        return ocupados.length === 1
             ? "numero_ocupado"
             : "todos_ocupados";
 

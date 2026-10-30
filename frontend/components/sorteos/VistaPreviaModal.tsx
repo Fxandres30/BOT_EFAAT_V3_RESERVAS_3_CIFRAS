@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Modal, Button, Badge } from "@/components/ui";
-import TablaImprimible, { ANCHO_IMPRESION } from "@/components/tablas/TablaImprimible";
+import TablaImprimible from "@/components/tablas/TablaImprimible";
 import { capturarTabla } from "@/services/tablas/capturarTabla";
+import { medirPerfilCaptura, type PerfilCaptura } from "@/services/tablas/perfilCaptura";
 import { apiSorteos, describirError, type EstadoPublicacion, type ResultadoPublicacionInmediata, type VistaPrevia } from "@/services/sorteos/apiSorteos";
 import { motivoNoPublicable, resumenDesdeSorteo, textoResultado, type PruebaImagen } from "@/services/sorteos/sorteoInstantaneo";
 import { ESTADO_GRUPO } from "@/services/sorteos/estadosSorteo";
@@ -49,6 +50,7 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
     // sorteo instantáneo es la que se envía; resultado real de cada grupo.
     const [imagen, setImagen] = useState<PruebaImagen>({ tipo: "probando" });
     const capturaRef = useRef<HTMLDivElement>(null);
+    const [perfil, setPerfil] = useState<PerfilCaptura | null>(null);
     const [intentoImagen, setIntentoImagen] = useState(0);
     const [resultado, setResultado] = useState<ResultadoPublicacionInmediata | null>(null);
     // Bloqueo síncrono: dos clics seguidos no lanzan dos publicaciones.
@@ -62,8 +64,12 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
 
         async function cargar(id: string) {
             const r = await apiSorteos.vistaPrevia(id);
-            if (r.ok) setVista(r.data);
-            else setError(describirError(r));
+            if (r.ok) {
+                setPerfil(medirPerfilCaptura());
+                setVista(r.data);
+            } else {
+                setError(describirError(r));
+            }
         }
 
         cargar(sorteoId);
@@ -73,8 +79,8 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
     const inmediato = vista?.publicacion_inmediata === true;
 
     // La imagen de la tabla, con la captura del botón «Compartir» sobre la
-    // copia oculta de abajo (ancho de impresión, como el Chromium de los
-    // programados). Se hace una vez y, en el instantáneo, se envía esa misma.
+    // copia oculta de abajo (con el ancho que la tabla tiene en Tablas en
+    // este dispositivo). Se hace una vez y, en el instantáneo, se envía esa misma.
     useEffect(() => {
         if (!vista) return;
         let vigente = true;
@@ -98,7 +104,7 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
         setConfirmando(true);
         setError(null);
 
-        const r = await apiSorteos.publicarAhora(vista.id, vista.version, imagen.imagen, vista.reinicio?.al_publicar ? { confirmado: reinicioConfirmado } : undefined);
+        const r = await apiSorteos.publicarAhora(vista.id, vista.version, imagen.imagen, vista.reinicio?.al_publicar ? { confirmado: reinicioConfirmado } : undefined, perfil ?? undefined);
 
         if (r.ok) {
             setResultado(r.data);
@@ -135,7 +141,8 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
         const r = await apiSorteos.confirmar(
             vista.id,
             vista.version,
-            pideConfirmarReinicio ? { confirmado: reinicioConfirmado } : undefined
+            pideConfirmarReinicio ? { confirmado: reinicioConfirmado } : undefined,
+            perfil ?? undefined
         );
 
         setConfirmando(false);
@@ -217,12 +224,14 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                                 {pideConfirmarReinicio ? " · como quedará al publicar" : ""}
                             </h3>
                             {/* Copia oculta que se captura (capturarTabla, igual que «Compartir»). */}
-                            <div aria-hidden style={{ position: "fixed", left: -10000, top: 0, width: ANCHO_IMPRESION, pointerEvents: "none" }}>
+                            <div aria-hidden style={{ position: "fixed", left: -10000, top: 0, pointerEvents: "none" }}>
                                 <TablaImprimible
                                     numerosDisponibles={vista.numeros.numerosDisponibles}
                                     numerosOcupados={vista.numeros.numerosOcupados}
+                                    numerosPagados={vista.numeros.numerosPagados}
                                     diseno={vista.diseno.config}
                                     contenedorRef={capturaRef}
+                                    anchoContenido={perfil?.contenido}
                                 />
                             </div>
                             {imagen.tipo === "ok" ? (
@@ -235,6 +244,7 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                                     <TablaImprimible
                                         numerosDisponibles={vista.numeros.numerosDisponibles}
                                         numerosOcupados={vista.numeros.numerosOcupados}
+                                        numerosPagados={vista.numeros.numerosPagados}
                                         diseno={vista.diseno.config}
                                     />
                                 </div>

@@ -57,4 +57,19 @@ function eliminado(evento) {
     return motivoGestion(evento) === "eliminado";
 }
 
-module.exports = { ESTADOS_GESTION, motivoGestion, cierreSilencioso, sinDeuda, eliminado };
+// ¿La vigencia de esta fila terminó? Devuelve cómo ("cerrado", "cancelado",
+// "desactivado", "eliminado", "sustituido") o null si sigue vigente. Una
+// sincronización de datos o un reintento nunca revierten este final: solo
+// «Reabrir» (gestionEventos.js), que además limpia cierre_estado. Por eso
+// cierre_estado="cerrado" cuenta aunque activo=true: es una fila que un
+// reintento antiguo reactivó después de cerrarla.
+function finDelEvento(evento) {
+
+    if (!evento) return null;
+
+    return motivoGestion(evento)
+        || (evento.activo === false || evento.estado === "cerrado" || evento.cierre_estado === "cerrado" ? "cerrado" : null);
+
+}
+
+module.exports = { ESTADOS_GESTION, motivoGestion, cierreSilencioso, sinDeuda, eliminado, finDelEvento };

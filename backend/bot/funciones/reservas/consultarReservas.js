@@ -1,9 +1,18 @@
 const supabase = require("../../../lib/supabase");
 const { soloDelCliente } = require("./filtroCliente");
 
+// Filas de los números pedidos en la cuadrícula del cliente, TODAS: un número
+// que un sorteo distinto tiene reservado o pagado sigue ocupado en esta
+// cuadrícula aunque no sea de este sorteo. Antes esas filas se excluían de la
+// consulta, y el número desaparecía: ni libre ni ocupado, sin avisar al
+// cliente, y una reserva parcial se respondía como completa. Ahora vuelven
+// marcadas con deOtroSorteo (misma regla de identidad: identidadEventoReal.js;
+// un libre o una fila sin identidad no son de otro sorteo).
+//
+// Devuelve null si no se pudo leer: «no sé» no es lo mismo que «no hay filas».
 async function consultarReservas(evento, numeros) {
 
-    let query = soloDelCliente(
+    const query = soloDelCliente(
         supabase
             .from(evento.tabla)
             .select("*")
@@ -11,25 +20,20 @@ async function consultarReservas(evento, numeros) {
         evento
     );
 
-    // Aísla del mismo sorteo real (independiente del grupo) frente a otros
-    // eventos/tenants que compartan la misma tabla física por rango de
-    // precio — sin dejar de compartirla entre los grupos que son el MISMO
-    // sorteo (ver identidadEventoReal.js). Un número LIBRE siempre debe
-    // verse (nadie lo reclamó todavía) y una fila sin identidad todavía
-    // (dato previo a esta migración, o sin backfill) nunca se oculta — solo
-    // se EXCLUYE lo que ya está reservado/pagado por un evento distinto.
-    if (evento?.identidad_evento_real) {
-        query = query.or(
-            `identidad_evento_real.eq.${evento.identidad_evento_real},identidad_evento_real.is.null,estado.eq.libre`
-        );
-    }
-
-    const { data, error } = await query;
+    const { data: filas, error } = await query;
 
     if (error) {
         console.error(error);
-        return [];
+        return null;
     }
+
+    const identidad = evento?.identidad_evento_real;
+
+    const data = (filas || []).map(f => (
+        identidad && f.estado !== "libre" && f.identidad_evento_real && f.identidad_evento_real !== identidad
+            ? { ...f, deOtroSorteo: true }
+            : f
+    ));
 
     console.log("================================");
     console.log("📋 RESERVAS ENCONTRADAS");

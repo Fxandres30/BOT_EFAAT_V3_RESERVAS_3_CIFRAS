@@ -6,7 +6,9 @@
 // usuario del token en el backend):
 //   - activos     GET /api/sorteos/activos -> eventos_bot activos y no
 //                 cerrados, una entrada por identidad (sus grupos juntos);
-//   - programados GET /api/sorteos         -> sorteos_programados.
+//   - programados GET /api/sorteos/gestion -> sorteos_programados con su
+//                 estado operativo real (leído de eventos_bot); si esa ruta
+//                 falla, GET /api/sorteos y solo se decide por la hora.
 // Un activo es del precio si su valor coincide y su tabla física es la de
 // ese precio en tablas_cliente (mismo criterio que sorteosActivos.js
 // ::filasActivas). Nada se deduce del nombre del precio ni de las reservas.
@@ -15,7 +17,7 @@
 // «no_disponible».
 // ==========================================================================
 
-import type { Sorteo, SorteoActivo } from "../sorteos/apiSorteos";
+import type { Sorteo, SorteoActivo, SorteoGestionado } from "../sorteos/apiSorteos";
 import { calcularCierreReal, fechaValida } from "../automatizacion/estadoProgramacion";
 
 export type EstadoTarjeta = "activo" | "programado" | "revision" | "sin_sorteo" | "no_disponible";
@@ -34,11 +36,14 @@ export interface EntradaEstadoSorteo {
     motivo?: string;
 }
 
+// `gestion` solo falta si se usó el listado simple.
+export type ProgramacionTarjeta = Sorteo & Partial<Pick<SorteoGestionado, "gestion">>;
+
 interface Entrada {
     precio: number;
     tabla: string;
     activos: SorteoActivo[] | null;
-    programados: Sorteo[] | null;
+    programados: ProgramacionTarjeta[] | null;
     ahora: Date;
 }
 
@@ -49,22 +54,32 @@ const MOTIVO_PARCIAL = "Algunos grupos no se publicaron. Revísalo en Sorteos pr
 
 const deTabla = (tablaRegistro: string | null | undefined, tabla: string) => !tablaRegistro || tablaRegistro === tabla;
 
-// Momento en que se juega: fecha_sorteo (o el día de la publicación en
-// Colombia, como validar.js::fechaSorteoDe) + hora_fin. Sin datos: null.
-function momentoDelSorteo(s: Sorteo): Date | null {
+// Momento en que se cierra: fecha_sorteo (o el día de la publicación en
+// Colombia, como validar.js::fechaSorteoDe) + hora_cierre, o hora_fin si no
+// la tiene (nunca es posterior a hora_fin). Sin datos: null.
+function momentoDeCierre(s: Sorteo): Date | null {
 
     const fecha = s.config?.fecha_sorteo
         || (fechaValida(s.publicar_en) ? FORMATO_DIA.format(fechaValida(s.publicar_en) as Date) : null);
 
-    return calcularCierreReal(fecha, s.config?.hora_fin);
+    return calcularCierreReal(fecha, s.config?.hora_cierre || s.config?.hora_fin);
 
 }
 
-// Un fallo de publicación importa mientras el sorteo no se haya jugado
-// (sin hora conocida, se sigue mostrando: no se da por resuelto).
-function siguePendiente(s: Sorteo, ahora: Date): boolean {
-    const momento = momentoDelSorteo(s);
+// Una programación solo se muestra mientras su sorteo siga por delante: el
+// estado operativo del backend manda y, además, la hora de cierre (sin hora
+// conocida, se sigue mostrando: no se da por resuelto).
+function siguePendiente(s: ProgramacionTarjeta, ahora: Date): boolean {
+
+    const operativo = s.gestion?.operativo;
+
+    if (operativo?.estado === "terminado" || operativo?.estado === "cancelado") return false;
+    if (operativo?.estado === "en_curso" && operativo.reservas === "cerradas") return false;
+
+    const momento = momentoDeCierre(s);
+
     return !momento || momento.getTime() > ahora.getTime();
+
 }
 
 export function estadoSorteoPrecio({ precio, tabla, activos, programados, ahora }: Entrada): EntradaEstadoSorteo[] {
@@ -100,7 +115,7 @@ export function estadoSorteoPrecio({ precio, tabla, activos, programados, ahora 
 
     // Solo los confirmados (un borrador aún no está programado).
     const futuros: EntradaEstadoSorteo[] = delPrecio
-        .filter(s => !yaActivos.has(s.id) && (s.estado === "programado" || s.estado === "publicando"))
+        .filter(s => !yaActivos.has(s.id) && (s.estado === "programado" || s.estado === "publicando") && siguePendiente(s, ahora))
         .map(s => ({
             estado: "programado" as const,
             clave: `sorteo:${s.id}`,

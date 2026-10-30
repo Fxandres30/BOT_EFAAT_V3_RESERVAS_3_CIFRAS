@@ -12,10 +12,8 @@
 //   4. El publicador usa esa captura; la vista previa también (sin pedir
 //      otra al servidor).
 //
-// La tabla solo tiene números libres y reservados: la página de impresión
-// recibe libre/ocupado (sin datos personales) y pinta los ocupados como
-// «Reservado»; un «Pagado» se ve distinto en Tablas (limitación conocida,
-// no de la captura).
+// La igualdad por ancho de pantalla, diseño y estado (pagados incluidos) se
+// comprueba en imagenIgualCompartir.e2e.js.
 //
 // ENTORNO AISLADO (tests/e2e/entornoPanel.js): no toca Supabase. WhatsApp no
 // interviene: esta prueba no envía nada.
@@ -93,6 +91,8 @@ async function main() {
 
         // 1. «Compartir»: la captura del panel.
         await page.goto(`${PANEL}/tablas/5000`, { waitUntil: "domcontentloaded" });
+        // La tabla empieza con el diseño por defecto hasta que carga el suyo.
+        await page.waitForFunction(() => { const c = document.querySelector('[data-numero="03"]'); return c && getComputedStyle(c).backgroundColor === "rgb(251, 233, 176)"; }, { timeout: 60000 });
         await pulsar(page, "Compartir");
         await esperarTexto(page, "Compartir tabla en WhatsApp");
         await page.waitForSelector('[aria-label="Vista previa del mensaje"] img', { timeout: 120000 });

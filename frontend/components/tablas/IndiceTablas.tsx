@@ -6,8 +6,8 @@ import { useEffect, useState } from "react";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { getUser } from "@/services/auth/getUser";
 import { formatearMomento, formatearRestante } from "@/services/automatizacion/estadoProgramacion";
-import { apiSorteos, type Sorteo, type SorteoActivo } from "@/services/sorteos/apiSorteos";
-import { estadoSorteoPrecio, type EntradaEstadoSorteo, type EstadoTarjeta } from "@/services/tablas/estadoSorteoPrecio";
+import { apiSorteos, type SorteoActivo } from "@/services/sorteos/apiSorteos";
+import { estadoSorteoPrecio, type EntradaEstadoSorteo, type EstadoTarjeta, type ProgramacionTarjeta } from "@/services/tablas/estadoSorteoPrecio";
 import { obtenerTablasCliente, type ConfiguracionTabla } from "@/services/tablas/tablasCliente";
 
 // El publicador trabaja en segundo plano: el estado se vuelve a pedir cada
@@ -15,7 +15,7 @@ import { obtenerTablasCliente, type ConfiguracionTabla } from "@/services/tablas
 const REFRESCO_MS = 60_000;
 const VISIBLES = 2;
 
-interface Fuentes { activos: SorteoActivo[] | null; programados: Sorteo[] | null }
+interface Fuentes { activos: SorteoActivo[] | null; programados: ProgramacionTarjeta[] | null }
 
 // Precios que ofrece el cliente de la sesión (tablas_cliente; sin
 // configuración propia, los precios base de lib/tablasConfig.ts).
@@ -36,7 +36,8 @@ export default function IndiceTablas() {
 
         // Sorteos del usuario del token (el backend nunca recibe un id).
         async function cargarSorteos() {
-            const [activos, programados] = await Promise.all([apiSorteos.activos(), apiSorteos.listar()]);
+            const [activos, gestion] = await Promise.all([apiSorteos.activos(), apiSorteos.gestion()]);
+            const programados = gestion.ok ? gestion : await apiSorteos.listar();
             if (!vivo) return;
             setFuentes({ activos: activos.ok ? activos.data : null, programados: programados.ok ? programados.data : null });
             setAhora(new Date());
@@ -116,7 +117,7 @@ function EstadoSorteo({ entradas, ahora }: { entradas: EntradaEstadoSorteo[] | n
     const restantes = entradas.length - VISIBLES;
 
     return (
-        <div className="mt-2 pt-2 border-t space-y-2 text-xs text-gray-600 min-w-0">
+        <div className="mt-2 pt-2 border-t space-y-2 text-xs text-gray-600 min-w-0 [overflow-wrap:anywhere]">
             {entradas.slice(0, VISIBLES).map(e => <Entrada key={e.clave} e={e} ahora={ahora} />)}
             {restantes > 0 && (
                 <p className="text-gray-500">+{restantes} sorteo{restantes === 1 ? "" : "s"} más</p>
@@ -133,9 +134,10 @@ function Entrada({ e, ahora }: { e: EntradaEstadoSorteo; ahora: Date }) {
 
     return (
         <div className="min-w-0 space-y-0.5">
-            <Badge tone={tono} size="sm" className="max-w-full whitespace-normal">{texto}</Badge>
+            {/* "!": Badge.module.css (sin capa) vence a las utilidades de Tailwind. */}
+            <Badge tone={tono} size="sm" className="max-w-full whitespace-normal! leading-snug!">{texto}</Badge>
             {conNombre && (
-                <p className="font-medium text-gray-800 truncate" title={e.nombre || undefined}>
+                <p className="font-medium text-gray-800">
                     {e.nombre || "Sin nombre registrado"}
                 </p>
             )}

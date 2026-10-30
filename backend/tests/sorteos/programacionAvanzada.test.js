@@ -420,7 +420,7 @@ prueba("D5. vista previa: la tabla usa los MISMOS datos que la imagen (número +
     escenario();
     const c = await servicio.crearSorteo(A, entrada());
     const v = await servicio.vistaPrevia(A, c.data.id);
-    assert.deepStrictEqual(Object.keys(v.data.numeros).sort(), ["numerosDisponibles", "numerosOcupados"]);
+    assert.deepStrictEqual(Object.keys(v.data.numeros).sort(), ["numerosDisponibles", "numerosOcupados", "numerosPagados"]);
     assert.deepStrictEqual(v.data.numeros.numerosOcupados, ["00", "01", "02", "03", "04", "05"]);
     assert.strictEqual(v.data.numeros.numerosDisponibles.length, 94);
 });

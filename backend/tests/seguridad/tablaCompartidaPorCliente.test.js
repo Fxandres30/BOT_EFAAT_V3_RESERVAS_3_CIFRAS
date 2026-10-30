@@ -74,13 +74,13 @@ const pruebas = [];
 const prueba = (n, fn) => pruebas.push({ n, fn });
 
 prueba("obtenerNumeros sin dueño -> vacío (falla cerrado, nunca la tabla mezclada)", async () => {
-    assert.deepStrictEqual(await tablaEvento.obtenerNumeros(TABLA), { numerosDisponibles: [], numerosOcupados: [] });
-    assert.deepStrictEqual(await tablaEvento.obtenerNumeros(TABLA, null), { numerosDisponibles: [], numerosOcupados: [] });
+    assert.deepStrictEqual(await tablaEvento.obtenerNumeros(TABLA), { numerosDisponibles: [], numerosOcupados: [], numerosPagados: [] });
+    assert.deepStrictEqual(await tablaEvento.obtenerNumeros(TABLA, null), { numerosDisponibles: [], numerosOcupados: [], numerosPagados: [] });
 });
 
 prueba("obtenerNumeros(tabla, A) -> solo la cuadrícula de A; (tabla, B) -> solo la de B", async () => {
-    assert.deepStrictEqual(await tablaEvento.obtenerNumeros(TABLA, A), { numerosDisponibles: ["00"], numerosOcupados: ["01"] });
-    assert.deepStrictEqual(await tablaEvento.obtenerNumeros(TABLA, B), { numerosDisponibles: ["01"], numerosOcupados: ["00"] });
+    assert.deepStrictEqual(await tablaEvento.obtenerNumeros(TABLA, A), { numerosDisponibles: ["00"], numerosOcupados: ["01"], numerosPagados: [] });
+    assert.deepStrictEqual(await tablaEvento.obtenerNumeros(TABLA, B), { numerosDisponibles: ["01"], numerosOcupados: ["00"], numerosPagados: ["00"] });
 });
 
 prueba("/tablas/imprimir-datos con token de A -> solo los números de A", async () => {

@@ -88,6 +88,7 @@ export default function DetalleSorteoModal({ sorteoId, onClose }: Props) {
                                                 <span className={styles.ayuda}>{EVENTO[g.evento]}</span>
                                             </div>
                                             <p className={styles.ayuda}>{g.explicacion}</p>
+                                            {g.resumen && <p className={styles.ayuda}>{g.resumen}</p>}
                                             <p className={styles.ayuda}>
                                                 Intentos: {g.intentos}{g.reintentos_manuales ? ` · reintentos manuales: ${g.reintentos_manuales}` : ""}
                                                 {g.publicado_en ? ` · publicado ${mostrarFecha(g.publicado_en)}` : ""}

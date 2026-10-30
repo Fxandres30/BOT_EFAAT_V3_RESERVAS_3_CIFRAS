@@ -247,7 +247,7 @@ async function vistaPrevia(usuarioId, id) {
     // está libre). Con reinicio, como quedaría después de reiniciar.
     const numeros = await tablaEvento.obtenerNumeros(sorteo.tabla, usuarioId);
     const numerosVista = seReiniciara
-        ? { numerosDisponibles: [...numeros.numerosDisponibles, ...numeros.numerosOcupados].sort(), numerosOcupados: [] }
+        ? { numerosDisponibles: [...numeros.numerosDisponibles, ...numeros.numerosOcupados].sort(), numerosOcupados: [], numerosPagados: [] }
         : numeros;
 
     const autorizados = await repo.gruposAutorizados(usuarioId);
@@ -332,7 +332,18 @@ async function vistaPrevia(usuarioId, id) {
 
 // Exige confirmación explícita y la MISMA versión que se vio en la vista
 // previa: si alguien editó entretanto, la confirmación no vale.
-async function confirmar(usuarioId, id, { version, confirmacion, reinicio } = {}) {
+// Perfil de la captura (ventana y columna del panel donde se revisó la vista
+// previa): con él, la imagen que se genere sin panel abierto sale igual que
+// «Compartir» en ese dispositivo. Solo enteros en rango; si no, sin perfil.
+function perfilCapturaValido(captura) {
+    const ventana = Number(captura?.ventana);
+    const contenido = Number(captura?.contenido);
+    if (!Number.isInteger(ventana) || !Number.isInteger(contenido)) return null;
+    if (ventana < 280 || ventana > 3840 || contenido < 200 || contenido > ventana) return null;
+    return { ventana, contenido };
+}
+
+async function confirmar(usuarioId, id, { version, confirmacion, reinicio, captura } = {}) {
 
     if (confirmacion !== true) return falla("confirmacion_requerida");
 
@@ -352,6 +363,13 @@ async function confirmar(usuarioId, id, { version, confirmacion, reinicio } = {}
         confirmado_version: Number(version)
     };
 
+    const perfil = perfilCapturaValido(captura);
+    if (perfil) {
+        const actual = await repo.obtenerSorteo(usuarioId, id);
+        if (!actual.ok) return actual;
+        cambios.config = { ...actual.data.config, captura: perfil };
+    }
+
     // Reinicio elegido: programar NUNCA modifica la tabla. Solo se anota,
     // con la confirmación expresa del usuario, que el publicador lo haga al
     // publicar (publicador.prepararPublicacion), donde se vuelve a validar.
@@ -359,7 +377,8 @@ async function confirmar(usuarioId, id, { version, confirmacion, reinicio } = {}
         if (reinicio?.confirmado !== true) return falla("confirmacion_reinicio_requerida");
         const actual = await repo.obtenerSorteo(usuarioId, id);
         if (!actual.ok) return actual;
-        cambios.config = { ...actual.data.config, tabla: { ...actual.data.config.tabla, reiniciar_al_publicar: true, reiniciado_en: null } };
+        const base = cambios.config || actual.data.config;
+        cambios.config = { ...base, tabla: { ...base.tabla, reiniciar_al_publicar: true, reiniciado_en: null } };
     }
 
     const r = await repo.actualizarSorteoSi(usuarioId, id, { version: Number(version), estados: ["borrador"] }, cambios);
@@ -416,7 +435,7 @@ function resumenPublicacion(sorteo) {
 // capturarTabla (la de «Compartir»). Se valida como la de «Compartir» ANTES
 // de tocar nada y se envía tal cual: no se genera otra. Sin `imagen` (panel
 // anterior) el publicador la captura con la misma función en Chromium.
-async function publicarAhora(usuarioId, id, { version, confirmacion, reinicio, imagen } = {}) {
+async function publicarAhora(usuarioId, id, { version, confirmacion, reinicio, imagen, captura } = {}) {
 
     if (confirmacion !== true) return falla("confirmacion_requerida");
 
@@ -465,9 +484,14 @@ async function publicarAhora(usuarioId, id, { version, confirmacion, reinicio, i
         publicar_en: ahora.toISOString()
     };
 
+    // Los reintentos de este sorteo se capturan en el servidor: con el mismo perfil.
+    const perfil = perfilCapturaValido(captura);
+    if (perfil) cambios.config = { ...actual.data.config, captura: perfil };
+
     if (previa.data.reinicio?.al_publicar) {
         if (reinicio?.confirmado !== true) return falla("confirmacion_reinicio_requerida");
-        cambios.config = { ...actual.data.config, tabla: { ...actual.data.config.tabla, reiniciar_al_publicar: true, reiniciado_en: null } };
+        const base = cambios.config || actual.data.config;
+        cambios.config = { ...base, tabla: { ...base.tabla, reiniciar_al_publicar: true, reiniciado_en: null } };
     }
 
     const r = await repo.actualizarSorteoSi(usuarioId, id, { version: Number(version), estados: ["borrador"] }, cambios);
@@ -520,6 +544,7 @@ async function probarImagen(usuarioId, id) {
     const datos = {
         numerosDisponibles: d.numeros.numerosDisponibles,
         numerosOcupados: d.numeros.numerosOcupados,
+        numerosPagados: d.numeros.numerosPagados,
         cifras: s.data.cifras,
         cantidad: d.cantidad_numeros,
         diseno: normalizarConfigDiseno(d.diseno?.config ?? null)
@@ -761,5 +786,6 @@ module.exports = {
     listarCuentas: repo.listarCuentas,
     crearCuenta,
     actualizarCuenta,
+    perfilCapturaValido,
     _reloj: reloj
 };

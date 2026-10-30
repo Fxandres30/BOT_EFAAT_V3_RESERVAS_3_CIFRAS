@@ -13,12 +13,22 @@ function validarReservas(reservas = [], usuario) {
     const ocupadosPorOtros = [];
     const yaSonMios = [];
     const pagados = [];
+    // Bloqueados o en proceso: no se pueden reservar, pero no son «de otra
+    // persona» (la reacción ❌ no aplica). También se informan al cliente.
+    const noDisponibles = [];
 
     for (const reserva of reservas) {
 
         // Número libre
         if (reserva.estado === "libre") {
             disponibles.push(reserva);
+            continue;
+        }
+
+        // Ocupado por OTRO sorteo en esta cuadrícula: no se puede reservar,
+        // aunque sea del mismo cliente (no es un número suyo de este sorteo).
+        if (reserva.deOtroSorteo) {
+            ocupadosPorOtros.push(reserva);
             continue;
         }
 
@@ -41,6 +51,8 @@ function validarReservas(reservas = [], usuario) {
             continue;
         }
 
+        noDisponibles.push(reserva);
+
     }
 
     return {
@@ -49,6 +61,7 @@ function validarReservas(reservas = [], usuario) {
         ocupadosPorOtros,
         yaSonMios,
         pagados,
+        noDisponibles,
 
         libres: disponibles.length,
         ocupados: ocupadosPorOtros.length,

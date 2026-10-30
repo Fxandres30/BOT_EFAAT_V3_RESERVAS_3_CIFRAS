@@ -15,7 +15,9 @@
 //                     eventos_bot se reutiliza);
 //       cancelado     se canceló sin llegar a ningún grupo;
 //       sin_publicar  falló o su cierre pasó sin publicarse.
-//   «Publicado» no significa «terminado»: lo decide eventos_bot.
+//   «Publicado» no significa «terminado»: lo decide eventos_bot. Y una fila
+//   de eventos_bot no significa «publicado»: la prueba del anuncio es el
+//   grupo publicado o su registro de envío (automation_actions).
 //
 // Cancelar, eliminar y archivar (siempre con el usuario del token):
 //   - cancelar: detiene lo PENDIENTE. Nada publicado se deshace, ninguna
@@ -40,7 +42,7 @@ const repo = require("./repo");
 const reservasAnticipadas = require("./reservasAnticipadas");
 const { fechaSorteoDe, instanteBogota } = require("./validar");
 const { legible } = require("./disponibilidad");
-const { MAX_INTENTOS_AUTOMATICOS } = require("./publicador");
+const { MAX_INTENTOS_AUTOMATICOS, sinPromesaDeReintento, ERROR_IMAGEN } = require("./publicador");
 
 const ESTADOS_EDITABLES = ["borrador", "programado"];
 // Estados de una programación que nunca pasó a publicarse.
@@ -124,14 +126,26 @@ function propiosDe(sorteo, grupos, ctx) {
 
 // -------------------------------------------------------------- estados ---
 
-function estadoOperativo(sorteo, grupos, eventos, ahora) {
+// envios: registro de envío de ESTA programación (null = no se pudo leer).
+function estadoOperativo(sorteo, grupos, eventos, envios, ahora) {
 
     const fecha = fechaSorteoDe(sorteo.config, sorteo.publicar_en);
     const cierre = sorteo.config?.hora_cierre ? instanteBogota(fecha, sorteo.config.hora_cierre) : null;
     const juego = sorteo.config?.hora_fin ? instanteBogota(fecha, sorteo.config.hora_fin) : null;
 
     const abiertos = eventos.filter(abierto);
-    const sePublico = eventos.length > 0 || grupos.some(g => g.estado === "publicado" || g.publicado_en);
+    const sePublico = grupos.some(g => g.estado === "publicado" || g.publicado_en) || (envios || []).length > 0;
+
+    if (!sePublico && eventos.length && !envios) {
+        return { estado: "desconocido", reservas: null, detalle: "No se pudo comprobar si el anuncio se envió." };
+    }
+
+    if (!sePublico && abiertos.length) {
+        if (grupos.some(g => ["pendiente", "publicando", "fallido"].includes(g.estado))) {
+            return { estado: "pendiente", reservas: "abiertas", detalle: "El evento está creado, pero el anuncio todavía no se envió." };
+        }
+        return { estado: "sin_publicar", reservas: "abiertas", detalle: `El evento sigue abierto en ${abiertos.length} grupo(s), pero el anuncio no se envió.` };
+    }
 
     if (abiertos.length) {
         return { estado: "en_curso", reservas: "abiertas", detalle: `Reservas abiertas en ${abiertos.length} grupo(s)${cierre ? `; cierran el ${legible(cierre)}` : ""}.` };
@@ -162,9 +176,37 @@ function estadoOperativo(sorteo, grupos, eventos, ahora) {
 
 }
 
-// Qué pasó con UN grupo, en palabras, y si necesita al administrador.
-function explicarGrupo(g, sorteo, eventosPorId) {
+// En qué punto real está la publicación de UN grupo. «Imagen generada» se
+// deduce: sin columna propia, solo se afirma si hay evento (se crea después
+// de la imagen) y el último error no es de imagen.
+function etapaPublicacion(g, envios) {
 
+    const confirmado = g.estado === "publicado" || (envios || []).some(e => e.estado === "ok");
+    const enviado = confirmado || (envios || []).length > 0;
+    const evento = Boolean(g.evento_bot_id);
+    const imagen = enviado || (evento && !String(g.ultimo_error || "").startsWith(ERROR_IMAGEN));
+
+    const etapa = confirmado ? "publicacion_confirmada"
+        : enviado ? "publicacion_enviada"
+            : g.estado === "requiere_revision" ? "requiere_intervencion"
+                : g.estado === "fallido" ? "publicacion_fallida"
+                    : evento ? "evento_creado"
+                        : g.estado;
+
+    const resumen = [
+        imagen && "Imagen generada",
+        evento && "Evento creado",
+        confirmado ? "Publicación confirmada" : enviado ? "Envío sin confirmar" : envios ? "Anuncio no enviado" : "Envío sin comprobar"
+    ].filter(Boolean).join(" · ");
+
+    return { etapa, resumen };
+
+}
+
+// Qué pasó con UN grupo, en palabras, y si necesita al administrador.
+function explicarGrupo(g, sorteo, eventosPorId, enviosSorteo) {
+
+    const enviosGrupo = enviosSorteo ? enviosSorteo.filter(e => String(e.clave_idempotencia).endsWith(`:${g.grupo_id}`)) : null;
     const ev = g.evento_bot_id ? eventosPorId.get(g.evento_bot_id) : null;
     const evento = !g.evento_bot_id ? "sin_evento" : !ev ? "reutilizado" : abierto(ev) ? "abierto" : "cerrado";
     const intentos = Number(g.intentos) || 0;
@@ -188,8 +230,8 @@ function explicarGrupo(g, sorteo, eventosPorId) {
             explicacion = `Falló el intento ${intentos} de ${MAX_INTENTOS_AUTOMATICOS}; se reintentará solo. ${g.ultimo_error || ""}`.trim();
             break;
         case "requiere_revision":
-            explicacion = g.ultimo_error || "Requiere revisión.";
-            intervencion = g.evento_bot_id
+            explicacion = g.ultimo_error ? sinPromesaDeReintento(g.ultimo_error) : "Requiere revisión.";
+            intervencion = !enviosGrupo || enviosGrupo.length
                 ? "Revisa el grupo en WhatsApp: el anuncio pudo haber llegado. Si no llegó, reintenta; si llegó, no hagas nada (el sorteo sigue ahí)."
                 : "No se publicó (ver el motivo). Reintenta cuando se resuelva o cancela la programación.";
             break;
@@ -218,6 +260,7 @@ function explicarGrupo(g, sorteo, eventosPorId) {
         actualizado_en: g.actualizado_en || null,
         ultimo_error: g.ultimo_error || null,
         evento,
+        ...etapaPublicacion(g, enviosGrupo),
         explicacion,
         intervencion,
         puede_reintentar: g.estado === "requiere_revision" && sorteo.estado !== "cancelado" && !sorteo.archivado_en
@@ -259,9 +302,13 @@ function calcularImpacto(sorteo, grupos, eventos, numeros, ctx, ahora) {
 
 // La clave de cada anuncio lleva sorteo-<id>-publicacion-<n>. 'ok' = llegó a
 // WhatsApp; cualquier otro estado = se intentó y no se sabe si llegó.
+function enviosPropios(sorteo, envios) {
+    return envios ? envios.filter(e => String(e.clave_idempotencia).includes(`:sorteo-${sorteo.id}-publicacion-`)) : null;
+}
+
 function enviosDe(sorteo, envios) {
-    if (!envios) return null;
-    const propios = envios.filter(e => String(e.clave_idempotencia).includes(`:sorteo-${sorteo.id}-publicacion-`));
+    const propios = enviosPropios(sorteo, envios);
+    if (!propios) return null;
     const confirmados = propios.filter(e => e.estado === "ok").length;
     return { confirmados, inciertos: propios.length - confirmados };
 }
@@ -333,14 +380,15 @@ function gestionDe(sorteo, ctx, ahora) {
     const grupos = ctx.grupos.filter(g => g.sorteo_id === sorteo.id);
     const { eventos, numeros } = propiosDe(sorteo, grupos, ctx);
     const eventosPorId = new Map(eventos.map(e => [e.id, e]));
+    const envios = enviosPropios(sorteo, ctx.envios);
 
     const operativo = ctx.ok
-        ? estadoOperativo(sorteo, grupos, eventos, ahora)
+        ? estadoOperativo(sorteo, grupos, eventos, envios, ahora)
         : { estado: "desconocido", reservas: null, detalle: "No se pudo leer el estado del sorteo en los grupos." };
     const impacto = calcularImpacto(sorteo, grupos, eventos, numeros, ctx, ahora);
     const eliminacion = evaluarEliminacion(sorteo, impacto);
     const acciones = accionesPermitidas(sorteo, grupos, operativo, eliminacion);
-    const detalleGrupos = grupos.map(g => explicarGrupo(g, sorteo, eventosPorId));
+    const detalleGrupos = grupos.map(g => explicarGrupo(g, sorteo, eventosPorId, envios));
 
     // Si no se puede borrar, qué hacer en su lugar.
     const alternativa = eliminacion.posible ? null : acciones.cancelar ? "cancelar" : acciones.archivar ? "archivar" : null;

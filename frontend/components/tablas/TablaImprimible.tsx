@@ -14,6 +14,8 @@ const sinAccion = async (): Promise<Resultado> => ({ ok: false, motivo: "solo_le
 interface Props {
     numerosDisponibles: string[];
     numerosOcupados: string[];
+    /** Subconjunto de numerosOcupados que se pinta como «Pagado». */
+    numerosPagados?: string[];
     diseno?: TablaDisenoConfig | null;
     /** Solo en /tablas/imprimir: la página que abre el Chromium del servidor. */
     imprimir?: boolean;
@@ -21,28 +23,25 @@ interface Props {
     contenedorRef?: Ref<HTMLDivElement>;
     /** La captura ya se puede pedir (Chromium espera esta marca). */
     capturaLista?: boolean;
+    /** Ancho de la columna de Tablas en la que se captura (perfilCaptura). */
+    anchoContenido?: number | null;
 }
-
-// Ancho en el que se captura fuera del panel de Tablas: la ventana del
-// Chromium del servidor (backend/services/compartirTabla.js, ANCHO_VENTANA)
-// y el contenedor oculto de la vista previa. Con él la cuadrícula tiene el
-// mismo ancho que en Tablas (max-w-2xl) y la imagen sale igual.
-export const ANCHO_IMPRESION = 900;
 
 // LA tabla que se comparte por WhatsApp. Única implementación, usada por la
 // vista de impresión que captura Puppeteer (app/tablas/imprimir/[precio]) y
 // por la vista previa de Sorteos programados: mismos datos (número + libre u
 // ocupado, nunca datos personales), mismo componente Grid en modo limpio y
 // mismo diseño. Sin diseño: el de por defecto.
-export default function TablaImprimible({ numerosDisponibles, numerosOcupados, diseno, imprimir = false, contenedorRef, capturaLista = false }: Props) {
+export default function TablaImprimible({ numerosDisponibles, numerosOcupados, numerosPagados, diseno, imprimir = false, contenedorRef, capturaLista = false, anchoContenido }: Props) {
 
     const config = diseno || DEFAULT_TABLA_DISENO_CONFIG;
-    const numeros = construirNumerosParaImprimir(numerosDisponibles, numerosOcupados);
+    const numeros = construirNumerosParaImprimir(numerosDisponibles, numerosOcupados, numerosPagados);
 
     return (
 
         <div
-            style={{ background: config.theme.pageBg, padding: 24 }}
+            // Para capturar, la tarjeta ocupa la columna como en Tablas: sin margen propio.
+            style={contenedorRef ? { background: config.theme.pageBg, width: anchoContenido ?? undefined } : { background: config.theme.pageBg, padding: 24 }}
             {...(imprimir ? { "data-tabla-imprimir": "" } : {})}
             {...(imprimir && capturaLista ? { "data-captura-lista": "" } : {})}
         >
@@ -68,10 +67,10 @@ export default function TablaImprimible({ numerosDisponibles, numerosOcupados, d
 
 }
 
-// Solo número + estado real (libre/ocupado) — el resto de campos de
+// Solo número + estado real (libre/reservado/pagado) — el resto de campos de
 // NumeroReserva quedan null a propósito: esta vista nunca necesita ni
 // muestra datos personales del cliente.
-export function construirNumerosParaImprimir(disponibles: string[], ocupados: string[]): NumeroReserva[] {
+export function construirNumerosParaImprimir(disponibles: string[], ocupados: string[], pagados: string[] = []): NumeroReserva[] {
 
     const base = {
         comprador: null, contacto: null, nombre: null, telefono: null, lib: null,
@@ -82,6 +81,7 @@ export function construirNumerosParaImprimir(disponibles: string[], ocupados: st
         creado_en: new Date().toISOString()
     };
 
+    const conPago = new Set(pagados);
     const filas: NumeroReserva[] = [];
     let id = 0;
 
@@ -90,7 +90,7 @@ export function construirNumerosParaImprimir(disponibles: string[], ocupados: st
     }
 
     for (const numero of ocupados) {
-        filas.push({ id: id++, numero, estado: "reservado", ...base });
+        filas.push({ id: id++, numero, estado: conPago.has(numero) ? "pagado" : "reservado", ...base });
     }
 
     return filas.sort((a, b) => a.numero.localeCompare(b.numero));

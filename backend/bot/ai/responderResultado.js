@@ -100,6 +100,9 @@ async function responderResultado(ctx) {
     // fijo de agotado, resolverConsulta.js).
     const esAgotado = resultado.agotado === true;
     const esConsultaDeEstado = !ctx.reserva && TIPOS_SIN_IA.has(resultado.tipo);
+    // Fallo técnico de la reserva: solo el mensaje fijo. Ni plantillas ni
+    // Gemini, que podrían decir que los números están ocupados.
+    const esErrorTecnico = resultado.errorTecnico === true;
 
     // Resguardo: si por cualquier motivo el tipo no fuera el de agotado, no
     // se pide ninguna plantilla (jamás las de "disponibilidad").
@@ -118,7 +121,7 @@ async function responderResultado(ctx) {
     const plantillaContradiria = Boolean(textoOtros) &&
         (resultado.estadoPago === "pago_completo" || resultado.estadoPago === "sin_saldo");
 
-    const puedeUsarPlantillas = (!esAgotado || tipoPresentacion === "disponibilidad_agotada") && !esPreguntaPuntualDePago && !plantillaContradiria;
+    const puedeUsarPlantillas = (!esAgotado || tipoPresentacion === "disponibilidad_agotada") && !esPreguntaPuntualDePago && !plantillaContradiria && !esErrorTecnico;
 
     let config = null;
     let habilitadas = [];
@@ -189,7 +192,7 @@ async function responderResultado(ctx) {
 
     }
 
-    if (!plantillaUtilizada && !esAgotado && !esConsultaDeEstado) {
+    if (!plantillaUtilizada && !esAgotado && !esConsultaDeEstado && !esErrorTecnico) {
 
         try {
 

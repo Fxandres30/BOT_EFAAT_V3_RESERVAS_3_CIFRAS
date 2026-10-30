@@ -135,7 +135,7 @@ function deps(cambios = {}) {
             supabase: { from: (t) => fake.client.from(t) },
             guardarEvento, consultarEventoDelSorteo, abrirGrupo, ejecutarUnaVez, actualizarEvento,
             puedeActuar: () => true,
-            capturarImagen: async (precio, usuarioId, eventoId) => { capturas.push({ precio, usuarioId, eventoId }); return PNG; },
+            capturarImagen: async (precio, usuarioId, eventoId, opciones) => { capturas.push({ precio, usuarioId, eventoId, disenoSorteo: opciones?.disenoSorteo }); return PNG; },
             textoParaCompartir: destinos.textoParaCompartir,
             compartirEnGrupos,
             sendMessage: async () => { throw new Error("el anuncio nunca sale como texto"); },
@@ -244,13 +244,12 @@ prueba("1. Publicar = «Compartir»: imagen + pie por compartirEnGrupos, con la 
         assert.strictEqual(grupoDe(s.id, g).ultimo_error, null);
     }
 
-    // La captura se pidió con lo que «Compartir» usa (precio, dueño, evento
-    // del sorteo): misma tabla, mismos números y el diseño del sorteo.
+    // La captura se pide ANTES del evento, con lo que «Compartir» usa
+    // (precio, dueño y diseño del sorteo): misma tabla y mismos números.
     assert.strictEqual(d.capturas.length, 2);
     for (const c of d.capturas) {
-        assert.deepStrictEqual([c.precio, c.usuarioId], [3000, A]);
-        assert.strictEqual(fake.tablas.eventos_bot.find(e => e.id === c.eventoId).identidad_evento_real, s.identidad_evento_real);
-        assert.deepStrictEqual(await datosTablaImprimir(c.usuarioId, c.precio, c.eventoId), compartir.imagen, "misma imagen que «Compartir»");
+        assert.deepStrictEqual([c.precio, c.usuarioId, c.eventoId], [3000, A, null]);
+        assert.deepStrictEqual(await datosTablaImprimir(c.usuarioId, c.precio, c.eventoId, { disenoSorteo: c.disenoSorteo }), compartir.imagen, "misma imagen que «Compartir»");
     }
     assert.deepStrictEqual(compartir.imagen.data.diseno, normalizarConfigDiseno(DISENO), "diseño guardado en el sorteo");
     assert.strictEqual(compartir.imagen.data.numerosDisponibles.length, 100, "cuadrícula de la tabla de $3.000");
@@ -306,7 +305,7 @@ prueba("4. La imagen falla siempre: tras los reintentos automáticos queda en re
     assert.strictEqual(grupoDe(s.id, "g1@g.us").estado, "requiere_revision");
     assert.match(grupoDe(s.id, "g1@g.us").ultimo_error, /imagen de la tabla/);
     assert.notStrictEqual(sorteoDb(s.id).estado, "publicado");
-    assert.strictEqual(eventosDe(s, "g1@g.us").length, 1, "una sola fila del sorteo en todos los reintentos");
+    assert.strictEqual(eventosDe(s, "g1@g.us").length, 0, "sin imagen no se crea el evento");
 });
 
 prueba("5. El grupo no se abre: no se envía ni cuenta como publicado; al reintentar, misma fila y un solo anuncio", async () => {

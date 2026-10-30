@@ -17,8 +17,11 @@ const tablaEventoRepo = require("../automation/repo/tablaEvento");
 const { disenoDelEvento } = require("../sorteos/repo");
 const { normalizarConfigDiseno } = require("../sorteos/disenoTabla");
 
+// `disenoSorteo` (opcional): config.diseno del sorteo programado que se va a
+// publicar. Permite capturar ANTES de que exista su evento, con el mismo
+// resultado que leerlo por el evento.
 // -> { ok: true, data } | { ok: false, status, error }
-async function datosTablaImprimir(usuarioId, precio, eventoId = null) {
+async function datosTablaImprimir(usuarioId, precio, eventoId = null, { disenoSorteo = null } = {}) {
 
     const config = await obtenerConfiguracionCliente(usuarioId, precio);
 
@@ -26,7 +29,7 @@ async function datosTablaImprimir(usuarioId, precio, eventoId = null) {
         return { ok: false, status: 404, error: "No existe una tabla configurada para este precio." };
     }
 
-    const { numerosDisponibles, numerosOcupados } = await tablaEventoRepo.obtenerNumeros(config.tabla, usuarioId);
+    const { numerosDisponibles, numerosOcupados, numerosPagados } = await tablaEventoRepo.obtenerNumeros(config.tabla, usuarioId);
 
     // Estilo: el guardado en el SORTEO programado de ese evento (el mismo
     // que se vio en la vista previa); si el evento no viene de un sorteo
@@ -34,7 +37,9 @@ async function datosTablaImprimir(usuarioId, precio, eventoId = null) {
     // si no es válido: null (la página usa el de por defecto).
     let diseno;
 
-    if (eventoId) {
+    if (disenoSorteo) {
+        diseno = disenoSorteo.config ?? null;
+    } else if (eventoId) {
         const r = await disenoDelEvento(usuarioId, eventoId);
         if (r.ok && r.data) diseno = r.data.config ?? null;
     }
@@ -54,6 +59,7 @@ async function datosTablaImprimir(usuarioId, precio, eventoId = null) {
         data: {
             numerosDisponibles,
             numerosOcupados,
+            numerosPagados,
             cifras: config.cifras,
             cantidad: config.cantidad,
             diseno: normalizarConfigDiseno(diseno)

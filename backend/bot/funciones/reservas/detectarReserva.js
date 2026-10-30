@@ -68,108 +68,109 @@ async function detectarReserva({
 
     const reservas = await consultarReservas(evento, numeros);
 
+    // No se pudo leer la tabla: nunca se afirma que están ocupados.
+    if (!reservas) return errorTecnico();
+
     const resultado = validarReservas(
-
         reservas,
-
         usuario
-
     );
 
     // ===============================
     // Todos ya son míos
     // ===============================
-
     if (
-
         resultado.disponibles.length === 0 &&
-
         resultado.ocupadosPorOtros.length === 0 &&
-
+        resultado.noDisponibles.length === 0 &&
         resultado.yaSonMios.length > 0
-
     ) {
-
         return null;
-
     }
 
+    // En el orden en que el cliente los pidió (la base los devuelve en otro).
+    const enOrden = (lista) => {
+        const pedidos = new Set(lista.map(String));
+        return numeros.filter(n => pedidos.has(n));
+    };
+
+    const ocupadosDe = (r) => [...r.ocupadosPorOtros, ...r.noDisponibles].map(n => n.numero);
+
     // ===============================
-    // Todos ocupados
+    // Ninguno disponible
     // ===============================
+    if (resultado.disponibles.length === 0) {
 
-    if (
+        const ocupados = enOrden(ocupadosDe(resultado));
 
-        resultado.disponibles.length === 0 &&
+        if (ocupados.length === 0) return errorTecnico();
 
-        resultado.ocupadosPorOtros.length > 0
-
-    ) {
-
-        return {
-
-            ok: false,
-
-            mensaje:
-`❌ Los números solicitados ya están ocupados.
-
-🔒 Ocupados: ${formatearListaNumeros(resultado.ocupadosPorOtros.map(n => n.numero))}`,
-
-            reaccion: decidirReaccion({ solicitados: numeros, resultado })
-
-        };
+        return todosOcupados(ocupados, decidirReaccion({ solicitados: numeros, resultado }));
 
     }
 
     // ===============================
     // Reservar disponibles
     // ===============================
-
-    const reservados =
-        resultado.disponibles.map(n => n.numero);
+    const candidatos = enOrden(resultado.disponibles.map(n => n.numero));
 
     const reserva = await reservarNumeros({
-
         evento,
-
-        numeros: reservados,
-
+        numeros: candidatos,
         usuario,
-
         comprador: usuario?.nombre,
-
         contacto: usuario?.telefono,
-
         lib
+    }) || [];
 
-    });
+    // Lo reservado es lo que el UPDATE devolvió, no lo que se leyó libre:
+    // otro pudo tomar un número entre la lectura y la escritura.
+    const hechos = new Set(reserva.map(r => String(r.numero)));
+    const perdidos = candidatos.filter(n => !hechos.has(n));
 
-    if (!reserva || reserva.length === 0) {
+    let ocupadosEnCarrera = [];
+    let clasificacion = resultado;
 
-        return {
+    if (perdidos.length) {
 
-            ok: false,
+        const despues = await consultarReservas(evento, perdidos);
+        const relectura = despues ? validarReservas(despues, usuario) : null;
 
-            mensaje:
-"❌ No fue posible realizar la reserva. Intenta nuevamente."
+        // Sin relectura, o sin reservar nada y sin que nadie los ocupara: fue
+        // un fallo al guardar, no una ocupación.
+        if (relectura) {
+            ocupadosEnCarrera = ocupadosDe(relectura);
+            clasificacion = {
+                ...resultado,
+                disponibles: resultado.disponibles.filter(n => hechos.has(String(n.numero))),
+                ocupadosPorOtros: [...resultado.ocupadosPorOtros, ...relectura.ocupadosPorOtros],
+                noDisponibles: [...resultado.noDisponibles, ...relectura.noDisponibles]
+            };
+        }
 
-        };
+        if (hechos.size === 0) {
+
+            if (ocupadosEnCarrera.length === 0) return errorTecnico();
+
+            return todosOcupados(enOrden(ocupadosDe(clasificacion)), decidirReaccion({ solicitados: numeros, resultado: clasificacion }));
+
+        }
 
     }
 
     await actualizarEvento(evento);
 
-    const ocupados =
-        resultado.ocupadosPorOtros.map(n => n.numero);
+    const reservados = enOrden([...hechos]);
+    const ocupados = enOrden(ocupadosDe(clasificacion));
 
-    let mensaje = "✅ Reserva realizada correctamente.\n\n";
+    const parcial = ocupados.length > 0;
+
+    let mensaje = parcial ? "⚠️ Reserva parcial.\n\n" : "✅ Reserva realizada correctamente.\n\n";
 
     mensaje += `🎟️ Reservados: ${formatearListaNumeros(reservados)}`;
 
-    if (ocupados.length) {
-
-        mensaje += `\n\n⚠️ Ya estaban ocupados: ${formatearListaNumeros(ocupados)}`;
-
+    if (parcial) {
+        mensaje += `\n\n🔒 No se reservaron porque ya están ocupados: ${formatearListaNumeros(ocupados)}\n\nElige otros números.`;
     }
 
     return {
@@ -184,10 +185,34 @@ async function detectarReserva({
 
         usuario,
 
-        reaccion: decidirReaccion({ solicitados: numeros, resultado, reservados: reserva.map(r => r.numero) })
+        reaccion: decidirReaccion({ solicitados: numeros, resultado: clasificacion, reservados })
 
     };
 
+}
+
+// Ninguno se pudo reservar porque están ocupados.
+function todosOcupados(ocupados, reaccion) {
+    return {
+        ok: false,
+        ocupados,
+        mensaje:
+`❌ No se pudo reservar: ${ocupados.length === 1 ? "ese número ya está ocupado" : "esos números ya están ocupados"}.
+🔒 Ocupados: ${formatearListaNumeros(ocupados)}
+
+Elige otros números.`,
+        reaccion
+    };
+}
+
+// Fallo técnico: no se sabe nada de los números, así que no se dice que
+// estén ocupados ni se usan esas plantillas (responderResultado.js).
+function errorTecnico() {
+    return {
+        ok: false,
+        errorTecnico: true,
+        mensaje: "❌ No fue posible procesar tu reserva. Intenta nuevamente."
+    };
 }
 
 module.exports = {

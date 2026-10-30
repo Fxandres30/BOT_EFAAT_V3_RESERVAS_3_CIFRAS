@@ -226,9 +226,8 @@ prueba("3. La foto va adjunta: imagen de la tabla del sorteo con el anuncio como
     assert.strictEqual(enviados[0].tipo, "imagen");
     assert.strictEqual(enviados[0].image, PNG, "la imagen capturada");
     assert.ok(enviados[0].texto.includes("Antioqueñita Día") && enviados[0].texto.includes("$3.000") && enviados[0].texto.includes("Nequi A"), enviados[0].texto);
-    const c = capturas.find(x => x.eventoId);
-    assert.deepStrictEqual([c.precio, c.usuarioId], [3000, A]);
-    assert.strictEqual(fake.tablas.eventos_bot.find(e => e.id === c.eventoId).identidad_evento_real, s.identidad_evento_real, "imagen del MISMO sorteo que el texto");
+    const c = capturas[capturas.length - 1];
+    assert.deepStrictEqual([c.precio, c.usuarioId, c.eventoId], [3000, A, null], "la imagen se genera antes del evento, para el sorteo");
     assert.ok(accionesCompartir().some(a => a.clave_idempotencia === `TABLA_COMPARTIR:${A}:3000:sorteo-${s.id}-publicacion-0:g1@g.us` && a.estado === "ok"));
 });
 

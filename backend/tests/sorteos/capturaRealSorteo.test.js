@@ -189,12 +189,10 @@ async function contarColores(png, colores) {
         assert.ok(enviados[0].caption.includes("Antioqueñita Día"), "con el anuncio como pie");
     });
 
-    comprobar("captura pedida para el precio, el dueño y el evento del sorteo", () => {
-        const [precio, usuarioId, eventoId] = capturas[0];
-        const ev = fake.tablas.eventos_bot.find(e => e.id === eventoId);
-        assert.deepStrictEqual([precio, usuarioId], [3000, A]);
-        assert.strictEqual(ev.identidad_evento_real, s.identidad_evento_real);
-        assert.strictEqual(ev.tabla, s.tabla);
+    comprobar("captura pedida para el precio, el dueño y el diseño del sorteo, antes de su evento", () => {
+        const [precio, usuarioId, eventoId, opciones] = capturas[0];
+        assert.deepStrictEqual([precio, usuarioId, eventoId], [3000, A, null]);
+        assert.ok(opciones.disenoSorteo, "diseño guardado en el sorteo");
     });
 
     if (enviados[0]?.image) {

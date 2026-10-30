@@ -1,6 +1,70 @@
 const supabase = require("../../../lib/supabase");
 const { groupMetadata } = require("../../../services/baileys/groupQueue");
 const { crearIdentidadEventoReal, fechaEventoHoy } = require("./identidadEventoReal");
+const { finDelEvento } = require("../../../shared/eventos/estadosGestion");
+
+// Datos del sorteo: los únicos que una detección o una publicación
+// sincronizan sobre una fila existente, y solo si cambiaron. El ciclo de
+// vida (estado, activo, abierto, cierre_*) tiene dueños propios: creación,
+// cierre, panel, «Reabrir» y la confirmación de apertura de WhatsApp.
+const CAMPOS_DE_ANUNCIO = [
+    "nombre_evento", "hora_fin", "hora_cierre", "fecha_evento", "identidad_evento_real",
+    "valor", "premios", "tabla", "cifras", "cantidad_numeros"
+];
+const CAMPOS_DE_GRUPO = ["grupo_nombre", "participantes", "descripcion_grupo"];
+const CAMPOS_DE_SESION = ["usuario_id", "session_id", "telefono_bot"];
+
+const CAMPOS_NUMERICOS = new Set(["valor", "cifras", "cantidad_numeros", "participantes"]);
+
+// JSON con las claves ordenadas: jsonb no conserva su orden.
+function jsonEstable(valor) {
+
+    if (typeof valor === "string") {
+        try { return jsonEstable(JSON.parse(valor)); } catch { return JSON.stringify(valor); }
+    }
+
+    if (Array.isArray(valor)) return `[${valor.map(jsonEstable).join(",")}]`;
+
+    if (valor && typeof valor === "object") {
+        return `{${Object.keys(valor).sort().map(k => `${JSON.stringify(k)}:${jsonEstable(valor[k])}`).join(",")}}`;
+    }
+
+    return JSON.stringify(valor ?? null);
+
+}
+
+function normalizar(campo, valor) {
+
+    if (valor === null || valor === undefined || valor === "") return null;
+
+    if (campo === "premios") return jsonEstable(valor);
+    if (CAMPOS_NUMERICOS.has(campo)) return Number(valor);
+    if (campo === "fecha_evento") return String(valor).slice(0, 10);
+
+    if (campo === "hora_fin" || campo === "hora_cierre") {
+        const hora = /^(\d{1,2}):(\d{2})/.exec(String(valor).trim());
+        return hora ? `${hora[1].padStart(2, "0")}:${hora[2]}` : String(valor).trim();
+    }
+
+    return String(valor).trim();
+
+}
+
+// Solo lo que de verdad cambió. Lo que no se pudo leer (grupo sin metadata,
+// socket sin contexto) no se compara: nunca borra un dato bueno.
+function camposCambiados(anterior, datos, { grupoLeido }) {
+
+    const campos = [
+        ...CAMPOS_DE_ANUNCIO,
+        ...(grupoLeido ? CAMPOS_DE_GRUPO : []),
+        ...CAMPOS_DE_SESION.filter(c => datos[c] !== null)
+    ];
+
+    return Object.fromEntries(campos
+        .filter(c => datos[c] !== undefined && normalizar(c, datos[c]) !== normalizar(c, anterior[c]))
+        .map(c => [c, datos[c]]));
+
+}
 
 async function guardarEvento({
 
@@ -25,6 +89,7 @@ async function guardarEvento({
     let grupoNombre = null;
     let participantes = 0;
     let descripcionGrupo = null;
+    let grupoLeido = false;
 
     try {
 
@@ -36,6 +101,7 @@ async function guardarEvento({
         grupoNombre = metadata.subject;
         participantes = metadata.participants?.length || 0;
         descripcionGrupo = metadata.desc || null;
+        grupoLeido = true;
 
     } catch (err) {
 
@@ -81,19 +147,11 @@ async function guardarEvento({
 
         identidad_evento_real: identidadEventoReal,
 
-        estado: "abierto",
-
-         // 👇 AGREGA ESTO
-    activo: true,
-    abierto: true,
-
         valor: evento.valor,
         premios: evento.premios,
         tabla: evento.tabla,
         cifras: evento.cifras,
-        cantidad_numeros: evento.cantidad_numeros,
-
-        actualizado_en: new Date()
+        cantidad_numeros: evento.cantidad_numeros
 
     };
 
@@ -117,14 +175,38 @@ async function guardarEvento({
 
     if (eventoAnterior) {
 
-        console.log(`♻ Actualizando: ${eventoAnterior.nombre_evento} → ${evento.nombre}`);
+        // Una fila terminada nunca vuelve a la vida por aquí: eso es «Reabrir».
+        const fin = finDelEvento(eventoAnterior);
 
+        if (fin) {
+
+            console.log(`⛔ Evento ${eventoAnterior.id} ${fin}: no se actualiza ni se reactiva.`);
+
+            return null;
+
+        }
+
+        const cambios = camposCambiados(eventoAnterior, datos, { grupoLeido });
+
+        if (Object.keys(cambios).length === 0) {
+
+            console.log(`⏭️ Sin cambios: ${eventoAnterior.nombre_evento}`);
+
+            return eventoAnterior;
+
+        }
+
+        console.log(`♻ Actualizando: ${eventoAnterior.nombre_evento} → ${evento.nombre} (${Object.keys(cambios).join(", ")})`);
+
+        cambios.actualizado_en = new Date();
+
+        // Condicionado: si se cerró después de leerla, no se reabre.
         let { data, error } = await supabase
             .from("eventos_bot")
-            .update(datos)
+            .update(cambios)
             .eq("id", eventoAnterior.id)
-            .select()
-            .single();
+            .eq("activo", true)
+            .select();
 
         // Red de seguridad de despliegue: si la migración 015 (columna
         // identidad_evento_real) todavía no se aplicó en Supabase, Postgres
@@ -136,14 +218,14 @@ async function guardarEvento({
 
             console.warn("⚠ La columna identidad_evento_real todavía no existe en Supabase (falta aplicar supabase_migrations/015_identidad_evento_real.sql) — guardando el evento sin ella por ahora.");
 
-            const { identidad_evento_real, ...datosSinIdentidad } = datos;
+            const { identidad_evento_real, ...cambiosSinIdentidad } = cambios;
 
             const reintento = await supabase
                 .from("eventos_bot")
-                .update(datosSinIdentidad)
+                .update(cambiosSinIdentidad)
                 .eq("id", eventoAnterior.id)
-                .select()
-                .single();
+                .eq("activo", true)
+                .select();
 
             data = reintento.data;
             error = reintento.error;
@@ -159,9 +241,17 @@ async function guardarEvento({
 
         }
 
+        if (!data?.length) {
+
+            console.log(`⛔ Evento ${eventoAnterior.id}: dejó de estar activo mientras se guardaba; no se reactiva.`);
+
+            return null;
+
+        }
+
         console.log("✅ Evento actualizado correctamente");
 
-        return data;
+        return data[0];
 
     }
 
@@ -187,7 +277,11 @@ async function guardarEvento({
 
         ...datos,
 
+        estado: "abierto",
+
         creado_en: new Date(),
+
+        actualizado_en: new Date(),
 
         reservados: 0,
 

@@ -89,6 +89,32 @@ prueba("fallido aún por jugarse -> REQUIERE REVISIÓN; ya jugado -> no", () => 
     assert.deepStrictEqual(estados(calc({ programados: [viejo] })), ["sin_sorteo"]);
 });
 
+prueba("programado o publicando con el cierre vencido -> no siguen como programados", () => {
+    const vencido = { publicar_en: "2026-10-22T10:00:00-05:00", config: { fecha_sorteo: "2026-10-22", hora_fin: "23:00", hora_cierre: "22:30" } };
+    assert.deepStrictEqual(estados(calc({ programados: [sorteo(vencido)] })), ["sin_sorteo"]);
+    assert.deepStrictEqual(estados(calc({ programados: [sorteo({ ...vencido, estado: "publicando" })] })), ["sin_sorteo"]);
+});
+
+prueba("cierre de reservas pasado, antes de jugarse -> fallido ya no pide revisión", () => {
+    const r = calc({ programados: [sorteo({ estado: "fallido", config: { fecha_sorteo: "2026-10-23", hora_fin: "16:00", hora_cierre: "14:30" } })] });
+    assert.deepStrictEqual(estados(r), ["sin_sorteo"]);
+});
+
+prueba("el estado operativo real manda aunque la hora aún no haya pasado", () => {
+    const con = (estado, reservas, base = "programado") => sorteo({ estado: base, gestion: { operativo: { estado, reservas, detalle: "" } } });
+    assert.deepStrictEqual(estados(calc({ programados: [con("terminado", "cerradas")] })), ["sin_sorteo"]);
+    assert.deepStrictEqual(estados(calc({ programados: [con("cancelado", null)] })), ["sin_sorteo"]);
+    assert.deepStrictEqual(estados(calc({ programados: [con("en_curso", "cerradas", "fallido")] })), ["sin_sorteo"]);
+    assert.deepStrictEqual(estados(calc({ programados: [con("pendiente", null)] })), ["programado"]);
+    assert.deepStrictEqual(estados(calc({ programados: [con("sin_publicar", null, "fallido")] })), ["revision"]);
+    assert.deepStrictEqual(estados(calc({ programados: [con("desconocido", null)] })), ["programado"]);
+});
+
+prueba("sin hora registrada no se da por terminado", () => {
+    const r = calc({ programados: [sorteo({ publicar_en: "2026-10-20T10:00:00-05:00", config: { hora_fin: null } })] });
+    assert.deepStrictEqual(estados(r), ["programado"]);
+});
+
 prueba("publicado parcial con su evento activo -> activo con aviso, sin duplicar", () => {
     const r = calc({ activos: [activo({ sorteo_programado_id: "s1" })], programados: [sorteo({ estado: "publicado_parcial" })] });
     assert.deepStrictEqual(estados(r), ["activo"]);

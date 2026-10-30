@@ -192,6 +192,8 @@ export async function procesarOperacion({ operacion, incluidos, enviar, datos = 
     solicitudLote: string;
 }): Promise<ResultadoOperacion> {
 
+    if (incluidos.length === 0) return { resultados: [], hechos: 0, sinCambio: 0, omitidos: 0, errores: 0 };
+
     const r = await enviar(cuerpoDelLote(operacion, incluidos, datos, solicitudLote));
 
     if (!r.ok) {

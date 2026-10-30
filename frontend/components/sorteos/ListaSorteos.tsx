@@ -103,7 +103,8 @@ export default function ListaSorteos({ sorteos, onVistaPrevia, onEditar, onDetal
                                         <Badge tone={etiqueta.tono} size="sm">{etiqueta.texto}</Badge>
                                         {gr.nombre || gr.grupo_id}
                                         {gr.intentos > 1 && <span className={styles.ayuda}>{gr.intentos} intentos</span>}
-                                        {gr.estado !== "publicado" && gr.estado !== "pendiente" && gr.ultimo_error && <span className={styles.error}>{gr.ultimo_error}</span>}
+                                        {gr.resumen && gr.estado !== "pendiente" && <span className={styles.ayuda}>{gr.resumen}</span>}
+                                        {gr.estado !== "publicado" && gr.estado !== "pendiente" && gr.ultimo_error && <span className={styles.error}>{gr.explicacion}</span>}
                                         {gr.en_espera && <span className={styles.ayuda}>{gr.explicacion}</span>}
                                         {gr.intervencion && <span className={styles.error}>{gr.intervencion}</span>}
                                         {gr.puede_reintentar && (
