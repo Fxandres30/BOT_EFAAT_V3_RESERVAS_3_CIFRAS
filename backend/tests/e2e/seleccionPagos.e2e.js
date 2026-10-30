@@ -108,8 +108,16 @@ async function main() {
 
     const entorno = await arrancarEntorno({
         montarBackend: (app) => {
-            // Error parcial controlado: el pago del 61 falla en el servidor.
-            app.post("/tablas/5000/numeros/61/pagar", (req, res) => res.status(500).json({ ok: false, motivo: "error_guardar", mensaje: "Fallo simulado del servidor." }));
+            // Error parcial controlado: el pago del 61 falla en el servidor;
+            // el resto del lote se procesa con la ruta real.
+            app.post("/tablas/5000/lote", (req, res, next) => {
+                if (req.body?.accion === "pagar" && req.body.numeros?.includes("61")) {
+                    req.body.numeros = req.body.numeros.filter(n => n !== "61");
+                    const responder = res.json.bind(res);
+                    res.json = (c) => responder({ ...c, errores: (c.errores || 0) + 1, resultados: [...c.resultados, { numero: "61", estado: "error", codigo: "error_guardar", mensaje: "Fallo simulado del servidor." }] });
+                }
+                next();
+            });
             app.use("/tablas", require(path.join(RAIZ, "routes/tablas.js")));
         }
     });

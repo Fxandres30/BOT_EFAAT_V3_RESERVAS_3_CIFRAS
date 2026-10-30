@@ -286,7 +286,7 @@ prueba("6. eliminación segura sin actividad (borrador y programada): se borra l
         assert.strictEqual(fake.tablas.sorteos_programados_grupos.filter(x => x.sorteo_id === s.id).length, 0);
         const h = historial(s.id);
         assert.deepStrictEqual([h.length, h[0].accion, h[0].resultado], [1, "eliminar", "eliminado"]);
-        assert.deepStrictEqual(h[0].detalle.grupos, ["Grupo 1", "Grupo 2"]);
+        assert.deepStrictEqual(h[0].detalle.grupos.map(g => g.grupo), ["Grupo 1", "Grupo 2"]);
     }
     assert.strictEqual(instantanea(), antes, "ni eventos, ni números, ni actividad");
 });
@@ -307,7 +307,7 @@ prueba("7. eliminar exige confirmación y la versión vista; doble clic: el segu
     assert.strictEqual(historial(s.id).filter(h => h.resultado === "eliminado").length, 1);
 });
 
-prueba("8. una reserva anticipada que entra durante la eliminación: no se borra y la programación vuelve a 'programado'", async () => {
+prueba("8. una reserva anticipada que entra durante la eliminación: sin la segunda confirmación no se borra y la programación vuelve a 'programado'", async () => {
     escenario();
     const s = await programado();
     // La reserva entra justo antes de que la eliminación saque la
@@ -320,9 +320,10 @@ prueba("8. una reserva anticipada que entra durante la eliminación: no se borra
     };
     const e = await servicio.eliminar(A, s.id, { version: s.version, confirmacion: true });
     fake.control.antesDeEscribir = null;
-    assert.strictEqual(e.motivo, "no_eliminable", JSON.stringify(e));
-    assert.ok(/1 número\(s\) tomados/.test(e.mensaje), e.mensaje);
+    assert.strictEqual(e.motivo, "confirmacion_actividad_requerida", JSON.stringify(e));
+    assert.ok(e.avisos.some(a => /1 número\(s\) tomados/.test(a)), JSON.stringify(e.avisos));
     assert.strictEqual(sorteoDb(s.id).estado, "programado", "se deja como estaba");
+    assert.strictEqual(grupoDe(s.id, "g1@g.us").estado, "pendiente", "el grupo también");
     assert.strictEqual(sorteoDb(s.id).cancelado_en, null);
     assert.strictEqual(filasDe()[7].estado, "reservado", "la reserva no se toca");
     assert.strictEqual(historial(s.id)[0].resultado, "rechazado");
@@ -334,7 +335,7 @@ prueba("8. una reserva anticipada que entra durante la eliminación: no se borra
 
 // ------------------------------------------------- publicación parcial ---
 
-prueba("9. publicación parcial: detalle por grupo, intervención manual, no se elimina; cancelar no toca el grupo en revisión", async () => {
+prueba("9. publicación parcial: detalle por grupo, intervención manual, abierta: hay que cerrarla antes de eliminar; cancelar no toca el grupo en revisión", async () => {
     escenario();
     const s = await programado({ grupos: ["g1@g.us", "g2@g.us"] });
     await publicador.tick(sock(), { ahora: EN_PUBLICACION, deps: deps({ fallaEnvio: (jid) => jid === "g2@g.us" }).d });
@@ -352,7 +353,7 @@ prueba("9. publicación parcial: detalle por grupo, intervención manual, no se 
     assert.strictEqual(g2.puede_reintentar, true);
     assert.strictEqual(g.gestion.necesita_intervencion, true);
     assert.strictEqual(g.gestion.acciones.eliminar, false);
-    assert.ok(g.gestion.eliminacion.bloqueos.some(b => /Se publicó/.test(b)), JSON.stringify(g.gestion.eliminacion));
+    assert.ok(g.gestion.eliminacion.bloqueos.some(b => /Sigue abierto/.test(b)), JSON.stringify(g.gestion.eliminacion));
     assert.strictEqual(g.gestion.acciones.archivar, false, "en curso: no se archiva");
 
     // El grupo en revisión ya tiene evento: cancelar no lo toca, y no queda nada más pendiente.
@@ -398,7 +399,7 @@ prueba("10. parcial con un grupo EN ESPERA: cancelar cancela ese grupo, el publi
 
 // ------------------------------------------- publicado con reservas ---
 
-prueba("11. publicado con reservas: el impacto se muestra, no se elimina, nada se borra; se archiva solo al terminar", async () => {
+prueba("11. publicado con reservas: el impacto se muestra, abierto no se elimina, nada se borra; se archiva solo al terminar", async () => {
     escenario();
     const s = await publicadoConReservas({ grupos: ["g1@g.us", "g2@g.us"] });
     const antes = instantanea();
@@ -411,7 +412,7 @@ prueba("11. publicado con reservas: el impacto se muestra, no se elimina, nada s
 
     const e = await servicio.eliminar(A, s.id, { version: s.version, confirmacion: true });
     assert.strictEqual(e.motivo, "no_eliminable");
-    assert.ok(/2 reservado\(s\), 1 pagado\(s\)/.test(e.mensaje), e.mensaje);
+    assert.ok(/Sigue abierto en 2 grupo/.test(e.mensaje), e.mensaje);
     assert.strictEqual((await servicio.archivar(A, s.id, { archivar: true })).motivo, "estado_invalido", "en curso: no se archiva");
     assert.ok(sorteoDb(s.id));
     assert.strictEqual(instantanea(), antes, "ni reservas, ni pagos, ni eventos cambian");
@@ -422,7 +423,7 @@ prueba("11. publicado con reservas: el impacto se muestra, no se elimina, nada s
     const terminado = await gestionDe(s.id);
     assert.strictEqual(terminado.gestion.operativo.estado, "terminado");
     assert.strictEqual(terminado.gestion.acciones.archivar, true);
-    assert.strictEqual(terminado.gestion.eliminacion.alternativa, "archivar");
+    assert.strictEqual(terminado.gestion.acciones.eliminar, true, "ya cerrado, decide el administrador");
 
     const despuesCierre = instantanea();
     const a = await servicio.archivar(A, s.id, { archivar: true });
@@ -523,7 +524,7 @@ prueba("15. la API rechaza en el backend lo que el panel no mostraría: eliminar
         const e = await pedir("POST", `/${pub.id}/eliminar`, { cuerpo: { version: pub.version, confirmacion: true } });
         assert.strictEqual(e.status, 409);
         assert.strictEqual(e.json.motivo, "no_eliminable");
-        assert.ok(Array.isArray(e.json.bloqueos) && e.json.bloqueos.length >= 2, JSON.stringify(e.json));
+        assert.ok(Array.isArray(e.json.bloqueos) && e.json.bloqueos.length >= 1, JSON.stringify(e.json));
         const a = await pedir("POST", `/${pend.id}/archivar`, { cuerpo: { archivar: true } });
         assert.strictEqual(a.status, 409);
         const c = await pedir("POST", `/${pub.id}/cancelar`);
@@ -609,6 +610,164 @@ prueba("18. conservación: después de cancelar, rechazar eliminaciones y archiv
     assert.strictEqual(instantanea(), antes);
     assert.strictEqual(JSON.stringify({ s: sorteoDb(deB.id), g: grupoDe(deB.id, "gb@g.us"), n: filasDe(B) }), antesB);
     assert.strictEqual(filasDe().filter(f => f.estado !== "libre").length, 3);
+});
+
+// ---------------------------------- eliminar con actividad (UX-06) ---
+
+const CONFIRMADO = { confirmacion: true, confirmacion_actividad: true };
+
+// Como la programación real de producción: confirmada, su fecha pasó, 5
+// intentos por grupo fallidos, en revisión, con evento_bot_id que apuntan a
+// filas que hoy son de OTRO sorteo (la fila de eventos_bot se reutiliza).
+async function fallidaConEnlacesViejos() {
+    const s = await programado({ grupos: ["g1@g.us", "g2@g.us"] });
+    const ajeno = (id, grupo) => ({ id, usuario_id: A, grupo_id: grupo, activo: true, abierto: true, estado: "abierto", nombre_evento: "Antioqueñita Día", identidad_evento_real: "otra-identidad", valor: 1000, tabla: TABLA });
+    fake.tablas.eventos_bot.push(ajeno("ev-ajeno-1", "g1@g.us"), ajeno("ev-ajeno-2", "g2@g.us"));
+    Object.assign(sorteoDb(s.id), { estado: "fallido" });
+    ["g1@g.us", "g2@g.us"].forEach((g, i) => Object.assign(grupoDe(s.id, g), {
+        estado: "requiere_revision", intentos: 5, evento_bot_id: `ev-ajeno-${i + 1}`,
+        ultimo_error: "No se pudo generar la imagen de la tabla (Falta FRONTEND_URL); no se envió nada."
+    }));
+    return sorteoDb(s.id);
+}
+
+prueba("19. fallida con fecha pasada y 10 intentos: pide doble confirmación, se elimina y NO toca los eventos a los que apuntaban sus enlaces viejos", async () => {
+    escenario();
+    const s = await fallidaConEnlacesViejos();
+    servicio._reloj.ahora = () => TRAS_SORTEO;
+    const antes = instantanea();
+
+    const g = await gestionDe(s.id);
+    assert.strictEqual(g.gestion.acciones.eliminar, true, JSON.stringify(g.gestion.eliminacion));
+    assert.deepStrictEqual(g.gestion.eliminacion.bloqueos, []);
+    assert.strictEqual(g.gestion.eliminacion.con_actividad, true);
+    assert.ok(g.gestion.eliminacion.avisos.some(a => /10 intento/.test(a)), JSON.stringify(g.gestion.eliminacion.avisos));
+    assert.ok(!g.gestion.eliminacion.avisos.some(a => /llegó a/.test(a)), "no se envió nada");
+
+    const sinDoble = await servicio.eliminar(A, s.id, { version: s.version, confirmacion: true });
+    assert.strictEqual(sinDoble.motivo, "confirmacion_actividad_requerida", JSON.stringify(sinDoble));
+    assert.strictEqual(sorteoDb(s.id).estado, "fallido", "sin la segunda confirmación no cambia nada");
+    assert.strictEqual(grupoDe(s.id, "g1@g.us").estado, "requiere_revision");
+
+    const e = await servicio.eliminar(A, s.id, { version: s.version, ...CONFIRMADO });
+    assert.ok(e.ok, JSON.stringify(e));
+    assert.strictEqual(sorteoDb(s.id), undefined);
+    assert.strictEqual(fake.tablas.sorteos_programados_grupos.filter(x => x.sorteo_id === s.id).length, 0);
+    assert.strictEqual(instantanea(), antes, "eventos, números y actividad idénticos");
+    const h = historial(s.id).at(-1);
+    assert.deepStrictEqual([h.accion, h.resultado, h.detalle.estado_previo, h.detalle.impacto.intentos], ["eliminar", "eliminado", "fallido", 10]);
+});
+
+prueba("20. con publicaciones reales y sorteo ya cerrado: avisa que WhatsApp no se deshace, se puede eliminar; reservas, pagos, eventos y envíos intactos", async () => {
+    escenario();
+    const s = await publicadoConReservas({ grupos: ["g1@g.us", "g2@g.us"] });
+    fake.tablas.eventos_bot.forEach(ev => Object.assign(ev, { activo: false, abierto: false, estado: "cerrado" }));
+    servicio._reloj.ahora = () => TRAS_SORTEO;
+    const antes = instantanea();
+    const envios = JSON.stringify(fake.tablas.automation_actions);
+
+    const g = await gestionDe(s.id);
+    assert.strictEqual(g.gestion.acciones.eliminar, true, JSON.stringify(g.gestion.eliminacion));
+    assert.ok(g.gestion.eliminacion.avisos.some(a => /llegó a 2 grupo/.test(a) && /no lo borra de WhatsApp/.test(a)), JSON.stringify(g.gestion.eliminacion.avisos));
+    assert.ok(g.gestion.eliminacion.avisos.some(a => /2 reservado\(s\), 1 pagado\(s\)/.test(a) && /no se liberan ni se borran/.test(a)));
+
+    const e = await servicio.eliminar(A, s.id, { version: s.version, ...CONFIRMADO });
+    assert.ok(e.ok, JSON.stringify(e));
+    assert.strictEqual(instantanea(), antes);
+    assert.strictEqual(JSON.stringify(fake.tablas.automation_actions), envios, "el registro de envíos se conserva");
+    assert.ok(historial(s.id).length >= 1, "la auditoría sobrevive a la programación");
+});
+
+prueba("21. no vuelve a ejecutarse: un ciclo que ya leyó la lista no puede reclamar sus grupos, el publicador no la toma y un reintento no la revive", async () => {
+    escenario();
+    const repo = require(r("sorteos/repo.js"));
+    const s = await programado({ grupos: ["g1@g.us", "g2@g.us"] });
+    Object.assign(sorteoDb(s.id), { estado: "publicando" });
+    ["g1@g.us", "g2@g.us"].forEach(g => Object.assign(grupoDe(s.id, g), { estado: "fallido", intentos: 2 }));
+    servicio._reloj.ahora = () => EN_PUBLICACION;
+    // Lo que un ciclo en marcha ya tiene en memoria.
+    const leidos = fake.tablas.sorteos_programados_grupos.filter(x => x.sorteo_id === s.id).map(x => ({ ...x }));
+
+    // Mientras se elimina (grupos ya detenidos), el publicador tampoco puede reclamarlos.
+    let reclamoDurante = null;
+    fake.control.antesDeEscribir = (tabla) => {
+        if (tabla === "sorteos_programados" && sorteoDb(s.id)?.estado === "cancelado" && reclamoDurante === null) {
+            reclamoDurante = fake.tablas.sorteos_programados_grupos.filter(x => x.sorteo_id === s.id).map(x => x.estado);
+        }
+    };
+    const e = await servicio.eliminar(A, s.id, { version: s.version, ...CONFIRMADO });
+    fake.control.antesDeEscribir = null;
+    assert.ok(e.ok, JSON.stringify(e));
+
+    for (const g of leidos) assert.strictEqual((await repo.reclamarGrupo(A, g.id, g.intentos)).ok, false, "la lista vieja no reclama nada");
+
+    const dep = deps();
+    await publicador.tick(sock(), { ahora: EN_PUBLICACION, deps: dep.d });
+    assert.strictEqual(dep.enviados.length, 0, "nada publicado");
+    assert.strictEqual(sorteoDb(s.id), undefined, "no reaparece");
+    assert.strictEqual((await servicio.reintentarGrupo(A, s.id, "g1@g.us")).motivo, "no_encontrado");
+});
+
+prueba("22. publicando AHORA: espera y deja todo como estaba; un «publicando» huérfano (proceso muerto) no bloquea para siempre", async () => {
+    escenario();
+    const s = await programado({ grupos: ["g1@g.us", "g2@g.us"] });
+    Object.assign(sorteoDb(s.id), { estado: "publicando" });
+    Object.assign(grupoDe(s.id, "g1@g.us"), { estado: "publicando", intentos: 1, actualizado_en: EN_PUBLICACION.toISOString() });
+    Object.assign(grupoDe(s.id, "g2@g.us"), { estado: "pendiente" });
+    servicio._reloj.ahora = () => new Date(EN_PUBLICACION.getTime() + 60 * 1000);
+
+    const e = await servicio.eliminar(A, s.id, { version: s.version, ...CONFIRMADO });
+    assert.strictEqual(e.motivo, "no_eliminable", JSON.stringify(e));
+    assert.ok(/publicando ahora/.test(e.mensaje), e.mensaje);
+    assert.deepStrictEqual([sorteoDb(s.id).estado, grupoDe(s.id, "g2@g.us").estado], ["publicando", "pendiente"]);
+
+    servicio._reloj.ahora = () => new Date(EN_PUBLICACION.getTime() + 11 * 60 * 1000);
+    const f = await servicio.eliminar(A, s.id, { version: s.version, ...CONFIRMADO });
+    assert.ok(f.ok, JSON.stringify(f));
+});
+
+prueba("23. un grupo reclamado DURANTE la eliminación: se aborta y se restaura la programación y los grupos detenidos", async () => {
+    escenario();
+    const s = await programado({ grupos: ["g1@g.us", "g2@g.us"] });
+    Object.assign(sorteoDb(s.id), { estado: "publicando" });
+    let disparado = false;
+    fake.control.antesDeEscribir = (tabla) => {
+        if (tabla !== "sorteos_programados_grupos" || disparado) return;
+        disparado = true;
+        Object.assign(grupoDe(s.id, "g2@g.us"), { estado: "publicando", intentos: 1, actualizado_en: T0.toISOString() });
+    };
+    const e = await servicio.eliminar(A, s.id, { version: s.version, ...CONFIRMADO });
+    fake.control.antesDeEscribir = null;
+    assert.strictEqual(e.motivo, "no_eliminable", JSON.stringify(e));
+    assert.strictEqual(sorteoDb(s.id).estado, "publicando");
+    assert.strictEqual(grupoDe(s.id, "g1@g.us").estado, "pendiente");
+    assert.strictEqual(grupoDe(s.id, "g2@g.us").estado, "publicando", "el del publicador no se toca");
+});
+
+prueba("24. autorización: otro cliente no puede eliminar una fallida ajena ni por servicio ni por API, aunque confirme; nada cambia", async () => {
+    escenario();
+    const s = await fallidaConEnlacesViejos();
+    const antes = JSON.stringify({ s: sorteoDb(s.id), g: fake.tablas.sorteos_programados_grupos, i: instantanea() });
+    assert.strictEqual((await servicio.eliminar(B, s.id, { version: s.version, ...CONFIRMADO })).motivo, "no_encontrado");
+    await conServidor(async (pedir) => {
+        assert.strictEqual((await pedir("POST", `/${s.id}/eliminar`, { jwt: "jwt-B", cuerpo: { version: s.version, ...CONFIRMADO } })).status, 404);
+        assert.strictEqual((await pedir("POST", `/${s.id}/eliminar`, { jwt: null, cuerpo: { version: s.version, ...CONFIRMADO } })).status, 401);
+        const propio = await pedir("POST", `/${s.id}/eliminar`, { cuerpo: { version: s.version, confirmacion: true } });
+        assert.deepStrictEqual([propio.status, propio.json.motivo], [409, "confirmacion_actividad_requerida"]);
+    });
+    assert.strictEqual(JSON.stringify({ s: sorteoDb(s.id), g: fake.tablas.sorteos_programados_grupos, i: instantanea() }), antes);
+});
+
+prueba("25. misma identidad en otra programación vigente: eliminar la cancelada no toca a la otra ni a sus grupos", async () => {
+    escenario();
+    const vieja = await programado();
+    await servicio.cancelar(A, vieja.id);
+    const nueva = await programado();
+    assert.strictEqual(nueva.identidad_evento_real, vieja.identidad_evento_real);
+    const e = await servicio.eliminar(A, vieja.id, { version: sorteoDb(vieja.id).version, ...CONFIRMADO });
+    assert.ok(e.ok, JSON.stringify(e));
+    assert.ok(sorteoDb(nueva.id));
+    assert.strictEqual(grupoDe(nueva.id, "g1@g.us").estado, "pendiente");
 });
 
 (async () => {

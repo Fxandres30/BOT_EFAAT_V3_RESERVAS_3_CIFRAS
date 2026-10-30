@@ -1,6 +1,6 @@
 "use client";
 
-import { DollarSign, Unlock } from "lucide-react";
+import { DollarSign, Loader2, Unlock } from "lucide-react";
 
 import BotonContraer from "./BotonContraer";
 
@@ -108,20 +108,20 @@ export default function ReservasRecientes({
                                                             disabled={procesando}
                                                             onClick={() => onMarcarPagado(n.numero)}
                                                             className="text-red-600 hover:text-red-800 disabled:opacity-50"
-                                                            aria-label="Marcar pagado"
+                                                            aria-label={procesando ? "Procesando" : "Marcar pagado"}
                                                             title="Marcar pagado"
                                                         >
-                                                            <DollarSign size={16} />
+                                                            {procesando ? <Loader2 size={16} className="animate-spin" /> : <DollarSign size={16} />}
                                                         </button>
                                                     )}
                                                     <button
                                                         disabled={procesando}
                                                         onClick={() => confirmarLiberar(n.numero, n.comprador)}
                                                         className="text-gray-500 hover:text-gray-800 disabled:opacity-50"
-                                                        aria-label="Liberar número"
+                                                        aria-label={procesando ? "Procesando" : "Liberar número"}
                                                         title="Liberar número"
                                                     >
-                                                        <Unlock size={16} />
+                                                        {procesando ? <Loader2 size={16} className="animate-spin" /> : <Unlock size={16} />}
                                                     </button>
                                                 </div>
                                             </td>
@@ -176,8 +176,8 @@ export default function ReservasRecientes({
                                                 onClick={() => onMarcarPagado(n.numero)}
                                                 className="flex-1 flex items-center justify-center gap-2 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 rounded-lg px-3 py-2"
                                             >
-                                                <DollarSign size={14} />
-                                                Marcar pagado
+                                                {procesando ? <Loader2 size={14} className="animate-spin" /> : <DollarSign size={14} />}
+                                                {procesando ? "Procesando..." : "Marcar pagado"}
                                             </button>
                                         )}
                                         <button
@@ -185,8 +185,8 @@ export default function ReservasRecientes({
                                             onClick={() => confirmarLiberar(n.numero, n.comprador)}
                                             className="flex-1 flex items-center justify-center gap-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 rounded-lg px-3 py-2"
                                         >
-                                            <Unlock size={14} />
-                                            Liberar
+                                            {procesando ? <Loader2 size={14} className="animate-spin" /> : <Unlock size={14} />}
+                                            {procesando ? "Procesando..." : "Liberar"}
                                         </button>
                                     </div>
 

@@ -3,10 +3,9 @@
 // Tablas («Seleccionar»): todos los libres, rangos, reservar en lote y la
 // protección de los números de otro sorteo.
 //
-// Lógica REAL del panel (services/tablas/pagoLote.ts y seleccionTabla.ts)
-// transpilada; la reserva de cada número se simula con las respuestas
-// reales del servidor (backend/services/reservaManual.js): ok, idempotente,
-// no_disponible (otro la tomó antes) y rechazos generales.
+// Lógica REAL del panel (services/tablas/pagoLote.ts, seleccionTabla.ts y
+// recargaAgrupada.ts) transpilada. El servidor del lote se prueba aparte, con
+// su ruta real: backend/tests/reservas/operacionesLote.test.js.
 //
 //     node frontend/tests/tablas/seleccionMultiple.test.mjs
 // ==========================================================================
@@ -84,64 +83,67 @@ await prueba("«de otro sorteo» se decide por la identidad del sorteo, no por e
     assert.strictEqual(S.esDeOtroSorteo({ estado: "reservado", identidad_evento_real: "x" }, null), true, "sin sorteo activo: decide el administrador");
 });
 
-// Servidor simulado: cada número se reserva solo si sigue libre (como el
-// UPDATE condicionado del bot); `tomados` = los que otro reservó antes.
-function servidor({ tomados = new Set(), rechazoGeneral = null, yaMios = new Set() } = {}) {
-    const llamadas = [];
-    return {
-        llamadas,
-        ops: {
-            reservar: async (numero, datos) => {
-                llamadas.push({ numero, datos });
-                if (rechazoGeneral) return { ok: false, motivo: rechazoGeneral, mensaje: "El sorteo ya no acepta reservas (cerrado o pasó la hora de cierre)." };
-                if (yaMios.has(numero)) return { ok: true, estado: "reservado", idempotente: true };
-                if (tomados.has(numero)) return { ok: false, motivo: "no_disponible", mensaje: "Otra operación reservó el número primero.", estadoActual: "reservado" };
-                return { ok: true, estado: "reservado" };
-            },
-            pagar: async () => ({ ok: true, estado: "pagado" }),
-            liberar: async () => ({ ok: true, estado: "libre" }),
-            estadoReal: async () => ({ ok: true, estado: "reservado" })
-        }
-    };
-}
-
 const DATOS = { contactoId: "c1", eventoId: "ev-g1", motivo: "Reserva por llamada o mensaje privado", observaciones: "lote" };
 
-await prueba("reservar uno y varios: misma ruta de un número, en serie, mismos datos y una solicitud por número", async () => {
-    const srv = servidor();
-    const avance = [];
-    const r = await L.procesarOperacion({ operacion: "reservar", incluidos: [{ numero: "01", estado: "libre" }, { numero: "02", estado: "libre" }, { numero: "09", estado: "libre" }], ops: srv.ops, datos: DATOS, solicitudLote: "lote-1", alAvanzar: (h, t) => avance.push(`${h}/${t}`) });
-    assert.deepStrictEqual([r.hechos, r.omitidos, r.errores], [3, 0, 0]);
-    assert.deepStrictEqual(srv.llamadas.map(l => l.numero), ["01", "02", "09"], "en orden y uno a uno");
-    assert.deepStrictEqual(srv.llamadas.map(l => l.datos.solicitudId), ["lote-1:01", "lote-1:02", "lote-1:09"]);
-    assert.ok(srv.llamadas.every(l => l.datos.contactoId === "c1" && l.datos.eventoId === "ev-g1" && l.datos.motivo === DATOS.motivo));
-    assert.deepStrictEqual(avance, ["1/3", "2/3", "3/3"]);
-    const uno = await L.procesarOperacion({ operacion: "reservar", incluidos: [{ numero: "00", estado: "libre" }], ops: servidor().ops, datos: DATOS, solicitudLote: "lote-2" });
-    assert.strictEqual(uno.hechos, 1);
+await prueba("reservar varios: UNA sola solicitud con todos los números, el contacto, el sorteo y el motivo", async () => {
+    const envios = [];
+    const enviar = async (c) => {
+        envios.push(c);
+        return { ok: true, accion: "reservar", hechos: 2, sinCambio: 0, omitidos: 1, errores: 0, resultados: [
+            { numero: "01", estado: "hecho", mensaje: "Reservado." },
+            { numero: "02", estado: "omitido", mensaje: "Ya no estaba libre (ahora está reservado): otra operación lo tomó primero. No se tocó." },
+            { numero: "09", estado: "hecho", mensaje: "Reservado." }
+        ] };
+    };
+    const r = await L.procesarOperacion({ operacion: "reservar", incluidos: ["01", "02", "09"].map(numero => ({ numero, estado: "libre" })), enviar, datos: DATOS, solicitudLote: "lote-1" });
+    assert.strictEqual(envios.length, 1, "no se envía una solicitud por número");
+    assert.deepStrictEqual(envios[0].numeros, ["01", "02", "09"]);
+    assert.deepStrictEqual([envios[0].accion, envios[0].contactoId, envios[0].eventoId, envios[0].motivo, envios[0].solicitudId], ["reservar", "c1", "ev-g1", DATOS.motivo, "lote-1"]);
+    assert.deepStrictEqual([r.hechos, r.omitidos, r.errores], [2, 1, 0]);
+    assert.ok(r.resultados[1].mensaje.includes("No se tocó"));
 });
 
-await prueba("concurrencia: si otro tomó un número entre la selección y la reserva, se informa y los demás siguen", async () => {
-    const srv = servidor({ tomados: new Set(["02"]) });
-    const r = await L.procesarOperacion({ operacion: "reservar", incluidos: ["01", "02", "03"].map(numero => ({ numero, estado: "libre" })), ops: srv.ops, datos: DATOS, solicitudLote: "lote-3" });
-    assert.deepStrictEqual(r.resultados.map(x => [x.numero, x.estado]), [["01", "hecho"], ["02", "omitido"], ["03", "hecho"]]);
-    assert.ok(r.resultados[1].mensaje.includes("ahora está reservado") && r.resultados[1].mensaje.includes("No se tocó"));
+await prueba("los números de otro sorteo solo viajan autorizados si el administrador los incluyó", () => {
+    const sin = L.cuerpoDelLote("pagar", [{ numero: "04", estado: "reservado" }], {}, "s");
+    assert.deepStrictEqual(sin.otrosSorteoAutorizados, []);
+    const con = L.cuerpoDelLote("liberar", [{ numero: "04", estado: "reservado" }, { numero: "06", estado: "reservado", otroSorteo: true }], {}, "s");
+    assert.deepStrictEqual(con.otrosSorteoAutorizados, ["06"]);
+    assert.ok(!("usuarioId" in con) && !("usuario_id" in con), "el cliente sale del token, nunca del cuerpo");
 });
 
-await prueba("reintento del mismo lote: lo ya reservado vuelve como «sin cambios» (no se duplica)", async () => {
-    const srv = servidor({ yaMios: new Set(["01"]) });
-    const r = await L.procesarOperacion({ operacion: "reservar", incluidos: [{ numero: "01", estado: "libre" }, { numero: "03", estado: "libre" }], ops: srv.ops, datos: DATOS, solicitudLote: "lote-3" });
-    assert.deepStrictEqual(r.resultados.map(x => x.estado), ["sin_cambio", "hecho"]);
+await prueba("Realtime: 60 señales seguidas (20 filas + actividad + evento) son UNA recarga", async () => {
+    const R = cargarTs(path.join(FRONT, "services/tablas/recargaAgrupada.ts"));
+    let recargas = 0;
+    const g = R.crearRecargaAgrupada(async () => { recargas++; }, 10);
+    for (let i = 0; i < 60; i++) g.senal();
+    await new Promise(r => setTimeout(r, 40));
+    assert.strictEqual(recargas, 1);
+    g.senal();
+    await new Promise(r => setTimeout(r, 40));
+    assert.strictEqual(recargas, 2, "un cambio posterior sí recarga");
+    g.cancelar();
 });
 
-await prueba("rechazo general (sorteo cerrado): se detiene sin repetir el mismo error en cada número", async () => {
-    const srv = servidor({ rechazoGeneral: "sorteo_cerrado" });
-    const r = await L.procesarOperacion({ operacion: "reservar", incluidos: ["01", "02", "03"].map(numero => ({ numero, estado: "libre" })), ops: srv.ops, datos: DATOS, solicitudLote: "lote-4" });
-    assert.strictEqual(srv.llamadas.length, 1, "un solo intento");
-    assert.deepStrictEqual(r.resultados.map(x => x.estado), ["error", "omitido", "omitido"]);
-    assert.ok(r.resultados[1].mensaje.startsWith("No se intentó: El sorteo ya no acepta reservas"));
-    assert.strictEqual(L.rechazoGeneral("no_disponible"), false);
-    assert.strictEqual(L.rechazoGeneral("red"), false, "un fallo de red no detiene el lote");
-    assert.strictEqual(L.rechazoGeneral("falta_contacto"), true);
+await prueba("Realtime: nunca dos recargas a la vez; lo que llega durante una no se pierde", async () => {
+    const R = cargarTs(path.join(FRONT, "services/tablas/recargaAgrupada.ts"));
+    let enCurso = 0, maximo = 0, recargas = 0;
+    const g = R.crearRecargaAgrupada(async () => {
+        recargas++; enCurso++; maximo = Math.max(maximo, enCurso);
+        await new Promise(r => setTimeout(r, 30));
+        enCurso--;
+    }, 5);
+    g.senal();
+    await new Promise(r => setTimeout(r, 15));
+    g.senal();
+    await new Promise(r => setTimeout(r, 15));
+    g.senal();
+    await new Promise(r => setTimeout(r, 90));
+    assert.strictEqual(maximo, 1);
+    assert.strictEqual(recargas, 2, "una más al terminar, por los cambios llegados mientras tanto");
+    g.cancelar();
+    g.senal();
+    await new Promise(r => setTimeout(r, 20));
+    assert.strictEqual(recargas, 2, "cancelada al salir de la tabla");
 });
 
 await prueba("acciones rápidas del historial sin cambios: reservar sigue en el detalle del número", () => {
@@ -152,11 +154,13 @@ await prueba("acciones rápidas del historial sin cambios: reservar sigue en el 
 await prueba("interfaz: barra con «Todos los libres», rango, «Ver selección», reservar con el formulario de la reserva manual", () => {
     const barra = leer("components/tablas/SeleccionPagos.tsx");
     for (const t of ["Todos los libres", "aria-label=\"Seleccionar un rango\"", "Ver selección", "Limpiar", "Terminar", "<ReservaManualForm", "obtenerContextoNumero(precio", "Incluir {plural(otrosSorteo.length"]) assert.ok(barra.includes(t), t);
-    assert.match(barra, /onProcesar\("reservar", incluidos, resto, solicitudId/);
+    assert.match(barra, /onProcesar\("reservar", incluidos, resto, solicitudId\)/);
     assert.ok(!/from\("|\.update\(|\.insert\(/.test(barra), "el componente no escribe en la base");
     const vista = leer("components/tablas/TablaPrecioView.tsx");
-    assert.match(vista, /esDeOtroSorteo\(\{ \.\.\.n, estado \}, eventoActivo\)/);
-    assert.match(leer("hooks/useTablaPrecio.ts"), /reservar: \(numero, d\) => reservarNumeroManual\(precio, numero, d\)/);
+    assert.match(vista, /esDeOtroSorteo\(\{ \.\.\.n, estado \}, coincidePrecio \? eventoActivo : null\)/);
+    const hook = leer("hooks/useTablaPrecio.ts");
+    assert.match(hook, /enviar: \(cuerpo\) => operarLote\(precio, cuerpo\)/, "el lote usa la solicitud única");
+    assert.ok(!/for \(const n of incluidos\)/.test(leer("services/tablas/pagoLote.ts")), "sin bucle de solicitudes por número");
 });
 
 console.log(`\n${ok} pruebas OK`);

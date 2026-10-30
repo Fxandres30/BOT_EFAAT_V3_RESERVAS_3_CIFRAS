@@ -19,12 +19,13 @@ import {
     reservarNumeroManual,
     pagarNumeroManual,
     liberarNumeroManual,
-    obtenerContextoNumero,
+    operarLote,
     type DatosReserva,
     type DatosPago,
     type DatosLiberar,
     type Resultado
 } from "@/services/tablas/reservaManual";
+import { crearRecargaAgrupada } from "@/services/tablas/recargaAgrupada";
 import { procesarOperacion, type DatosOperacion, type NumeroSeleccionable, type OperacionLote, type ResultadoOperacion } from "@/services/tablas/pagoLote";
 
 import { derivarPaquetes } from "@/components/tablas/derivarPaquetes";
@@ -156,11 +157,14 @@ export function useTablaPrecio(precio: number) {
     }, [cargar, precio]);
 
     // Tiempo real: cualquier cambio en la tabla física del usuario, en su
-    // evento activo o en su actividad recarga los datos. Mismo patrón que
+    // evento activo o en su actividad recarga los datos, agrupando las
+    // señales (llega una por fila cambiada). Mismo patrón que
     // frontend/hooks/useSessions.ts.
     useEffect(() => {
 
         if (!usuarioId || !config) return;
+
+        const recarga = crearRecargaAgrupada(() => cargar(usuarioId, config));
 
         const canales = [
 
@@ -169,7 +173,7 @@ export function useTablaPrecio(precio: number) {
                 .on(
                     "postgres_changes",
                     { event: "*", schema: "public", table: config.tabla, filter: `usuario_id=eq.${usuarioId}` },
-                    () => cargar(usuarioId, config)
+                    recarga.senal
                 )
                 .subscribe(),
 
@@ -178,7 +182,7 @@ export function useTablaPrecio(precio: number) {
                 .on(
                     "postgres_changes",
                     { event: "*", schema: "public", table: "eventos_bot", filter: `usuario_id=eq.${usuarioId}` },
-                    () => cargar(usuarioId, config)
+                    recarga.senal
                 )
                 .subscribe(),
 
@@ -187,13 +191,14 @@ export function useTablaPrecio(precio: number) {
                 .on(
                     "postgres_changes",
                     { event: "INSERT", schema: "public", table: "reservas_actividad", filter: `usuario_id=eq.${usuarioId}` },
-                    () => cargar(usuarioId, config)
+                    recarga.senal
                 )
                 .subscribe()
 
         ];
 
         return () => {
+            recarga.cancelar();
             canales.forEach(canal => supabase.removeChannel(canal));
         };
 
@@ -329,10 +334,12 @@ export function useTablaPrecio(precio: number) {
             return ejecutar(numero, () => pagarNumeroManual(precio, numero, datos));
         },
 
-        // Varios números (o uno, desde las acciones rápidas): la MISMA
-        // operación de un número, en serie, y una sola recarga al final.
-        // null = ya había un lote en curso (no se lanza).
-        procesarLote: async (operacion: OperacionLote, incluidos: NumeroSeleccionable[], datos: DatosOperacion, solicitudLote: string, alAvanzar?: (hechos: number, total: number) => void): Promise<ResultadoOperacion | null> => {
+        // Varios números (o uno, desde las acciones rápidas): UNA solicitud y
+        // una escritura en el servidor, y una recarga de la tabla al final
+        // (se espera: el resultado se muestra con la cuadrícula ya al día, para
+        // no seleccionar sobre estados viejos). null = ya había un lote en
+        // curso (no se lanza).
+        procesarLote: async (operacion: OperacionLote, incluidos: NumeroSeleccionable[], datos: DatosOperacion, solicitudLote: string): Promise<ResultadoOperacion | null> => {
             if (!usuarioId || loteEnCurso.current) return null;
             loteEnCurso.current = true;
             setAccionando("lote");
@@ -340,18 +347,9 @@ export function useTablaPrecio(precio: number) {
                 return await procesarOperacion({
                     operacion,
                     incluidos,
-                    ops: {
-                        reservar: (numero, d) => reservarNumeroManual(precio, numero, d),
-                        pagar: (numero, d) => pagarNumeroManual(precio, numero, d),
-                        liberar: (numero, d) => liberarNumeroManual(precio, numero, d),
-                        estadoReal: async (numero) => {
-                            const r = await obtenerContextoNumero(precio, numero);
-                            return r.ok ? { ok: true, estado: r.estado } : { ok: false, mensaje: r.mensaje };
-                        }
-                    },
+                    enviar: (cuerpo) => operarLote(precio, cuerpo),
                     datos,
-                    solicitudLote,
-                    alAvanzar
+                    solicitudLote
                 });
             } finally {
                 await cargar(usuarioId, config);

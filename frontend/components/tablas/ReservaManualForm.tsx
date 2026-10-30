@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, CalendarClock, Loader2, RotateCcw, Ticket } from "lucide-react";
 
 import SelectorContacto, { type SeleccionContacto } from "./SelectorContacto";
@@ -16,6 +16,8 @@ interface Props {
     onReservar: (datos: DatosReserva) => Promise<Resultado>;
     /** Texto del botón (reserva de varios números: «Reservar 5 números»). */
     etiquetaBoton?: string;
+    /** Texto mientras se procesa (por defecto, «Reservando...»). */
+    etiquetaProcesando?: string;
 }
 
 const MOTIVOS = [
@@ -95,7 +97,7 @@ function opcionesDe(contexto: ContextoNumero): OpcionSorteo[] {
 // el sorteo si hay varios (activo o programados sin publicar), el grupo, el
 // contacto, el motivo y las observaciones. El estado final, la fecha/hora y
 // el operador los fija el servidor.
-export default function ReservaManualForm({ contexto, onReservar, etiquetaBoton }: Props) {
+export default function ReservaManualForm({ contexto, onReservar, etiquetaBoton, etiquetaProcesando }: Props) {
 
     const [contacto, setContacto] = useState<SeleccionContacto | null>(null);
     const [sorteoElegido, setSorteoElegido] = useState<string | null>(null);
@@ -103,6 +105,8 @@ export default function ReservaManualForm({ contexto, onReservar, etiquetaBoton 
     const [motivo, setMotivo] = useState("");
     const [observaciones, setObservaciones] = useState("");
     const [enviando, setEnviando] = useState(false);
+    // Doble clic antes de que se pinte «Reservando...»: un solo envío.
+    const enviandoRef = useRef(false);
     const [fallo, setFallo] = useState<{ mensaje: string; reintentable: boolean } | null>(null);
     // Un id por intento de reserva: un reintento tras un fallo de red usa el
     // mismo, y el servidor reconoce la reserva que ya hubiera quedado guardada.
@@ -143,8 +147,9 @@ export default function ReservaManualForm({ contexto, onReservar, etiquetaBoton 
 
     async function enviar() {
 
-        if (!listo || !contacto || !grupo) return;
+        if (!listo || !contacto || !grupo || enviandoRef.current) return;
 
+        enviandoRef.current = true;
         setEnviando(true);
         setFallo(null);
 
@@ -158,6 +163,7 @@ export default function ReservaManualForm({ contexto, onReservar, etiquetaBoton 
             solicitudId
         });
 
+        enviandoRef.current = false;
         setEnviando(false);
 
         if (!r.ok) {
@@ -292,7 +298,7 @@ export default function ReservaManualForm({ contexto, onReservar, etiquetaBoton 
                 className="w-full flex items-center justify-center gap-2 text-white text-sm px-4 py-3 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50"
             >
                 {enviando ? <Loader2 size={15} className="animate-spin" /> : fallo?.reintentable ? <RotateCcw size={15} /> : <Ticket size={15} />}
-                {enviando ? "Guardando..." : fallo?.reintentable ? "Reintentar reserva" : etiquetaBoton || `Reservar el ${contexto.numero}`}
+                {enviando ? etiquetaProcesando || "Reservando..." : fallo?.reintentable ? "Reintentar reserva" : etiquetaBoton || `Reservar el ${contexto.numero}`}
             </button>
 
             <p className="text-xs text-gray-500 text-center">No se envía ningún mensaje por WhatsApp.</p>

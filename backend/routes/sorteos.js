@@ -19,6 +19,7 @@ router.use(exigirUsuario);
 const ESTADO_HTTP = {
     validacion: 400,
     confirmacion_requerida: 400,
+    confirmacion_actividad_requerida: 409,
     no_encontrado: 404,
     version_cambiada: 409,
     estado_invalido: 409,

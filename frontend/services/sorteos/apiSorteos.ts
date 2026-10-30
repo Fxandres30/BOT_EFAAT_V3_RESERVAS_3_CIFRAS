@@ -139,7 +139,9 @@ export interface GestionSorteo {
     impacto: ImpactoSorteo;
     /** Lo que el backend permite en este estado (y vuelve a validar). */
     acciones: AccionesSorteo;
-    eliminacion: { posible: boolean; bloqueos: string[]; alternativa: "cancelar" | "archivar" | null };
+    /** `bloqueos` son esperas; la decisión de eliminar es del administrador.
+     *  Opcionales: un backend anterior no los envía. */
+    eliminacion: { posible: boolean; bloqueos: string[]; alternativa: "cancelar" | "archivar" | null; avisos?: string[]; con_actividad?: boolean; borra?: string[]; conserva?: string[] };
     grupos: GrupoGestion[];
     necesita_intervencion: boolean;
     ultimo_error: string | null;
@@ -382,6 +384,7 @@ const MENSAJES: Record<string, string> = {
     ya_publicado: "Ya se publicó en algún grupo: no se puede editar.",
     bloqueado: "Hay bloqueos que impiden programarlo.",
     confirmacion_requerida: "Debes confirmar que revisaste la vista previa.",
+    confirmacion_actividad_requerida: "Esta programación tiene actividad: revisa lo que implica y confírmalo para eliminarla.",
     confirmacion_reinicio_requerida: "Confirma en la vista previa que la tabla se reinicie al publicar.",
     tabla_cambio: "La tabla cambió desde la vista previa (alguien reservó o pagó). Revísala de nuevo; no se modificó nada.",
     reinicio_bloqueado: "No se pudo reiniciar la tabla: hay números protegidos. No se modificó nada.",
@@ -485,8 +488,8 @@ export const apiSorteos = {
     /** Listado de la pantalla de programados (estados, impacto y acciones). */
     gestion: () => llamar<SorteoGestionado[]>("GET", "/gestion"),
     detalle: (id: string) => llamar<DetalleSorteo>("GET", `/${id}/detalle`),
-    /** Solo sin actividad; `version` = la que se vio al confirmar. */
-    eliminar: (id: string, version: number) => llamar<{ id: string; eliminado: true; nombre: string | null }>("POST", `/${id}/eliminar`, { version, confirmacion: true }),
+    /** `version` = la que se vio al confirmar. `actividad`: el administrador aceptó los avisos de una programación con actividad. */
+    eliminar: (id: string, version: number, actividad = false) => llamar<{ id: string; eliminado: true; nombre: string | null }>("POST", `/${id}/eliminar`, { version, confirmacion: true, ...(actividad ? { confirmacion_actividad: true } : {}) }),
     archivar: (id: string, archivar: boolean) => llamar<Sorteo>("POST", `/${id}/archivar`, { archivar }),
     reintentarGrupo: (id: string, grupoId: string) => llamar<Sorteo>("POST", `/${id}/grupos/reintentar`, { grupo_id: grupoId }),
     grupos: () => llamar<GrupoAutorizado[]>("GET", "/grupos"),

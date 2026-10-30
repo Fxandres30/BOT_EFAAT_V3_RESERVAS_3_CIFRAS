@@ -24,8 +24,7 @@ export type ProcesarLote = (
     operacion: OperacionLote,
     incluidos: NumeroSeleccionable[],
     datos: DatosOperacion,
-    solicitudLote: string,
-    alAvanzar: (hechos: number, total: number) => void
+    solicitudLote: string
 ) => Promise<ResultadoOperacion | null>;
 
 interface Props {
@@ -56,6 +55,15 @@ const ETIQUETA_ESTADO: Record<NumeroSeleccionable["estado"], string> = {
 };
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
+
+// Qué se está ejecutando, mientras el servidor procesa el lote (una sola
+// solicitud: no hay avance por número).
+function textoProcesando(operacion: OperacionLote, n: number) {
+    if (operacion === "reservar") return `Reservando ${plural(n, "número", "números")}...`;
+    if (operacion === "pagar") return `Marcando ${plural(n, "pago", "pagos")}...`;
+    if (operacion === "liberar") return `Liberando ${plural(n, "número", "números")}...`;
+    return `Desbloqueando ${plural(n, "número", "números")}...`;
+}
 
 // Tablas → «Seleccionar»: marcar varios números (en la cuadrícula, en
 // «Historial de números», todos los libres o un rango) y aplicarles una
@@ -349,7 +357,6 @@ export function DialogoReservaLote({ precio, numeros, seleccion, onProcesar, onT
     const [contexto, setContexto] = useState<ContextoNumero | null>(null);
     const [errorContexto, setErrorContexto] = useState<string | null>(null);
     const [procesando, setProcesando] = useState(false);
-    const [avance, setAvance] = useState<{ hechos: number; total: number } | null>(null);
     const [resultado, setResultado] = useState<ResultadoOperacion | null>(null);
     const lista = incluidos.map(n => n.numero).join(", ");
 
@@ -369,10 +376,9 @@ export function DialogoReservaLote({ precio, numeros, seleccion, onProcesar, onT
     async function reservar(datos: DatosReserva): Promise<Resultado> {
         const { solicitudId, ...resto } = datos;
         setProcesando(true);
-        setAvance({ hechos: 0, total: incluidos.length });
         try {
             // solicitudId del formulario = id del lote: reintentar no duplica.
-            const r = await onProcesar("reservar", incluidos, resto, solicitudId, (hechos, total) => setAvance({ hechos, total }));
+            const r = await onProcesar("reservar", incluidos, resto, solicitudId);
             if (!r) return { ok: false, motivo: "en_curso", mensaje: "Ya hay otra operación en curso. Espera a que termine." };
             setResultado(r);
             onTerminado?.();
@@ -401,11 +407,11 @@ export function DialogoReservaLote({ precio, numeros, seleccion, onProcesar, onT
                     <p>
                         Se reservarán <b>{incluidos.length}</b> número{incluidos.length === 1 ? "" : "s"} libre{incluidos.length === 1 ? "" : "s"} al mismo contacto: <span className="tabular-nums">{lista}</span>.
                     </p>
-                    <p className="text-xs text-gray-500">Cada número se reserva por separado y solo si sigue libre en ese momento; si otra persona o el bot lo tomó antes, se informa y se sigue con los demás.</p>
+                    <p className="text-xs text-gray-500">Se reservan todos en una sola operación y solo los que sigan libres en ese momento; si otra persona o el bot tomó alguno antes, se informa y los demás se reservan igual.</p>
                     <Excluidos excluidos={excluidos} />
-                    {procesando && avance && (
-                        <p className="flex items-center gap-2 text-gray-600">
-                            <Loader2 size={16} className="animate-spin" /> Reservando {avance.hechos} de {avance.total}...
+                    {procesando && (
+                        <p className="flex items-center gap-2 text-gray-600" role="status">
+                            <Loader2 size={16} className="animate-spin" /> {textoProcesando("reservar", incluidos.length)}
                         </p>
                     )}
                     {errorContexto && <Aviso>{errorContexto}</Aviso>}
@@ -417,6 +423,7 @@ export function DialogoReservaLote({ precio, numeros, seleccion, onProcesar, onT
                             contexto={contexto}
                             onReservar={reservar}
                             etiquetaBoton={incluidos.length === 1 ? `Reservar el ${incluidos[0].numero}` : `Reservar ${incluidos.length} números`}
+                            etiquetaProcesando={textoProcesando("reservar", incluidos.length)}
                         />
                     )}
                 </>
@@ -460,7 +467,6 @@ export function DialogoOperacion({ operacion, numeros, seleccion, onProcesar, on
     const [motivo, setMotivo] = useState("");
     const [observaciones, setObservaciones] = useState("");
     const [procesando, setProcesando] = useState(false);
-    const [avance, setAvance] = useState<{ hechos: number; total: number } | null>(null);
     const [resultado, setResultado] = useState<ResultadoOperacion | null>(null);
     const [error, setError] = useState<string | null>(null);
     // Doble clic antes de que se pinte «procesando»: un solo envío.
@@ -476,7 +482,6 @@ export function DialogoOperacion({ operacion, numeros, seleccion, onProcesar, on
         enviando.current = true;
         setProcesando(true);
         setError(null);
-        setAvance({ hechos: 0, total: incluidos.length });
         try {
             const r = await onProcesar(
                 operacion,
@@ -486,8 +491,7 @@ export function DialogoOperacion({ operacion, numeros, seleccion, onProcesar, on
                     motivo: operacion === "pagar" ? undefined : motivo.trim() || undefined,
                     observaciones: observaciones.trim() || undefined
                 },
-                solicitudLote,
-                (hechos, total) => setAvance({ hechos, total })
+                solicitudLote
             );
             if (!r) setError("Ya hay otra operación en curso. Espera a que termine.");
             else { setResultado(r); onTerminado?.(); }
@@ -519,7 +523,7 @@ export function DialogoOperacion({ operacion, numeros, seleccion, onProcesar, on
                         className={`flex-1 inline-flex items-center justify-center gap-2 text-white px-4 py-2.5 rounded-xl disabled:opacity-50 ${BOTON[operacion].clase}`}
                     >
                         {procesando ? <Loader2 size={16} className="animate-spin" /> : <BotonIcon size={16} />}
-                        {procesando ? "Procesando..." : textoConfirmar(operacion, incluidos.length)}
+                        {procesando ? textoProcesando(operacion, incluidos.length) : textoConfirmar(operacion, incluidos.length)}
                     </button>
                 </>
             )}
@@ -584,20 +588,14 @@ export function DialogoOperacion({ operacion, numeros, seleccion, onProcesar, on
                             />
                             <p className="text-xs text-gray-500">
                                 {operacion === "pagar"
-                                    ? "Cada número se confirma por separado y solo si sigue reservado. No cambia su propietario, grupo ni sorteo."
-                                    : "Antes de enviar cada número se comprueba su estado real; si cambió, no se toca. Hasta que el servidor confirme, el número conserva su propietario y sus datos."}
+                                    ? "Se registran todos en una sola operación y solo los que sigan reservados. No cambia su propietario, grupo ni sorteo."
+                                    : "El servidor comprueba el estado real de cada número; si cambió, no se toca. Hasta que confirme, el número conserva su propietario y sus datos."}
                             </p>
                         </div>
                     )}
 
                     {error && <p className="text-red-700">{error}</p>}
                 </>
-            )}
-
-            {procesando && avance && (
-                <p className="flex items-center gap-2 text-gray-600">
-                    <Loader2 size={16} className="animate-spin" /> Procesando {avance.hechos} de {avance.total}...
-                </p>
             )}
 
             {resultado && <ListaResultados operacion={operacion} resultado={resultado} excluidos={excluidos} />}

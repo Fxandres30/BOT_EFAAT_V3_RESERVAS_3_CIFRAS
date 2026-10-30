@@ -208,6 +208,30 @@ export function liberarNumeroManual(precio: number, numero: string, datos: Datos
     return llamar<Exito>("/api/tablas/numero", json({ precio, numero, accion: "liberar", confirmar: true, ...datos }));
 }
 
+/** Resultado de un número dentro de una operación por lote. */
+export interface ResultadoNumeroLote {
+    numero: string;
+    estado: "hecho" | "sin_cambio" | "omitido" | "error";
+    mensaje: string;
+    codigo?: string;
+    estadoActual?: EstadoReal;
+}
+
+export interface RespuestaLote {
+    ok: true;
+    accion: "reservar" | "pagar" | "liberar";
+    resultados: ResultadoNumeroLote[];
+    hechos: number;
+    sinCambio: number;
+    omitidos: number;
+    errores: number;
+}
+
+/** Varios números en UNA solicitud (backend POST /tablas/:precio/lote). */
+export function operarLote(precio: number, cuerpo: Record<string, unknown>) {
+    return llamar<RespuestaLote>("/api/tablas/lote", json({ precio, ...cuerpo }));
+}
+
 export function nuevaSolicitudId(): string {
     return typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()

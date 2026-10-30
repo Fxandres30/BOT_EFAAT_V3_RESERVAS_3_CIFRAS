@@ -56,6 +56,7 @@ function crearFake() {
             delete() { q.op = "delete"; return b; },
             eq(c, v) { q.filtros.push(f => f[c] === v); return b; },
             neq(c, v) { q.filtros.push(f => f[c] !== v); return b; },
+            like(c, p) { const re = new RegExp("^" + p.split("%").map(x => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$"); q.filtros.push(f => re.test(String(f[c]))); return b; },
             in(c, vs) { q.filtros.push(f => vs.includes(f[c])); return b; },
             // not(col, "is", null) — la única forma que usa el backend.
             not(c, op, v) {

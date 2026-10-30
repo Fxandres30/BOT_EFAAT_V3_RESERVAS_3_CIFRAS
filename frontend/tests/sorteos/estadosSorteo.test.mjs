@@ -72,6 +72,17 @@ prueba("2. todos los estados tienen texto y tono (programación, grupo y operati
     assert.strictEqual(E.etiquetaGrupo(grupo({ en_espera: true })).texto, "En espera");
 });
 
+prueba("3b. eliminar con actividad: avisos, qué se borra y qué se conserva; un backend anterior no rompe el resumen", () => {
+    const r = E.resumenEliminacion(sorteo({ eliminacion: {
+        posible: true, bloqueos: [], alternativa: null, con_actividad: true,
+        avisos: ["Hubo 10 intento(s) de publicación: se borra su detalle por grupo."],
+        borra: ["La programación y su configuración."], conserva: ["Auditoría."]
+    } }));
+    assert.deepStrictEqual([r.posible, r.conActividad, r.avisos.length, r.borra.length, r.conserva.length], [true, true, 1, 1, 1]);
+    const viejo = E.resumenEliminacion(sorteo({ eliminacion: { posible: true, bloqueos: [], alternativa: null } }));
+    assert.deepStrictEqual([viejo.conActividad, viejo.avisos, viejo.borra, viejo.conserva], [false, [], [], []]);
+});
+
 prueba("3. eliminar sin actividad: nombre, grupos y la consecuencia (no toca WhatsApp, tabla ni reservas)", () => {
     const r = E.resumenEliminacion(sorteo({ grupos: [grupo(), grupo({ id: "f2", grupo_id: "g2@g.us", nombre: null })] }));
     assert.strictEqual(r.nombre, "Lotería de Manizales");

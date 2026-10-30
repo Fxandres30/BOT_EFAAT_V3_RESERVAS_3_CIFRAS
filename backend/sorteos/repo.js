@@ -249,6 +249,14 @@ async function numerosPorIdentidad(usuarioId, tabla, identidades) {
 
 // ---------------------------------------------- historial (migración 038) ---
 
+// Anuncios de sorteos programados que pasaron por el ExecutionGuard
+// (compartirEnGrupos, clave ...:sorteo-<id>-publicacion-<n>:<grupo>).
+async function enviosDeSorteos(usuarioId) {
+    const { data, error } = await supabase.from("automation_actions").select("clave_idempotencia, estado")
+        .eq("usuario_id", usuarioId).eq("tipo_accion", "TABLA_COMPARTIR").like("clave_idempotencia", "%:sorteo-%");
+    return resultado(data || [], error);
+}
+
 // Registro de lo que hizo el administrador (cancelar, eliminar, archivar…)
 // con el resultado REAL. Sin la 038 queda en el log del proceso; nunca
 // hace fallar la operación, que ya se hizo.
@@ -444,6 +452,7 @@ module.exports = {
     listarSorteos,
     actualizarSorteoSi,
     eliminarSorteoSi,
+    enviosDeSorteos,
     marcarArchivado,
     gruposDelSorteo,
     gruposDeSorteos,

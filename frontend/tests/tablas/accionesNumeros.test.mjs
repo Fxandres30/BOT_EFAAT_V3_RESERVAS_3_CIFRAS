@@ -53,35 +53,6 @@ const tabla = [
 
 // Servidor simulado: registra cada llamada; el estado real puede diferir
 // del que vio la pantalla.
-function servidor(real = {}, fallos = {}) {
-    const llamadas = [];
-    const estados = { ...Object.fromEntries(tabla.map(n => [n.numero, n.estado])), ...real };
-    return {
-        llamadas,
-        ops: {
-            pagar: async (numero, datos) => {
-                llamadas.push(["pagar", numero, datos]);
-                if (fallos[numero]) return fallos[numero];
-                if (estados[numero] === "pagado") return { ok: false, motivo: "no_reservado", estadoActual: "pagado", mensaje: "Este número ya está pagado." };
-                if (estados[numero] !== "reservado") return { ok: false, motivo: "no_reservado", estadoActual: estados[numero], mensaje: "El número no está reservado." };
-                estados[numero] = "pagado";
-                return { ok: true, estado: "pagado" };
-            },
-            liberar: async (numero, datos) => {
-                llamadas.push(["liberar", numero, datos]);
-                if (fallos[numero]) return fallos[numero];
-                if (estados[numero] === "libre") return { ok: false, motivo: "ya_libre", mensaje: "El número ya está disponible." };
-                estados[numero] = "libre";
-                return { ok: true, estado: "libre" };
-            },
-            estadoReal: async (numero) => {
-                llamadas.push(["leer", numero]);
-                return { ok: true, estado: estados[numero] };
-            }
-        }
-    };
-}
-
 await prueba("acciones por estado: libre nunca pagado, en proceso solo detalle", () => {
     assert.deepStrictEqual(L.accionesRapidas("reservado"), ["pagar", "liberar", "detalle"]);
     assert.deepStrictEqual(L.accionesRapidas("pagado"), ["liberar", "detalle"]);
@@ -113,69 +84,57 @@ await prueba("anular un pago exige motivo; liberar solo reservas, no", () => {
     assert.strictEqual(L.exigeMotivo("pagar", [{ numero: "01", estado: "reservado" }]), false);
 });
 
-await prueba("pago en serie: resultado real por número, un fallo no detiene el resto", async () => {
-    const s = servidor({ "05": "pagado" }, { "07": { ok: false, motivo: "pago_sin_telefono", mensaje: "Falta el teléfono." } });
-    const avance = [];
+// El lote va en UNA solicitud: el servidor (operarLote) responde cada número.
+const servidorLote = (respuesta) => {
+    const envios = [];
+    return { envios, enviar: async (cuerpo) => { envios.push(cuerpo); return respuesta; } };
+};
+const lote = (resultados) => ({
+    ok: true, accion: "pagar", resultados,
+    hechos: resultados.filter(x => x.estado === "hecho").length, sinCambio: 0, omitidos: 0, errores: 0
+});
+
+await prueba("pagar varios: UNA solicitud con todos los números; resultado real por número", async () => {
+    const s = servidorLote(lote([
+        { numero: "01", estado: "hecho", mensaje: "Pago registrado." },
+        { numero: "05", estado: "sin_cambio", mensaje: "Ya estaba pagado." },
+        { numero: "07", estado: "error", mensaje: "Falta el teléfono.", codigo: "pago_sin_telefono" }
+    ]));
     const r = await L.procesarOperacion({
         operacion: "pagar",
         incluidos: [{ numero: "01", estado: "reservado" }, { numero: "07", estado: "reservado" }, { numero: "05", estado: "reservado" }],
-        ops: s.ops,
+        enviar: s.enviar,
         datos: { metodoPago: "Nequi", observaciones: "ref 1" },
-        solicitudLote: "L1",
-        alAvanzar: (h, t) => avance.push(`${h}/${t}`)
+        solicitudLote: "L1"
     });
-    assert.deepStrictEqual(r.resultados.map(x => [x.numero, x.estado]), [["01", "hecho"], ["07", "error"], ["05", "sin_cambio"]]);
-    assert.strictEqual(r.resultados[1].mensaje, "Falta el teléfono.");
+    assert.strictEqual(s.envios.length, 1, "una sola solicitud");
+    assert.deepStrictEqual(s.envios[0].numeros, ["01", "07", "05"]);
+    assert.deepStrictEqual([s.envios[0].accion, s.envios[0].metodoPago, s.envios[0].observaciones, s.envios[0].solicitudId], ["pagar", "Nequi", "ref 1", "L1"]);
+    assert.deepStrictEqual(r.resultados.map(x => [x.numero, x.estado]), [["01", "hecho"], ["05", "sin_cambio"], ["07", "error"]]);
     assert.deepStrictEqual([r.hechos, r.sinCambio, r.omitidos, r.errores], [1, 1, 0, 1]);
-    assert.deepStrictEqual(avance, ["1/3", "2/3", "3/3"]);
-    // El pago no lee antes (el servidor ya lo condiciona) y usa una solicitud por número.
-    assert.ok(s.llamadas.every(c => c[0] === "pagar"));
-    assert.deepStrictEqual(s.llamadas.map(c => c[2].solicitudId), ["L1:01", "L1:07", "L1:05"]);
-    assert.strictEqual(s.llamadas[0][2].metodoPago, "Nequi");
 });
 
-await prueba("liberar comprueba el estado real y no toca un número que cambió", async () => {
-    // 03 se vio bloqueado pero ahora está reservado: liberarlo borraría una reserva.
-    const s = servidor({ "03": "reservado", "01": "libre" });
-    const r = await L.procesarOperacion({
-        operacion: "desbloquear",
-        incluidos: [{ numero: "03", estado: "bloqueado" }],
-        ops: s.ops,
-        solicitudLote: "L2"
-    });
+await prueba("liberar y desbloquear: una solicitud con el estado confirmado de cada número", async () => {
+    const s = servidorLote(lote([{ numero: "03", estado: "omitido", mensaje: "Cambió de estado (ahora está reservado). No se tocó: revísalo antes." }]));
+    const r = await L.procesarOperacion({ operacion: "desbloquear", incluidos: [{ numero: "03", estado: "bloqueado" }], enviar: s.enviar, solicitudLote: "L2" });
     assert.strictEqual(r.resultados[0].estado, "omitido");
-    assert.match(r.resultados[0].mensaje, /reservado/);
-    assert.ok(!s.llamadas.some(c => c[0] === "liberar"));
+    assert.deepStrictEqual([s.envios[0].accion, s.envios[0].confirmar], ["liberar", true], "desbloquear usa la liberación del servidor");
+    assert.deepStrictEqual(s.envios[0].numeros, [{ numero: "03", estado: "bloqueado" }]);
 
-    const r2 = await L.procesarOperacion({
-        operacion: "liberar",
-        incluidos: [{ numero: "01", estado: "reservado" }, { numero: "02", estado: "pagado" }],
-        ops: s.ops,
-        datos: { motivo: "Cliente desistió" },
-        solicitudLote: "L3"
-    });
-    assert.deepStrictEqual(r2.resultados.map(x => [x.numero, x.estado]), [["01", "sin_cambio"], ["02", "hecho"]]);
-    const liberados = s.llamadas.filter(c => c[0] === "liberar");
-    assert.deepStrictEqual(liberados.map(c => c[1]), ["02"]);
-    assert.strictEqual(liberados[0][2].motivo, "Cliente desistió");
-    assert.strictEqual(liberados[0][2].solicitudId, "L3:02");
+    const s2 = servidorLote(lote([]));
+    await L.procesarOperacion({ operacion: "liberar", incluidos: [{ numero: "01", estado: "reservado" }, { numero: "02", estado: "pagado" }], enviar: s2.enviar, datos: { motivo: "Cliente desistió" }, solicitudLote: "L3" });
+    assert.strictEqual(s2.envios.length, 1);
+    assert.strictEqual(s2.envios[0].motivo, "Cliente desistió");
 });
 
-await prueba("errores reales del servidor y excepciones se informan sin detener el lote", async () => {
-    const s = servidor({}, { "01": { ok: false, motivo: "estado_cambio", mensaje: "El número cambió de estado. Recarga y revisa antes de volver a intentarlo." } });
-    const ops = { ...s.ops, estadoReal: async (n) => (n === "05" ? { ok: false, mensaje: "Sin conexión con el panel." } : s.ops.estadoReal(n)) };
-    const r = await L.procesarOperacion({
-        operacion: "liberar",
-        incluidos: [{ numero: "01", estado: "reservado" }, { numero: "05", estado: "reservado" }, { numero: "02", estado: "pagado" }],
-        ops: { ...ops, liberar: async (n, d) => { if (n === "02") throw new Error("boom"); return s.ops.liberar(n, d); } },
-        datos: { motivo: "xyz" },
-        solicitudLote: "L4"
-    });
+await prueba("un rechazo general o un fallo de red se informa en todos los números", async () => {
+    const s = servidorLote({ ok: false, motivo: "backend_no_disponible", mensaje: "No se pudo contactar al servidor." });
+    const r = await L.procesarOperacion({ operacion: "liberar", incluidos: [{ numero: "01", estado: "reservado" }, { numero: "02", estado: "pagado" }], enviar: s.enviar, datos: { motivo: "xyz" }, solicitudLote: "L4" });
     assert.deepStrictEqual(r.resultados.map(x => [x.numero, x.estado, x.mensaje]), [
-        ["01", "error", "El número cambió de estado. Recarga y revisa antes de volver a intentarlo."],
-        ["05", "error", "Sin conexión con el panel."],
-        ["02", "error", "boom"]
+        ["01", "error", "No se pudo contactar al servidor."],
+        ["02", "error", "No se pudo contactar al servidor."]
     ]);
+    assert.strictEqual(r.errores, 2);
 });
 
 await prueba("los componentes no escriben en Supabase ni llaman a la red por su cuenta", () => {

@@ -531,53 +531,46 @@ async function destinoProgramado(usuarioId, config, sorteoProgramadoId, grupoId)
 
 }
 
-async function reservarManual({
-    usuarioId, operador, precio, numero, contactoId, nuevoContacto, eventoId,
-    sorteoProgramadoId, grupoId, motivo, observaciones, solicitudId
-}) {
-
-    const motivoLimpio = texto(motivo, MAX_MOTIVO);
-    const obsLimpias = texto(observaciones, MAX_OBSERVACIONES);
-    const solicitud = texto(solicitudId, 80);
-
-    const base = {
+// Datos comunes de auditoría de una reserva manual (uno o varios números).
+function baseReserva({ usuarioId, operador, precio, motivo, observaciones, solicitudId, numero }) {
+    return {
         usuario_id: usuarioId,
         operador_id: operador?.id || null,
         operador_email: operador?.email || null,
         origen: "manual",
         accion: "reservar",
-        numero: String(numero ?? ""),
-        motivo: motivoLimpio,
-        observaciones: obsLimpias,
-        solicitud_id: solicitud,
+        numero,
+        motivo: texto(motivo, MAX_MOTIVO),
+        observaciones: texto(observaciones, MAX_OBSERVACIONES),
+        solicitud_id: texto(solicitudId, 80),
         precio: Number(precio) || null
     };
+}
 
-    // Todo rechazo queda auditado (si se sabe la tabla) antes de responder.
-    const rechazar = async (r, extra = {}) => {
-        if (extra.tabla || base.tabla) {
-            await registrarAuditoria({ ...base, ...extra, resultado: r.motivo?.startsWith("error") ? "error" : "rechazado", codigo: r.motivo, error: r.motivo?.startsWith("error") ? r.mensaje : null });
-        }
-        return r;
-    };
+// Todo lo que una reserva manual comprueba ANTES de tocar la tabla: tabla del
+// precio, motivo, sorteo y grupo, cierre, grupo autorizado y contacto. La
+// misma función para un número y para un lote: una sola versión de las reglas.
+// Devuelve { ok: true, config, evento, ctx, ctxContacto, contacto, anticipada,
+// cifras } o { ok: false, respuesta }. rechazar audita y devuelve el rechazo.
+async function prepararReserva({ usuarioId, precio, contactoId, nuevoContacto, eventoId, sorteoProgramadoId, grupoId, base, rechazar, comprobarNumero }) {
 
-    if (!usuarioId) return rechazo("sin_usuario", "Sesión no válida.");
+    if (!usuarioId) return { ok: false, respuesta: rechazo("sin_usuario", "Sesión no válida.") };
 
     const config = await resolverConfig(usuarioId, precio);
-    if (!config) return rechazo("tabla_no_configurada", "No existe una tabla configurada para este precio.");
+    if (!config) return { ok: false, respuesta: rechazo("tabla_no_configurada", "No existe una tabla configurada para este precio.") };
 
     base.tabla = config.tabla;
     base.precio = config.precio;
 
-    if (!motivoLimpio || motivoLimpio.length < 3) {
-        return rechazar(rechazo("falta_motivo", "Indica el motivo de la intervención manual."));
+    if (!base.motivo || base.motivo.length < 3) {
+        return { ok: false, respuesta: await rechazar(rechazo("falta_motivo", "Indica el motivo de la intervención manual.")) };
     }
 
     // ---- sorteo y grupo (contexto) ----
     // Sorteo activo (eventoId) o programado sin publicar (sorteoProgramadoId
     // + grupoId): el propietario elige; nunca se deduce por el grupo.
     if (eventoId && sorteoProgramadoId) {
-        return rechazar(rechazo("destino_ambiguo", "Elige un sorteo activo o uno programado, no ambos."));
+        return { ok: false, respuesta: await rechazar(rechazo("destino_ambiguo", "Elige un sorteo activo o uno programado, no ambos.")) };
     }
 
     const anticipada = Boolean(sorteoProgramadoId);
@@ -586,21 +579,21 @@ async function reservarManual({
     if (anticipada) {
 
         const destino = await destinoProgramado(usuarioId, config, String(sorteoProgramadoId), grupoId ? String(grupoId) : null);
-        if (!destino.ok) return rechazar(destino);
+        if (!destino.ok) return { ok: false, respuesta: await rechazar(destino) };
         evento = destino.evento;
 
     } else {
 
         const sorteo = await sorteoDelPrecio(usuarioId, config.tabla, config.precio);
-        if (!sorteo.ok) return rechazar(rechazo("error_sorteo", "No se pudo leer el sorteo activo."));
-        if (sorteo.filas.length === 0) return rechazar(rechazo("sin_sorteo", "No hay un sorteo activo para esta tabla."));
+        if (!sorteo.ok) return { ok: false, respuesta: await rechazar(rechazo("error_sorteo", "No se pudo leer el sorteo activo.")) };
+        if (sorteo.filas.length === 0) return { ok: false, respuesta: await rechazar(rechazo("sin_sorteo", "No hay un sorteo activo para esta tabla.")) };
 
         if (eventoId) evento = sorteo.filas.find(e => e.id === eventoId);
         else if (sorteo.filas.length === 1) evento = sorteo.filas[0];
 
     }
 
-    if (!evento) return rechazar(rechazo("falta_grupo", "Selecciona el grupo de WhatsApp de la reserva."));
+    if (!evento) return { ok: false, respuesta: await rechazar(rechazo("falta_grupo", "Selecciona el grupo de WhatsApp de la reserva.")) };
 
     const ctx = {
         evento_id: evento.id,
@@ -610,18 +603,17 @@ async function reservarManual({
     };
 
     const cifras = Number.isInteger(evento.cifras) ? evento.cifras : config.cifras;
-    if (!validarFormatoNumero(String(numero), cifras)) {
-        return rechazar(rechazo("numero_invalido", `El número debe tener ${cifras} cifras.`), ctx);
-    }
+    const numeroMalo = comprobarNumero?.(cifras);
+    if (numeroMalo) return { ok: false, respuesta: await rechazar(numeroMalo, ctx) };
 
     // El programado ya se comprobó (cierre incluido) en destinoProgramado.
     if (!anticipada && !sorteoAceptaReservas(evento)) {
-        return rechazar(rechazo("sorteo_cerrado", "El sorteo ya no acepta reservas (cerrado o pasó la hora de cierre)."), ctx);
+        return { ok: false, respuesta: await rechazar(rechazo("sorteo_cerrado", "El sorteo ya no acepta reservas (cerrado o pasó la hora de cierre)."), ctx) };
     }
 
     const politica = await evaluarGrupo(usuarioId, evento.grupo_id);
     if (!politica.permitido) {
-        return rechazar(rechazo("grupo_no_autorizado", "Ese grupo no está autorizado en EFAAT."), ctx);
+        return { ok: false, respuesta: await rechazar(rechazo("grupo_no_autorizado", "Ese grupo no está autorizado en EFAAT."), ctx) };
     }
 
     // ---- contacto ----
@@ -629,13 +621,13 @@ async function reservarManual({
 
     if (contactoId) {
         contacto = await contactoDelCliente(usuarioId, contactoId);
-        if (!contacto) return rechazar(rechazo("contacto_no_existe", "El contacto no está en tu directorio."), ctx);
+        if (!contacto) return { ok: false, respuesta: await rechazar(rechazo("contacto_no_existe", "El contacto no está en tu directorio."), ctx) };
     } else if (nuevoContacto && typeof nuevoContacto === "object") {
         const alta = await crearContactoManual({ usuarioId, nombre: nuevoContacto.nombre, telefono: nuevoContacto.telefono });
-        if (!alta.ok) return rechazar(alta, ctx);
+        if (!alta.ok) return { ok: false, respuesta: await rechazar(alta, ctx) };
         contacto = alta.contacto;
     } else {
-        return rechazar(rechazo("falta_contacto", "Selecciona el contacto de la reserva."), ctx);
+        return { ok: false, respuesta: await rechazar(rechazo("falta_contacto", "Selecciona el contacto de la reserva."), ctx) };
     }
 
     const ctxContacto = {
@@ -644,6 +636,37 @@ async function reservarManual({
         contacto_nombre: contacto.nombre || null,
         contacto_telefono: contacto.telefono || null
     };
+
+    return { ok: true, config, evento, ctx, ctxContacto, contacto, anticipada, cifras };
+
+}
+
+async function reservarManual({
+    usuarioId, operador, precio, numero, contactoId, nuevoContacto, eventoId,
+    sorteoProgramadoId, grupoId, motivo, observaciones, solicitudId
+}) {
+
+    const base = baseReserva({ usuarioId, operador, precio, motivo, observaciones, solicitudId, numero: String(numero ?? "") });
+
+    // Todo rechazo queda auditado (si se sabe la tabla) antes de responder.
+    const rechazar = async (r, extra = {}) => {
+        if (extra.tabla || base.tabla) {
+            await registrarAuditoria({ ...base, ...extra, resultado: r.motivo?.startsWith("error") ? "error" : "rechazado", codigo: r.motivo, error: r.motivo?.startsWith("error") ? r.mensaje : null });
+        }
+        return r;
+    };
+
+    const preparada = await prepararReserva({
+        usuarioId, precio, contactoId, nuevoContacto, eventoId, sorteoProgramadoId, grupoId, base, rechazar,
+        comprobarNumero: (cifras) => (validarFormatoNumero(String(numero), cifras) ? null : rechazo("numero_invalido", `El número debe tener ${cifras} cifras.`))
+    });
+
+    if (!preparada.ok) return preparada.respuesta;
+
+    const { config, evento, ctx, ctxContacto, contacto, anticipada, cifras } = preparada;
+    const motivoLimpio = base.motivo;
+    const obsLimpias = base.observaciones;
+    const solicitud = base.solicitud_id;
 
     const esDelMismoSorteo = (f) => f.estado === "reservado" && f.usuario_global_id === contacto.id
         && (ctx.identidad_evento_real ? f.identidad_evento_real === ctx.identidad_evento_real : f.evento_id === evento.id);
@@ -873,13 +896,407 @@ async function liberarManual({ usuarioId, operador, precio, numero, confirmar, m
 
 }
 
+// ---------------------------------------------------- operaciones por lote ---
+// Varios números en UNA solicitud y UNA escritura: una lectura de las filas,
+// un UPDATE condicionado por estado (el mismo de la operación de un número,
+// atómico fila a fila: de dos operaciones simultáneas solo una encuentra la
+// fila en ese estado) y un solo insert de actividad y de auditoría. Las
+// reglas son las de un número: reservar usa prepararReserva y reservarNumeros.
+//
+// Resultado por número: hecho | sin_cambio | omitido (su estado no lo admite
+// o es de otro sorteo; no se tocó) | error. Un fallo individual no deshace
+// los demás; un rechazo general (sorteo cerrado, contacto...) responde
+// ok:false y no toca nada.
+
+const MAX_LOTE = 1000;
+const NUMERO_LOTE = /^\d{1,4}$/;
+
+const ESTADO_LEGIBLE = {
+    libre: "libre", reservado: "reservado", pagado: "pagado", bloqueado: "bloqueado",
+    en_proceso: "en proceso", en_proceso_vencido: "con retención vencida"
+};
+
+function numerosDelLote(numeros) {
+    const lista = [...new Set((Array.isArray(numeros) ? numeros : []).map(n => String(n?.numero ?? n ?? "").trim()))];
+    if (lista.length === 0) return rechazo("sin_numeros", "No hay números seleccionados.");
+    if (lista.length > MAX_LOTE) return rechazo("lote_grande", `Se pueden procesar hasta ${MAX_LOTE} números a la vez.`);
+    if (lista.some(n => !NUMERO_LOTE.test(n))) return rechazo("numero_invalido", "La selección tiene un número no válido.");
+    return { ok: true, lista };
+}
+
+async function leerFilas(usuarioId, tabla, numeros) {
+    const { data, error } = await soloDelCliente(supabase.from(tabla).select("*").in("numero", numeros), { usuario_id: usuarioId });
+    if (error) return { ok: false, error };
+    const porNumero = new Map();
+    // Número repetido en la cuadrícula: no se adivina cuál vale.
+    for (const f of data || []) porNumero.set(String(f.numero), porNumero.has(String(f.numero)) ? null : f);
+    return { ok: true, porNumero };
+}
+
+function contextoFila(fila) {
+    return {
+        evento_id: fila.evento_id || null,
+        identidad_evento_real: fila.identidad_evento_real || null,
+        grupo_id: fila.grupo_id || null,
+        grupo_nombre: fila.grupo_nombre || null,
+        contacto_id: fila.usuario_global_id || null,
+        contacto_nombre: fila.comprador || fila.nombre || null,
+        contacto_telefono: fila.telefono || fila.contacto || null,
+        estado_anterior: fila.estado
+    };
+}
+
+// ¿Ocupado por un sorteo que no es el activo de este precio? (por identidad:
+// un sorteo en varios grupos tiene un evento por grupo).
+function deOtroSorteo(fila, activos) {
+    if (fila.estado !== "reservado" && fila.estado !== "pagado") return false;
+    if (activos.length === 0) return true;
+    if (fila.identidad_evento_real && activos.some(e => e.identidad_evento_real)) {
+        return !activos.some(e => e.identidad_evento_real === fila.identidad_evento_real);
+    }
+    return fila.evento_id ? !activos.some(e => e.id === fila.evento_id) : true;
+}
+
+function respuestaLote(accion, resultados) {
+    const orden = [...resultados].sort((a, b) => a.numero.localeCompare(b.numero));
+    const contar = (e) => orden.filter(x => x.estado === e).length;
+    return { ok: true, accion, resultados: orden, hechos: contar("hecho"), sinCambio: contar("sin_cambio"), omitidos: contar("omitido"), errores: contar("error") };
+}
+
+const noExiste = (numero) => ({ numero, estado: "error", codigo: "numero_inexistente", mensaje: "Ese número no existe en tu tabla." });
+const repetido = (numero) => ({ numero, estado: "error", codigo: "numero_repetido", mensaje: "Ese número está repetido en la tabla: revísalo." });
+const ajeno = (numero) => ({ numero, estado: "omitido", codigo: "otro_sorteo", mensaje: "Es de otro sorteo: no se tocó." });
+
+async function contadoresDeFilas(usuarioId, filas) {
+    // Una vez por sorteo: actualizarEvento recalcula todos sus grupos.
+    const vistos = new Map();
+    for (const f of filas) {
+        if (f.evento_id && !vistos.has(f.identidad_evento_real || f.evento_id)) vistos.set(f.identidad_evento_real || f.evento_id, f.evento_id);
+    }
+    for (const eventoId of vistos.values()) await sincronizarContadores(usuarioId, eventoId);
+}
+
+async function reservarLote({ usuarioId, operador, precio, numeros, contactoId, nuevoContacto, eventoId, sorteoProgramadoId, grupoId, motivo, observaciones, solicitudId }) {
+
+    const lote = numerosDelLote(numeros);
+    if (!lote.ok) return lote;
+
+    const base = baseReserva({ usuarioId, operador, precio, motivo, observaciones, solicitudId, numero: "" });
+
+    const auditarRechazos = (filas) => registrarAuditoria(filas.map(({ numero, codigo, estado_anterior, ctx }) => ({
+        ...base, ...ctx, numero, resultado: String(codigo).startsWith("error") ? "error" : "rechazado", codigo, ...(estado_anterior ? { estado_anterior } : {})
+    })));
+
+    const rechazar = async (r, extra = {}) => {
+        if (base.tabla) await auditarRechazos(lote.lista.map(numero => ({ numero, codigo: r.motivo, ctx: extra })));
+        return r;
+    };
+
+    const preparada = await prepararReserva({ usuarioId, precio, contactoId, nuevoContacto, eventoId, sorteoProgramadoId, grupoId, base, rechazar });
+    if (!preparada.ok) return preparada.respuesta;
+
+    const { config, evento, ctx, ctxContacto, contacto, anticipada, cifras } = preparada;
+
+    const esDelMismoSorteo = (f) => f.estado === "reservado" && f.usuario_global_id === contacto.id
+        && (ctx.identidad_evento_real ? f.identidad_evento_real === ctx.identidad_evento_real : f.evento_id === evento.id);
+
+    const lectura = await leerFilas(usuarioId, config.tabla, lote.lista);
+    if (!lectura.ok) return rechazar(rechazo("error_lectura", "No se pudieron leer los números."), ctxContacto);
+
+    const resultados = [];
+    const rechazos = [];
+    const candidatos = [];
+
+    const ocupado = (numero, fila, mensaje) => {
+        resultados.push({ numero, estado: "omitido", codigo: "no_disponible", estadoActual: estadoDeFila(fila), mensaje });
+        rechazos.push({ numero, codigo: "no_disponible", estado_anterior: fila.estado, ctx: ctxContacto });
+    };
+
+    for (const numero of lote.lista) {
+        const fila = lectura.porNumero.get(numero);
+        if (!validarFormatoNumero(numero, cifras)) resultados.push({ numero, estado: "error", codigo: "numero_invalido", mensaje: `El número debe tener ${cifras} cifras.` });
+        else if (fila === undefined) resultados.push(noExiste(numero));
+        else if (fila === null) resultados.push(repetido(numero));
+        else if (esDelMismoSorteo(fila)) resultados.push({ numero, estado: "sin_cambio", mensaje: "Ya estaba reservado para este contacto." });
+        else if (fila.estado !== "libre") ocupado(numero, fila, `No está libre (está ${ESTADO_LEGIBLE[estadoDeFila(fila)] || fila.estado}). No se tocó.`);
+        else candidatos.push(numero);
+    }
+
+    const reservadas = candidatos.length === 0 ? [] : await reservarNumeros({
+        evento: { ...evento, tabla: config.tabla, cifras },
+        numeros: candidatos,
+        usuario: contacto,
+        comprador: contacto.nombre,
+        contacto: contacto.telefono,
+        lib: contacto.lid || null,
+        origen: "manual",
+        operador,
+        auditoria: { motivo: base.motivo, observaciones: base.observaciones, solicitudId: base.solicitud_id, precio: config.precio }
+    });
+
+    const hechos = new Set((reservadas || []).map(f => String(f.numero)));
+    for (const numero of hechos) resultados.push({ numero, estado: "hecho", mensaje: "Reservado." });
+
+    // Otro (bot o panel) los tomó entre la lectura y el UPDATE, o falló la
+    // escritura: se releen una vez para responder con la verdad.
+    const perdidos = candidatos.filter(n => !hechos.has(n));
+
+    if (perdidos.length) {
+        const despues = await leerFilas(usuarioId, config.tabla, perdidos);
+        for (const numero of perdidos) {
+            const fila = despues.ok ? despues.porNumero.get(numero) : null;
+            if (fila && esDelMismoSorteo(fila)) resultados.push({ numero, estado: "sin_cambio", mensaje: "Ya estaba reservado para este contacto." });
+            else if (fila && fila.estado !== "libre") ocupado(numero, fila, `Ya no estaba libre (ahora está ${ESTADO_LEGIBLE[estadoDeFila(fila)] || fila.estado}): otra operación lo tomó primero. No se tocó.`);
+            else {
+                resultados.push({ numero, estado: "error", codigo: "error_guardar", mensaje: "No se pudo guardar la reserva. Inténtalo de nuevo." });
+                rechazos.push({ numero, codigo: "error_guardar", estado_anterior: "libre", ctx: ctxContacto });
+            }
+        }
+    }
+
+    if (rechazos.length) await auditarRechazos(rechazos);
+
+    // Una anticipada todavía no tiene evento: los cuenta el publicador.
+    if (!anticipada && hechos.size) {
+        try { await actualizarEvento(evento); } catch { /* best-effort */ }
+    }
+
+    return respuestaLote("reservar", resultados);
+
+}
+
+async function pagarLote({ usuarioId, operador, precio, numeros, metodoPago, observaciones, motivo, solicitudId, otrosSorteoAutorizados }) {
+
+    const lote = numerosDelLote(numeros);
+    if (!lote.ok) return lote;
+
+    const config = await resolverConfig(usuarioId, precio);
+    if (!config) return rechazo("tabla_no_configurada", "No existe una tabla configurada para este precio.");
+
+    const base = {
+        usuario_id: usuarioId,
+        operador_id: operador?.id || null,
+        operador_email: operador?.email || null,
+        origen: "manual",
+        accion: "pagar",
+        tabla: config.tabla,
+        precio: config.precio,
+        metodo_pago: texto(metodoPago, MAX_METODO_PAGO),
+        observaciones: texto(observaciones, MAX_OBSERVACIONES),
+        motivo: texto(motivo, MAX_MOTIVO),
+        solicitud_id: texto(solicitudId, 80)
+    };
+
+    const [lectura, sorteo] = await Promise.all([
+        leerFilas(usuarioId, config.tabla, lote.lista),
+        sorteoDelPrecio(usuarioId, config.tabla, config.precio)
+    ]);
+
+    if (!lectura.ok || !sorteo.ok) return rechazo("error_lectura", "No se pudieron leer los números.");
+
+    const autorizados = new Set((otrosSorteoAutorizados || []).map(String));
+    const resultados = [];
+    const auditoria = [];
+    const candidatos = [];
+
+    for (const numero of lote.lista) {
+        const fila = lectura.porNumero.get(numero);
+        if (fila === undefined) { resultados.push(noExiste(numero)); continue; }
+        if (fila === null) { resultados.push(repetido(numero)); continue; }
+        if (fila.estado === "pagado") { resultados.push({ numero, estado: "sin_cambio", mensaje: "Ya estaba pagado." }); continue; }
+        const ctx = contextoFila(fila);
+        if (fila.estado !== "reservado") {
+            resultados.push({ numero, estado: "omitido", codigo: "no_reservado", estadoActual: estadoDeFila(fila), mensaje: `Cambió de estado (ahora está ${ESTADO_LEGIBLE[estadoDeFila(fila)] || fila.estado}). No se tocó.` });
+            auditoria.push({ ...base, ...ctx, numero, resultado: "rechazado", codigo: "no_reservado" });
+        } else if (deOtroSorteo(fila, sorteo.filas) && !autorizados.has(numero)) {
+            resultados.push(ajeno(numero));
+            auditoria.push({ ...base, ...ctx, numero, resultado: "rechazado", codigo: "otro_sorteo" });
+        } else candidatos.push(numero);
+    }
+
+    const { fecha, hora } = ahoraBogota();
+
+    const escribir = (lista) => soloDelCliente(
+        supabase.from(config.tabla)
+            .update({ estado: "pagado", fecha_pago: fecha, hora_pago: hora })
+            .in("numero", lista)
+            .eq("estado", "reservado"),
+        { usuario_id: usuarioId }
+    ).select();
+
+    const pagadas = [];
+    const fallidos = new Map();
+
+    if (candidatos.length) {
+
+        const { data, error } = await escribir(candidatos);
+
+        if (!error) pagadas.push(...(data || []));
+        else if (esErrorTriggerCompradoresSinWhatsapp(error) && candidatos.length > 1) {
+            // El disparador de compradores aborta la sentencia entera si UNA
+            // fila no tiene teléfono: se separa número a número (dentro de
+            // esta misma solicitud) para no perder los pagos válidos.
+            for (const numero of candidatos) {
+                const uno = await escribir([numero]);
+                if (uno.error) fallidos.set(numero, uno.error);
+                else pagadas.push(...(uno.data || []));
+            }
+        } else for (const numero of candidatos) fallidos.set(numero, error);
+
+    }
+
+    const hechos = new Set(pagadas.map(f => String(f.numero)));
+
+    for (const numero of candidatos) {
+        const fila = lectura.porNumero.get(numero);
+        const ctx = contextoFila(fila);
+        const error = fallidos.get(numero);
+        if (hechos.has(numero)) {
+            resultados.push({ numero, estado: "hecho", mensaje: "Pago registrado." });
+            auditoria.push({ ...base, ...ctx, numero, estado_nuevo: "pagado", resultado: "ok" });
+        } else if (error) {
+            const codigo = esErrorTriggerCompradoresSinWhatsapp(error) ? "pago_sin_telefono" : "error_guardar";
+            resultados.push({ numero, estado: "error", codigo, mensaje: codigo === "pago_sin_telefono" ? "La base exige el teléfono del comprador para registrar el pago (contacto solo con LID)." : "No se pudo registrar el pago. Inténtalo de nuevo." });
+            auditoria.push({ ...base, ...ctx, numero, resultado: "error", codigo, error: error.message || error.code });
+        } else {
+            resultados.push({ numero, estado: "omitido", codigo: "estado_cambio", mensaje: "Cambió de estado mientras se registraba el pago. No se tocó." });
+            auditoria.push({ ...base, ...ctx, numero, resultado: "rechazado", codigo: "estado_cambio" });
+        }
+    }
+
+    await registrarActividadesPanel(pagadas.map(f => ({
+        usuarioId, operador, tabla: config.tabla, numero: f.numero, eventoId: f.evento_id, tipo: "pagado",
+        detalle: { precio: config.precio, comprador: f.comprador, contacto: f.contacto, metodo_pago: base.metodo_pago, origen: "manual" }
+    })));
+
+    await registrarAuditoria(auditoria);
+    await contadoresDeFilas(usuarioId, pagadas);
+
+    return respuestaLote("pagar", resultados);
+
+}
+
+// numeros: [{ numero, estado }]: el estado es el que el administrador vio y
+// confirmó; si en el servidor ya es otro, ese número no se toca.
+async function liberarLote({ usuarioId, operador, precio, numeros, confirmar, motivo, observaciones, solicitudId, otrosSorteoAutorizados }) {
+
+    const lote = numerosDelLote(numeros);
+    if (!lote.ok) return lote;
+
+    if (confirmar !== true) return rechazo("falta_confirmacion", "Confirma la operación.");
+
+    const config = await resolverConfig(usuarioId, precio);
+    if (!config) return rechazo("tabla_no_configurada", "No existe una tabla configurada para este precio.");
+
+    const esperados = new Map((Array.isArray(numeros) ? numeros : []).filter(n => n?.estado).map(n => [String(n.numero), n.estado]));
+
+    const base = {
+        usuario_id: usuarioId,
+        operador_id: operador?.id || null,
+        operador_email: operador?.email || null,
+        origen: "manual",
+        tabla: config.tabla,
+        precio: config.precio,
+        motivo: texto(motivo, MAX_MOTIVO),
+        observaciones: texto(observaciones, MAX_OBSERVACIONES),
+        solicitud_id: texto(solicitudId, 80)
+    };
+
+    const [lectura, sorteo] = await Promise.all([
+        leerFilas(usuarioId, config.tabla, lote.lista),
+        sorteoDelPrecio(usuarioId, config.tabla, config.precio)
+    ]);
+
+    if (!lectura.ok || !sorteo.ok) return rechazo("error_lectura", "No se pudieron leer los números.");
+
+    const autorizados = new Set((otrosSorteoAutorizados || []).map(String));
+    const resultados = [];
+    const auditoria = [];
+    const porEstado = new Map();
+    const accionDe = (fila) => (["bloqueado", "en_proceso"].includes(fila.estado) ? "desbloquear" : "liberar");
+
+    for (const numero of lote.lista) {
+        const fila = lectura.porNumero.get(numero);
+        if (fila === undefined) { resultados.push(noExiste(numero)); continue; }
+        if (fila === null) { resultados.push(repetido(numero)); continue; }
+        if (fila.estado === "libre") { resultados.push({ numero, estado: "sin_cambio", mensaje: "Ya estaba libre." }); continue; }
+        const ctx = { ...contextoFila(fila), accion: accionDe(fila) };
+        const esperado = esperados.get(numero);
+        if (esperado && esperado !== fila.estado) {
+            resultados.push({ numero, estado: "omitido", codigo: "estado_cambio", estadoActual: estadoDeFila(fila), mensaje: `Cambió de estado (ahora está ${ESTADO_LEGIBLE[estadoDeFila(fila)] || fila.estado}). No se tocó: revísalo antes.` });
+            auditoria.push({ ...base, ...ctx, numero, resultado: "rechazado", codigo: "estado_cambio" });
+        } else if (deOtroSorteo(fila, sorteo.filas) && !autorizados.has(numero)) {
+            resultados.push(ajeno(numero));
+            auditoria.push({ ...base, ...ctx, numero, resultado: "rechazado", codigo: "otro_sorteo" });
+        } else if (fila.estado === "pagado" && (!base.motivo || base.motivo.length < 3)) {
+            // Anular un pago borra el registro del comprador: exige motivo.
+            resultados.push({ numero, estado: "error", codigo: "falta_motivo", mensaje: "Indica el motivo para anular un número pagado." });
+            auditoria.push({ ...base, ...ctx, numero, resultado: "rechazado", codigo: "falta_motivo" });
+        } else porEstado.set(fila.estado, [...(porEstado.get(fila.estado) || []), numero]);
+    }
+
+    const liberadas = [];
+
+    // Un UPDATE por estado leído: si entretanto cambió, no se pisa.
+    for (const [estado, lista] of porEstado) {
+
+        const { data, error } = await soloDelCliente(
+            supabase.from(config.tabla).update(CAMPOS_LIBRE).in("numero", lista).eq("estado", estado),
+            { usuario_id: usuarioId }
+        ).select();
+
+        const hechos = new Set((data || []).map(f => String(f.numero)));
+
+        for (const numero of lista) {
+            const fila = lectura.porNumero.get(numero);
+            const ctx = { ...contextoFila(fila), accion: accionDe(fila) };
+            if (hechos.has(numero)) {
+                liberadas.push(fila);
+                resultados.push({ numero, estado: "hecho", mensaje: accionDe(fila) === "desbloquear" ? "Desbloqueado: vuelve a estar disponible." : "Liberado: vuelve a estar disponible." });
+                auditoria.push({ ...base, ...ctx, numero, estado_nuevo: "libre", resultado: "ok" });
+            } else if (error) {
+                resultados.push({ numero, estado: "error", codigo: "error_guardar", mensaje: "No se pudo completar la operación. Inténtalo de nuevo." });
+                auditoria.push({ ...base, ...ctx, numero, resultado: "error", codigo: "error_guardar", error: error.message || error.code });
+            } else {
+                resultados.push({ numero, estado: "omitido", codigo: "estado_cambio", mensaje: "Cambió de estado. No se tocó: revísalo antes." });
+                auditoria.push({ ...base, ...ctx, numero, resultado: "rechazado", codigo: "estado_cambio" });
+            }
+        }
+
+    }
+
+    await registrarActividadesPanel(liberadas.map(f => ({
+        usuarioId, operador, tabla: config.tabla, numero: f.numero, eventoId: f.evento_id,
+        tipo: f.estado === "pagado" ? "cancelado" : "liberado",
+        detalle: { precio: config.precio, estadoAnterior: f.estado, comprador: f.comprador, contacto: f.contacto, motivo: base.motivo, origen: "manual" }
+    })));
+
+    await registrarAuditoria(auditoria);
+    await contadoresDeFilas(usuarioId, liberadas);
+
+    return respuestaLote("liberar", resultados);
+
+}
+
+function operarLote({ accion, ...datos }) {
+    if (accion === "reservar") return reservarLote(datos);
+    if (accion === "pagar") return pagarLote(datos);
+    if (accion === "liberar") return liberarLote(datos);
+    return rechazo("accion_invalida", "Operación no válida.");
+}
+
 // ------------------------------------------------------------- apoyo ---
 
 // «Actividad reciente» del panel (reservas_actividad), escrita por el
 // backend con el operador del token. Best-effort.
-async function registrarActividadPanel({ usuarioId, operador, tabla, numero, eventoId, tipo, detalle }) {
+async function registrarActividadPanel(fila) {
+    return registrarActividadesPanel([fila]);
+}
+
+async function registrarActividadesPanel(filas) {
+    if (filas.length === 0) return;
     try {
-        const { error } = await supabase.from("reservas_actividad").insert({
+        const { error } = await supabase.from("reservas_actividad").insert(filas.map(({ usuarioId, operador, tabla, numero, eventoId, tipo, detalle }) => ({
             usuario_id: usuarioId,
             tabla,
             numero,
@@ -887,7 +1304,7 @@ async function registrarActividadPanel({ usuarioId, operador, tabla, numero, eve
             tipo,
             detalle,
             realizado_por: `panel:${operador?.email || operador?.id || "desconocido"}`
-        });
+        })));
         if (error) console.error("⚠ [RESERVA MANUAL] no se pudo registrar actividad:", error.message);
     } catch (err) {
         console.error("⚠ [RESERVA MANUAL] no se pudo registrar actividad:", err?.message);
@@ -908,6 +1325,7 @@ module.exports = {
     reservarManual,
     pagarManual,
     liberarManual,
+    operarLote,
     crearContactoManual,
     olvidarDirectorio,
     normalizarTelefono,

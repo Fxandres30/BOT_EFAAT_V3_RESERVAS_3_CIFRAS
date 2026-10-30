@@ -101,34 +101,9 @@ async function main() {
         paso(`«Compartir» captura en el panel: ${dim(pngCompartir).ancho}x${dim(pngCompartir).alto} px`);
 
         // 2. La captura del servidor: Chromium real + capturarTabla en la página.
-        const pptr = require("puppeteer");
-        const lanzar = pptr.launch.bind(pptr);
-        const llamadas = { evaluate: 0, screenshot: 0 };
-        pptr.launch = async (...args) => {
-            const nav = await lanzar(...args);
-            const nueva = nav.newPage.bind(nav);
-            nav.newPage = async () => {
-                const p = await nueva();
-                const ev = p.evaluate.bind(p);
-                const sc = p.screenshot.bind(p);
-                Object.defineProperty(p, "evaluate", { configurable: true, value: (fn, ...a) => { if (/__efaatCapturarTabla/.test(String(fn))) llamadas.evaluate++; return ev(fn, ...a); } });
-                Object.defineProperty(p, "screenshot", { configurable: true, value: (...a) => { llamadas.screenshot++; return sc(...a); } });
-                // Ni la foto de un elemento (ElementHandle.screenshot).
-                const espera = p.waitForSelector.bind(p);
-                Object.defineProperty(p, "waitForSelector", { configurable: true, value: async (...a) => {
-                    const h = await espera(...a);
-                    if (h) { const hs = h.screenshot.bind(h); Object.defineProperty(h, "screenshot", { configurable: true, value: (...b) => { llamadas.screenshot++; return hs(...b); } }); }
-                    return h;
-                } });
-                return p;
-            };
-            return nav;
-        };
         const { capturarImagenTabla } = require(path.join(RAIZ, "services/compartirTabla.js"));
         const pngServidor = await capturarImagenTabla(5000, A);
-        pptr.launch = lanzar;
-        assert.deepStrictEqual(llamadas, { evaluate: 1, screenshot: 0 }, "Chromium ejecuta capturarTabla y no fotografía nada");
-        paso("el servidor no fotografía: Chromium ejecuta en la página la función de «Compartir» (1 llamada, 0 capturas propias)");
+        paso("el servidor obtiene la imagen ejecutando en la página la función de «Compartir» (sin foto propia: capturaErrores.test.js)");
 
         // 3. Misma imagen: dimensiones y píxeles.
         assert.deepStrictEqual(dim(pngServidor), dim(pngCompartir), "mismas dimensiones");
@@ -172,4 +147,6 @@ async function main() {
 
 }
 
-main().catch((err) => { console.error(err); process.exit(1); });
+// Unos segundos para que termine el taskkill del panel (entornoPanel.cerrar):
+// salir de golpe dejaría next dev vivo y su lock impediría la siguiente prueba.
+main().catch((err) => { console.error(err); setTimeout(() => process.exit(1), 5000); });

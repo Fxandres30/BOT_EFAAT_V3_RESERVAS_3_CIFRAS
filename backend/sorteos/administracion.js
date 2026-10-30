@@ -21,11 +21,16 @@
 //   - cancelar: detiene lo PENDIENTE. Nada publicado se deshace, ninguna
 //     reserva se toca. Un grupo en revisión que ya tiene evento (el anuncio
 //     pudo haber llegado) no se cancela: lo decide el administrador.
-//   - eliminar: borra la fila de la programación SOLO si nunca tuvo
-//     actividad (sin intentos, evento, reservas ni reinicio de tabla).
-//     Antes la saca del alcance del publicador (pasa a 'cancelado' con un
-//     UPDATE condicionado), vuelve a comprobarlo y borra con otro
-//     condicionado. Si algo cambió entretanto, la deja como estaba.
+//   - eliminar: la decisión es del administrador. Borra SOLO la fila de la
+//     programación y sus filas de grupos; nunca toca eventos_bot, tablas,
+//     reservas, pagos ni WhatsApp. El registro de auditoría se conserva
+//     (historial, sin FK, y automation_actions). Solo espera, y lo dice,
+//     mientras el sorteo siga abierto en un grupo, se esté publicando en
+//     este momento o no se pueda leer su estado. Si hubo actividad exige
+//     una segunda confirmación (confirmacion_actividad). Antes la saca del
+//     alcance del publicador (programación 'cancelado' y grupos por publicar
+//     'cancelado', con UPDATE condicionados), vuelve a comprobarlo y borra
+//     con otro condicionado. Si algo cambió entretanto, la deja como estaba.
 //   - archivar: la oculta del listado sin borrar nada (migración 038).
 // Cada operación deja su resultado REAL en el historial (038; sin ella, en
 // el log del proceso).
@@ -38,8 +43,11 @@ const { legible } = require("./disponibilidad");
 const { MAX_INTENTOS_AUTOMATICOS } = require("./publicador");
 
 const ESTADOS_EDITABLES = ["borrador", "programado"];
-// Solo una programación que nunca pasó a publicarse puede borrarse.
-const ESTADOS_ELIMINABLES = ["borrador", "programado", "cancelado"];
+// Estados de una programación que nunca pasó a publicarse.
+const ESTADOS_SIN_PUBLICAR = ["borrador", "programado", "cancelado"];
+// Un grupo «publicando» más viejo que esto es de un proceso que murió: no
+// hay nada en marcha y no debe impedir eliminar para siempre.
+const PUBLICANDO_ATASCADO_MS = 10 * 60 * 1000;
 // Prefijo del publicador para un grupo que espera un conflicto real.
 const EN_ESPERA = "En espera: ";
 
@@ -63,9 +71,10 @@ async function cargarContexto(usuarioId, sorteos) {
 
     const identidades = [...new Set(sorteos.map(s => s.identidad_evento_real).filter(Boolean))];
 
-    const [grupos, eventos] = await Promise.all([
+    const [grupos, eventos, envios] = await Promise.all([
         repo.gruposDeSorteos(usuarioId, sorteos.map(s => s.id)),
-        repo.eventosPorIdentidad(usuarioId, identidades)
+        repo.eventosPorIdentidad(usuarioId, identidades),
+        repo.enviosDeSorteos(usuarioId)
     ]);
 
     const numeros = [];
@@ -86,7 +95,9 @@ async function cargarContexto(usuarioId, sorteos) {
         grupos: grupos.data || [],
         eventos: eventos.data || [],
         numeros,
-        sorteos
+        sorteos,
+        // null = no se pudo saber qué se envió.
+        envios: envios.ok ? envios.data : null
     };
 
 }
@@ -214,18 +225,19 @@ function explicarGrupo(g, sorteo, eventosPorId) {
 
 }
 
-function calcularImpacto(sorteo, grupos, eventos, numeros, lecturaOk) {
+function calcularImpacto(sorteo, grupos, eventos, numeros, ctx, ahora) {
 
     const cuenta = (estado) => grupos.filter(g => g.estado === estado).length;
     const reservados = numeros.filter(n => n.estado === "reservado").length;
     const pagados = numeros.filter(n => n.estado === "pagado").length;
 
     return {
-        lectura_ok: lecturaOk,
+        lectura_ok: ctx.ok,
         grupos: {
             total: grupos.length,
             pendientes: cuenta("pendiente"),
             publicando: cuenta("publicando"),
+            publicando_ahora: grupos.filter(g => g.estado === "publicando" && !(ahora.getTime() - new Date(g.actualizado_en).getTime() > PUBLICANDO_ATASCADO_MS)).length,
             publicados: cuenta("publicado"),
             fallidos: cuenta("fallido"),
             en_revision: cuenta("requiere_revision"),
@@ -238,27 +250,59 @@ function calcularImpacto(sorteo, grupos, eventos, numeros, lecturaOk) {
         reservas: { reservados, pagados, otros: numeros.length - reservados - pagados, total: numeros.length },
         // Reservas tomadas antes de publicar (sin evento todavía).
         anticipadas: eventos.length === 0 ? numeros.length : 0,
-        reinicio_hecho: !!sorteo.config?.tabla?.reiniciado_en
+        reinicio_hecho: !!sorteo.config?.tabla?.reiniciado_en,
+        // Registro del ExecutionGuard de ESTA programación (null = no se pudo leer).
+        envios: enviosDe(sorteo, ctx.envios)
     };
 
 }
 
-// ¿Se puede borrar la fila sin perder nada? Cada motivo en palabras.
+// La clave de cada anuncio lleva sorteo-<id>-publicacion-<n>. 'ok' = llegó a
+// WhatsApp; cualquier otro estado = se intentó y no se sabe si llegó.
+function enviosDe(sorteo, envios) {
+    if (!envios) return null;
+    const propios = envios.filter(e => String(e.clave_idempotencia).includes(`:sorteo-${sorteo.id}-publicacion-`));
+    const confirmados = propios.filter(e => e.estado === "ok").length;
+    return { confirmados, inciertos: propios.length - confirmados };
+}
+
+// Qué pasaría al eliminar. `bloqueos` solo son esperas (se resuelven y se
+// puede eliminar); nunca una prohibición: la decisión es del administrador.
+// `avisos`: lo que debe saber antes de decidir; si los hay, hace falta la
+// segunda confirmación.
 function evaluarEliminacion(sorteo, impacto) {
 
     const bloqueos = [];
+    const avisos = [];
     const g = impacto.grupos;
+    const envios = impacto.envios;
+    const llegaron = Math.max(g.publicados, envios?.confirmados || 0);
 
     if (!impacto.lectura_ok) bloqueos.push("No se pudo comprobar la actividad del sorteo; inténtalo de nuevo.");
-    if (!ESTADOS_ELIMINABLES.includes(sorteo.estado)) bloqueos.push("La programación ya pasó a publicación: se conserva su registro.");
-    if (g.publicados || g.publicando) bloqueos.push(`Se publicó (o se está publicando) en ${g.publicados + g.publicando} grupo(s).`);
-    if (g.con_evento) bloqueos.push(`Se creó el sorteo en ${g.con_evento} grupo(s).`);
-    if (impacto.intentos || impacto.reintentos_manuales) bloqueos.push(`Hubo ${impacto.intentos + impacto.reintentos_manuales} intento(s) de publicación: se conserva su historial.`);
-    if (impacto.eventos.total) bloqueos.push(`El sorteo existe en ${impacto.eventos.total} grupo(s) de WhatsApp.`);
-    if (impacto.reservas.total) bloqueos.push(`Tiene ${impacto.reservas.total} número(s) tomados (${impacto.reservas.reservados} reservado(s), ${impacto.reservas.pagados} pagado(s)): nunca se borran desde aquí.`);
-    if (impacto.reinicio_hecho) bloqueos.push("Ya reinició la tabla al publicar: se conserva el registro.");
+    if (g.publicando_ahora) bloqueos.push(`Se está publicando ahora en ${g.publicando_ahora} grupo(s): espera a que termine.`);
+    if (impacto.eventos.abiertos) bloqueos.push(`Sigue abierto en ${impacto.eventos.abiertos} grupo(s): ciérralo en Eventos y después podrás eliminarlo. Sin la programación dejarían de salir sus recordatorios y su aviso de cierre.`);
 
-    return { posible: bloqueos.length === 0, bloqueos };
+    if (llegaron) avisos.push(`El anuncio llegó a ${llegaron} grupo(s). Eliminar no lo borra de WhatsApp: eso no se puede deshacer desde aquí.`);
+    if (envios?.inciertos) avisos.push(`En ${envios.inciertos} envío(s) no se sabe si el anuncio llegó: revisa esos grupos en WhatsApp.`);
+    if (!envios) avisos.push("No se pudo comprobar qué anuncios se enviaron: revisa los grupos en WhatsApp.");
+    if (impacto.intentos || impacto.reintentos_manuales) avisos.push(`Hubo ${impacto.intentos + impacto.reintentos_manuales} intento(s) de publicación: se borra su detalle por grupo.`);
+    if (impacto.eventos.total) avisos.push(`Los ${impacto.eventos.total} registro(s) del sorteo en Eventos se conservan.`);
+    if (impacto.reservas.total) avisos.push(`Los ${impacto.reservas.total} número(s) tomados (${impacto.reservas.reservados} reservado(s), ${impacto.reservas.pagados} pagado(s)) se quedan tal cual en la tabla: no se liberan ni se borran.`);
+    if (impacto.reinicio_hecho) avisos.push("El reinicio de tabla que ya se hizo no se deshace.");
+
+    const conActividad = avisos.length > 0 || !ESTADOS_SIN_PUBLICAR.includes(sorteo.estado);
+
+    return {
+        posible: bloqueos.length === 0,
+        bloqueos,
+        avisos,
+        con_actividad: conActividad,
+        borra: ["La programación y su configuración.", `Su lista de ${g.total} grupo(s) con los intentos de cada uno.`],
+        conserva: [
+            "Grupos, tablas de números, reservas, pagos y otros sorteos: no se tocan.",
+            "Auditoría: el registro de esta eliminación y de los envíos a WhatsApp."
+        ]
+    };
 
 }
 
@@ -293,7 +337,7 @@ function gestionDe(sorteo, ctx, ahora) {
     const operativo = ctx.ok
         ? estadoOperativo(sorteo, grupos, eventos, ahora)
         : { estado: "desconocido", reservas: null, detalle: "No se pudo leer el estado del sorteo en los grupos." };
-    const impacto = calcularImpacto(sorteo, grupos, eventos, numeros, ctx.ok);
+    const impacto = calcularImpacto(sorteo, grupos, eventos, numeros, ctx, ahora);
     const eliminacion = evaluarEliminacion(sorteo, impacto);
     const acciones = accionesPermitidas(sorteo, grupos, operativo, eliminacion);
     const detalleGrupos = grupos.map(g => explicarGrupo(g, sorteo, eventosPorId));
@@ -533,7 +577,7 @@ async function cancelar(usuarioId, id, { ahora = new Date() } = {}) {
 
 // ------------------------------------------------------------- eliminar ---
 
-async function eliminar(usuarioId, id, { version, confirmacion } = {}, { ahora = new Date() } = {}) {
+async function eliminar(usuarioId, id, { version, confirmacion, confirmacion_actividad } = {}, { ahora = new Date() } = {}) {
 
     if (confirmacion !== true) return falla("confirmacion_requerida");
 
@@ -554,26 +598,55 @@ async function eliminar(usuarioId, id, { version, confirmacion } = {}, { ahora =
     const antes = await gestionDeUno(usuarioId, s, ahora);
     if (!antes.gestion.acciones.eliminar) return rechazo(antes.gestion.eliminacion);
 
+    const sinConfirmarActividad = (eliminacion) => eliminacion.con_actividad && confirmacion_actividad !== true;
+    const pedirActividad = (eliminacion) => falla("confirmacion_actividad_requerida", {
+        mensaje: "Esta programación tiene actividad: revisa lo que implica y confírmalo para eliminarla.",
+        avisos: eliminacion.avisos
+    });
+
+    if (sinConfirmarActividad(antes.gestion.eliminacion)) return pedirActividad(antes.gestion.eliminacion);
+
     // 1. Fuera del alcance del publicador y de las reservas anticipadas
-    //    (ambos solo toman 'programado'), con la versión confirmada.
+    //    (ambos solo toman 'programado' y 'publicando'), con la versión
+    //    confirmada. Los grupos por publicar también: un ciclo ya en marcha
+    //    reclama grupo a grupo y solo puede tomar 'pendiente' o 'fallido'.
     const previo = s.estado;
     if (previo !== "cancelado") {
         const r = await repo.actualizarSorteoSi(usuarioId, id, { version: s.version, estados: [previo] }, { estado: "cancelado", cancelado_en: ahora.toISOString() });
         if (!r.ok) return r.motivo === "conflicto" ? falla("version_cambiada") : r;
     }
 
+    const gruposDetenidos = [];
+    for (const g of actual.data.grupos || []) {
+        if (g.estado !== "pendiente" && g.estado !== "fallido") continue;
+        const r = await repo.marcarGrupoSi(usuarioId, g.id, [g.estado], { estado: "cancelado" });
+        if (r.ok && r.data) gruposDetenidos.push(g);
+    }
+
+    const restaurar = async () => {
+        for (const g of gruposDetenidos) await repo.marcarGrupoSi(usuarioId, g.id, ["cancelado"], { estado: g.estado });
+        if (previo !== "cancelado") {
+            await repo.actualizarSorteoSi(usuarioId, id, { version: s.version, estados: ["cancelado"] }, { estado: previo, cancelado_en: s.cancelado_en || null });
+        }
+    };
+
     // 2. Se vuelve a comprobar con los datos de AHORA: entre la primera
-    //    lectura y el paso 1 pudo entrar una reserva o un intento.
+    //    lectura y el paso 1 pudo entrar una reserva o un intento, y un grupo
+    //    ya reclamado por el publicador sigue 'publicando'.
     const fresco = await repo.obtenerSorteo(usuarioId, id);
     const despues = fresco.ok ? await gestionDeUno(usuarioId, (({ grupos: _g, ...x }) => x)(fresco.data), ahora) : null;
 
     if (!despues || !despues.gestion.eliminacion.posible) {
-        if (previo !== "cancelado") {
-            await repo.actualizarSorteoSi(usuarioId, id, { version: s.version, estados: ["cancelado"] }, { estado: previo, cancelado_en: s.cancelado_en || null });
-        }
+        await restaurar();
         const eliminacion = despues?.gestion.eliminacion || { bloqueos: ["No se pudo volver a comprobar el sorteo."], alternativa: null };
         await repo.registrarHistorial(usuarioId, id, "eliminar", "rechazado", { bloqueos: eliminacion.bloqueos, estado: previo });
         return rechazo(eliminacion);
+    }
+
+    if (sinConfirmarActividad(despues.gestion.eliminacion)) {
+        await restaurar();
+        await repo.registrarHistorial(usuarioId, id, "eliminar", "rechazado", { bloqueos: despues.gestion.eliminacion.avisos, estado: previo });
+        return pedirActividad(despues.gestion.eliminacion);
     }
 
     // 3. Borrado condicionado (misma versión, 'cancelado'). Si otra
@@ -586,7 +659,15 @@ async function eliminar(usuarioId, id, { version, confirmacion } = {}, { ahora =
         publicar_en: s.publicar_en,
         version: s.version,
         estado_previo: previo,
-        grupos: despues.grupos.map(g => g.grupo_nombre || g.grupo_id)
+        grupos: despues.grupos.map(g => ({ grupo: g.grupo_nombre || g.grupo_id, estado: g.estado, intentos: Number(g.intentos) || 0 })),
+        // Para la auditoría: lo que había al eliminar (nada de esto se borró).
+        impacto: {
+            intentos: despues.gestion.impacto.intentos,
+            envios: despues.gestion.impacto.envios,
+            eventos: despues.gestion.impacto.eventos,
+            reservas: despues.gestion.impacto.reservas,
+            reinicio_hecho: despues.gestion.impacto.reinicio_hecho
+        }
     });
 
     return {

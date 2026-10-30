@@ -16,13 +16,16 @@ interface Props {
 }
 
 // Confirmación de «Eliminar»: muestra SIEMPRE el sorteo, los grupos, lo
-// publicado y las reservas. Si tiene actividad no se borra: explica por qué
-// y ofrece la acción segura (cancelar o archivar). El backend vuelve a
-// comprobarlo todo con la versión que se ve aquí.
+// publicado, las reservas y qué se borra y qué se conserva. La decisión es
+// del administrador: si hubo actividad, debe marcar que lo entiende. Solo
+// hay que esperar mientras siga abierto o publicándose (lo explica y ofrece
+// cancelar o archivar). El backend vuelve a comprobarlo todo con la versión
+// que se ve aquí.
 export default function EliminarSorteoModal({ sorteo, onClose, onHecho }: Props) {
 
     const [ocupado, setOcupado] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [entendido, setEntendido] = useState(false);
     const r = resumenEliminacion(sorteo);
 
     async function ejecutar(accion: () => Promise<{ ok: boolean; aviso?: string; motivo?: string; mensaje?: string }>, exito: string) {
@@ -39,13 +42,13 @@ export default function EliminarSorteoModal({ sorteo, onClose, onHecho }: Props)
         <Modal
             open
             onClose={() => { if (!ocupado) onClose(); }}
-            title={r.posible ? "Eliminar programación" : "Esta programación no se puede eliminar"}
+            title={r.posible ? "Eliminar programación" : "Todavía no se puede eliminar"}
             size="md"
             footer={
                 <>
                     <Button variant="secondary" onClick={onClose} disabled={ocupado}>Volver</Button>
                     {r.posible && (
-                        <Button variant="danger" loading={ocupado} onClick={() => ejecutar(() => apiSorteos.eliminar(sorteo.id, sorteo.version), "Programación eliminada.")}>
+                        <Button variant="danger" loading={ocupado} disabled={r.conActividad && !entendido} onClick={() => ejecutar(() => apiSorteos.eliminar(sorteo.id, sorteo.version, r.conActividad), "Programación eliminada.")}>
                             Eliminar definitivamente
                         </Button>
                     )}
@@ -89,14 +92,42 @@ export default function EliminarSorteoModal({ sorteo, onClose, onHecho }: Props)
                     <p className={styles.ayuda}>{r.reservas || "Ninguna."}</p>
                 </section>
 
+                {r.posible && r.borra.length > 0 && (
+                    <section className={styles.seccion} aria-label="Qué se elimina">
+                        <h3 className={styles.seccionTitulo}>Se elimina</h3>
+                        <ul>{r.borra.map(t => <li key={t}>{t}</li>)}</ul>
+                    </section>
+                )}
+
+                {r.posible && r.conserva.length > 0 && (
+                    <section className={styles.seccion} aria-label="Qué se conserva">
+                        <h3 className={styles.seccionTitulo}>Se conserva</h3>
+                        <ul>{r.conserva.map(t => <li key={t}>{t}</li>)}</ul>
+                    </section>
+                )}
+
+                {r.posible && r.avisos.length > 0 && (
+                    <div className={`${styles.alerta} ${styles.alertaAviso}`} role="status">
+                        <p>Antes de decidir:</p>
+                        <ul>{r.avisos.map(a => <li key={a}>{a}</li>)}</ul>
+                    </div>
+                )}
+
                 {!r.posible && (
                     <div className={`${styles.alerta} ${styles.alertaAviso}`} role="status">
-                        <p>No se elimina porque:</p>
+                        <p>Hay que resolver esto primero:</p>
                         <ul>{r.bloqueos.map(b => <li key={b}>{b}</li>)}</ul>
                     </div>
                 )}
 
                 <p className={`${styles.alerta} ${r.posible ? styles.alertaError : styles.alertaInfo}`}>{r.consecuencia}</p>
+
+                {r.posible && r.conActividad && (
+                    <label>
+                        <input type="checkbox" checked={entendido} onChange={e => setEntendido(e.target.checked)} />
+                        {" "}Entiendo lo anterior y quiero eliminar esta programación.
+                    </label>
+                )}
 
             </div>
         </Modal>

@@ -283,7 +283,7 @@ function Ocupado({
                     <p className="text-xs text-gray-500">Como propietario, registrarlo aquí lo deja confirmado (pasa a Pagado).</p>
                     <div className="flex gap-2">
                         <button type="button" onClick={() => setPanel(null)} className="flex-1 text-sm px-4 py-2.5 rounded-xl border bg-white" disabled={procesando}>Cancelar</button>
-                        <BotonAccion icon={DollarSign} texto="Confirmar pago" color="bg-emerald-600 hover:bg-emerald-700" cargando={procesando}
+                        <BotonAccion icon={DollarSign} texto="Confirmar pago" textoCargando="Registrando pago..." color="bg-emerald-600 hover:bg-emerald-700" cargando={procesando}
                             onClick={async () => { const r = await onPagar({ metodoPago: metodo || undefined, observaciones: observaciones.trim() || undefined, solicitudId }); if (r.ok) setPanel(null); }} />
                     </div>
                 </div>
@@ -303,7 +303,7 @@ function Ocupado({
                     <textarea className="w-full border rounded-lg px-3 py-2 text-sm bg-white min-h-[56px]" placeholder="Observaciones (opcional)" maxLength={1000} value={observaciones} onChange={(e) => setObservaciones(e.target.value)} disabled={procesando} />
                     <div className="flex gap-2">
                         <button type="button" onClick={() => setPanel(null)} className="flex-1 text-sm px-4 py-2.5 rounded-xl border bg-white" disabled={procesando}>Cancelar</button>
-                        <BotonAccion icon={Unlock} texto={bloqueado ? "Sí, desbloquear" : "Sí, liberar"} color="bg-gray-900 hover:bg-black" cargando={procesando}
+                        <BotonAccion icon={Unlock} texto={bloqueado ? "Sí, desbloquear" : "Sí, liberar"} textoCargando={bloqueado ? "Desbloqueando..." : "Liberando..."} color="bg-gray-900 hover:bg-black" cargando={procesando}
                             deshabilitado={motivoObligatorio && motivo.trim().length < 3}
                             onClick={async () => { const r = await onLiberar({ motivo: motivo.trim() || undefined, observaciones: observaciones.trim() || undefined, solicitudId }); if (r.ok) setPanel(null); }} />
                     </div>
@@ -352,6 +352,7 @@ function Dato({ etiqueta, valor, nota }: { etiqueta: string; valor: string | nul
 function BotonAccion({
     icon: Icon,
     texto,
+    textoCargando,
     color,
     cargando,
     deshabilitado = false,
@@ -359,6 +360,8 @@ function BotonAccion({
 }: {
     icon: typeof DollarSign;
     texto: string;
+    /** Qué se está ejecutando mientras carga. */
+    textoCargando?: string;
     color: string;
     cargando: boolean;
     deshabilitado?: boolean;
@@ -374,7 +377,7 @@ function BotonAccion({
             className={`flex-1 flex items-center justify-center gap-2 text-white text-sm px-4 py-2.5 rounded-xl disabled:opacity-50 ${color}`}
         >
             {cargando ? <Loader2 size={15} className="animate-spin" /> : <Icon size={15} />}
-            {cargando ? "Procesando..." : texto}
+            {cargando ? textoCargando || "Procesando..." : texto}
         </button>
 
     );

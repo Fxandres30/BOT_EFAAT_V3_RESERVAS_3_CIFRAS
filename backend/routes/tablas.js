@@ -537,4 +537,30 @@ router.post("/:precio/numeros/:numero/liberar", exigirUsuario, manejar("liberar 
     });
 }));
 
+// POST /tablas/:precio/lote — varios números en UNA operación.
+// { accion: "reservar" | "pagar" | "liberar", numeros, ...campos de la acción }.
+// numeros: lista; en liberar, [{ numero, estado }] con el estado confirmado.
+// otrosSorteoAutorizados: números de otro sorteo que el administrador incluyó.
+router.post("/:precio/lote", exigirUsuario, manejar("operación por lote", (req) => {
+    const b = req.body || {};
+    return reservaManual.operarLote({
+        accion: b.accion,
+        usuarioId: req.usuarioId,
+        operador: operadorDe(req),
+        precio: req.params.precio,
+        numeros: b.numeros,
+        contactoId: b.contactoId || null,
+        nuevoContacto: b.nuevoContacto || null,
+        eventoId: b.eventoId || null,
+        sorteoProgramadoId: b.sorteoProgramadoId || null,
+        grupoId: b.grupoId || null,
+        metodoPago: b.metodoPago,
+        motivo: b.motivo,
+        observaciones: b.observaciones,
+        confirmar: b.confirmar === true,
+        otrosSorteoAutorizados: b.otrosSorteoAutorizados,
+        solicitudId: b.solicitudId
+    });
+}));
+
 module.exports = router;

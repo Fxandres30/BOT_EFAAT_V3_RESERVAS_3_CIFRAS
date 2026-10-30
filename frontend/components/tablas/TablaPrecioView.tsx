@@ -59,17 +59,23 @@ export default function TablaPrecioView({ precio }: Props) {
 
     // «Reservas recientes»: mismas operaciones del backend; un rechazo se
     // avisa (antes el error se perdía en una promesa sin capturar).
+    // Resultado visible de las acciones de «Reservas recientes»: confirma el
+    // éxito (antes no decía nada) y explica el error, sin ventanas del navegador.
+    const [avisoAccion, setAvisoAccion] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
+
     async function pagarDesdeLista(numero: string) {
+        setAvisoAccion(null);
         const r = await marcarPagado(numero);
-        if (!r.ok) alert(r.mensaje);
+        setAvisoAccion(r.ok ? { tipo: "ok", texto: `Pago del ${numero} registrado.` } : { tipo: "error", texto: `${numero}: ${r.mensaje}` });
     }
 
     async function liberarDesdeLista(numero: string) {
         const pagado = numeros.find(n => n.numero === numero)?.estado === "pagado";
         const motivo = pagado ? window.prompt(`Motivo para anular el pago del ${numero}:`) : undefined;
         if (pagado && !motivo?.trim()) return;
+        setAvisoAccion(null);
         const r = await liberar(numero, { motivo: motivo?.trim() || undefined });
-        if (!r.ok) alert(r.mensaje);
+        setAvisoAccion(r.ok ? { tipo: "ok", texto: `Número ${numero} liberado.` } : { tipo: "error", texto: `${numero}: ${r.mensaje}` });
     }
 
     // ÚNICA búsqueda del panel: el buscador y los filtros viven en «Historial
@@ -124,8 +130,8 @@ export default function TablaPrecioView({ precio }: Props) {
     // en un lote solo entra si el administrador lo incluye expresamente.
     const seleccionables = useMemo(() => numeros.map(n => {
         const estado = estadoEfectivo(n);
-        return { numero: n.numero, estado, ...(esDeOtroSorteo({ ...n, estado }, eventoActivo) ? { otroSorteo: true } : {}) };
-    }), [numeros, eventoActivo]);
+        return { numero: n.numero, estado, ...(esDeOtroSorteo({ ...n, estado }, coincidePrecio ? eventoActivo : null) ? { otroSorteo: true } : {}) };
+    }), [numeros, eventoActivo, coincidePrecio]);
 
     // Acciones rápidas de «Historial de números»: una operación sobre un
     // solo número (mismo diálogo y misma ruta que el lote) o su detalle.
@@ -320,6 +326,16 @@ export default function TablaPrecioView({ precio }: Props) {
                     incluirOtroSorteoInicial
                     onClose={() => setAccionRapida(null)}
                 />
+            )}
+
+            {avisoAccion && (
+                <div
+                    role={avisoAccion.tipo === "ok" ? "status" : "alert"}
+                    className={`flex items-center justify-between gap-2 text-sm rounded-xl border px-3 py-2 ${avisoAccion.tipo === "ok" ? "bg-emerald-50 border-emerald-200 text-emerald-900" : "bg-red-50 border-red-200 text-red-800"}`}
+                >
+                    <span className="min-w-0">{avisoAccion.texto}</span>
+                    <button type="button" onClick={() => setAvisoAccion(null)} aria-label="Cerrar aviso" className="shrink-0 font-medium hover:underline">Cerrar</button>
+                </div>
             )}
 
             <ReservasRecientes

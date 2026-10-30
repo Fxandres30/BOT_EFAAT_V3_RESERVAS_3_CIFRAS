@@ -76,8 +76,12 @@ export function resumenEliminacion(s: SorteoGestionado) {
         posible: g.acciones.eliminar,
         bloqueos: g.eliminacion.bloqueos,
         alternativa: g.eliminacion.alternativa,
+        avisos: g.eliminacion.avisos || [],
+        conActividad: g.eliminacion.con_actividad === true,
+        borra: g.eliminacion.borra || [],
+        conserva: g.eliminacion.conserva || [],
         consecuencia: g.acciones.eliminar
-            ? "Se borra solo la programación y su lista de grupos. No se envía ni se borra nada en WhatsApp, ni en la tabla de números, ni en las reservas. No se puede deshacer."
+            ? "Se borra solo la programación y su lista de grupos. No se envía ni se borra nada en WhatsApp, ni en la tabla de números, ni en las reservas. Dejará de ejecutarse y no se puede deshacer."
             : g.eliminacion.alternativa === "cancelar"
                 ? "Puedes cancelarla: lo pendiente ya no se publicará y todo lo demás (publicaciones, reservas y pagos) se conserva."
                 : g.eliminacion.alternativa === "archivar"

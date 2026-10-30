@@ -4,6 +4,9 @@
 // API real (routes/tablas.js → reservaManual.js: la MISMA reserva manual de
 // un número, con el UPDATE condicionado a 'libre' que usa el bot).
 //
+// Cada lote es UNA solicitud (POST /api/tablas/lote): se comprueba en las
+// peticiones reales del navegador.
+//
 //   1. «Todos los libres», rango, quitar desde «Ver selección»; la barra
 //      ofrece solo lo compatible.
 //   2. Reservar 5 libres a un contacto: confirmación con cantidad y números;
@@ -25,7 +28,7 @@ const assert = require("assert");
 const path = require("path");
 
 const {
-    PANEL, tablas: t, registrarUsuario, arrancarEntorno, servirTablas,
+    PANEL, fake, tablas: t, registrarUsuario, arrancarEntorno, servirTablas,
     pulsar, esperarTexto, textoPagina, fechaColombia, crearPasos
 } = require("./entornoPanel");
 
@@ -88,10 +91,10 @@ async function main() {
 
     const entorno = await arrancarEntorno({
         montarBackend: (app) => {
-            // Carrera: justo antes de reservar el 03, OTRO (Pedro) lo toma.
-            app.post("/tablas/5000/numeros/03/reservar", (req, res, next) => {
-                if (fila("03").estado === "libre" && process.env.E2E_CARRERA_03 === "1") ocupar("03", { usuario_global_id: C3, comprador: "Pedro Ruiz" });
-                next();
+            // Pagar tarda: para ver el estado «Marcando N pagos...» del botón.
+            app.post("/tablas/5000/lote", (req, res, next) => {
+                if (req.body?.accion === "pagar") setTimeout(next, 700);
+                else next();
             });
             app.use("/tablas", require(path.join(RAIZ, "routes/tablas.js")));
         }
@@ -102,6 +105,12 @@ async function main() {
         const page = await entorno.nuevaPagina(TOKEN);
         const errores = page.erroresJs;
         await page.setViewport({ width: 1366, height: 900 });
+
+        // Solicitudes reales del navegador a las operaciones de números.
+        let solicitudes = [];
+        page.on("request", (r) => {
+            if (r.method() === "POST" && /\/api\/tablas\/(lote|numero)/.test(r.url())) solicitudes.push(new URL(r.url()).pathname);
+        });
         await page.goto(`${PANEL}/tablas/5000`, { waitUntil: "domcontentloaded" });
         await page.waitForSelector('[data-numero="10"]', { timeout: 120000 });
         await esperarTexto(page, "Seleccionar");
@@ -129,7 +138,13 @@ async function main() {
 
         // 2. Reservar 5 libres; el 03 lo toma otro justo antes.
         const ajenos = foto(["10", "11", "12", "13"]);
-        process.env.E2E_CARRERA_03 = "1";
+        // Carrera: justo antes del UPDATE, OTRO (Pedro) toma el 03.
+        fake.control.antesDeEscribir = (tabla) => {
+            if (tabla !== T5K) return;
+            fake.control.antesDeEscribir = null;
+            ocupar("03", { usuario_global_id: C3, comprador: "Pedro Ruiz" });
+        };
+        solicitudes = [];
         await pulsar(page, "Reservar (5)");
         await page.waitForSelector('[role="dialog"][aria-label="Reservar números"]');
         await esperarTexto(page, "Se reservarán 5 números libres al mismo contacto: 00, 01, 02, 03, 04.");
@@ -138,6 +153,7 @@ async function main() {
         await completarReserva(page, "María Pérez");
         await pulsar(page, "Reservar 5 números");
         await esperarTexto(page, "4 reservados");
+        assert.deepStrictEqual(solicitudes, ["/api/tablas/lote"], "5 números = UNA sola solicitud");
         texto = await textoPagina(page);
         for (const n of ["00", "01", "02", "04"]) assert.ok(texto.includes(`${n} — Reservado.`), n);
         assert.ok(/03 — Ya no estaba libre \(ahora está reservado\)/.test(texto), "la carrera se informa");
@@ -152,21 +168,22 @@ async function main() {
         assert.deepStrictEqual(auditadas, ["00", "01", "02", "04"], "una auditoría por número reservado");
         await pulsar(page, "Cerrar");
         await esperarTexto(page, "Toca los números en la tabla o márcalos en «Historial de números».");
-        process.env.E2E_CARRERA_03 = "0";
-        paso("reservar 5: confirmación con cantidad y números; 4 reservados a María en el sorteo activo; el 03 (tomado por otro antes) informado y sin pisar; lo demás intacto");
+        paso("reservar 5 en UNA solicitud: confirmación con cantidad y números; 4 reservados a María en el sorteo activo; el 03 (tomado por otro antes) informado y sin pisar; lo demás intacto");
 
         // 3. Liberar varios reservados.
         await page.waitForFunction(() => document.querySelector('[data-numero="00"]')?.getAttribute("aria-label")?.includes("Reservado"), { timeout: 60000 });
         for (const n of ["00", "01"]) await pulsarCelda(page, n);
         await esperarTexto(page, "2 seleccionados");
+        solicitudes = [];
         await pulsar(page, "Liberar (2)");
         await esperarTexto(page, "¿Liberar los 00, 01?");
         await pulsar(page, "Sí, liberar 2");
         await esperarTexto(page, "2 liberados");
+        assert.deepStrictEqual(solicitudes, ["/api/tablas/lote"], "2 números = UNA sola solicitud");
         assert.deepStrictEqual(["00", "01"].map(n => fila(n).estado), ["libre", "libre"]);
         assert.deepStrictEqual(["02", "04"].map(n => fila(n).estado), ["reservado", "reservado"], "solo los elegidos");
         await pulsar(page, "Cerrar");
-        paso("liberar 2 reservados en lote: libres; los demás del lote anterior siguen reservados");
+        paso("liberar 2 en UNA solicitud: libres; los demás del lote anterior siguen reservados");
 
         // 4. Otro sorteo: fuera salvo que se marque.
         const doce = foto(["12"]);
@@ -176,12 +193,16 @@ async function main() {
         await pulsar(page, "Registrar pago (2)");
         await esperarTexto(page, "Se registrará el pago de 1 número reservado: 10.");
         assert.ok((await textoPagina(page)).includes("Incluir 1 número de otro sorteo (12)."));
+        solicitudes = [];
         await pulsar(page, "Registrar 1 pago");
+        // Respuesta visual: el botón dice qué hace y no admite otro clic.
+        await page.waitForFunction(() => [...document.querySelectorAll("button")].some(b => b.textContent.trim() === "Marcando 1 pago..." && b.disabled), { timeout: 5000 });
         await esperarTexto(page, "1 pagado");
+        assert.deepStrictEqual(solicitudes, ["/api/tablas/lote"]);
         assert.strictEqual(fila("10").estado, "pagado");
         assert.strictEqual(foto(["12"]), doce, "el de otro sorteo no se tocó");
         await pulsar(page, "Cerrar");
-        paso("números de otro sorteo: excluidos por defecto con su casilla; solo se pagó el del sorteo activo");
+        paso("números de otro sorteo: excluidos por defecto con su casilla; solo se pagó el del sorteo activo; «Marcando 1 pago...» visible y botón deshabilitado");
 
         // 5. Dos pestañas reservan a la vez números que se solapan.
         const otra = await entorno.nuevaPagina(TOKEN);
@@ -212,7 +233,7 @@ async function main() {
         for (const n of ["22", "23", "24"]) {
             const ganador = fila(n).usuario_global_id;
             assert.ok([C1, C2].includes(ganador), n);
-            assert.ok(new RegExp(`${n} — Ya no estaba libre`).test(textos), `${n}: el perdedor lo informa`);
+            assert.ok(new RegExp(`${n} — (Ya no estaba libre|No está libre)`).test(textos), `${n}: el perdedor lo informa`);
         }
         paso("dos pestañas reservan a la vez 20–24 y 22–26: los 7 números reservados una sola vez; los solapados los gana uno y el otro lo informa");
 
