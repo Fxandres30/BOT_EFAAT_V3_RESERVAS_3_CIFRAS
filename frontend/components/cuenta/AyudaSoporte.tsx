@@ -32,7 +32,7 @@ export default function AyudaSoporte() {
                     />
 
                     <dl className={styles.datos}>
-                        <dt>Correo de soporte</dt>
+                        <dt>Correo de contacto</dt>
                         <dd>
                             <a className={styles.enlace} href={enlaceSoporte("soporte", perfil?.correo || null)}>
                                 <Mail size={14} aria-hidden="true" />

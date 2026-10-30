@@ -108,7 +108,7 @@ async function main() {
         assert.ok(!enlaces.some((h) => h.startsWith("/register")), "la landing no debe abrir el registro comercial");
         assert.ok(!enlaces.some((h) => /terminos|privacidad/i.test(h)), "no hay documentos legales que enlazar");
         assert.ok(enlaces.includes("/login"));
-        assert.ok(enlaces.some((h) => h.startsWith("mailto:soporte@efaat.com")));
+        assert.ok(enlaces.some((h) => h.startsWith("mailto:contacto@efaat.com")));
         const ctaHero = await page.$eval("#inicio a[href='#solicitar-prueba']", (a) => a.textContent.trim());
         assert.match(ctaHero, /Solicitar prueba gratis de 7 días/);
         paso("CTA lleva a la solicitud por correo; sin /register ni enlaces legales inexistentes");

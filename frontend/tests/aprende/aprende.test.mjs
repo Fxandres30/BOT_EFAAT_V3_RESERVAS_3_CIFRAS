@@ -153,6 +153,12 @@ prueba("contenido estático: la guía no consulta Supabase, el backend ni datos 
     }
 });
 
+prueba("correo de contacto: la guía usa el mismo correo que la landing y Mi cuenta", () => {
+    const planes = cargarTs(path.join(FRONT, "lib/comercial/planes.ts"));
+    assert.strictEqual(A.CORREO_SOPORTE_APRENDE, planes.CORREO_COMERCIAL);
+    assert.strictEqual(A.CORREO_SOPORTE_APRENDE, "contacto@efaat.com");
+});
+
 let fallos = 0;
 for (const { n, fn } of pruebas) {
     try { await fn(); console.log(`  ok  ${n}`); }

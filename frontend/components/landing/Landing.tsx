@@ -528,7 +528,7 @@ export default function Landing() {
                     <p>© {new Date().getFullYear()} EFAAT</p>
                     <nav aria-label="Enlaces del pie" className={styles.pieEnlaces}>
                         <Link href="/login">Iniciar sesión</Link>
-                        <a href={`mailto:${CORREO_COMERCIAL}`}>Soporte: {CORREO_COMERCIAL}</a>
+                        <a href={`mailto:${CORREO_COMERCIAL}`}>Contacto: {CORREO_COMERCIAL}</a>
                     </nav>
                 </div>
             </footer>

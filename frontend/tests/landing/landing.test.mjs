@@ -168,9 +168,9 @@ prueba("formato COP y texto de grupos", () => {
     assert.strictEqual(planes.textoGrupos(5), "Hasta 5 grupos de WhatsApp");
 });
 
-prueba("los enlaces de solicitud son mailto a soporte@efaat.com", () => {
+prueba("los enlaces de solicitud son mailto a contacto@efaat.com", () => {
     const general = planes.enlaceSolicitud();
-    assert.ok(general.startsWith("mailto:soporte@efaat.com?subject="));
+    assert.ok(general.startsWith("mailto:contacto@efaat.com?subject="));
     assert.match(decodeURIComponent(general), /prueba gratuita de 7 días/);
     assert.match(decodeURIComponent(planes.enlaceSolicitud(planes.PLANES[1])), /plan Profesional/);
 });

@@ -42,7 +42,9 @@ export interface Articulo {
     seccion: { href: string; texto: string } | null;
 }
 
-export const CORREO_SOPORTE_APRENDE = "soporte@efaat.com";
+// Copia de CORREO_COMERCIAL (lib/comercial/planes.ts): este módulo no puede
+// importar; tests/aprende exige que ambos valores coincidan.
+export const CORREO_SOPORTE_APRENDE = "contacto@efaat.com";
 
 export const CATEGORIAS: Categoria[] = [
     { id: "primeros-pasos", titulo: "Primeros pasos", descripcion: "Qué es EFAAT, qué configurar primero y cómo leer los estados.", icono: "rocket", seccion: null },

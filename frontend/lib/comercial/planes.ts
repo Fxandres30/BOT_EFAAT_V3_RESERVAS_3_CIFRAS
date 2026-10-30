@@ -26,7 +26,7 @@ export const PLANES: readonly PlanComercial[] = [
 
 export const DIAS_PRUEBA_GRATUITA = 7;
 
-export const CORREO_COMERCIAL = "soporte@efaat.com";
+export const CORREO_COMERCIAL = "contacto@efaat.com";
 
 // "$49.999" — formato colombiano (punto de miles, sin decimales).
 export function formatearCOP(valor: number): string {
