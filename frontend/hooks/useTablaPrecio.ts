@@ -341,6 +341,7 @@ export function useTablaPrecio(precio: number) {
                     operacion,
                     incluidos,
                     ops: {
+                        reservar: (numero, d) => reservarNumeroManual(precio, numero, d),
                         pagar: (numero, d) => pagarNumeroManual(precio, numero, d),
                         liberar: (numero, d) => liberarNumeroManual(precio, numero, d),
                         estadoReal: async (numero) => {

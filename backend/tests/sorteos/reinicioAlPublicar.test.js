@@ -422,17 +422,22 @@ prueba("C2. sorteo de A alterado (otro evento u otra tabla): al publicar se reva
 
 // -------------------------------------------- F. estado final de la tabla ---
 
-prueba("F1. tras el reinicio aparece un número ocupado de otro sorteo: el anuncio NO sale (revisión)", async () => {
+// UX-03: el reinicio confirmado ya se hizo; un número que otro sorteo ocupa
+// después se respeta (no se toca ni se vende en este) y el anuncio sale.
+prueba("F1. tras el reinicio aparece un número ocupado de otro sorteo: se respeta y el anuncio sale sin reiniciar otra vez", async () => {
     escenario();
     const s = await programar(A, entrada({ tabla: { reiniciar: true } }), { confirmado: true });
     const { d, enviados } = deps();
     await tick(A, seg(-45), d);
     assert.strictEqual(aplicadas().length, 1);
-    Object.assign(fake.tablas[T5K].find(f => f.usuario_id === A && f.numero === "80"), { estado: "pagado", identidad_evento_real: "anterior-a" });
+    const ocupado = fake.tablas[T5K].find(f => f.usuario_id === A && f.numero === "80");
+    Object.assign(ocupado, { estado: "pagado", identidad_evento_real: "anterior-a" });
+    const antes = JSON.stringify(ocupado);
     await tick(A, seg(30), d);
-    assert.strictEqual(enviados.length, 0, "no promete números que no están libres");
-    assert.strictEqual(grupoDe(s.id).estado, "requiere_revision");
-    assert.strictEqual(aplicadas().length, 1, "tampoco reinicia otra vez por su cuenta");
+    assert.strictEqual(enviados.length, 1, "la decisión ya ejecutada no se contradice");
+    assert.strictEqual(grupoDe(s.id).estado, "publicado");
+    assert.strictEqual(JSON.stringify(ocupado), antes, "el número del otro sorteo intacto");
+    assert.strictEqual(aplicadas().length, 1, "no reinicia otra vez por su cuenta");
 });
 
 (async () => {

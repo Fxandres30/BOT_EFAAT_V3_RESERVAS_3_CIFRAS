@@ -294,13 +294,16 @@ prueba("F2-8. grupo con OTRO sorteo activo: no bloquea la programación ni se re
     assert.strictEqual(fake.tablas.eventos_bot.find(e => e.id === "ev-otro").activo, true, "el sorteo activo no se toca al programar");
 });
 
-prueba("F2-9. tabla con números de OTRO sorteo: bloqueo (nunca se reinicia sola)", async () => {
+// UX-03: con «Conservar» se conserva y se avisa (antes bloqueaba).
+prueba("F2-9. tabla con números de OTRO sorteo: se conserva con aviso (nunca se reinicia sola)", async () => {
     escenario();
     fake.tablas[TABLA][5] = { ...fake.tablas[TABLA][5], estado: "pagado", identidad_evento_real: "sorteo-anterior" };
+    const antes = JSON.stringify(fake.tablas[TABLA][5]);
     const c = await servicio.crearSorteo(A, entrada());
     const vp = await servicio.vistaPrevia(A, c.data.id);
-    assert.ok(vp.data.bloqueos.some(b => /otro sorteo/.test(b)), JSON.stringify(vp.data.bloqueos));
-    assert.strictEqual(fake.tablas[TABLA][5].estado, "pagado", "la tabla no se tocó");
+    assert.ok(!vp.data.bloqueos.some(b => /otro sorteo/.test(b)), JSON.stringify(vp.data.bloqueos));
+    assert.ok(vp.data.avisos.some(a => /^Se conserva la tabla actual/.test(a)), JSON.stringify(vp.data.avisos));
+    assert.strictEqual(JSON.stringify(fake.tablas[TABLA][5]), antes, "la tabla no se tocó");
 });
 
 prueba("F2-10. fecha ya pasada o cierre ya pasado al publicar: no publica, queda en revisión", async () => {

@@ -263,7 +263,7 @@ export interface VistaPrevia {
     publicacion: string;
     recordatorios: Recordatorio[];
     aviso_cierre: string | null;
-    tabla: { esperados: number; presentes: number; ocupadosOtroSorteo: number; retenidos: number } | null;
+    tabla: { esperados: number; presentes: number; ocupadosOtroSorteo: number; retenidos: number; libres?: number; duplicados?: number } | null;
     grupos: {
         grupo_id: string;
         nombre: string | null;
@@ -396,6 +396,7 @@ const MENSAJES: Record<string, string> = {
     sin_sesion_activa: "Tu WhatsApp no está conectado: conéctalo en Sesiones. No se publicó nada.",
     sesion_no_disponible: "Tu WhatsApp está conectado en otro servidor o reconectándose. Espera un momento; no se publicó nada.",
     error_imagen: "El servidor no pudo generar la imagen de la tabla.",
+    imagen_invalida: "La imagen de la tabla no es válida: no se publicó nada. Vuelve a generarla.",
     tiempo_agotado: "El servidor tardó demasiado en responder. Puede que se haya publicado: revisa el estado antes de reintentar."
 };
 
@@ -477,11 +478,10 @@ export const apiSorteos = {
     confirmar: (id: string, version: number, reinicio?: { confirmado: boolean }) =>
         llamar<Sorteo>("POST", `/${id}/confirmar`, { version, confirmacion: true, ...(reinicio ? { reinicio } : {}) }),
     cancelar: (id: string) => llamar<Sorteo>("POST", `/${id}/cancelar`),
-    /** «Sorteo instantáneo»: confirma y publica YA con el publicador de siempre. */
-    publicarAhora: (id: string, version: number, reinicio?: { confirmado: boolean }) =>
-        llamar<ResultadoPublicacionInmediata>("POST", `/${id}/publicar-ahora`, { version, confirmacion: true, ...(reinicio ? { reinicio } : {}) }),
-    /** Imagen que se enviará, generada en el servidor (no envía nada). */
-    imagenPrueba: (id: string) => llamar<{ imagen: string; bytes: number }>("GET", `/${id}/imagen-prueba`),
+    /** «Sorteo instantáneo»: confirma y publica YA con el publicador de siempre.
+     *  `imagen`: la captura de la vista previa (capturarTabla, la de «Compartir»), que se envía tal cual. */
+    publicarAhora: (id: string, version: number, imagen: string, reinicio?: { confirmado: boolean }) =>
+        llamar<ResultadoPublicacionInmediata>("POST", `/${id}/publicar-ahora`, { version, confirmacion: true, imagen, ...(reinicio ? { reinicio } : {}) }),
     /** Listado de la pantalla de programados (estados, impacto y acciones). */
     gestion: () => llamar<SorteoGestionado[]>("GET", "/gestion"),
     detalle: (id: string) => llamar<DetalleSorteo>("GET", `/${id}/detalle`),

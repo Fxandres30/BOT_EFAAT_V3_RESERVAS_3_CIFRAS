@@ -25,6 +25,8 @@ const { crearFake } = require("../sorteos/fakeSupabaseSorteos");
 // Sin TABLA_SHARE_SECRET a propósito: la captura ya no usa enlaces firmados.
 delete process.env.TABLA_SHARE_SECRET;
 process.env.SESSIONS_API_TOKEN = "token-servicio-compartir";
+// Panel que abre el Chromium simulado (ya no hay localhost por defecto).
+process.env.FRONTEND_URL = "http://127.0.0.1:3999";
 
 const RAIZ = path.resolve(__dirname, "../..");
 function inyectar(rutaRel, exportsObj) {
@@ -67,6 +69,15 @@ inyectar("services/baileys/manager.js", { getSocketActivoDe: (u) => sockets.get(
 // imagen. La "imagen" es la ruta de la página + los datos recibidos.
 let capturas = 0;
 const nav = { fallar: false, sinInterceptar: false };
+// Cabecera PNG válida (firma + IHDR) + la descripción de lo pintado: lo que
+// devuelve capturarTabla en la página pasa por destinosCompartir.imagenPng.
+const CABECERA_PNG = (() => {
+    const b = Buffer.alloc(33);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b, 0);
+    b.writeUInt32BE(13, 8); b.write("IHDR", 12, "ascii"); b.writeUInt32BE(1408, 16); b.writeUInt32BE(1408, 20);
+    return b;
+})();
+const pngPintado = (texto) => Buffer.concat([CABECERA_PNG, Buffer.from(texto)]);
 const PUPPETEER = require.resolve("puppeteer", { paths: [RAIZ] });
 require.cache[PUPPETEER] = {
     id: PUPPETEER, filename: PUPPETEER, loaded: true,
@@ -98,8 +109,10 @@ require.cache[PUPPETEER] = {
                     },
                     waitForSelector: async () => {
                         if (!pintado) throw new Error("la página no recibió datos");
-                        return { screenshot: async () => Buffer.from(`PNG ${new URL(url).pathname} ocupados=${pintado.numerosOcupados.join(",")}`) };
-                    }
+                        return {};
+                    },
+                    // window.__efaatCapturarTabla(): capturarTabla en la página.
+                    evaluate: async () => `data:image/png;base64,${pngPintado(`PNG ${new URL(url).pathname} ocupados=${pintado.numerosOcupados.join(",")}`).toString("base64")}`
                 }),
                 close: async () => {}
             };
@@ -170,7 +183,7 @@ function diferencia(antes, despues) {
 }
 
 // Lo que pinta el Puppeteer simulado (solo scheduler / formato antiguo).
-const IMG_PUPPETEER_A = Buffer.from("PNG /tablas/imprimir/5000 ocupados=00,01,02").toString("base64");
+const IMG_PUPPETEER_A = pngPintado("PNG /tablas/imprimir/5000 ocupados=00,01,02").toString("base64");
 
 const pruebas = [];
 const prueba = (nombre, fn) => pruebas.push({ nombre, fn });

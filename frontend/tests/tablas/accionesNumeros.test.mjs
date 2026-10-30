@@ -101,8 +101,10 @@ await prueba("selección mixta: cada operación incluye solo sus estados", () =>
     assert.deepStrictEqual(liberar.incluidos, [{ numero: "01", estado: "reservado" }, { numero: "02", estado: "pagado" }, { numero: "05", estado: "reservado" }]);
 
     assert.deepStrictEqual(L.clasificarOperacion(tabla, sel, "desbloquear").incluidos.map(n => n.numero), ["03"]);
-    assert.deepStrictEqual(L.operacionesCompatibles(tabla, sel), { pagar: 2, liberar: 3, desbloquear: 1 });
-    assert.deepStrictEqual(L.operacionesCompatibles(tabla, ["00", "04"]), { pagar: 0, liberar: 0, desbloquear: 0 });
+    // UX-05: la barra también ofrece «Reservar» para los libres (00).
+    assert.deepStrictEqual(L.operacionesCompatibles(tabla, sel), { reservar: 1, pagar: 2, liberar: 3, desbloquear: 1 });
+    assert.deepStrictEqual(L.operacionesCompatibles(tabla, ["00", "04"]), { reservar: 1, pagar: 0, liberar: 0, desbloquear: 0 });
+    assert.deepStrictEqual(L.operacionesCompatibles(tabla, ["04"]), { reservar: 0, pagar: 0, liberar: 0, desbloquear: 0 });
 });
 
 await prueba("anular un pago exige motivo; liberar solo reservas, no", () => {

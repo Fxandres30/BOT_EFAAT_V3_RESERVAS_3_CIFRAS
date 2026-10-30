@@ -21,6 +21,8 @@ export interface NumeroReserva {
 
     evento_id: string | null;
     nombre_evento: string | null;
+    /** Sorteo real al que pertenece (la consulta ya lo trae: select *). */
+    identidad_evento_real?: string | null;
 
     usuario_id: string | null;
     usuario_global_id: string | null;
@@ -43,6 +45,7 @@ export interface NumeroReserva {
 
 export interface EventoActivo {
     id: string;
+    identidad_evento_real?: string | null;
     nombre_evento: string | null;
     valor: string | null;
     tabla: string;

@@ -845,7 +845,7 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 estado: "funciona",
                 sensible: true,
                 activadores: [{ tipo: "horario", descripcion: "Revisión cada 30 segundos de los sorteos confirmados cuya hora llegó." }],
-                condiciones: ["Solo versiones confirmadas.", "Nunca encima de otro sorteo activo ni sobre una tabla ocupada.", "Cada mensaje como mucho una vez; si falla queda «requiere revisión»."],
+                condiciones: ["Solo versiones confirmadas.", "Nunca encima de otro sorteo activo del grupo (salvo «Sustituir»). La tabla se conserva o se reinicia según lo que elegiste; los números de otros sorteos nunca se modifican sin reinicio confirmado.", "Cada mensaje como mucho una vez; si falla queda «requiere revisión»."],
                 accion: "Crea el sorteo (mismo registro que un anuncio), abre el grupo y publica el anuncio.",
                 lee: ["sorteos_programados", "sorteos_programados_grupos", "eventos_bot", "tabla de números"],
                 escribe: ["eventos_bot", "sorteos_programados_grupos", "automation_actions"],

@@ -632,7 +632,7 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
                         </label>
                     </div>
                     <p className={styles.ayuda}>
-                        Si eliges reiniciar, los números se liberarán únicamente cuando llegue el momento de publicar el sorteo, no al programarlo. Antes de hacerlo, el sistema volverá a validar el estado de la tabla.
+                        Si conservas la tabla, las reservas y pagos que ya tenga (también de otros sorteos) se quedan como están y este sorteo vende solo los números libres. Si eliges reiniciar, los números se liberarán únicamente cuando llegue el momento de publicar el sorteo, no al programarlo. Antes de hacerlo, el sistema volverá a validar el estado de la tabla.
                     </p>
                     {form.reiniciarTabla && (
                         <>

@@ -34,6 +34,7 @@ const ESTADO_HTTP = {
     sesion_no_disponible: 409,
     confirmacion_reinicio_requerida: 400,
     error_imagen: 502,
+    imagen_invalida: 400,
     migracion_pendiente: 503
 };
 
@@ -120,8 +121,9 @@ router.put("/:id", conId(async (req, res) => responder(res, await servicio.edita
 router.get("/:id/vista-previa", conId(async (req, res) => responder(res, await servicio.vistaPrevia(req.usuarioId, req.params.id))));
 router.post("/:id/confirmar", conId(async (req, res) => responder(res, await servicio.confirmar(req.usuarioId, req.params.id, req.body || {}))));
 // «Sorteo instantáneo»: confirmar = publicar ya (mismo publicador). Exige
-// { version, confirmacion: true }. imagen-prueba: la imagen que se enviará,
-// generada en el servidor; no envía ni escribe nada.
+// { version, confirmacion: true, imagen? }: `imagen` es la captura del panel
+// (capturarTabla, la de «Compartir»). imagen-prueba: la misma captura hecha
+// por el Chromium del servidor (panel anterior); no envía ni escribe nada.
 router.post("/:id/publicar-ahora", conId(async (req, res) => responder(res, await servicio.publicarAhora(req.usuarioId, req.params.id, req.body || {}))));
 router.get("/:id/imagen-prueba", conId(async (req, res) => responder(res, await servicio.probarImagen(req.usuarioId, req.params.id))));
 router.get("/:id/detalle", conId(async (req, res) => responder(res, await servicio.detalle(req.usuarioId, req.params.id))));

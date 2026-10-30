@@ -27,7 +27,17 @@ const inyectar = (rel, exp) => { const abs = path.join(RAIZ, rel); require.cache
 
 inyectar("lib/supabase.js", { from: () => { throw new Error("sin Supabase en esta prueba"); } });
 
-const nav = { modo: "ok", cerrados: 0, recibido: null };
+const nav = { modo: "ok", cerrados: 0, recibido: null, evaluados: 0, capturasPropias: 0, devuelve: null };
+
+// PNG mínimo con firma, IHDR y tamaño (lo que comprueba destinosCompartir.imagenPng).
+function pngDe(ancho, alto) {
+    const b = Buffer.alloc(40);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b, 0);
+    b.writeUInt32BE(13, 8); b.write("IHDR", 12, "ascii"); b.writeUInt32BE(ancho, 16); b.writeUInt32BE(alto, 20);
+    return b;
+}
+const PNG_PANEL = pngDe(1408, 1408);
+const DATA_URL_PANEL = `data:image/png;base64,${PNG_PANEL.toString("base64")}`;
 const PUPPETEER = require.resolve("puppeteer", { paths: [RAIZ] });
 require.cache[PUPPETEER] = {
     id: PUPPETEER, filename: PUPPETEER, loaded: true,
@@ -51,8 +61,16 @@ require.cache[PUPPETEER] = {
                     },
                     waitForSelector: async () => {
                         if (nav.modo === "otra_web") throw new Error("Waiting for selector `[data-tabla-imprimir]` failed");
-                        return { screenshot: async () => Buffer.from("PNG-real") };
-                    }
+                        // Si alguien volviera a fotografiar el elemento, se cuenta.
+                        return { screenshot: async () => { nav.capturasPropias++; return Buffer.from("PNG-propio"); } };
+                    },
+                    // window.__efaatCapturarTabla(): capturarTabla de «Compartir» en la página.
+                    evaluate: async (fn) => {
+                        nav.evaluados++;
+                        assert.match(String(fn), /__efaatCapturarTabla()/);
+                        return nav.devuelve ?? DATA_URL_PANEL;
+                    },
+                    screenshot: async () => { nav.capturasPropias++; return Buffer.from("PNG-propio"); }
                 }),
                 close: async () => { nav.cerrados++; }
             };
@@ -68,10 +86,12 @@ const DATOS = { numerosDisponibles: ["00", "01"], numerosOcupados: ["02"], cifra
 const pruebas = [];
 const prueba = (n, fn) => pruebas.push({ n, fn });
 
-prueba("1. Con datos dados (imagen de prueba): la página los recibe tal cual y se devuelve la captura", async () => {
-    nav.modo = "ok"; nav.cerrados = 0; nav.recibido = null;
+prueba("1. Con datos dados (imagen de prueba): la página los recibe tal cual y se devuelve LA CAPTURA DEL PANEL (capturarTabla), sin foto propia", async () => {
+    nav.modo = "ok"; nav.cerrados = 0; nav.recibido = null; nav.evaluados = 0; nav.capturasPropias = 0; nav.devuelve = null;
     const png = await capturarImagenTabla(3000, A, null, { datos: DATOS });
-    assert.strictEqual(png.toString(), "PNG-real");
+    assert.ok(png.equals(PNG_PANEL), "el PNG es el que devolvió la función del panel");
+    assert.strictEqual(nav.evaluados, 1, "se ejecuta la captura de la página una vez");
+    assert.strictEqual(nav.capturasPropias, 0, "el servidor no fotografía nada");
     assert.deepStrictEqual(nav.recibido, DATOS);
     assert.strictEqual(nav.cerrados, 1, "el navegador se cierra");
 });
@@ -101,6 +121,39 @@ prueba("4. Chromium no arranca en el servidor: el error llega tal cual (no hay i
 prueba("5. Sin dueño válido no se captura nada", async () => {
     nav.modo = "ok";
     await assert.rejects(() => capturarImagenTabla(3000, "no-es-uuid", null, { datos: DATOS }), /sin el dueño/);
+});
+
+prueba("6. La página devuelve algo que no es un PNG válido: error, ninguna imagen", async () => {
+    nav.modo = "ok"; nav.cerrados = 0; nav.devuelve = "data:image/png;base64,QUJD";
+    await assert.rejects(() => capturarImagenTabla(3000, A, null, { datos: DATOS }), /PNG válida/);
+    assert.strictEqual(nav.cerrados, 1);
+    nav.devuelve = null;
+});
+
+prueba("7. Sin FRONTEND_URL: error explícito y ni siquiera se abre Chromium (ya no hay localhost por defecto)", async () => {
+    const antes = process.env.FRONTEND_URL;
+    delete process.env.FRONTEND_URL;
+    nav.modo = "sin_chromium";
+    try {
+        await assert.rejects(() => capturarImagenTabla(3000, A, null, { datos: DATOS }), /Falta FRONTEND_URL/);
+    } finally { process.env.FRONTEND_URL = antes; nav.modo = "ok"; }
+});
+
+prueba("8. En producción, FRONTEND_URL con localhost se rechaza con un error explícito; fuera de producción se permite", async () => {
+    const antes = { url: process.env.FRONTEND_URL, env: process.env.NODE_ENV };
+    process.env.FRONTEND_URL = "http://localhost:3000";
+    try {
+        process.env.NODE_ENV = "production";
+        nav.modo = "sin_chromium";
+        await assert.rejects(() => capturarImagenTabla(3000, A, null, { datos: DATOS }), /localhost:3000.*producción/);
+        process.env.NODE_ENV = "development";
+        nav.modo = "ok"; nav.devuelve = null;
+        const png = await capturarImagenTabla(3000, A, null, { datos: DATOS });
+        assert.ok(png.equals(PNG_PANEL));
+    } finally {
+        process.env.FRONTEND_URL = antes.url;
+        if (antes.env === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = antes.env;
+    }
 });
 
 (async () => {

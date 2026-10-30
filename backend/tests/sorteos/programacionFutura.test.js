@@ -331,12 +331,15 @@ function rpcReinicio({ protegido }) {
     };
 }
 
-prueba("R1. mismo precio sin reiniciar: la tabla seguirá ocupada al publicar -> bloqueo explicado (conflicto real)", async () => {
+// UX-03: «Conservar» es una decisión del administrador, no un conflicto.
+prueba("R1. mismo precio sin reiniciar: la tabla se conserva como está; se avisa, no bloquea", async () => {
     escenario();
+    const antes = instantanea();
     const c = await servicio.crearSorteo(A, entrada({ valor: 5000 }));
     const v = await servicio.vistaPrevia(A, c.data.id);
-    assert.strictEqual(v.data.estado_publicacion, "bloqueado");
-    assert.ok(v.data.bloqueos.some(b => /otro sorteo/.test(b) && /Reiniciar la tabla antes de publicar/.test(b)));
+    assert.ok(!v.data.bloqueos.some(b => /otro sorteo/.test(b)), JSON.stringify(v.data.bloqueos));
+    assert.ok(v.data.avisos.some(a => /^Se conserva la tabla actual/.test(a)), JSON.stringify(v.data.avisos));
+    assert.strictEqual(instantanea(), antes, "revisar no toca nada");
 });
 
 prueba("R2. mismo precio con «Reiniciar tabla»: hoy no toca nada, se confirma «al publicar» y se reinicia al publicar", async () => {

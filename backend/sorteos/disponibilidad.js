@@ -7,12 +7,13 @@
 //   - Un grupo con un sorteo ACTIVO distinto nunca se reemplaza (hoy cada
 //     grupo tiene una sola fila en eventos_bot: publicar encima dejaría
 //     huérfanas las reservas del sorteo activo).
-//   - La tabla de números del cliente debe existir completa y no tener
-//     números reservados/pagados de OTRO sorteo: nunca se reinicia sola. El
-//     sorteo puede pedir el reinicio seguro (reinicioTabla.js, migración
-//     030: archiva y libera, nunca toca un sorteo activo) y confirmarlo en la
-//     vista previa; se hace al publicar, y esos números dejan de bloquear la
-//     programación (seReiniciara).
+//   - La tabla de números del cliente debe existir completa y sin números
+//     repetidos. Nunca se reinicia sola: con «Conservar la tabla actual» los
+//     números de OTROS sorteos se quedan como están (solo se avisa); con
+//     «Reiniciar la tabla antes de publicar» el reinicio seguro
+//     (reinicioTabla.js, migración 030: archiva y libera, nunca toca un
+//     sorteo activo) se confirma en la vista previa y se hace al publicar
+//     (seReiniciara).
 //
 // Programación FUTURA (2026-10-22): el conflicto de grupo se decide con
 // FECHAS, no solo con activo=true. Hay dos momentos:
@@ -58,6 +59,18 @@ function seguiraAbierto(evento, momento, ahora) {
     return !cierre || cierre.getTime() > momento.getTime();
 }
 
+// AUTORIDAD DEL ADMINISTRADOR (FASE UX-03): la política de tabla la decide
+// él al crear el sorteo y aquí no se contradice. Con «Conservar la tabla
+// actual» los números reservados o pagados de OTROS sorteos (activos o no)
+// se quedan como están, no se venden en este sorteo (el bot solo reserva
+// números libres, sorteoReal.js los cuenta como ocupado_otro_sorteo) y solo
+// se AVISA. Bloquea únicamente lo que impide publicar bien:
+//   - la tabla no se puede leer;
+//   - la tabla está incompleta (números sin fila: el bot los ofrecería
+//     libres pero nunca podría reservarlos);
+//   - un número tiene varias filas (no se sabe cuál vale: integridad).
+// El reinicio («Reiniciar la tabla antes de publicar») lo decide y lo
+// protege reinicioTabla.js / la 030, no esta función.
 async function revisarTabla({ usuarioId, tabla, cifras, cantidad, identidad, seReiniciara = false }) {
 
     const bloqueos = [];
@@ -75,22 +88,35 @@ async function revisarTabla({ usuarioId, tabla, cifras, cantidad, identidad, seR
     }
 
     const esperados = new Set(numerosEsperados({ cifras, cantidad_numeros: cantidad }));
-    const presentes = new Set((data || []).map(f => String(f.numero)).filter(n => esperados.has(n)));
+    const filas = (data || []).filter(f => esperados.has(String(f.numero)));
+    const presentes = new Set(filas.map(f => String(f.numero)));
 
-    const ocupadosOtro = (data || []).filter(f =>
-        (f.estado === "reservado" || f.estado === "pagado") && f.identidad_evento_real !== identidad
-    ).length;
+    const porNumero = new Map();
+    for (const f of filas) porNumero.set(String(f.numero), (porNumero.get(String(f.numero)) || 0) + 1);
+    const duplicados = [...porNumero].filter(([, n]) => n > 1).map(([numero]) => numero).sort();
 
-    const retenidos = (data || []).filter(f => f.estado === "bloqueado" || f.estado === "en_proceso").length;
+    const deOtro = filas.filter(f => (f.estado === "reservado" || f.estado === "pagado") && f.identidad_evento_real !== identidad);
+    const ocupadosOtro = deOtro.length;
+    const libres = filas.filter(f => f.estado === "libre").length;
+
+    const retenidos = filas.filter(f => f.estado === "bloqueado" || f.estado === "en_proceso").length;
 
     if (presentes.size < esperados.size) {
         bloqueos.push(`La tabla de números está incompleta (${presentes.size}/${esperados.size}). Créala o reiníciala desde Tablas.`);
     }
 
+    if (duplicados.length) {
+        bloqueos.push(`La tabla tiene números repetidos (${duplicados.slice(0, 10).join(", ")}${duplicados.length > 10 ? "…" : ""}): no se puede saber cuál es la fila válida. Revísala en Tablas antes de publicar.`);
+    }
+
     if (ocupadosOtro > 0 && seReiniciara) {
         avisos.push(`Al publicar se reiniciará la tabla (no ahora): ${ocupadosOtro} número(s) reservados o pagados de sorteos anteriores se archivarán (no se borran) y quedarán libres, si en ese momento sigue siendo seguro.`);
     } else if (ocupadosOtro > 0) {
-        bloqueos.push(`La tabla tiene ${ocupadosOtro} número(s) reservados o pagados de otro sorteo. Edita el sorteo y elige «Reiniciar la tabla antes de publicar» (se archivan al publicar, no se borran; nunca se tocan los de un sorteo activo).`);
+        avisos.push(await avisoConservados({ usuarioId, deOtro, libres }));
+    }
+
+    if (!seReiniciara && libres === 0 && !bloqueos.length) {
+        avisos.push("No queda ningún número libre en la tabla: el sorteo se publicará, pero no se podrá reservar ningún número hasta que se libere alguno.");
     }
 
     if (retenidos > 0) {
@@ -100,8 +126,33 @@ async function revisarTabla({ usuarioId, tabla, cifras, cantidad, identidad, seR
     return {
         bloqueos,
         avisos,
-        resumen: { esperados: esperados.size, presentes: presentes.size, ocupadosOtroSorteo: ocupadosOtro, retenidos }
+        resumen: { esperados: esperados.size, presentes: presentes.size, ocupadosOtroSorteo: ocupadosOtro, retenidos, libres, duplicados: duplicados.length }
     };
+
+}
+
+// «Conservar la tabla actual» con números de otros sorteos: qué se conserva,
+// de qué sorteos (y si siguen activos) y qué implica. Solo informa.
+async function avisoConservados({ usuarioId, deOtro, libres }) {
+
+    const reservados = deOtro.filter(f => f.estado === "reservado").length;
+    const pagados = deOtro.length - reservados;
+    const identidades = [...new Set(deOtro.map(f => f.identidad_evento_real).filter(Boolean))];
+
+    let detalle = "";
+    if (identidades.length) {
+        const { data } = await supabase.from("eventos_bot").select("identidad_evento_real, nombre_evento, activo")
+            .eq("usuario_id", usuarioId).in("identidad_evento_real", identidades);
+        const nombres = new Map();
+        for (const e of data || []) {
+            const previo = nombres.get(e.identidad_evento_real);
+            nombres.set(e.identidad_evento_real, { nombre: e.nombre_evento || previo?.nombre || null, activo: !!(previo?.activo || e.activo) });
+        }
+        const listado = identidades.map(i => nombres.get(i)).filter(x => x?.nombre).map(x => `«${x.nombre}»${x.activo ? " (activo)" : ""}`);
+        if (listado.length) detalle = ` de ${listado.join(", ")}`;
+    }
+
+    return `Se conserva la tabla actual, como elegiste: ${deOtro.length} número(s) de otros sorteos${detalle} (${reservados} reservado(s), ${pagados} pagado(s)) siguen como están y no se venden en este sorteo. Quedan ${libres} número(s) libres para este sorteo. Como no todos los números serán de este sorteo, no se cerrará automáticamente por «todos pagados»: se cerrará por la hora de cierre o desde el panel.`;
 
 }
 

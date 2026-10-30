@@ -96,7 +96,9 @@ async function reenviar(metodo: Metodo, req: Request, params: Promise<{ ruta?: s
 
     if (metodo !== "GET" && metodo !== "DELETE") {
         const texto = await req.text();
-        if (texto.length > 64 * 1024) return NextResponse.json({ ok: false, motivo: "demasiado_grande" }, { status: 413, headers: CABECERAS });
+        // «Publicar ahora» lleva la captura PNG de la tabla: el mismo tope que «Compartir» (capturarTabla.MAX_DATA_URL).
+        const maximo = camino.endsWith("/publicar-ahora") ? 4_100_000 : 64 * 1024;
+        if (texto.length > maximo) return NextResponse.json({ ok: false, motivo: "demasiado_grande" }, { status: 413, headers: CABECERAS });
         cuerpo = texto || "{}";
     }
 

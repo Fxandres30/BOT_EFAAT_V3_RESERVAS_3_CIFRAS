@@ -211,17 +211,19 @@ prueba("A4. publicador: publica la víspera; evento con fecha 16/10; el cierre p
 
 // ------------------------------------------------------------------- B ---
 
-prueba("B1. reinicio NUNCA por defecto: sin elegirlo no se llama a la base y los números de otro sorteo bloquean con la solución", async () => {
+// UX-03 (autoridad del administrador): con «Conservar» los números de otro
+// sorteo se conservan y solo se avisa; antes bloqueaban.
+prueba("B1. reinicio NUNCA por defecto: sin elegirlo no se llama a la base; los números de otro sorteo se conservan con aviso", async () => {
     escenario();
     const c = await servicio.crearSorteo(A, entrada());
     assert.strictEqual(c.data.config.tabla.reiniciar, false);
     const v = await servicio.vistaPrevia(A, c.data.id);
     assert.strictEqual(rpc.llamadas.length, 0);
     assert.strictEqual(v.data.reinicio, null);
-    assert.ok(v.data.bloqueos.some(b => /6 número\(s\) reservados o pagados de otro sorteo/.test(b) && /Reiniciar la tabla antes de publicar/.test(b)), v.data.bloqueos.join(" | "));
-    assert.ok(!v.data.bloqueos.some(b => /antes de programar/.test(b)));
+    assert.ok(!v.data.bloqueos.some(b => /otro sorteo/.test(b)), v.data.bloqueos.join(" | "));
+    assert.ok(v.data.avisos.some(a => /^Se conserva la tabla actual/.test(a) && /6 número\(s\) de otros sorteos/.test(a)), v.data.avisos.join(" | "));
     assert.strictEqual(v.data.tabla_al_publicar.reiniciar, false, "vista previa: «Conservar la tabla actual»");
-    assert.strictEqual(v.data.puede_confirmar, false);
+    assert.strictEqual(v.data.puede_confirmar, v.data.bloqueos.length === 0);
 });
 
 prueba("B2. reinicio elegido: vista previa con qué se modifica y de qué sorteo; la tabla se ve como quedará; no bloquea", async () => {

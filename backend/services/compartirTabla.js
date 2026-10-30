@@ -8,9 +8,10 @@
 // tanto bot/ como automation/ puedan requerirla sin cruzar el límite
 // documentado "automation/ nunca requiere nada bajo bot/".
 //
-// Pipeline: resolver imagen real (Puppeteer sobre la página real del
-// panel, /tablas/imprimir/[precio], con los datos entregados en el proceso:
-// sin enlace firmado ni TABLA_SHARE_SECRET) + texto real (catálogo global de
+// Pipeline: resolver imagen real (Puppeteer abre la página real del panel,
+// /tablas/imprimir/[precio], con los datos entregados en el proceso, y
+// ejecuta allí capturarTabla, la captura del botón «Compartir»; sin enlace
+// firmado ni TABLA_SHARE_SECRET) + texto real (catálogo global de
 // variables, backend/shared/variables) -> enviar por WhatsApp (Baileys,
 // services/baileys/send.js, sin duplicar el envío).
 // ==========================================================================
@@ -24,7 +25,6 @@ const { resolverVariable } = require("../shared/variables/resolverVariables");
 const executionGuard = require("../automation/executionGuard");
 
 const SECRETO = process.env.TABLA_SHARE_SECRET;
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 const EXPIRACION_MS = 5 * 60 * 1000; // enlace de un solo uso conceptual, vida corta
 
 // Texto predefinido de la tabla, acordado explícitamente con el usuario
@@ -126,6 +126,30 @@ function construirTextoCompartir(evento) {
 // habría imagen).
 const RUTA_DATOS_PAGINA = "/api/tablas/imprimir";
 
+// UNA SOLA CAPTURA (UX-04): el servidor no dibuja ni fotografía la tabla.
+// La página de impresión expone window.__efaatCapturarTabla, que llama a
+// la MISMA función del botón «Compartir» (frontend/services/tablas/
+// capturarTabla.ts: html-to-image sobre la cuadrícula, fondo de la tarjeta,
+// su margen y pixelRatio 2). Chromium solo abre la página, la ejecuta y
+// recoge el PNG, que pasa por la misma validación que el de «Compartir»
+// (destinosCompartir.imagenPng). Ventana de 900 px = ANCHO_IMPRESION de
+// TablaImprimible: la cuadrícula queda con el ancho del panel (672 px).
+const ANCHO_VENTANA = 900;
+const LOCAL = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\]|0\.0\.0\.0)$/i;
+
+// Panel que abre Chromium. Sin valor por defecto: antes, sin FRONTEND_URL
+// se abría http://localhost:3000, que en el servidor no es el panel.
+function urlDelPanel() {
+    const valor = String(process.env.FRONTEND_URL || "").trim();
+    if (!valor) throw new Error("Falta FRONTEND_URL: el servidor no sabe dónde está el panel de EFAAT para generar la imagen de la tabla.");
+    let url;
+    try { url = new URL(valor); } catch { throw new Error(`FRONTEND_URL no es una dirección válida («${valor}»).`); }
+    if (process.env.NODE_ENV === "production" && LOCAL.test(url.hostname)) {
+        throw new Error(`FRONTEND_URL apunta a ${url.host}, que en producción no es el panel de EFAAT: debe ser la dirección pública del panel.`);
+    }
+    return url.origin;
+}
+
 // `datos` (opcional): los datos ya resueltos de la tabla (los de
 // datosTablaImprimir). Lo usa la prueba de imagen del «Sorteo instantáneo»
 // (sorteos/servicio.probarImagen) para ver, ANTES de publicar, la misma
@@ -145,8 +169,9 @@ async function capturarImagenTabla(precio, usuarioId, eventoId = null, { datos: 
 
     if (!datos.ok) throw new Error(datos.error);
 
+    const panel = urlDelPanel();
     const cuerpoDatos = JSON.stringify(datos.data);
-    const url = `${FRONTEND_URL}/tablas/imprimir/${Number(precio)}?token=directo`;
+    const url = `${panel}/tablas/imprimir/${Number(precio)}?token=directo`;
 
     // Flags defensivos estándar para Chromium headless en un VPS/entorno
     // virtualizado sin GPU (Windows o Linux) — mitigación conocida para el
@@ -166,7 +191,8 @@ async function capturarImagenTabla(precio, usuarioId, eventoId = null, { datos: 
     try {
 
         const page = await browser.newPage();
-        await page.setViewport({ width: 900, height: 1000, deviceScaleFactor: 2 });
+        // La resolución la fija capturarTabla (pixelRatio 2), no la ventana.
+        await page.setViewport({ width: ANCHO_VENTANA, height: 1000, deviceScaleFactor: 1 });
 
         await page.setRequestInterception(true);
         page.on("request", (req) => {
@@ -182,21 +208,19 @@ async function capturarImagenTabla(precio, usuarioId, eventoId = null, { datos: 
         // Sin tabla en la página casi siempre es FRONTEND_URL apuntando a otra
         // web (otro proyecto o un panel antiguo): el error dice qué panel se
         // abrió (solo el host, público) para poder corregirlo.
-        let contenedor;
         try {
             await page.goto(url, { waitUntil: "networkidle0", timeout: 20000 });
-            contenedor = await page.waitForSelector("[data-tabla-imprimir]", { timeout: 15000 });
+            await page.waitForSelector("[data-tabla-imprimir][data-captura-lista]", { timeout: 15000 });
         } catch (err) {
-            let host = FRONTEND_URL;
-            try { host = new URL(FRONTEND_URL).host; } catch { /* se deja el valor tal cual */ }
-            throw new Error(`${err?.message || err} (panel abierto por el servidor: ${host}; debe ser el panel de EFAAT, revisa FRONTEND_URL)`);
+            throw new Error(`${err?.message || err} (panel abierto por el servidor: ${new URL(panel).host}; debe ser el panel de EFAAT, revisa FRONTEND_URL)`);
         }
 
-        if (!contenedor) {
-            throw new Error("La vista de impresión no renderizó el contenedor esperado.");
-        }
+        // La captura de «Compartir», ejecutada en la página.
+        const dataUrl = await page.evaluate(() => window.__efaatCapturarTabla());
 
-        const buffer = await contenedor.screenshot({ type: "png" });
+        const { imagenPng } = require("./destinosCompartir");
+        const buffer = imagenPng(dataUrl);
+        if (!buffer) throw new Error("El panel no devolvió una imagen PNG válida de la tabla.");
 
         return buffer;
 

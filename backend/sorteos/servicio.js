@@ -412,9 +412,19 @@ function resumenPublicacion(sorteo) {
     };
 }
 
-async function publicarAhora(usuarioId, id, { version, confirmacion, reinicio } = {}) {
+// `imagen`: la captura que el panel hizo y mostró en la vista previa con
+// capturarTabla (la de «Compartir»). Se valida como la de «Compartir» ANTES
+// de tocar nada y se envía tal cual: no se genera otra. Sin `imagen` (panel
+// anterior) el publicador la captura con la misma función en Chromium.
+async function publicarAhora(usuarioId, id, { version, confirmacion, reinicio, imagen } = {}) {
 
     if (confirmacion !== true) return falla("confirmacion_requerida");
+
+    let imagenPanel = null;
+    if (imagen !== undefined) {
+        imagenPanel = require("../services/destinosCompartir").imagenPng(imagen);
+        if (!imagenPanel) return falla("imagen_invalida", { mensaje: "La imagen de la tabla no es un PNG válido: no se publicó nada." });
+    }
 
     const actual = await repo.obtenerSorteo(usuarioId, id);
     if (!actual.ok) return actual;
@@ -470,8 +480,17 @@ async function publicarAhora(usuarioId, id, { version, confirmacion, reinicio } 
 
     // El ciclo del publicador, ahora (lo que haría el siguiente tick).
     const publicador = require("./publicador");
+    let deps = instantaneo._deps;
+    if (imagenPanel) {
+        const base = deps || publicador.dependenciasReales();
+        deps = {
+            ...base,
+            capturarImagen: (precio, uid, eventoId, contexto) =>
+                contexto?.sorteoId === id ? imagenPanel : base.capturarImagen(precio, uid, eventoId, contexto)
+        };
+    }
     try {
-        await publicador.tick(sock, { ahora, deps: instantaneo._deps });
+        await publicador.tick(sock, { ahora, deps });
     } catch (err) {
         console.error("❌ [SORTEO INSTANTÁNEO] error en la publicación:", err?.message);
     }
@@ -484,7 +503,9 @@ async function publicarAhora(usuarioId, id, { version, confirmacion, reinicio } 
 }
 
 // Imagen que se enviará, generada EN EL SERVIDOR con la misma función que
-// usa la publicación (compartirTabla.capturarImagenTabla) y los mismos datos
+// usa la publicación (compartirTabla.capturarImagenTabla, que ejecuta en
+// Chromium el capturarTabla de «Compartir»). Solo la pide el panel anterior
+// (el nuevo captura en la vista previa). Mismos datos
 // (números de la vista previa + diseño guardado en el sorteo). Comprueba,
 // antes de publicar, que el servidor puede producirla. No envía ni escribe.
 async function probarImagen(usuarioId, id) {

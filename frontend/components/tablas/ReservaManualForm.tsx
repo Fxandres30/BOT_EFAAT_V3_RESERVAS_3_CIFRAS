@@ -14,6 +14,8 @@ import {
 interface Props {
     contexto: ContextoNumero;
     onReservar: (datos: DatosReserva) => Promise<Resultado>;
+    /** Texto del botón (reserva de varios números: «Reservar 5 números»). */
+    etiquetaBoton?: string;
 }
 
 const MOTIVOS = [
@@ -93,7 +95,7 @@ function opcionesDe(contexto: ContextoNumero): OpcionSorteo[] {
 // el sorteo si hay varios (activo o programados sin publicar), el grupo, el
 // contacto, el motivo y las observaciones. El estado final, la fecha/hora y
 // el operador los fija el servidor.
-export default function ReservaManualForm({ contexto, onReservar }: Props) {
+export default function ReservaManualForm({ contexto, onReservar, etiquetaBoton }: Props) {
 
     const [contacto, setContacto] = useState<SeleccionContacto | null>(null);
     const [sorteoElegido, setSorteoElegido] = useState<string | null>(null);
@@ -290,7 +292,7 @@ export default function ReservaManualForm({ contexto, onReservar }: Props) {
                 className="w-full flex items-center justify-center gap-2 text-white text-sm px-4 py-3 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50"
             >
                 {enviando ? <Loader2 size={15} className="animate-spin" /> : fallo?.reintentable ? <RotateCcw size={15} /> : <Ticket size={15} />}
-                {enviando ? "Guardando..." : fallo?.reintentable ? "Reintentar reserva" : `Reservar el ${contexto.numero}`}
+                {enviando ? "Guardando..." : fallo?.reintentable ? "Reintentar reserva" : etiquetaBoton || `Reservar el ${contexto.numero}`}
             </button>
 
             <p className="text-xs text-gray-500 text-center">No se envía ningún mensaje por WhatsApp.</p>

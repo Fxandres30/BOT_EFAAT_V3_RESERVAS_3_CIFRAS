@@ -122,19 +122,21 @@ async function main() {
         assert.strictEqual(enviados.length, 0, "guardar no publica");
         paso("formulario en modo inmediato (sin hora de publicación); guardar no publica nada");
 
-        // 3. Vista previa: imagen generada por el servidor ANTES de publicar.
-        await esperarTexto(page, "Imagen que se enviará (generada por el servidor)");
+        // 3. Vista previa: la captura de «Compartir» (capturarTabla) hecha en el panel.
         await page.waitForFunction(() => {
-            const img = document.querySelector('img[alt="Imagen de la tabla que se enviará por WhatsApp"]');
+            const img = document.querySelector('img[alt="Imagen de la tabla que se compartirá por WhatsApp"]');
             return img && img.complete && img.naturalWidth > 0;
         }, { timeout: 60000 });
+        const srcVista = await page.$eval('img[alt="Imagen de la tabla que se compartirá por WhatsApp"]', i => i.getAttribute("src"));
+        const pngVista = Buffer.from(srcVista.split(",")[1], "base64");
+        assert.ok(pngVista.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")), "PNG real del panel");
         const vista = await textoPagina(page);
         assert.ok(vista.includes("Listo para publicar ahora") && vista.includes("en el momento en que pulses «Publicar ahora»"), vista);
-        assert.ok(capturasServidor >= 1, "la imagen la generó el servidor");
+        assert.strictEqual(capturasServidor, 0, "el servidor no genera ninguna imagen");
         assert.strictEqual(await botonHabilitado(page, "Publicar ahora"), false, "sin marcar la revisión no se publica");
         assert.strictEqual(await botonHabilitado(page, "Confirmar y programar"), null, "no hay botón de programar");
         await captura(page, "instantaneo_vista_previa");
-        paso("vista previa: imagen real del servidor visible; «Publicar ahora» bloqueado hasta revisar");
+        paso(`vista previa: captura del panel (capturarTabla, ${pngVista.readUInt32BE(16)}x${pngVista.readUInt32BE(20)} px) visible; «Publicar ahora» bloqueado hasta revisar`);
 
         // 4. Publicar con DOBLE CLIC: una sola publicación.
         await marcar(page, "Revisé la fecha");
@@ -148,7 +150,8 @@ async function main() {
         assert.strictEqual(enviados.length, 1, "un solo mensaje");
         assert.strictEqual(enviados[0].jid, "g1@g.us");
         assert.strictEqual(enviados[0].tipo, "imagen");
-        assert.ok(Buffer.from(enviados[0].image).equals(PNG), "la foto adjunta");
+        assert.ok(Buffer.from(enviados[0].image).equals(pngVista), "se envía la MISMA captura de la vista previa");
+        assert.strictEqual(capturasServidor, 0, "sin segunda generación al publicar");
         assert.ok(enviados[0].texto.includes("Lotería E2E Instantánea") && enviados[0].texto.includes("Nequi Prueba"), enviados[0].texto);
         const s = t.sorteos_programados[0];
         assert.strictEqual(t.sorteos_programados.length, 1);

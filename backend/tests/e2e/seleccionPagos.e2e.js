@@ -183,7 +183,13 @@ async function main() {
         await pulsar(page, "Registrar pago (3)");
         await page.waitForSelector('[role="dialog"][aria-label="Registrar pago"]');
         let texto = await textoPagina(page);
-        assert.ok(texto.includes("Se registrará el pago de 3 números reservados: 05, 12, 20."), texto);
+        // UX-05: el 20 es de OTRO sorteo (anticipada del programado): fuera
+        // por defecto; el administrador lo incluye expresamente.
+        assert.ok(texto.includes("Se registrará el pago de 2 números reservados: 05, 12."), texto);
+        assert.ok(texto.includes("Incluir 1 número de otro sorteo (20)."), "casilla expresa para el de otro sorteo");
+        await page.evaluate(() => [...document.querySelectorAll("label")].find(l => l.textContent.includes("Incluir 1 número de otro sorteo")).querySelector("input").click());
+        await esperarTexto(page, "Se registrará el pago de 3 números reservados: 05, 12, 20.");
+        texto = await textoPagina(page);
         assert.ok(/00 — Está libre/.test(texto) && /30 — Ya está pagado/.test(texto) && /07 — Está bloqueado/.test(texto), "excluidos con su motivo");
         await page.select('[aria-label="Método de pago"]', "Nequi");
         await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find(x => x.textContent.trim() === "Registrar 3 pagos"); b.click(); b.click(); });

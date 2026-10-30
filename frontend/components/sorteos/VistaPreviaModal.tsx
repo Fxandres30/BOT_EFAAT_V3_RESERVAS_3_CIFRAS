@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Modal, Button, Badge } from "@/components/ui";
-import TablaImprimible from "@/components/tablas/TablaImprimible";
+import TablaImprimible, { ANCHO_IMPRESION } from "@/components/tablas/TablaImprimible";
+import { capturarTabla } from "@/services/tablas/capturarTabla";
 import { apiSorteos, describirError, type EstadoPublicacion, type ResultadoPublicacionInmediata, type VistaPrevia } from "@/services/sorteos/apiSorteos";
 import { motivoNoPublicable, resumenDesdeSorteo, textoResultado, type PruebaImagen } from "@/services/sorteos/sorteoInstantaneo";
 import { ESTADO_GRUPO } from "@/services/sorteos/estadosSorteo";
@@ -44,8 +45,10 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
     const [revisado, setRevisado] = useState(false);
     const [reinicioConfirmado, setReinicioConfirmado] = useState(false);
     const [confirmando, setConfirmando] = useState(false);
-    // Sorteo instantáneo: imagen generada por el SERVIDOR y resultado real.
+    // Imagen de la tabla: la captura de «Compartir» (capturarTabla). En el
+    // sorteo instantáneo es la que se envía; resultado real de cada grupo.
     const [imagen, setImagen] = useState<PruebaImagen>({ tipo: "probando" });
+    const capturaRef = useRef<HTMLDivElement>(null);
     const [intentoImagen, setIntentoImagen] = useState(0);
     const [resultado, setResultado] = useState<ResultadoPublicacionInmediata | null>(null);
     // Bloqueo síncrono: dos clics seguidos no lanzan dos publicaciones.
@@ -68,28 +71,34 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
     }, [sorteoId]);
 
     const inmediato = vista?.publicacion_inmediata === true;
-    const idInmediato = inmediato && vista?.estado === "borrador" ? vista.id : null;
 
-    // La imagen que se enviará, generada en el servidor con la misma función
-    // que la publicación: si falla aquí, fallaría al publicar.
+    // La imagen de la tabla, con la captura del botón «Compartir» sobre la
+    // copia oculta de abajo (ancho de impresión, como el Chromium de los
+    // programados). Se hace una vez y, en el instantáneo, se envía esa misma.
     useEffect(() => {
-        if (!idInmediato) return;
+        if (!vista) return;
         let vigente = true;
-        apiSorteos.imagenPrueba(idInmediato).then(r => {
-            if (!vigente) return;
-            setImagen(r.ok ? { tipo: "ok", imagen: r.data.imagen } : { tipo: "error", mensaje: r.mensaje || describirError(r) });
-        });
+        (async () => {
+            try {
+                await document.fonts?.ready;
+                const png = await capturarTabla(capturaRef.current);
+                if (vigente) setImagen({ tipo: "ok", imagen: png });
+            } catch (err) {
+                if (vigente) setImagen({ tipo: "error", mensaje: err instanceof Error ? err.message : "No se pudo generar la imagen de la tabla." });
+            }
+        })();
         return () => { vigente = false; };
-    }, [idInmediato, intentoImagen]);
+    }, [vista, intentoImagen]);
 
     async function publicarAhora() {
 
-        if (!vista || publicandoRef.current) return;
+        // Sin la captura no se publica (ni imagen incompleta ni texto solo).
+        if (!vista || imagen.tipo !== "ok" || publicandoRef.current) return;
         publicandoRef.current = true;
         setConfirmando(true);
         setError(null);
 
-        const r = await apiSorteos.publicarAhora(vista.id, vista.version, vista.reinicio?.al_publicar ? { confirmado: reinicioConfirmado } : undefined);
+        const r = await apiSorteos.publicarAhora(vista.id, vista.version, imagen.imagen, vista.reinicio?.al_publicar ? { confirmado: reinicioConfirmado } : undefined);
 
         if (r.ok) {
             setResultado(r.data);
@@ -207,35 +216,43 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                                 Tabla de números · {vista.diseno.config ? (vista.diseno.nombre || "diseño actual de la tabla") : "diseño por defecto"}
                                 {pideConfirmarReinicio ? " · como quedará al publicar" : ""}
                             </h3>
-                            <div className={styles.tablaVista}>
+                            {/* Copia oculta que se captura (capturarTabla, igual que «Compartir»). */}
+                            <div aria-hidden style={{ position: "fixed", left: -10000, top: 0, width: ANCHO_IMPRESION, pointerEvents: "none" }}>
                                 <TablaImprimible
                                     numerosDisponibles={vista.numeros.numerosDisponibles}
                                     numerosOcupados={vista.numeros.numerosOcupados}
                                     diseno={vista.diseno.config}
+                                    contenedorRef={capturaRef}
                                 />
                             </div>
-                            <p className={styles.ayuda}>Es la misma tabla, con el mismo estilo, que se comparte como imagen en WhatsApp.</p>
+                            {imagen.tipo === "ok" ? (
+                                <div className={styles.tablaVista}>
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={imagen.imagen} alt="Imagen de la tabla que se compartirá por WhatsApp" className={styles.imagenServidor} />
+                                </div>
+                            ) : (
+                                <div className={styles.tablaVista}>
+                                    <TablaImprimible
+                                        numerosDisponibles={vista.numeros.numerosDisponibles}
+                                        numerosOcupados={vista.numeros.numerosOcupados}
+                                        diseno={vista.diseno.config}
+                                    />
+                                </div>
+                            )}
+                            {imagen.tipo === "probando" && <p className={styles.ayuda} role="status">Generando la imagen de la tabla…</p>}
+                            {imagen.tipo === "error" && (
+                                <div className={`${styles.alerta} ${styles.alertaError}`} role="alert">
+                                    <p>{imagen.mensaje}</p>
+                                    <p>Sin imagen no se publica (no se envía el texto solo).</p>
+                                    <Button size="sm" variant="secondary" onClick={() => { setImagen({ tipo: "probando" }); setIntentoImagen(n => n + 1); }}>Volver a probar</Button>
+                                </div>
+                            )}
+                            <p className={styles.ayuda}>
+                                {inmediato
+                                    ? "Es la imagen que se enviará al pulsar «Publicar ahora»: la misma captura que hace «Compartir»."
+                                    : "Es la misma captura que hace «Compartir». A la hora de publicar se vuelve a capturar con el estado de la tabla en ese momento."}
+                            </p>
                         </section>
-
-                        {inmediato && vista.estado === "borrador" && (
-                            <section className={styles.seccion} aria-label="Imagen que se enviará">
-                                <h3 className={styles.seccionTitulo}>Imagen que se enviará (generada por el servidor)</h3>
-                                {imagen.tipo === "probando" && <p className={styles.ayuda} role="status">Generando la imagen en el servidor… puede tardar unos segundos.</p>}
-                                {imagen.tipo === "ok" && (
-                                    <div className={styles.tablaVista}>
-                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img src={imagen.imagen} alt="Imagen de la tabla que se enviará por WhatsApp" className={styles.imagenServidor} />
-                                    </div>
-                                )}
-                                {imagen.tipo === "error" && (
-                                    <div className={`${styles.alerta} ${styles.alertaError}`} role="alert">
-                                        <p>{imagen.mensaje}</p>
-                                        <p>Sin imagen no se publica (no se envía el texto solo).</p>
-                                        <Button size="sm" variant="secondary" onClick={() => { setImagen({ tipo: "probando" }); setIntentoImagen(n => n + 1); }}>Volver a probar</Button>
-                                    </div>
-                                )}
-                            </section>
-                        )}
 
                         <section className={styles.seccion}>
                             <h3 className={styles.seccionTitulo}>Anuncio que se publicará</h3>
@@ -265,7 +282,12 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                         {vista.tabla_al_publicar && !vista.tabla_al_publicar.reiniciar && (
                             <section className={styles.seccion} aria-label="Tabla al publicar">
                                 <h3 className={styles.seccionTitulo}>Tabla al publicar</h3>
-                                <p><b>Conservar la tabla actual.</b> No se reiniciará ni al programar ni al publicar.</p>
+                                <p>
+                                    <b>Conservar la tabla actual.</b> No se reiniciará ni al programar ni al publicar.
+                                    {vista.tabla?.ocupadosOtroSorteo
+                                        ? <> Los {vista.tabla.ocupadosOtroSorteo} número(s) de otros sorteos se quedan como están y no se venden en este; quedan {vista.tabla.libres ?? 0} libres.</>
+                                        : null}
+                                </p>
                             </section>
                         )}
 

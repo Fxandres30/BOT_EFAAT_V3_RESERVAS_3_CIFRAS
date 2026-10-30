@@ -11,7 +11,8 @@ export type PruebaImagen =
     | { tipo: "error"; mensaje: string };
 
 // Sin imagen no se publica (el publicador tampoco envía texto solo): la
-// imagen que generó el SERVIDOR tiene que haberse visto antes.
+// captura de la vista previa (capturarTabla, la de «Compartir») tiene que
+// haberse visto antes; es la que se envía.
 export function motivoNoPublicable(
     vista: VistaPrevia,
     { revisado, reinicioConfirmado, imagen }: { revisado: boolean; reinicioConfirmado: boolean; imagen: PruebaImagen }
@@ -19,8 +20,8 @@ export function motivoNoPublicable(
     if (vista.estado !== "borrador") return "Este sorteo ya se confirmó.";
     if (vista.bloqueos.length) return "Resuelve los bloqueos de abajo.";
     if (vista.estado_publicacion !== "listo") return "Algún grupo tiene otro sorteo abierto: elige «Sustituir el sorteo activo» o ciérralo antes.";
-    if (imagen.tipo === "probando") return "Generando la imagen en el servidor…";
-    if (imagen.tipo === "error") return "El servidor no pudo generar la imagen: sin imagen no se publica.";
+    if (imagen.tipo === "probando") return "Generando la imagen de la tabla…";
+    if (imagen.tipo === "error") return "No se pudo generar la imagen de la tabla: sin imagen no se publica.";
     if (vista.reinicio?.al_publicar && !reinicioConfirmado) return "Confirma el reinicio de la tabla.";
     if (!revisado) return "Marca que revisaste la vista previa.";
     return null;

@@ -25,6 +25,7 @@ import { capturarTabla } from "@/services/tablas/capturarTabla";
 import type { EventoActivo } from "./types";
 import type { TablaDiseno } from "./disenoTypes";
 import type { OperacionLote } from "@/services/tablas/pagoLote";
+import { esDeOtroSorteo } from "@/services/tablas/seleccionTabla";
 
 interface Props {
     precio: number;
@@ -119,11 +120,16 @@ export default function TablaPrecioView({ precio }: Props) {
 
     // Estado efectivo de cada número: lo que clasifican la selección y las
     // acciones rápidas (el servidor vuelve a comprobarlo al operar).
-    const seleccionables = useMemo(() => numeros.map(n => ({ numero: n.numero, estado: estadoEfectivo(n) })), [numeros]);
+    // otroSorteo: ocupado por un sorteo que no es el activo (por identidad);
+    // en un lote solo entra si el administrador lo incluye expresamente.
+    const seleccionables = useMemo(() => numeros.map(n => {
+        const estado = estadoEfectivo(n);
+        return { numero: n.numero, estado, ...(esDeOtroSorteo({ ...n, estado }, eventoActivo) ? { otroSorteo: true } : {}) };
+    }), [numeros, eventoActivo]);
 
     // Acciones rápidas de «Historial de números»: una operación sobre un
     // solo número (mismo diálogo y misma ruta que el lote) o su detalle.
-    const [accionRapida, setAccionRapida] = useState<{ operacion: OperacionLote; numero: string } | null>(null);
+    const [accionRapida, setAccionRapida] = useState<{ operacion: Exclude<OperacionLote, "reservar">; numero: string } | null>(null);
     const [detalle, setDetalle] = useState<string | null>(null);
 
     // Mientras «Compartir» captura la tabla, sin marcas de selección: la
@@ -259,12 +265,15 @@ export default function TablaPrecioView({ precio }: Props) {
             )}
 
             <SeleccionPagos
+                precio={precio}
                 activo={modoSeleccion.activo}
                 numeros={seleccionables}
                 seleccion={modoSeleccion.numeros}
                 onActivar={() => cambiarSeleccion({ activo: true, numeros: [] })}
                 onSalir={() => cambiarSeleccion({ activo: false, numeros: [] })}
                 onLimpiar={() => cambiarSeleccion({ numeros: [] })}
+                onCambiarSeleccion={(lista) => cambiarSeleccion({ numeros: lista })}
+                onQuitar={(numero) => cambiarSeleccion({ numeros: modoSeleccion.numeros.filter(n => n !== numero) })}
                 onProcesar={procesarLote}
             />
 
@@ -307,6 +316,8 @@ export default function TablaPrecioView({ precio }: Props) {
                     numeros={seleccionables}
                     seleccion={[accionRapida.numero]}
                     onProcesar={procesarLote}
+                    // Acción sobre UN número elegido a mano: ya es la decisión expresa.
+                    incluirOtroSorteoInicial
                     onClose={() => setAccionRapida(null)}
                 />
             )}

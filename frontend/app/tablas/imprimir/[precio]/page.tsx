@@ -1,13 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
 import TablaImprimible from "@/components/tablas/TablaImprimible";
 import type { TablaDisenoConfig } from "@/components/tablas/disenoTypes";
+import { capturarTabla } from "@/services/tablas/capturarTabla";
+
+declare global {
+    interface Window {
+        /** Lo llama el Chromium del servidor: la captura de «Compartir» en esta página. */
+        __efaatCapturarTabla?: () => Promise<string>;
+    }
+}
 
 // Vista de IMPRESIÓN — usada SOLO por Puppeteer (backend/services/compartirTabla.js)
-// para capturar la imagen real que se comparte por WhatsApp. La tabla es
+// para obtener la imagen que se comparte por WhatsApp cuando no hay un panel
+// abierto (publicaciones programadas y reintentos): Puppeteer ejecuta aquí
+// capturarTabla, la captura del botón «Compartir». La tabla es
 // components/tablas/TablaImprimible (la MISMA que la vista previa de Sorteos
 // programados): solo número+estado, nunca datos personales, Grid en modo
 // limpio, con el diseño ACTIVO de esa tabla que devuelve el backend (antes
@@ -26,6 +36,21 @@ export default function ImprimirTablaPage() {
 
     const [datos, setDatos] = useState<{ numerosDisponibles: string[]; numerosOcupados: string[]; diseno?: TablaDisenoConfig | null } | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    // La imagen NO la toma el servidor: Chromium llama a esta función, que es
+    // capturarTabla sobre la cuadrícula (la misma del botón «Compartir»).
+    // Se registra en el mismo commit que pinta la marca data-captura-lista
+    // (useLayoutEffect): Chromium nunca ve la marca sin la función.
+    const cuadriculaRef = useRef<HTMLDivElement>(null);
+
+    useLayoutEffect(() => {
+        if (!datos) return;
+        window.__efaatCapturarTabla = async () => {
+            await document.fonts?.ready;
+            return capturarTabla(cuadriculaRef.current);
+        };
+        return () => { delete window.__efaatCapturarTabla; };
+    }, [datos]);
 
     useEffect(() => {
 
@@ -81,6 +106,8 @@ export default function ImprimirTablaPage() {
             numerosOcupados={datos.numerosOcupados}
             diseno={datos.diseno}
             imprimir
+            contenedorRef={cuadriculaRef}
+            capturaLista
         />
     );
 

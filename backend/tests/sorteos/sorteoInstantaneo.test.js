@@ -406,6 +406,38 @@ prueba("13. Formato no admitido: si la captura no devuelve una imagen, no se env
     }
 });
 
+prueba("14. Con la captura del panel (capturarTabla de «Compartir»): se envía ESA imagen tal cual y el servidor no genera otra", async () => {
+    escenario();
+    usarDeps();
+    const png = Buffer.alloc(48);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png, 0);
+    png.writeUInt32BE(13, 8); png.write("IHDR", 12, "ascii"); png.writeUInt32BE(1408, 16); png.writeUInt32BE(1408, 20);
+    const s = await crear();
+    const res = await publicar(s, A, { imagen: `data:image/png;base64,${png.toString("base64")}` });
+    assert.ok(res.ok, JSON.stringify(res));
+    assert.strictEqual(res.data.publicados, 1);
+    assert.strictEqual(enviados.length, 1);
+    assert.strictEqual(enviados[0].tipo, "imagen");
+    assert.ok(Buffer.from(enviados[0].image).equals(png), "la imagen enviada es la del panel");
+    assert.strictEqual(capturas.length, 0, "sin segunda generación");
+
+});
+
+prueba("15. Captura del panel inválida: 400 imagen_invalida y NADA cambia (ni confirmación, ni evento, ni mensajes)", async () => {
+    for (const mala of ["", "data:image/png;base64,QUJD", "data:image/jpeg;base64,/9j/4AAQ", 123, null]) {
+        escenario();
+        usarDeps();
+        const s = await crear();
+        const eventos = fake.tablas.eventos_bot.length;
+        const res = await publicar(s, A, { imagen: mala });
+        assert.deepStrictEqual([res.ok, res.motivo], [false, "imagen_invalida"], JSON.stringify(mala));
+        assert.strictEqual(sorteoDb(s.id).estado, "borrador");
+        assert.strictEqual(fake.tablas.eventos_bot.length, eventos);
+        assert.strictEqual(enviados.length, 0);
+        assert.strictEqual(capturas.length, 0);
+    }
+});
+
 // ------------------------------------------------------------ ejecución ---
 
 (async () => {

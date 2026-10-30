@@ -92,7 +92,10 @@ prueba("formulario y vista previa en modo inmediato; «Programados» sigue igual
     assert.match(form, /Fecha y hora de publicación \(hora de Colombia\)/, "el programado conserva su campo");
     const vistaPrevia = leer("components/sorteos/VistaPreviaModal.tsx");
     assert.match(vistaPrevia, /apiSorteos\.publicarAhora\(/);
-    assert.match(vistaPrevia, /apiSorteos\.imagenPrueba\(/);
+    // La vista previa captura con la función de «Compartir» y publica ESA imagen (sin pedir otra al servidor).
+    assert.match(vistaPrevia, /capturarTabla\(capturaRef\.current\)/);
+    assert.match(vistaPrevia, /apiSorteos\.publicarAhora\(vista\.id, vista\.version, imagen\.imagen/);
+    assert.doesNotMatch(vistaPrevia, /imagenPrueba/);
     assert.match(vistaPrevia, /publicandoRef\.current/, "bloqueo síncrono contra doble clic");
     assert.match(vistaPrevia, /Confirmar y programar/, "el botón de programar sigue existiendo");
 });

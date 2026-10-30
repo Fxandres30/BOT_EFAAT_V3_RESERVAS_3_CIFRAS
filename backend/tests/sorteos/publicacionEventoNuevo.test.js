@@ -277,7 +277,8 @@ prueba("3. el diseño es del evento: el sorteo siguiente no cambia el del anteri
     assert.strictEqual(filasEvento("g1@g.us").length, 3);
 });
 
-prueba("4. «Conservar»: nunca reinicia; con números de otro sorteo en SU tabla no publica ni escribe evento", async () => {
+// UX-03: «Conservar» respeta la decisión: publica sin tocar la tabla.
+prueba("4. «Conservar»: nunca reinicia; con números de otro sorteo en SU tabla publica sin tocarlos", async () => {
     escenario();
     const s = await programar(entrada());
     // Tras programar aparecen en la tabla de $3.000 números de otro sorteo ya cerrado.
@@ -290,9 +291,10 @@ prueba("4. «Conservar»: nunca reinicia; con números de otro sorteo en SU tabl
 
     assert.strictEqual(rpc.llamadas.length, 0, "ninguna llamada a la 030");
     assert.strictEqual(JSON.stringify(fake.tablas[T5K]), t5kAntes, "la tabla no se toca");
-    assert.strictEqual(fake.tablas.eventos_bot.length, eventosAntes, "ningún evento nuevo");
-    assert.strictEqual(grupoDe(s.id, "g1@g.us").estado, "requiere_revision");
-    assert.notStrictEqual(sorteoDb(s.id).estado, "publicado");
+    assert.strictEqual(fake.tablas.eventos_bot.length, eventosAntes + 2, "un evento nuevo por grupo (g1 y g2)");
+    assert.ok(fake.tablas.eventos_bot.find(e => e.id === "ev-viejo-5k").activo === false, "el anterior intacto");
+    for (const g of ["g1@g.us", "g2@g.us"]) assert.strictEqual(grupoDe(s.id, g).estado, "publicado", JSON.stringify(grupoDe(s.id, g)));
+    assert.strictEqual(sorteoDb(s.id).estado, "publicado");
 });
 
 prueba("5a. «Reiniciar»: usa la 030; archiva con su identidad y evento originales; evento nuevo; el anterior intacto", async () => {

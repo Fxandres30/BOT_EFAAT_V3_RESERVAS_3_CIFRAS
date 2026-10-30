@@ -39,6 +39,8 @@ require("./analitica/retencion").iniciarRetencion();
 // «Compartir tabla» envía la captura PNG de la tabla en base64: límite
 // propio (el global es de 100 KB). routes/tablas.js valida tipo y tamaño.
 app.use("/tablas/compartir", express.json({ limit: "6mb" }));
+// «Publicar ahora» lleva la MISMA captura del panel (sorteos/servicio.js la valida igual).
+app.use(/^\/sorteos\/[^/]+\/publicar-ahora$/, express.json({ limit: "6mb" }));
 
 app.use(express.json());
 

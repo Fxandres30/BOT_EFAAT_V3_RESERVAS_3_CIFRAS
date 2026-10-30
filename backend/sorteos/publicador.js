@@ -22,7 +22,10 @@
 //     automation_actions): como mucho UNA vez. Si un envío falla o no se
 //     sabe si llegó, el grupo queda en 'requiere_revision' y solo el
 //     administrador puede pedir reintentarlo (nunca un reenvío automático).
-//   - Nunca publica encima de otro sorteo activo ni sobre una tabla ocupada.
+//   - Nunca publica encima de otro sorteo activo del grupo (salvo que el
+//     administrador eligiera sustituirlo) ni sobre una tabla incompleta o
+//     con números repetidos. Con «Conservar la tabla actual» los números de
+//     otros sorteos se quedan como están: no impiden publicar (UX-03).
 //   - El reinicio de tabla elegido al programar se hace aquí, un minuto
 //     antes del anuncio, revalidado y UNA sola vez (prepararPublicacion).
 // ==========================================================================
@@ -193,7 +196,9 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
     // no se abre el grupo ni se envía nada; se reintenta.
     let imagen;
     try {
-        imagen = await deps.capturarImagen(Number(config.valor), usuarioId, guardado.id);
+        // sorteoId: «Publicar ahora» entrega la captura que el panel ya hizo
+        // de ESTE sorteo (servicio.publicarAhora); si no, se captura ahora.
+        imagen = await deps.capturarImagen(Number(config.valor), usuarioId, guardado.id, { sorteoId: sorteo.id });
     } catch (err) {
         return { ...base, estado: "fallido", ultimo_error: `No se pudo generar la imagen de la tabla (${err?.message || err}); no se envió nada. Se reintentará.` };
     }
@@ -722,6 +727,7 @@ function detenerPublicadorSorteos(sessionId) {
 
 module.exports = {
     tick,
+    dependenciasReales,
     publicarPendientes,
     procesarPublicados,
     liberarVencidas,
