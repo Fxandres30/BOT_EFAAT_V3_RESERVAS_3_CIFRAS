@@ -122,7 +122,8 @@ prueba("formulario de edición: carga por id desde el backend, título y botón 
     assert.ok(f.includes("disabled={edicion && !sorteo}") && f.includes("if (edicion && !sorteo) return;"), "sin sorteo cargado no se guarda");
     assert.ok(f.includes("apiSorteos.editar(sorteo.id"), "guarda sobre el mismo id");
     // Ningún llamador pasa ya el sorteo de la lista (podía estar desactualizado).
-    for (const rel of ["components/sorteos/SorteosPage.tsx", "components/tablas/AnuncioSorteoModal.tsx", "components/eventos/CrearSorteoModal/CrearSorteoModal.tsx"]) {
+    // (Eventos ya no tiene formulario propio: «Programar sorteo» lleva a /sorteos.)
+    for (const rel of ["components/sorteos/SorteosPage.tsx", "components/sorteos/SorteoInstantaneoPage.tsx", "components/tablas/AnuncioSorteoModal.tsx"]) {
         assert.ok(!/<FormularioSorteo[^>]*\ssorteo=\{/.test(leer(rel)), rel);
     }
     const anuncio = leer("components/tablas/AnuncioSorteoModal.tsx");

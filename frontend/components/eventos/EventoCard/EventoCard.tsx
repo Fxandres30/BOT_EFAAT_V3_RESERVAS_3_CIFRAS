@@ -20,12 +20,18 @@ import { formatHora12 } from "@/lib/formatHora";
 import { obtenerTablaConfig } from "@/lib/tablasConfig";
 
 import GruposAsociados from "../GruposAsociados/GruposAsociados";
-import { ETIQUETA_ESTADO, enlaceAdministrar, estadoSorteo } from "../estadoEvento";
+import { ETIQUETA_ESTADO, estadoSorteo } from "../estadoEvento";
+import OrigenEventoBadge from "../OrigenEventoBadge";
+import type { OrigenEvento } from "../centroEventos";
 
 import styles from "./EventoCard.module.css";
 
 interface Props {
     evento: any;
+    /** Cómo llegó a los grupos (null: no se pudo saber). */
+    origen?: OrigenEvento | null;
+    /** Abre la administración del sorteo en Eventos (null: no disponible). */
+    onAdministrar?: (() => void) | null;
 }
 
 function iconoPremio(tipo: string) {
@@ -40,7 +46,7 @@ function iconoPremio(tipo: string) {
     }
 }
 
-export default function EventoCard({ evento }: Props) {
+export default function EventoCard({ evento, origen = null, onAdministrar = null }: Props) {
 
     // Estado del sorteo en todos sus grupos (como lo entiende el backend).
     const estado = ETIQUETA_ESTADO[estadoSorteo(Array.isArray(evento?.grupos) ? evento.grupos : [evento ?? {}])];
@@ -57,6 +63,7 @@ export default function EventoCard({ evento }: Props) {
             <div className={styles.top}>
                 <StatusBadge status={estado.kind} label={estado.texto} size="sm" />
                 <h3 className={styles.name}>{evento?.nombre_evento}</h3>
+                <OrigenEventoBadge origen={origen} />
             </div>
 
             <div className={styles.meta}>
@@ -167,13 +174,14 @@ export default function EventoCard({ evento }: Props) {
             )}
 
             {/* «Administrar sorteo»: cerrar, reabrir, desactivar (en un grupo
-                o en todos), cancelar, eliminar o editar ESTE sorteo (Sorteos →
-                «Administrar», con su tarjeta resaltada). Antes «Administrar»
-                llevaba a la tabla de reservas, que no tiene esas acciones. */}
+                o en todos), cancelar, eliminar o editar ESTE sorteo, aquí mismo
+                en Eventos. La tabla de reservas es otra cosa. */}
             <div className={styles.enlaces}>
-                <Link href={enlaceAdministrar(evento?.id)} prefetch={false} className={`${styles.administrar} ${styles.administrarPrincipal}`}>
-                    Administrar sorteo
-                </Link>
+                {onAdministrar && (
+                    <button type="button" onClick={onAdministrar} className={`${styles.administrar} ${styles.administrarPrincipal}`}>
+                        Administrar sorteo
+                    </button>
+                )}
                 {obtenerTablaConfig(Number(String(evento?.valor ?? "").replace(/[^\d]/g, ""))) && (
                     <Link
                         href={`/tablas/${String(evento.valor).replace(/[^\d]/g, "")}`}

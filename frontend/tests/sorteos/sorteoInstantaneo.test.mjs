@@ -77,10 +77,10 @@ prueba("tras un tiempo agotado, el resultado se reconstruye con el estado real d
     assert.strictEqual(r.grupos[1].error, "El anuncio no se pudo enviar: x");
 });
 
-prueba("sección en el menú justo debajo de «Sorteos», con su página", () => {
+prueba("acceso directo «Publicar ahora» en el menú justo debajo de «Programados», con su página", () => {
     const menu = leer("components/layout/Sidebar/Sidebar.tsx");
-    const sorteos = menu.indexOf('{ href: "/sorteos", label: "Sorteos"');
-    const instantaneo = menu.indexOf('{ href: "/sorteo-instantaneo", label: "Sorteo instantáneo"');
+    const sorteos = menu.indexOf('{ href: "/sorteos", label: "Programados"');
+    const instantaneo = menu.indexOf('{ href: "/sorteo-instantaneo", label: "Publicar ahora"');
     assert.ok(sorteos > 0 && instantaneo > sorteos && menu.slice(sorteos, instantaneo).split("\n").length === 2, "inmediatamente debajo");
     assert.match(leer("app/sorteo-instantaneo/page.tsx"), /<SorteoInstantaneoPage \/>/);
     assert.match(leer("components/sorteos/SorteoInstantaneoPage.tsx"), /<FormularioSorteo[\s\S]*?instantaneo[\s\S]*?\/>/);

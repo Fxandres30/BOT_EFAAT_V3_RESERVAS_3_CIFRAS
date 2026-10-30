@@ -26,12 +26,14 @@ interface Props {
     onActualizado: () => void;
     /** Lista de archivados: textos del estado vacío. */
     archivados?: boolean;
+    /** Estado vacío propio (p. ej. la lista de sorteos instantáneos). */
+    vacio?: { titulo: string; descripcion: string };
 }
 
 // Cada tarjeta muestra los tres estados (programación, operativo y por
 // grupo) y SOLO las acciones que el backend permite en ese estado; el
 // backend las vuelve a validar.
-export default function ListaSorteos({ sorteos, onVistaPrevia, onEditar, onDetalle, onEliminar, onActualizado, archivados = false }: Props) {
+export default function ListaSorteos({ sorteos, onVistaPrevia, onEditar, onDetalle, onEliminar, onActualizado, archivados = false, vacio }: Props) {
 
     const [ocupado, setOcupado] = useState<string | null>(null);
     const [mensaje, setMensaje] = useState<string | null>(null);
@@ -49,9 +51,10 @@ export default function ListaSorteos({ sorteos, onVistaPrevia, onEditar, onDetal
     }
 
     if (!sorteos.length) {
+        if (vacio) return <EmptyState icon={<CalendarClock size={28} />} title={vacio.titulo} description={vacio.descripcion} />;
         return archivados
             ? <EmptyState icon={<CalendarClock size={28} />} title="No hay programaciones archivadas" description="Las que archives aparecerán aquí; se pueden restaurar." />
-            : <EmptyState icon={<CalendarClock size={28} />} title="No hay sorteos programados" description="Crea uno con «Nuevo sorteo». Los sorteos detectados en los grupos siguen apareciendo en Eventos." />;
+            : <EmptyState icon={<CalendarClock size={28} />} title="No hay sorteos programados" description="Crea uno con «Programar sorteo». Los sorteos que ya están en los grupos aparecen en Eventos." />;
     }
 
     return (

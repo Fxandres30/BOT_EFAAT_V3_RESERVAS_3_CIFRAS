@@ -94,18 +94,18 @@ async function main() {
         const erroresConsola = page.erroresJs;
         await page.setViewport({ width: 1366, height: 900 });
 
-        // 1. Menú: «Sorteo instantáneo» justo debajo de «Sorteos».
+        // 1. Menú: acceso directo «Publicar ahora» justo debajo de «Programados».
         await page.goto(`${PANEL}/sorteo-instantaneo`, { waitUntil: "domcontentloaded" });
-        await esperarTexto(page, "Nuevo sorteo instantáneo");
+        await esperarTexto(page, "Publicar sorteo ahora");
         const menu = await page.evaluate(() => [...document.querySelectorAll("nav a")].map(a => a.textContent.trim()));
-        const i = menu.indexOf("Sorteos");
-        assert.ok(i >= 0 && menu[i + 1] === "Sorteo instantáneo", JSON.stringify(menu));
+        const i = menu.indexOf("Programados");
+        assert.ok(i >= 0 && menu[i + 1] === "Publicar ahora", JSON.stringify(menu));
         await esperarTexto(page, "Todavía no has publicado sorteos instantáneos");
         await captura(page, "instantaneo_inicio");
-        paso("menú: «Sorteo instantáneo» debajo de «Sorteos»; página con su explicación y lista vacía");
+        paso("menú: «Publicar ahora» debajo de «Programados»; página con su explicación y lista vacía");
 
         // 2. Formulario en modo inmediato: sin hora de publicación.
-        await pulsar(page, "Nuevo sorteo instantáneo");
+        await pulsar(page, "Publicar sorteo ahora");
         await esperarTexto(page, "Grupo Prueba Uno");
         await esperarTexto(page, "Nequi Prueba");
         const form = await textoPagina(page);

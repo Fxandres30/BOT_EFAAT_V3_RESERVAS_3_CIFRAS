@@ -17,6 +17,7 @@
 .cabecera {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 4px;
 }
 
@@ -68,4 +69,36 @@
   font-size: var(--efaat-text-sm);
   font-weight: var(--efaat-weight-semibold);
   cursor: not-allowed;
+}
+
+/* «Ver resultado» y, si el sorteo es reciente, «Administrar sorteo». */
+.acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.acciones > * {
+  flex: 1 1 140px;
+}
+
+.administrar {
+  min-height: 34px;
+  border: 1px solid var(--efaat-border-strong);
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-surface);
+  color: var(--efaat-text);
+  font: inherit;
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  cursor: pointer;
+}
+
+.administrar:hover {
+  background: var(--efaat-surface-muted);
+}
+
+.administrar:focus-visible {
+  outline: none;
+  box-shadow: var(--efaat-focus-ring);
 }

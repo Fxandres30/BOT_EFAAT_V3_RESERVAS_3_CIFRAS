@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/ui/PageHeader";
 
 import EventoGrid from "../EventoGrid/EventoGrid";
-import { BotonCrearSorteo } from "../CrearSorteoModal/CrearSorteoModal";
+import AccionesCrearSorteo from "@/components/sorteos/AccionesCrearSorteo";
 
 import styles from "./EventosPage.module.css";
 
@@ -10,8 +10,8 @@ export default function EventosPage() {
     <div className={styles.page}>
       <PageHeader
         title="Eventos"
-        description="Centro de administración de sorteos: 2 cifras, 3 cifras y gratis 3 cifras, con su estado, cierre y progreso de reservas."
-        actions={<BotonCrearSorteo />}
+        description="Centro de control de tus sorteos: los detectados en WhatsApp, los programados ya publicados y los publicados al momento, una sola vez cada uno, con su estado y sus acciones."
+        actions={<AccionesCrearSorteo />}
       />
 
       <EventoGrid />

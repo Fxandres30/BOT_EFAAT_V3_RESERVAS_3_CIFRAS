@@ -82,16 +82,16 @@ prueba("agruparEventos pasa cierre_motivo a cada grupo: un grupo desactivado no 
     assert.strictEqual(estadoSorteo(s.grupos), "en_curso");
 });
 
-prueba("«Administrar sorteo» abre Sorteos → «Administrar» con ESE sorteo", () => {
-    assert.strictEqual(enlaceAdministrar("e0000000-0000-4000-8000-000000000001"), "/sorteos?vista=administrar&sorteo=e0000000-0000-4000-8000-000000000001");
-    assert.strictEqual(enlaceAdministrar(undefined), "/sorteos?vista=administrar");
+prueba("«Administrar sorteo» desde otras pantallas abre Eventos con ESE sorteo", () => {
+    assert.strictEqual(enlaceAdministrar("e0000000-0000-4000-8000-000000000001"), "/eventos?sorteo=e0000000-0000-4000-8000-000000000001");
+    assert.strictEqual(enlaceAdministrar(undefined), "/eventos");
     assert.ok(!enlaceAdministrar("a&b=c").includes("&b="), "el id va codificado");
 });
 
 prueba("Eventos ya no tiene un «Administrar» que lleve a la tabla de reservas", () => {
     for (const f of ["components/eventos/EventoCard/EventoCard.tsx", "components/eventos/EventoTresCifrasCard/EventoTresCifrasCard.tsx"]) {
         const fuente = fs.readFileSync(path.join(FRONT, f), "utf8");
-        assert.ok(fuente.includes("enlaceAdministrar("), `${f}: usa el enlace a la gestión real`);
+        assert.ok(/onClick=\{onAdministrar\}[\s\S]*?Administrar sorteo/.test(fuente), `${f}: abre la administración real en Eventos`);
         assert.ok(!/>\s*Administrar\s*</.test(fuente), `${f}: sin el botón ambiguo «Administrar»`);
         assert.ok(fuente.includes("Ver tabla de reservas"), `${f}: la tabla tiene su propio nombre`);
     }

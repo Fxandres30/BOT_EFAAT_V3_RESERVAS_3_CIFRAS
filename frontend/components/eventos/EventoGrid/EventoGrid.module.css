@@ -215,3 +215,22 @@ details[open] > summary > .chevron { transform: rotate(0deg); }
     grid-template-columns: 1fr;
   }
 }
+
+/* Resultado de una acción de administración y fallo al cargar las acciones. */
+.aviso,
+.avisoError {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: var(--efaat-text-sm);
+}
+
+.aviso {
+  background: var(--efaat-primary-soft);
+  color: var(--efaat-text);
+}
+
+.avisoError {
+  background: var(--efaat-error-soft);
+  color: var(--efaat-error);
+}

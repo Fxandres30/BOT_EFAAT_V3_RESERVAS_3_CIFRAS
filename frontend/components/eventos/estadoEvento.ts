@@ -50,8 +50,8 @@ export const ETIQUETA_ESTADO: Record<EstadoEvento, { texto: string; kind: Status
     sustituido: { texto: "Sustituido", kind: "inactive" }
 };
 
-// Gestión real de ESE sorteo: Sorteos → «Administrar», con su tarjeta
-// resaltada (SorteosPage lee ?sorteo=).
+// Gestión real de ESE sorteo: Eventos abre su administración (EventoGrid lee
+// ?sorteo=). Los enlaces antiguos /sorteos?vista=administrar redirigen aquí.
 export function enlaceAdministrar(eventoId?: string | null): string {
-    return eventoId ? `/sorteos?vista=administrar&sorteo=${encodeURIComponent(eventoId)}` : "/sorteos?vista=administrar";
+    return eventoId ? `/eventos?sorteo=${encodeURIComponent(eventoId)}` : "/eventos";
 }

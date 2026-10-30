@@ -43,53 +43,31 @@ async function main() {
         const page = await entorno.nuevaPagina(TOKEN_USUARIO);
         const erroresConsola = page.erroresJs;
 
-        // 1. /eventos -> botón «Crear sorteo» abre el modal correcto.
+        // 1. /eventos -> «Programar sorteo» y «Publicar sorteo ahora» VISIBLES
+        // (escritorio y móvil). Eventos no tiene formulario propio (FASE UX-02).
         await page.goto(`${PANEL}/eventos`, { waitUntil: "domcontentloaded" });
-        await pulsar(page, "Crear sorteo");
-        await esperarTexto(page, "Configurar sorteo");
-        const textoModal = await textoPagina(page);
-        assert.ok(!/se crean automáticamente/i.test(textoModal), "el mensaje antiguo NO debe aparecer");
-        assert.ok(textoModal.includes("2 CIFRAS — PAGO"));
-        paso("/eventos: «Crear sorteo» abre el modal de modalidad, sin el mensaje antiguo");
-
-        // 1b. «Configurar sorteo» VISIBLE dentro de la pantalla (no solo en el
-        // DOM), en escritorio y en móvil, junto a «Cerrar» en el pie del modal.
         for (const [nombre, ancho, alto] of [["escritorio", 1366, 768], ["movil", 390, 844]]) {
             await page.setViewport({ width: ancho, height: alto });
-            await new Promise(res => setTimeout(res, 400));
-            const caja = await page.evaluate(() => {
-                const b = [...document.querySelectorAll("button")].find(x => x.textContent.trim() === "Configurar sorteo");
+            await page.waitForFunction(() => [...document.querySelectorAll("button")].some(b => b.textContent.trim() === "Programar sorteo"), { timeout: 60000 });
+            const cajas = await page.evaluate(() => ["Programar sorteo", "Publicar sorteo ahora"].map(t => {
+                const b = [...document.querySelectorAll("button")].find(x => x.textContent.trim() === t);
                 if (!b) return null;
                 const r = b.getBoundingClientRect();
-                const s = getComputedStyle(b);
-                const pie = b.parentElement;
-                return {
-                    dentro: r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth && r.width > 0 && r.height > 0,
-                    visible: s.visibility !== "hidden" && s.display !== "none" && Number(s.opacity) > 0,
-                    junto: [...pie.querySelectorAll("button")].some(x => x.textContent.trim() === "Cerrar")
-                };
-            });
-            assert.ok(caja, `«Configurar sorteo» no existe (${nombre})`);
-            assert.ok(caja.dentro && caja.visible, `«Configurar sorteo» no se ve en pantalla (${nombre}): ${JSON.stringify(caja)}`);
-            assert.ok(caja.junto, "«Configurar sorteo» va en el pie, junto a «Cerrar»");
-            if (process.env.E2E_CAPTURAS) await page.screenshot({ path: path.join(process.env.E2E_CAPTURAS, `modal_${nombre}.png`) });
+                return r.width > 0 && r.height > 0 && r.left >= 0 && r.right <= innerWidth;
+            }));
+            assert.deepStrictEqual(cajas, [true, true], `botones de creación visibles (${nombre})`);
+            if (process.env.E2E_CAPTURAS) await page.screenshot({ path: path.join(process.env.E2E_CAPTURAS, `eventos_crear_${nombre}.png`) });
         }
         await page.setViewport({ width: 1366, height: 768 });
-        paso("«Configurar sorteo» visible en el pie del modal (1366×768 y 390×844), junto a «Cerrar»");
+        assert.ok(!(await textoPagina(page)).includes("Configurar sorteo"), "sin el modal de creación propio de Eventos");
+        paso("/eventos: «Programar sorteo» y «Publicar sorteo ahora» visibles (1366×768 y 390×844), sin formulario propio");
 
-        // 2. 3 cifras deshabilitadas de verdad.
-        await marcar(page, "3 CIFRAS — PAGO");
-        await esperarTexto(page, "Todavía no disponible");
-        assert.strictEqual(await botonHabilitado(page, "Configurar sorteo"), false);
-        await captura(page, "modal_3cifras_deshabilitado");
-        await marcar(page, "3 CIFRAS — GRATIS");
-        assert.strictEqual(await botonHabilitado(page, "Configurar sorteo"), false);
-        await marcar(page, "2 CIFRAS — PAGO");
-        assert.strictEqual(await botonHabilitado(page, "Configurar sorteo"), true);
-        paso("3 cifras de pago y gratis: «Configurar sorteo» deshabilitado; 2 cifras habilitado");
+        // 2. «Programar sorteo» lleva a Programados con el formulario abierto.
+        await pulsar(page, "Programar sorteo");
+        await page.waitForFunction(() => location.pathname === "/sorteos", { timeout: 60000 });
+        paso("«Programar sorteo» abre el formulario de Programados (/sorteos?nuevo=1)");
 
         // 3. Formulario manual real.
-        await pulsar(page, "Configurar sorteo");
         await esperarTexto(page, "Nuevo sorteo");
         await esperarTexto(page, "Grupo Prueba Uno");   // catálogos cargados del backend
         await esperarTexto(page, "Nequi Prueba");
@@ -139,16 +117,18 @@ ${vista}`);
         await captura(page, "vista_previa");
         paso("vista previa con los datos guardados (anuncio, premios, cuenta, grupos, recordatorio, aviso)");
 
-        // 5. Recargar -> el borrador persiste y aparece en «Sorteos programados».
+        // 5. Desde Eventos, su enlace lleva a Programados, donde el borrador
+        //    persiste (y no está en Eventos: aún no se publicó).
         await pulsar(page, "Cerrar");
-        await page.reload({ waitUntil: "domcontentloaded" });
+        await page.goto(`${PANEL}/eventos`, { waitUntil: "domcontentloaded" });
         await page.waitForFunction(() => document.body.textContent.includes("Los sorteos creados desde el panel"), { timeout: 60000 });
+        assert.ok(!(await textoPagina(page)).includes("Lotería E2E Manual"), "un borrador no aparece en Eventos");
         await page.evaluate(() => [...document.querySelectorAll("a")].find(a => a.getAttribute("href") === "/sorteos" && a.closest("details")).click());
         await page.waitForFunction(() => location.pathname === "/sorteos");
         await page.reload({ waitUntil: "domcontentloaded" });
         await esperarTexto(page, "Lotería E2E Manual");
         await esperarTexto(page, "Borrador (sin confirmar)");
-        paso("tras recargar /eventos, su enlace lleva a «Sorteos programados», donde el borrador persiste");
+        paso("el borrador no está en Eventos; su enlace lleva a Programados, donde persiste tras recargar");
 
         // 6. Editar (borrador): versión 2, sin duplicar grupos.
         await pulsar(page, "Editar");

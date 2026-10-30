@@ -136,7 +136,7 @@ async function main() {
 
         // ---------------------------------------- B. formulario + horario ---
         await a.goto(`${PANEL}/sorteos`, { waitUntil: "domcontentloaded" });
-        await pulsar(a, "Nuevo sorteo");
+        await pulsar(a, "Programar sorteo");
         await esperarTexto(a, "Grupo Uno A");
         await a.waitForFunction(() => document.querySelectorAll("#loterias-calendario option").length > 0, { timeout: 30000 });
         const opciones = await a.evaluate(() => [...document.querySelectorAll("#loterias-calendario option")].map(o => o.value));
@@ -233,7 +233,7 @@ async function main() {
 
         // API caída para los grupos -> error explícito + Reintentar.
         fake.control.fallarTabla = "grupos_autorizados";
-        await pulsar(a, "Nuevo sorteo");
+        await pulsar(a, "Programar sorteo");
         await esperarTexto(a, "No pudimos cargar tus grupos de WhatsApp. Inténtalo de nuevo.");
         await sinTextoTecnico(a, "error de grupos");
         let texto = await textoPagina(a);
@@ -249,7 +249,7 @@ async function main() {
         const c = await entorno.nuevaPagina("tok-c");
         paginas.push(c);
         await c.goto(`${PANEL}/sorteos`, { waitUntil: "domcontentloaded" });
-        await pulsar(c, "Nuevo sorteo");
+        await pulsar(c, "Programar sorteo");
         await esperarTexto(c, "Todavía no hay grupos de WhatsApp habilitados para");
         await esperarTexto(c, "Todavía no tienes cuentas de pago. Crea una en");
         assert.ok(await c.evaluate(() => [...document.querySelectorAll("a")].some(a => a.getAttribute("href") === "/sorteos" && a.closest("section"))), "enlace para crear la cuenta");
@@ -263,7 +263,7 @@ async function main() {
         const d = await entorno.nuevaPagina("tok-d");
         paginas.push(d);
         await d.goto(`${PANEL}/sorteos`, { waitUntil: "domcontentloaded" });
-        await pulsar(d, "Nuevo sorteo");
+        await pulsar(d, "Programar sorteo");
         await esperarTexto(d, "Tus 1 grupo(s) de WhatsApp están desactivados en EFAAT");
         await sinTextoTecnico(d, "grupos desactivados");
         paso("Usuario con grupos registrados pero inactivos: lo dice explícitamente");
@@ -271,7 +271,7 @@ async function main() {
         const b = await entorno.nuevaPagina("tok-b");
         paginas.push(b);
         await b.goto(`${PANEL}/sorteos`, { waitUntil: "domcontentloaded" });
-        await pulsar(b, "Nuevo sorteo");
+        await pulsar(b, "Programar sorteo");
         await esperarTexto(b, "Grupo Ajeno B");
         texto = await textoPagina(b);
         assert.ok(!texto.includes("Grupo Uno A"), "B solo ve sus grupos");
@@ -289,7 +289,7 @@ async function main() {
         await esperarTexto(a, "Esta función todavía no está disponible");
         await sinTextoTecnico(a, "calendario sin migración");
         await a.goto(`${PANEL}/sorteos`, { waitUntil: "domcontentloaded" });
-        await pulsar(a, "Nuevo sorteo");
+        await pulsar(a, "Programar sorteo");
         await esperarTexto(a, "No pudimos cargar el calendario de loterías. Puedes escribir el nombre de la lotería a mano.");
         await sinTextoTecnico(a, "formulario sin calendario");
         await pulsar(a, "Cancelar");

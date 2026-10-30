@@ -60,6 +60,9 @@ export interface GrupoSorteo {
     intentos: number;
     ultimo_error: string | null;
     publicado_en: string | null;
+    /** Fila de eventos_bot que creó la publicación en este grupo (el
+     *  backend ya la envía: select * de sorteos_programados_grupos). */
+    evento_bot_id?: string | null;
 }
 
 export interface Sorteo {

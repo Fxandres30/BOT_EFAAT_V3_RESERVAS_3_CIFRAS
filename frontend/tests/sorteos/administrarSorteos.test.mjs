@@ -126,22 +126,28 @@ await prueba("«Editar sorteo activo» (Eventos → Administrar → Tablas → E
     }
 });
 
-await prueba("Eventos: cada tarjeta enlaza a Sorteos → «Administrar» y la página abre esa pestaña con ?vista=administrar", async () => {
-    // El enlace lleva además ESE sorteo (?sorteo=), ver estadoEvento.ts y
-    // frontend/tests/eventos/estadoEvento.test.mjs.
-    for (const tarjeta of ["components/eventos/EventoCard/EventoCard.tsx", "components/eventos/EventoTresCifrasCard/EventoTresCifrasCard.tsx"]) {
-        assert.match(leer(tarjeta), /href=\{enlaceAdministrar\(evento\??\.id\)\}/, tarjeta);
+// FASE UX-02: la antigua pestaña Sorteos → «Administrar» vive en Eventos.
+await prueba("Eventos: cada tarjeta abre su administración (mismas acciones) y los enlaces antiguos ?vista=administrar redirigen allí", async () => {
+    for (const tarjeta of ["components/eventos/EventoCard/EventoCard.tsx", "components/eventos/EventoTresCifrasCard/EventoTresCifrasCard.tsx", "components/eventos/ResultadoCard/ResultadoCard.tsx"]) {
+        assert.match(leer(tarjeta), /onClick=\{onAdministrar\}/, tarjeta);
     }
-    assert.match(leer("components/eventos/estadoEvento.ts"), /`\/sorteos\?vista=administrar&sorteo=\$\{encodeURIComponent\(eventoId\)\}`/);
+    const modal = leer("components/eventos/AdministrarEventoModal.tsx");
+    assert.match(modal, /<BotonesSorteo\b/);
+    assert.match(modal, /<ConfirmarAccionSorteo\b/);
+    const grid = leer("components/eventos/EventoGrid/EventoGrid.tsx");
+    assert.match(grid, /apiSorteos\.eventos\(\)/);
+    assert.match(grid, /<EditarSorteoActivoModal\b/, "«Editar» sigue disponible");
+    assert.match(grid, /get\("sorteo"\)/, "?sorteo= abre ese sorteo");
+    assert.match(leer("components/eventos/estadoEvento.ts"), /`\/eventos\?sorteo=\$\{encodeURIComponent\(eventoId\)\}`/);
     const pagina = leer("components/sorteos/SorteosPage.tsx");
-    assert.match(pagina, /useSearchParams\(\)/);
-    assert.match(pagina, /params\?\.get\("vista"\)/);
-    assert.match(pagina, /params\?\.get\("sorteo"\)/);
+    assert.match(pagina, /vista === "administrar" \|\| vista === "en_curso"/);
+    assert.match(pagina, /router\.replace\(enlaceAdministrar\(params\?\.get\("sorteo"\)\)\)/);
+    assert.ok(!pagina.includes("AdministrarSorteos"), "sin la pestaña duplicada");
     assert.match(leer("app/sorteos/page.tsx"), /<Suspense\b/);
 });
 
-await prueba("Backend sin la versión nueva: «Administrar» lo dice explícitamente (no un error genérico)", async () => {
-    assert.match(leer("components/sorteos/SorteosPage.tsx"), /e\.status === 404\) setErrorEnGrupos\("el servidor del bot todavía ejecuta la versión anterior/);
+await prueba("Backend sin la versión nueva: Eventos lo dice explícitamente (no un error genérico)", async () => {
+    assert.match(leer("components/eventos/EventoGrid/EventoGrid.tsx"), /e\.status === 404\s*\?\s*"el servidor del bot todavía ejecuta la versión anterior/);
 });
 
 const fallidas = resultados.filter(x => !x).length;

@@ -234,7 +234,9 @@ details[open] .premiosChevron {
   color: var(--efaat-text);
   font-size: var(--efaat-text-sm);
   font-weight: var(--efaat-weight-semibold);
+  font-family: inherit;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .administrar:hover {

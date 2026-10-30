@@ -211,13 +211,6 @@
     color: var(--efaat-text);
 }
 
-/* Sorteo abierto desde Eventos («Administrar sorteo»). */
-.destacado {
-    border-radius: var(--efaat-radius-card);
-    box-shadow: 0 0 0 2px var(--efaat-primary);
-    scroll-margin-top: 16px;
-}
-
 .alerta p {
     margin: 4px 0;
 }
@@ -270,4 +263,12 @@
 
 .fijo p {
     margin: 2px 0;
+}
+
+/* «Programar sorteo» y «Publicar sorteo ahora» en la cabecera. */
+.accionesCrear {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--efaat-space-2);
+    min-width: 0;
 }

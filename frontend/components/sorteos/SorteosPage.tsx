@@ -1,70 +1,68 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { Plus } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 import { Button, PageHeader, Tabs } from "@/components/ui";
-import { apiSorteos, describirError, type CuentaPago, type Plantilla, type SorteoEnGrupos, type SorteoGestionado } from "@/services/sorteos/apiSorteos";
+import { apiSorteos, describirError, type CuentaPago, type Plantilla, type SorteoGestionado } from "@/services/sorteos/apiSorteos";
+import { enlaceAdministrar } from "@/components/eventos/estadoEvento";
 
 import FormularioSorteo from "./FormularioSorteo";
 import VistaPreviaModal from "./VistaPreviaModal";
 import ListaSorteos from "./ListaSorteos";
-import AdministrarSorteos from "./AdministrarSorteos";
-import EditarSorteoActivoModal from "./EditarSorteoActivoModal";
 import DetalleSorteoModal from "./DetalleSorteoModal";
 import EliminarSorteoModal from "./EliminarSorteoModal";
 import PlantillasPanel from "./PlantillasPanel";
 import CuentasPanel from "./CuentasPanel";
+import AccionesCrearSorteo from "./AccionesCrearSorteo";
+import { separarProgramaciones } from "./filtrosSorteos";
 import styles from "./Sorteos.module.css";
 
-type Pestana = "administrar" | "programados" | "plantillas" | "cuentas";
+type Pestana = "programados" | "plantillas" | "cuentas";
 
+// «Programados»: sorteos que se publican más tarde (fecha y hora), con sus
+// plantillas y cuentas de pago. Los instantáneos están en «Publicar ahora» y
+// los sorteos ya en los grupos se administran en Eventos.
 export default function SorteosPage() {
 
-    // /sorteos?vista=administrar&sorteo=<evento> abre «Administrar» con ese
-    // sorteo resaltado (enlace «Administrar sorteo» de Eventos). La antigua
-    // pestaña «En curso» (mismos sorteos, solo con «Editar») se unificó aquí:
-    // ?vista=en_curso también abre «Administrar».
+    // La antigua pestaña «Administrar» (y «En curso») vive ahora en Eventos:
+    // /sorteos?vista=administrar&sorteo=<evento> redirige a /eventos?sorteo=.
+    // ?nuevo=1 (botón «Programar sorteo» de otras pantallas) abre el formulario.
     const params = useSearchParams();
+    const router = useRouter();
     const vista = params?.get("vista");
-    const destacado = params?.get("sorteo") || null;
-    const [pestana, setPestana] = useState<Pestana>(vista === "administrar" || vista === "en_curso" ? "administrar" : "programados");
+    const redirigir = vista === "administrar" || vista === "en_curso";
+    const [pestana, setPestana] = useState<Pestana>("programados");
     const [sorteos, setSorteos] = useState<SorteoGestionado[]>([]);
     const [verArchivados, setVerArchivados] = useState(false);
     const [detalle, setDetalle] = useState<string | null>(null);
     const [eliminando, setEliminando] = useState<SorteoGestionado | null>(null);
     const [aviso, setAviso] = useState<string | null>(null);
-    const [editandoActivo, setEditandoActivo] = useState<string | null>(null);
-    // Sorteos en los grupos (activos y recientes) para cerrar, reabrir,
-    // desactivar, cancelar o eliminar.
-    const [enGrupos, setEnGrupos] = useState<SorteoEnGrupos[]>([]);
-    const [errorEnGrupos, setErrorEnGrupos] = useState<string | null>(null);
-    const [cargado, setCargado] = useState(false);
     const [plantillas, setPlantillas] = useState<Plantilla[]>([]);
     const [cuentas, setCuentas] = useState<CuentaPago[]>([]);
     const [error, setError] = useState<string | null>(null);
-    const [formulario, setFormulario] = useState<{ abierto: boolean; sorteo: { id: string; version: number } | null }>({ abierto: false, sorteo: null });
+    const [formulario, setFormulario] = useState<{ abierto: boolean; sorteo: { id: string; version: number } | null }>({ abierto: params?.get("nuevo") === "1", sorteo: null });
     const [vistaPrevia, setVistaPrevia] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (redirigir) router.replace(enlaceAdministrar(params?.get("sorteo")));
+        // El formulario ya se abrió: sin ?nuevo=1, recargar no lo reabre.
+        else if (params?.get("nuevo") === "1") router.replace("/sorteos", { scroll: false });
+    }, [redirigir, router, params]);
 
     const cargar = useCallback(async () => {
 
         // gestion(): cada programación con sus grupos, su estado operativo y
         // las acciones que el backend permite (una sola petición).
-        const [s, p, c, e] = await Promise.all([apiSorteos.gestion(), apiSorteos.plantillas(), apiSorteos.cuentas(), apiSorteos.eventos()]);
-
-        setCargado(true);
-        if (e.ok) { setEnGrupos(e.data); setErrorEnGrupos(null); }
-        // El backend anterior no tiene /sorteos/eventos: la ruta cae en
-        // /sorteos/:id y responde 404. El nuevo nunca responde 404 aquí.
-        else if (e.status === 404) setErrorEnGrupos("el servidor del bot todavía ejecuta la versión anterior. Reinicia el backend (PM2) con el código nuevo para administrar los sorteos.");
-        else setErrorEnGrupos(describirError(e));
+        const [s, p, c] = await Promise.all([apiSorteos.gestion(), apiSorteos.plantillas(), apiSorteos.cuentas()]);
 
         if (!s.ok) { setError(describirError(s)); return; }
 
         setError(null);
 
-        setSorteos(s.data);
+        // Los instantáneos tienen su propia pantalla («Publicar ahora»).
+        setSorteos(separarProgramaciones(s.data).programados);
 
         if (p.ok) setPlantillas(p.data);
         if (c.ok) setCuentas(c.data);
@@ -77,6 +75,8 @@ export default function SorteosPage() {
 
     useEffect(() => {
 
+        if (redirigir) return;
+
         async function refrescar() {
             await cargar();
         }
@@ -87,16 +87,23 @@ export default function SorteosPage() {
         const id = setInterval(refrescar, 30000);
         return () => clearInterval(id);
 
-    }, [cargar]);
+    }, [cargar, redirigir]);
+
+    if (redirigir) return null;
 
     return (
         <div className={`${styles.page} ${styles.stack}`}>
 
             <PageHeader
-                title="Sorteos"
-                description="Administra los sorteos de tus grupos (cerrar, reabrir, desactivar, cancelar o eliminar) y programa sorteos nuevos desde el panel. Conviven con los que EFAAT detecta en los grupos."
-                actions={<Button leftIcon={<Plus size={16} />} onClick={() => setFormulario({ abierto: true, sorteo: null })}>Nuevo sorteo</Button>}
+                title="Sorteos programados"
+                description="Crea, edita y confirma sorteos que se publican más tarde, en la fecha y hora que elijas. Cuando se publican pasan a Eventos, donde se administran junto a los demás."
+                actions={<AccionesCrearSorteo onProgramar={() => setFormulario({ abierto: true, sorteo: null })} />}
             />
+
+            <p className={`${styles.alerta} ${styles.alertaInfo}`}>
+                Los sorteos que ya están en tus grupos (detectados, programados o publicados al momento) se cierran, reabren y editan en{" "}
+                <Link href="/eventos" className={styles.enlace}>Eventos</Link>.
+            </p>
 
             {error && <p className={`${styles.alerta} ${styles.alertaError}`}>{error}</p>}
 
@@ -104,16 +111,12 @@ export default function SorteosPage() {
                 value={pestana}
                 onValueChange={v => setPestana(v as Pestana)}
                 items={[
-                    { value: "administrar", label: `Administrar (${enGrupos.length})` },
                     { value: "programados", label: `Programados (${vigentes.length})` },
                     { value: "plantillas", label: `Plantillas (${plantillas.length})` },
                     { value: "cuentas", label: `Cuentas de pago (${cuentas.length})` }
                 ]}
             />
 
-            {pestana === "administrar" && (
-                <AdministrarSorteos sorteos={enGrupos} error={errorEnGrupos} cargado={cargado} destacado={destacado} onEditar={setEditandoActivo} onActualizado={cargar} />
-            )}
             {pestana === "programados" && (
                 <>
                     {aviso && <p className={`${styles.alerta} ${styles.alertaAviso}`} role="status">{aviso}</p>}
@@ -136,6 +139,7 @@ export default function SorteosPage() {
                     />
                 </>
             )}
+
             {pestana === "plantillas" && <PlantillasPanel plantillas={plantillas} onActualizado={cargar} />}
             {pestana === "cuentas" && <CuentasPanel cuentas={cuentas} onActualizado={cargar} />}
 
@@ -151,15 +155,6 @@ export default function SorteosPage() {
                 }}
             />
 
-            {editandoActivo && (
-                <EditarSorteoActivoModal
-                    key={editandoActivo}
-                    eventoId={editandoActivo}
-                    onClose={() => { setEditandoActivo(null); cargar(); }}
-                    onGuardado={() => { setEditandoActivo(null); cargar(); }}
-                />
-            )}
-
             {detalle && <DetalleSorteoModal key={detalle} sorteoId={detalle} onClose={() => setDetalle(null)} />}
 
             {eliminando && (
@@ -167,7 +162,7 @@ export default function SorteosPage() {
                     key={eliminando.id}
                     sorteo={eliminando}
                     onClose={() => setEliminando(null)}
-                    onHecho={m => { setEliminando(null); setAviso(m); cargar(); }}
+                    onHecho={m => { setAviso(m); setEliminando(null); cargar(); }}
                 />
             )}
 

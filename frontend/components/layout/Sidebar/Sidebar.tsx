@@ -49,9 +49,11 @@ const NAV: NavItem[] = [
   { href: "/mensajes", label: "Mensajes", icon: MessageSquareText },
   { href: "/variables-globales", label: "Variables globales", icon: Puzzle },
   { href: "/contactos", label: "Contactos", icon: Users },
+  // Sorteos: Eventos (centro de control de todo lo que está en los grupos),
+  // Programados (se publican más tarde) y el acceso directo «Publicar ahora».
   { href: "/eventos", label: "Eventos", icon: Target },
-  { href: "/sorteos", label: "Sorteos", icon: CalendarClock },
-  { href: "/sorteo-instantaneo", label: "Sorteo instantáneo", icon: Zap },
+  { href: "/sorteos", label: "Programados", icon: CalendarClock },
+  { href: "/sorteo-instantaneo", label: "Publicar ahora", icon: Zap },
   { href: "/loterias", label: "Calendario de loterías", icon: CalendarDays },
   { href: "/automatizacion", label: "Automatización", icon: Bot },
   { href: "/lector-pagos", label: "Lector de pagos", icon: ScanLine },

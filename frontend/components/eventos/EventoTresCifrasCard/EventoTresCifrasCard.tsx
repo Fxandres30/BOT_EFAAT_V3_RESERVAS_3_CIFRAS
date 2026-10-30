@@ -9,18 +9,22 @@ import type { Evento } from "../types";
 import type { Modalidad } from "../modalidad";
 import type { EventoCompartido } from "../agruparEventos";
 import GruposAsociados from "../GruposAsociados/GruposAsociados";
-import { ETIQUETA_ESTADO, enlaceAdministrar, estadoSorteo } from "../estadoEvento";
+import { ETIQUETA_ESTADO, estadoSorteo } from "../estadoEvento";
+import OrigenEventoBadge from "../OrigenEventoBadge";
+import type { OrigenEvento } from "../centroEventos";
 
 import styles from "./EventoTresCifrasCard.module.css";
 
 interface Props {
     evento: Evento;
     modalidad: Exclude<Modalidad, "dos">;
+    origen?: OrigenEvento | null;
+    onAdministrar?: (() => void) | null;
 }
 
 // Tarjeta de sorteos de 3 cifras (000–999), de pago o gratis. Muestra solo
 // columnas que ya existen en eventos_bot; lo que no exista se ve como "—".
-export default function EventoTresCifrasCard({ evento, modalidad }: Props) {
+export default function EventoTresCifrasCard({ evento, modalidad, origen = null, onAdministrar = null }: Props) {
 
     const gratis = modalidad === "tres_gratis";
     const estado = ETIQUETA_ESTADO[estadoSorteo((evento as EventoCompartido).grupos ?? [evento])];
@@ -41,6 +45,7 @@ export default function EventoTresCifrasCard({ evento, modalidad }: Props) {
                     {gratis ? <Gift size={12} /> : <CircleDollarSign size={12} />}
                     {gratis ? "GRATIS" : `PAGO${precio ? ` · $${precio.toLocaleString("es-CO")}` : ""}`}
                 </span>
+                <OrigenEventoBadge origen={origen} />
             </div>
 
             <h3 className={styles.name}>{evento.nombre_evento || "Sorteo sin nombre"}</h3>
@@ -95,10 +100,12 @@ export default function EventoTresCifrasCard({ evento, modalidad }: Props) {
                 </details>
             )}
 
-            {/* «Administrar sorteo»: gestión real de ESTE sorteo (Sorteos →
-                «Administrar»); la tabla de reservas es otra cosa. */}
+            {/* «Administrar sorteo»: gestión real de ESTE sorteo, aquí mismo en
+                Eventos; la tabla de reservas es otra cosa. */}
             <div className={styles.enlaces}>
-                <Link href={enlaceAdministrar(evento.id)} prefetch={false} className={`${styles.administrar} ${styles.administrarPrincipal}`}>Administrar sorteo</Link>
+                {onAdministrar && (
+                    <button type="button" onClick={onAdministrar} className={`${styles.administrar} ${styles.administrarPrincipal}`}>Administrar sorteo</button>
+                )}
                 {administrable ? (
                     <Link href={`/tablas/${precio}`} prefetch={false} className={styles.administrar}>Ver tabla de reservas</Link>
                 ) : (

@@ -6,12 +6,17 @@ import type { Evento } from "../types";
 import { infoModalidad, type Modalidad } from "../modalidad";
 import type { EventoCompartido } from "../agruparEventos";
 import GruposAsociados from "../GruposAsociados/GruposAsociados";
+import OrigenEventoBadge from "../OrigenEventoBadge";
+import type { OrigenEvento } from "../centroEventos";
 
 import styles from "./ResultadoCard.module.css";
 
 interface Props {
     evento: Evento;
     modalidad: Modalidad;
+    origen?: OrigenEvento | null;
+    /** Reabrir o eliminar un sorteo terminado reciente (null: no disponible). */
+    onAdministrar?: (() => void) | null;
 }
 
 function fecha(iso?: string) {
@@ -22,7 +27,7 @@ function fecha(iso?: string) {
 // Sorteo FINALIZADO. Hoy el proyecto no guarda número ganador en ninguna
 // tabla: se muestra "Sin resultado registrado" (nunca un número inventado)
 // y VER RESULTADO queda deshabilitado hasta que exista esa estructura.
-export default function ResultadoCard({ evento, modalidad }: Props) {
+export default function ResultadoCard({ evento, modalidad, origen = null, onAdministrar = null }: Props) {
 
     const info = infoModalidad(modalidad);
     const premios = Array.isArray(evento.premios) ? evento.premios.length : 0;
@@ -34,6 +39,7 @@ export default function ResultadoCard({ evento, modalidad }: Props) {
             <div className={styles.cabecera}>
                 <h3 className={styles.name}>{evento.nombre_evento || "Sorteo sin nombre"}</h3>
                 <span className={styles.modalidad}>{info.titulo}{modalidad === "dos" ? "" : ` · ${gratis ? "GRATIS" : "PAGO"}`}</span>
+                <OrigenEventoBadge origen={origen} />
             </div>
 
             <p className={styles.fecha}>
@@ -51,9 +57,16 @@ export default function ResultadoCard({ evento, modalidad }: Props) {
                 {evento.reservados ?? 0} {gratis ? "participantes" : "números reservados"} · {premios} {premios === 1 ? "premio" : "premios"}
             </p>
 
-            <button type="button" className={styles.boton} disabled title="El proyecto aún no registra el número ganador de los sorteos">
-                Ver resultado
-            </button>
+            <div className={styles.acciones}>
+                <button type="button" className={styles.boton} disabled title="El proyecto aún no registra el número ganador de los sorteos">
+                    Ver resultado
+                </button>
+                {onAdministrar && (
+                    <button type="button" className={styles.administrar} onClick={onAdministrar}>
+                        Administrar sorteo
+                    </button>
+                )}
+            </div>
 
         </article>
     );
