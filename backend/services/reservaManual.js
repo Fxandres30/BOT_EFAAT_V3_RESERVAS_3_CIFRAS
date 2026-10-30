@@ -641,7 +641,9 @@ async function prepararReserva({ usuarioId, precio, contactoId, nuevoContacto, e
 
     // Contacto que el propio cliente bloqueó: excepción de integridad (no un
     // aviso), porque esa decisión ya la tomó el administrador al bloquear.
-    // Para reservarle, primero se desbloquea.
+    // Para reservarle, primero se desbloquea. Si «bloqueados» no se puede
+    // leer, se reserva como siempre (falla abierto, ver bloqueoActivo.js) y
+    // queda «[BLOQUEO ACTIVO] no se pudo leer bloqueados» en el registro.
     const { bloqueado } = await buscarBloqueo(usuarioId, { telefono: contacto.telefono || null, lid: contacto.lid || null }, { fresco: true });
     if (bloqueado) {
         return { ok: false, respuesta: await rechazar(rechazoBloqueado(), ctxContacto) };

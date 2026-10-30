@@ -60,6 +60,9 @@ export interface ResumenExpulsion {
 
 export interface ContextoExpulsion {
     modo: ModoExpulsion;
+    // Cada cuánto el servidor revisa los participantes reales (null si la
+    // expulsión está desactivada o el backend es anterior).
+    vigilanciaSegundos?: number | null;
     sesionConectada: boolean;
     migracionPendiente: boolean;
 }

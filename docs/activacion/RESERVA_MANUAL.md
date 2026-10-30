@@ -34,6 +34,8 @@ Estado: implementado en local, sin commit. Migración 032 preparada y **sin apli
 - **Contacto nuevo**: solo si el teléfono no existe en la plataforma (o ya es de este cliente, y entonces se reutiliza). Si existe y pertenece solo a otra cuenta se rechaza: vincularlo expondría el nombre que esa cuenta conoce. Esto revela un bit (el teléfono existe en la plataforma).
 - **Anular un número pagado** sigue permitido (regla previa), con confirmación y motivo obligatorio.
 - **Bloquear / poner en proceso** ya no están en el panel.
+- **Contacto bloqueado (30/10/2026).** No se le reserva, ni desde el bot ni desde el panel. Se comprueba dos veces con lectura fresca de `bloqueados` (sin caché): al preparar la reserva y justo antes del `UPDATE` (`reservarNumeros.js`), así que un bloqueo hecho con la reserva en curso también la frena. El panel responde «Este contacto está bloqueado. Desbloquéalo para reservarle números.» (`contacto_bloqueado`, auditado), también en lote; el bot no responde.
+- **Fallo al leer `bloqueados` → falla abierto.** Si Supabase no responde o falta la tabla, la reserva se hace como si no hubiera bloqueo y el backend registra `⚠️ [BLOQUEO ACTIVO] no se pudo leer bloqueados (se continúa sin bloquear)` (la tabla ausente, `42P01`, no se registra). Es deliberado: un fallo de lectura no debe dejar sin servicio a todos los participantes del cliente. Riesgo aceptado: durante esa caída un bloqueado podría reservar; se ve en el registro y en Historial de números. El mismo criterio aplica al filtro de mensajes del dispatcher. Pruebas: `backend/tests/bloqueo/bloqueoDuranteReserva.test.js`.
 
 ## Activación (pendiente de autorización)
 

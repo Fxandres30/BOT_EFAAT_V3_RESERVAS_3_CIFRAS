@@ -25,6 +25,15 @@
 //   BLOQUEO_EXPULSION_ESPERA_MS      60000   espera base (x2 por intento)
 //   BLOQUEO_EXPULSION_ESPERA_MAX_MS 1800000  tope de la espera
 //   BLOQUEO_EXPULSION_LOTE              10   tareas por pasada
+//   BLOQUEO_VIGILANCIA_INTERVALO_MS  60000   cada cuánto se revisan los
+//                                            participantes reales de los
+//                                            grupos (reingresos perdidos)
+//   BLOQUEO_VIGILANCIA_ESPERA_MAX_MS 600000  tope de la espera si WhatsApp
+//                                            no responde a la revisión
+//
+// Agotados los BLOQUEO_EXPULSION_MAX_INTENTOS, una tarea no se abandona:
+// sigue reintentándose cada BLOQUEO_EXPULSION_ESPERA_MAX_MS mientras el
+// contacto siga bloqueado.
 // ==========================================================================
 
 function numero(nombre, porDefecto, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
@@ -65,7 +74,9 @@ function leerConfigExpulsiones() {
         maxIntentos: numero("BLOQUEO_EXPULSION_MAX_INTENTOS", 5, { min: 1, max: 20 }),
         esperaBaseMs: numero("BLOQUEO_EXPULSION_ESPERA_MS", 60 * 1000, { min: 0 }),
         esperaMaxMs: numero("BLOQUEO_EXPULSION_ESPERA_MAX_MS", 30 * 60 * 1000, { min: 0 }),
-        lote: numero("BLOQUEO_EXPULSION_LOTE", 10, { min: 1, max: 100 })
+        lote: numero("BLOQUEO_EXPULSION_LOTE", 10, { min: 1, max: 100 }),
+        vigilanciaMs: numero("BLOQUEO_VIGILANCIA_INTERVALO_MS", 60 * 1000, { min: 30 * 1000, max: 60 * 60 * 1000 }),
+        vigilanciaEsperaMaxMs: numero("BLOQUEO_VIGILANCIA_ESPERA_MAX_MS", 10 * 60 * 1000, { min: 60 * 1000 })
     };
 
 }
@@ -82,8 +93,15 @@ function esperaParaIntento(intentos, config) {
     return Math.min(espera, config.esperaMaxMs);
 }
 
+// Espera hasta la próxima revisión de vigilancia tras N fallos seguidos.
+function esperaVigilancia(fallos, config) {
+    if (!fallos) return config.vigilanciaMs;
+    return Math.min(config.vigilanciaMs * Math.pow(2, fallos), Math.max(config.vigilanciaMs, config.vigilanciaEsperaMaxMs));
+}
+
 module.exports = {
     leerConfigExpulsiones,
     expulsionesRealesConfirmadas,
-    esperaParaIntento
+    esperaParaIntento,
+    esperaVigilancia
 };

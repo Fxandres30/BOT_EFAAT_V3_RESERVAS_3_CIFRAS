@@ -23,6 +23,9 @@
 //   8. verificación: se vuelve a leer la lista; solo si ya no está queda
 //      "expulsado"
 //
+// La vigilancia permanente (vigilanciaBloqueados.js) no expulsa: solo
+// devuelve a "pendiente" las tareas de quien reaparece, y este motor decide.
+//
 // Toda decisión queda en bloqueo_expulsiones (estado actual) y en
 // bloqueo_intentos (historial).
 // ==========================================================================
@@ -106,8 +109,14 @@ async function procesarTarea({ tarea, sock, deps, config, instancia = INSTANCIA 
         if (estado === "sesion_desconectada") {
             proximo = ahora;
         } else if (repo.REINTENTABLES_AUTO.includes(estado)) {
-            if ((tarea.intentos || 0) < config.maxIntentos) proximo = new Date(ahora.getTime() + esperaParaIntento(tarea.intentos || 1, config));
-            else errorFinal = `${error || "sin detalle"} — reintentos automáticos agotados (${tarea.intentos}); usa «Reintentar»`;
+            // Mientras siga bloqueado nunca se abandona: agotados los
+            // reintentos rápidos, sigue a ritmo lento (esperaMaxMs).
+            if ((tarea.intentos || 0) < config.maxIntentos) {
+                proximo = new Date(ahora.getTime() + esperaParaIntento(tarea.intentos || 1, config));
+            } else {
+                proximo = new Date(ahora.getTime() + config.esperaMaxMs);
+                errorFinal = `${error || "sin detalle"} — reintentos rápidos agotados (${tarea.intentos}); se reintenta cada ${Math.round(config.esperaMaxMs / 60000)} min mientras siga bloqueado`;
+            }
         }
 
         const cierre = await deps.repo.cerrarTarea(tarea, {
@@ -212,8 +221,13 @@ async function procesarTarea({ tarea, sock, deps, config, instancia = INSTANCIA 
         return cerrar("simulado", { error: null, campos: { ...campos, modo: "simulacion" } });
     }
 
-    // 7b. real.
-    const anotado = await deps.repo.anotarEnvio(tarea, { instancia, participanteJid: participante.id, criterio: loc.criterio, sessionId: sock.context?.sessionId || null, modo: "real" });
+    // 7b. real. Última comprobación del bloqueo justo antes de enviar: un
+    // desbloqueo mientras se leía el grupo nunca termina en expulsión.
+    const relectura = await deps.repo.leerBloqueo(tarea.bloqueado_id, usuarioId);
+    if (!relectura.ok) return cerrar("pendiente", { error: `no se pudo releer el bloqueo: ${relectura.error}`, campos });
+    if (!relectura.bloqueado?.activo) return cerrar("cancelado", { error: "el contacto fue desbloqueado", campos });
+
+    const anotado =await deps.repo.anotarEnvio(tarea, { instancia, participanteJid: participante.id, criterio: loc.criterio, sessionId: sock.context?.sessionId || null, modo: "real" });
 
     if (!anotado.ok) return { estado: "lease_perdido", error: anotado.motivo || anotado.error };
 
@@ -372,6 +386,7 @@ function procesarEnSegundoPlano(usuarioId, opciones = {}) {
 module.exports = {
     INSTANCIA,
     esErrorDeConexion,
+    socketDelCliente,
     statusDe,
     procesarTarea,
     procesarPendientesDe,

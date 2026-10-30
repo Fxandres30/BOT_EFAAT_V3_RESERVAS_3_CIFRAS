@@ -115,8 +115,12 @@ function resumenExpulsion(bloqueado, tareas, { migracionPendiente = false } = {}
 }
 
 function contextoExpulsion(usuarioId, { migracionPendiente = false } = {}) {
+    const config = leerConfigExpulsiones();
     return {
-        modo: leerConfigExpulsiones().modo,
+        modo: config.modo,
+        // Cada cuánto se revisan los participantes reales (vigilancia de
+        // reingresos). Solo informativo para el panel.
+        vigilanciaSegundos: config.modo === "desactivado" ? null : Math.round(config.vigilanciaMs / 1000),
         sesionConectada: sesionConectada(usuarioId),
         migracionPendiente
     };

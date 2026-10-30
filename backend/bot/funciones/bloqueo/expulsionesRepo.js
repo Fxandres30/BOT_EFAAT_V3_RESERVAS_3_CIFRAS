@@ -31,6 +31,12 @@ const REINTENTABLES_AUTO = ["pendiente", "sin_verificar", "sin_permisos", "sesio
 // una expulsión verificada) ni en_curso (lo tiene otra instancia).
 const REINTENTABLES_MANUAL = [...REINTENTABLES_AUTO, "identidad_ambigua", "no_expulsable", "simulado"];
 
+// La vigilancia los devuelve a "pendiente" si la persona vuelve a aparecer
+// en el grupo (cancelado solo llega aquí con el bloqueo activo: grupo
+// desautorizado y vuelto a autorizar). Nunca simulado: en simulación la
+// persona sigue dentro y se reabriría en cada revisión.
+const REABRIBLES = [...EXITO, "cancelado"];
+
 // Un desbloqueo cancela lo que aún no terminó (en_curso lo cancela el propio
 // procesador al releer el bloqueo).
 const CANCELABLES = [...REINTENTABLES_MANUAL];
@@ -132,6 +138,61 @@ async function programarExpulsiones({ usuarioId, bloqueado, origen = "bloqueo", 
         motivo: autorizados.grupos.length ? null : "sin_grupos_autorizados",
         tareas: tareas.tareas
     };
+
+}
+
+// Vigilancia: crea las tareas que falten para TODOS los bloqueos activos del
+// cliente (bloqueos anteriores a la 040, grupos autorizados después del
+// bloqueo). Una lectura de grupos y un upsert; lo existente no se toca.
+async function asegurarTareasDeActivos(usuarioId, bloqueados, { ahora = new Date() } = {}) {
+
+    const activos = (bloqueados || []).filter(b => b?.activo && b.id && (!b.usuario_id || b.usuario_id === usuarioId));
+
+    if (!usuarioId || activos.length === 0) return { ok: true, grupos: [] };
+
+    const autorizados = await gruposAutorizados(usuarioId);
+    if (!autorizados.ok) return { ok: false, motivo: "error_supabase", error: autorizados.error, grupos: [] };
+
+    if (autorizados.grupos.length === 0) return { ok: true, grupos: [] };
+
+    const marca = iso(ahora);
+    const filas = [];
+
+    for (const b of activos) for (const g of autorizados.grupos) {
+        filas.push({
+            bloqueado_id: b.id, usuario_id: usuarioId, grupo_id: g.grupo_id, grupo_nombre: g.grupo_nombre,
+            origen: "bloqueo", estado: "pendiente", intentos: 0, proximo_intento_en: marca, solicitada_en: marca, actualizado_en: marca
+        });
+    }
+
+    const { error } = await supabase.from(TABLA).upsert(filas, { onConflict: "bloqueado_id,grupo_id", ignoreDuplicates: true });
+
+    if (error) return { ...fallo(error), grupos: autorizados.grupos };
+
+    return { ok: true, grupos: autorizados.grupos };
+
+}
+
+// Vigilancia: la persona volvió a aparecer en un grupo cuya tarea estaba
+// resuelta. Compare-and-set sobre el estado leído: si otra instancia ya la
+// movió, no se pisa.
+async function reabrirPorPresencia(tarea, { ahora = new Date() } = {}) {
+
+    if (!REABRIBLES.includes(tarea?.estado)) return { ok: true, reabierta: false };
+
+    const marca = iso(ahora);
+
+    const { data, error } = await supabase
+        .from(TABLA)
+        .update({ estado: "pendiente", origen: "reingreso", intentos: 0, proximo_intento_en: marca, ultimo_error: null, ultimo_status: null, verificada_en: null, solicitada_en: marca, actualizado_en: marca })
+        .eq("id", tarea.id)
+        .eq("usuario_id", tarea.usuario_id)
+        .eq("estado", tarea.estado)
+        .select();
+
+    if (error) return fallo(error);
+
+    return { ok: true, reabierta: (data || []).length === 1 };
 
 }
 
@@ -450,9 +511,12 @@ module.exports = {
     FINALES,
     REINTENTABLES_AUTO,
     REINTENTABLES_MANUAL,
+    REABRIBLES,
     migracionPendiente,
     gruposAutorizados,
     programarExpulsiones,
+    asegurarTareasDeActivos,
+    reabrirPorPresencia,
     prepararReingreso,
     listarDeBloqueo,
     listarDeCliente,

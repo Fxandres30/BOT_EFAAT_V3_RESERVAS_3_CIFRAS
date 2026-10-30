@@ -398,11 +398,13 @@ async function main() {
         const espera2 = new Date(tareaDe(bloqueado.id, "g1@g.us").proximo_intento_en) - ahora();
         assert.ok(espera2 > 110000 && espera2 <= 120000, `segundo reintento ~120 s (fue ${espera2})`);
 
-        // Tercer fallo (maxIntentos=3): sin más reintentos automáticos.
+        // Tercer fallo (maxIntentos=3): no se abandona, sigue a ritmo lento
+        // (esperaMaxMs = 600 s) mientras siga bloqueado.
         desplazamientoMs += 121000;
         await correr();
-        assert.strictEqual(tareaDe(bloqueado.id, "g1@g.us").proximo_intento_en, null);
-        assert.match(tareaDe(bloqueado.id, "g1@g.us").ultimo_error, /agotados/);
+        const espera3 = new Date(tareaDe(bloqueado.id, "g1@g.us").proximo_intento_en) - ahora();
+        assert.ok(espera3 > 590000 && espera3 <= 600000, `reintento lento ~600 s (fue ${espera3})`);
+        assert.match(tareaDe(bloqueado.id, "g1@g.us").ultimo_error, /reintentos rápidos agotados/);
 
         // Reintento manual: solo g1 vuelve a la cola; g2 (expulsado) no.
         fallar = false;
