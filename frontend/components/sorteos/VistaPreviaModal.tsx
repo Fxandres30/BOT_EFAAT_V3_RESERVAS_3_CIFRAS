@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Modal, Button, Badge } from "@/components/ui";
 import TablaImprimible from "@/components/tablas/TablaImprimible";
-import { apiSorteos, describirError, type EstadoPublicacion, type VistaPrevia } from "@/services/sorteos/apiSorteos";
+import { apiSorteos, describirError, type EstadoPublicacion, type ResultadoPublicacionInmediata, type VistaPrevia } from "@/services/sorteos/apiSorteos";
+import { motivoNoPublicable, resumenDesdeSorteo, textoResultado, type PruebaImagen } from "@/services/sorteos/sorteoInstantaneo";
+import { ESTADO_GRUPO } from "@/services/sorteos/estadosSorteo";
 import { mostrarFecha } from "./fechas";
 import styles from "./Sorteos.module.css";
 
@@ -24,6 +26,13 @@ const ESTADO_PUBLICACION: Record<EstadoPublicacion, { texto: string; tono: "succ
     bloqueado: { texto: "Bloqueado por un conflicto real", tono: "error", detalle: "Hay un conflicto que seguirá existiendo en la fecha de publicación (ver abajo)." }
 };
 
+// «Sorteo instantáneo»: se publica al confirmar, no «a su hora».
+const ESTADO_INMEDIATO: Record<EstadoPublicacion, { texto: string; tono: "success" | "primary" | "error"; detalle: string }> = {
+    listo: { texto: "Listo para publicar ahora", tono: "success", detalle: "Se publicará en los grupos en el momento en que pulses «Publicar ahora»." },
+    programado: { texto: "No se puede publicar ahora", tono: "error", detalle: "Algún grupo tiene otro sorteo abierto. Marca «Sustituir el sorteo activo» en el formulario, ciérralo desde «Administrar» o prográmalo para después." },
+    bloqueado: { texto: "Bloqueado por un conflicto real", tono: "error", detalle: "Hay un conflicto que impide publicar (ver abajo)." }
+};
+
 // Orden fijo: fecha y hora -> tabla (la MISMA que la imagen de WhatsApp) ->
 // anuncio -> cuentas -> grupos -> advertencias y validaciones. Los botones
 // van en el pie del modal, que no se desplaza: la tabla tiene su propio
@@ -35,6 +44,12 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
     const [revisado, setRevisado] = useState(false);
     const [reinicioConfirmado, setReinicioConfirmado] = useState(false);
     const [confirmando, setConfirmando] = useState(false);
+    // Sorteo instantáneo: imagen generada por el SERVIDOR y resultado real.
+    const [imagen, setImagen] = useState<PruebaImagen>({ tipo: "probando" });
+    const [intentoImagen, setIntentoImagen] = useState(0);
+    const [resultado, setResultado] = useState<ResultadoPublicacionInmediata | null>(null);
+    // Bloqueo síncrono: dos clics seguidos no lanzan dos publicaciones.
+    const publicandoRef = useRef(false);
 
     // La página remonta este modal (key) por cada sorteo: el estado empieza
     // limpio sin reiniciarlo dentro del efecto.
@@ -51,6 +66,51 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
         cargar(sorteoId);
 
     }, [sorteoId]);
+
+    const inmediato = vista?.publicacion_inmediata === true;
+    const idInmediato = inmediato && vista?.estado === "borrador" ? vista.id : null;
+
+    // La imagen que se enviará, generada en el servidor con la misma función
+    // que la publicación: si falla aquí, fallaría al publicar.
+    useEffect(() => {
+        if (!idInmediato) return;
+        let vigente = true;
+        apiSorteos.imagenPrueba(idInmediato).then(r => {
+            if (!vigente) return;
+            setImagen(r.ok ? { tipo: "ok", imagen: r.data.imagen } : { tipo: "error", mensaje: r.mensaje || describirError(r) });
+        });
+        return () => { vigente = false; };
+    }, [idInmediato, intentoImagen]);
+
+    async function publicarAhora() {
+
+        if (!vista || publicandoRef.current) return;
+        publicandoRef.current = true;
+        setConfirmando(true);
+        setError(null);
+
+        const r = await apiSorteos.publicarAhora(vista.id, vista.version, vista.reinicio?.al_publicar ? { confirmado: reinicioConfirmado } : undefined);
+
+        if (r.ok) {
+            setResultado(r.data);
+        } else if (r.motivo === "tiempo_agotado" || r.motivo === "backend_no_disponible") {
+            // Sin respuesta: pudo publicarse. Se lee el estado real.
+            const s = await apiSorteos.obtener(vista.id);
+            if (s.ok && s.data.estado !== "borrador") setResultado(resumenDesdeSorteo(s.data));
+            else setError(describirError(r));
+        } else {
+            setError([r.mensaje || describirError(r), ...(r.bloqueos || []), ...(r.errores || []).map(e => e.mensaje)].join(" "));
+        }
+
+        setConfirmando(false);
+        publicandoRef.current = false;
+
+    }
+
+    // Estado del sorteo en la cabecera: «a su hora» o «ahora» (instantáneo).
+    const estadoVista = vista
+        ? inmediato ? ESTADO_INMEDIATO[vista.estado_publicacion] : ESTADO_PUBLICACION[vista.estado_publicacion]
+        : null;
 
     // «Reiniciar la tabla antes de publicar»: programar nunca toca la tabla;
     // se confirma que el publicador la reinicie al publicar (revalidándola).
@@ -85,11 +145,16 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
             open={!!sorteoId}
             onClose={onClose}
             size="lg"
-            title="Vista previa"
+            title={inmediato ? "Sorteo instantáneo · vista previa" : "Vista previa"}
             footer={
                 <>
-                    <Button variant="secondary" onClick={onClose} disabled={confirmando}>Cerrar</Button>
-                    {vista?.estado === "borrador" && (
+                    <Button variant="secondary" onClick={resultado ? onConfirmado : onClose} disabled={confirmando}>Cerrar</Button>
+                    {inmediato && vista?.estado === "borrador" && !resultado && (
+                        <Button onClick={publicarAhora} loading={confirmando} disabled={!!motivoNoPublicable(vista, { revisado, reinicioConfirmado, imagen })} title={motivoNoPublicable(vista, { revisado, reinicioConfirmado, imagen }) || undefined}>
+                            {confirmando ? "Enviando…" : "Publicar ahora"}
+                        </Button>
+                    )}
+                    {!inmediato && vista?.estado === "borrador" && (
                         <Button onClick={confirmar} loading={confirmando} disabled={!vista.puede_confirmar || !revisado || (pideConfirmarReinicio && !reinicioConfirmado)}>
                             Confirmar y programar
                         </Button>
@@ -102,17 +167,36 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                 {error && <p className={`${styles.alerta} ${styles.alertaError}`}>{error}</p>}
                 {!vista && !error && <p className={styles.ayuda}>Cargando vista previa…</p>}
 
-                {vista && (
+                {resultado && (
+                    <section className={styles.seccion} aria-label="Resultado de la publicación">
+                        <h3 className={styles.seccionTitulo}>Resultado</h3>
+                        <p className={`${styles.alerta} ${resultado.publicados === resultado.grupos.length ? styles.alertaInfo : styles.alertaAviso}`} role="status">{textoResultado(resultado)}</p>
+                        <ul className={styles.grupos}>
+                            {resultado.grupos.map(g => (
+                                <li key={g.grupo_id} className={styles.grupo}>
+                                    <Badge tone={ESTADO_GRUPO[g.estado].tono} dot>{ESTADO_GRUPO[g.estado].texto}</Badge>
+                                    {g.nombre || g.grupo_id}
+                                    {g.error && g.estado !== "publicado" && <span className={g.estado === "fallido" ? styles.error : styles.ayuda}>{g.error}</span>}
+                                </li>
+                            ))}
+                        </ul>
+                        <p className={styles.ayuda}>Sigue su estado y adminístralo en Sorteos (pestañas «Programados» y «Administrar»).</p>
+                    </section>
+                )}
+
+                {vista && !resultado && (
                     <>
-                        <div className={`${styles.alerta} ${vista.estado_publicacion === "bloqueado" ? styles.alertaError : styles.alertaInfo}`} role="status" aria-label="Estado de la publicación">
-                            <Badge tone={ESTADO_PUBLICACION[vista.estado_publicacion].tono} dot>{ESTADO_PUBLICACION[vista.estado_publicacion].texto}</Badge>
-                            <p>{ESTADO_PUBLICACION[vista.estado_publicacion].detalle}</p>
+                        <div className={`${styles.alerta} ${vista.estado_publicacion === "listo" || (!inmediato && vista.estado_publicacion === "programado") ? styles.alertaInfo : styles.alertaError}`} role="status" aria-label="Estado de la publicación">
+                            <Badge tone={estadoVista!.tono} dot>{estadoVista!.texto}</Badge>
+                            <p>{estadoVista!.detalle}</p>
                         </div>
 
                         <section className={styles.seccion} aria-label="Fecha y hora">
                             <h3 className={styles.seccionTitulo}>Publicación</h3>
                             <p>
-                                Se publica el <b>{mostrarFecha(vista.publicar_en)}</b> (hora de Colombia).
+                                {inmediato
+                                    ? <>Se publica <b>en el momento en que pulses «Publicar ahora»</b>.</>
+                                    : <>Se publica el <b>{mostrarFecha(vista.publicar_en)}</b> (hora de Colombia).</>}
                                 {" "}Sorteo: <b>{fechaLegible(vista.fecha_sorteo)} a las {vista.hora_fin}</b>
                                 {vista.hora_cierre ? <> · cierre de reservas {vista.hora_cierre}</> : null}.
                             </p>
@@ -132,6 +216,26 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                             </div>
                             <p className={styles.ayuda}>Es la misma tabla, con el mismo estilo, que se comparte como imagen en WhatsApp.</p>
                         </section>
+
+                        {inmediato && vista.estado === "borrador" && (
+                            <section className={styles.seccion} aria-label="Imagen que se enviará">
+                                <h3 className={styles.seccionTitulo}>Imagen que se enviará (generada por el servidor)</h3>
+                                {imagen.tipo === "probando" && <p className={styles.ayuda} role="status">Generando la imagen en el servidor… puede tardar unos segundos.</p>}
+                                {imagen.tipo === "ok" && (
+                                    <div className={styles.tablaVista}>
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img src={imagen.imagen} alt="Imagen de la tabla que se enviará por WhatsApp" className={styles.imagenServidor} />
+                                    </div>
+                                )}
+                                {imagen.tipo === "error" && (
+                                    <div className={`${styles.alerta} ${styles.alertaError}`} role="alert">
+                                        <p>{imagen.mensaje}</p>
+                                        <p>Sin imagen no se publica (no se envía el texto solo).</p>
+                                        <Button size="sm" variant="secondary" onClick={() => { setImagen({ tipo: "probando" }); setIntentoImagen(n => n + 1); }}>Volver a probar</Button>
+                                    </div>
+                                )}
+                            </section>
+                        )}
 
                         <section className={styles.seccion}>
                             <h3 className={styles.seccionTitulo}>Anuncio que se publicará</h3>
@@ -203,7 +307,7 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
 
                         {vista.bloqueos.length > 0 && (
                             <div className={`${styles.alerta} ${styles.alertaError}`}>
-                                <strong>No se puede programar todavía:</strong>
+                                <strong>{inmediato ? "No se puede publicar:" : "No se puede programar todavía:"}</strong>
                                 <ul>{vista.bloqueos.map((b, i) => <li key={i}>{b}</li>)}</ul>
                             </div>
                         )}

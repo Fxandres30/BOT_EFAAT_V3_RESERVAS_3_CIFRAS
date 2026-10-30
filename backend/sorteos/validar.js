@@ -157,7 +157,11 @@ function validarSorteo(entrada = {}, { ahora = new Date() } = {}) {
 
     const cuentas = idsUnicos(entrada.cuentas, LIMITES.cuentas);
 
-    const publicarEn = new Date(entrada.publicar_en || "");
+    // «Sorteo instantáneo»: se publica al confirmarlo (servicio.publicarAhora
+    // fija publicar_en en ese momento). Aquí se valida contra «ahora»; todas
+    // las demás reglas (cierre futuro, fecha, tabla, grupos) son las mismas.
+    const inmediata = entrada.publicacion_inmediata === true;
+    const publicarEn = new Date(inmediata ? ahora : (entrada.publicar_en || ""));
     const publicacionValida = !Number.isNaN(publicarEn.getTime());
 
     // Fecha del sorteo: puede ser posterior a la publicación (p. ej. se
@@ -172,7 +176,7 @@ function validarSorteo(entrada = {}, { ahora = new Date() } = {}) {
     if (!publicacionValida) {
         error("publicar_en", "Fecha y hora de publicación inválidas.");
     } else {
-        if (publicarEn.getTime() < ahora.getTime() + 60 * 1000) {
+        if (!inmediata && publicarEn.getTime() < ahora.getTime() + 60 * 1000) {
             error("publicar_en", "La publicación debe programarse al menos 1 minuto en el futuro.");
         }
         // Se compara el INSTANTE real del cierre (fecha del sorteo + hora de
@@ -180,7 +184,9 @@ function validarSorteo(entrada = {}, { ahora = new Date() } = {}) {
         // nunca después del cierre (el sorteo se cerraría al publicarse).
         const cierre = HORA.test(horaCierre) && fechaSorteo ? instanteBogota(fechaSorteo, horaCierre) : null;
         if (cierre && publicarEn.getTime() >= cierre.getTime()) {
-            error("publicar_en", `La publicación debe ser antes del cierre de reservas (${fechaSorteo} ${horaCierre}, hora de Colombia). Adelanta la publicación o cambia la fecha del sorteo.`);
+            error(inmediata ? "hora_cierre" : "publicar_en", inmediata
+                ? `El cierre de reservas (${fechaSorteo} ${horaCierre}, hora de Colombia) ya pasó: no se puede publicar ahora. Cambia la fecha o la hora del sorteo.`
+                : `La publicación debe ser antes del cierre de reservas (${fechaSorteo} ${horaCierre}, hora de Colombia). Adelanta la publicación o cambia la fecha del sorteo.`);
         }
         if (fechaSorteo && fechaSorteo < partesBogota(publicarEn).fecha) {
             error("fecha_sorteo", "La fecha del sorteo no puede ser anterior a la publicación.");
@@ -239,6 +245,7 @@ function validarSorteo(entrada = {}, { ahora = new Date() } = {}) {
         // cierra en ESE grupo (sus reservas y pagos se conservan) en vez de
         // esperar. Por defecto, espera.
         sustituir_activo: entrada.sustituir_activo === true,
+        publicacion_inmediata: inmediata,
         mensajes,
         recordatorios: recordatorios.sort((a, b) => b.minutos_antes_cierre - a.minutos_antes_cierre),
         reservas: { liberar_no_pagados: liberar, vencimiento_minutos: liberar ? vencimiento : null }

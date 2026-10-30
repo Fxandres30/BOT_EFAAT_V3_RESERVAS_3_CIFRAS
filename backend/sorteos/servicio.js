@@ -175,6 +175,9 @@ async function vistaPrevia(usuarioId, id) {
     const sorteo = s.data;
     // Fecha en que se JUEGA (variable {{fecha}}); la publicación puede ser antes.
     const fecha = fechaSorteoDe(sorteo.config, sorteo.publicar_en);
+    // «Sorteo instantáneo»: se publica al confirmarlo, así que conflictos y
+    // reinicio se revisan para AHORA, no para cuando se guardó el borrador.
+    const momentoPublicacion = sorteo.config.publicacion_inmediata ? reloj.ahora() : new Date(sorteo.publicar_en);
 
     const publicacion = mensajePublicacion(sorteo.config, sorteo.cuentas_snapshot, { fecha });
     const recordatorios = (sorteo.config.recordatorios || []).map(r => ({
@@ -217,15 +220,15 @@ async function vistaPrevia(usuarioId, id) {
         } else {
             reinicio = rr.data;
             const diferido = !reinicio.posible
-                ? await reinicioDiferible(usuarioId, reinicio, rr.porSorteo, new Date(sorteo.publicar_en))
+                ? await reinicioDiferible(usuarioId, reinicio, rr.porSorteo, momentoPublicacion)
                 : null;
             if (diferido) {
                 reinicio = diferido;
-                avisos.push(`La tabla se reiniciará al publicar (${legible(new Date(sorteo.publicar_en))}), cuando el sorteo actual ya haya cerrado (${legible(new Date(diferido.cierra_antes))}). Hasta entonces sus reservas y pagos no se tocan; al publicar se archivan (no se borran).`);
+                avisos.push(`La tabla se reiniciará al publicar (${legible(momentoPublicacion)}), cuando el sorteo actual ya haya cerrado (${legible(new Date(diferido.cierra_antes))}). Hasta entonces sus reservas y pagos no se tocan; al publicar se archivan (no se borran).`);
             } else if (!reinicio.posible) {
                 bloqueos.push(`No se puede reiniciar la tabla: ${reinicio.bloqueos.join("; ")}. Nada se modificó. Espera a que ese sorteo cierre o edita el sorteo y elige «Conservar la tabla actual».`);
             } else {
-                avisos.push(`La tabla se reiniciará al publicar (${legible(new Date(sorteo.publicar_en))}), no ahora: programar no modifica ningún número. En ese momento se vuelve a revisar la tabla; si hay reservas nuevas, pagos en proceso o un sorteo activo, no se reinicia ni se publica.`);
+                avisos.push(`La tabla se reiniciará al publicar (${legible(momentoPublicacion)}), no ahora: programar no modifica ningún número. En ese momento se vuelve a revisar la tabla; si hay reservas nuevas, pagos en proceso o un sorteo activo, no se reinicia ni se publica.`);
             }
             if (reinicio.posible || reinicio.diferido) reinicio = { ...reinicio, al_publicar: true };
         }
@@ -252,7 +255,7 @@ async function vistaPrevia(usuarioId, id) {
 
     // Conflictos de grupo EN LA FECHA DE PUBLICACIÓN (no solo activo=true):
     // un sorteo actual que habrá cerrado para entonces no bloquea.
-    const publicarEn = new Date(sorteo.publicar_en);
+    const publicarEn = momentoPublicacion;
     const cierreNuevo = sorteo.config.hora_cierre ? instanteBogota(fecha, sorteo.config.hora_cierre) : null;
 
     const grupos = [];
@@ -263,6 +266,11 @@ async function vistaPrevia(usuarioId, id) {
             publicarEn, ahora: reloj.ahora(), sorteoId: sorteo.id, cierreNuevo,
             sustituir: sorteo.config.sustituir_activo === true
         });
+        // Instantáneo con «Sustituir»: el sorteo abierto del grupo se cierra
+        // AL PUBLICAR (publicador), no hay que esperar a nada: se puede
+        // publicar ya, avisando de la sustitución.
+        const sustituyeAhora = sorteo.config.publicacion_inmediata === true && sorteo.config.sustituir_activo === true
+            && !r.bloqueo && !!r.espera && (r.conflictos || []).length > 0;
         grupos.push({
             grupo_id: g.grupo_id,
             nombre: g.grupo_nombre,
@@ -271,10 +279,12 @@ async function vistaPrevia(usuarioId, id) {
             // "bloqueado" (conflicto real en la fecha de publicación),
             // "programado" (depende de que el sorteo actual cierre antes) o
             // "listo" (nada pendiente).
-            estado_previo: r.bloqueo ? "bloqueado" : r.espera ? "programado" : "listo",
-            motivo: r.bloqueo || r.espera || null
+            estado_previo: r.bloqueo ? "bloqueado" : r.espera && !sustituyeAhora ? "programado" : "listo",
+            motivo: r.bloqueo || r.espera || null,
+            ...(sustituyeAhora ? { sustituira: true } : {})
         });
         if (r.bloqueo) bloqueos.push(`${g.grupo_nombre || g.grupo_id}: ${r.bloqueo}`);
+        if (sustituyeAhora) avisos.push(`${g.grupo_nombre || g.grupo_id}: ${r.espera}`);
     }
 
     const estadoPublicacion = bloqueos.length
@@ -313,6 +323,7 @@ async function vistaPrevia(usuarioId, id) {
             avisos,
             variables: VARIABLES,
             estado_publicacion: estadoPublicacion,
+            publicacion_inmediata: sorteo.config.publicacion_inmediata === true,
             puede_confirmar: sorteo.estado === "borrador" && bloqueos.length === 0
         }
     };
@@ -330,6 +341,8 @@ async function confirmar(usuarioId, id, { version, confirmacion, reinicio } = {}
 
     if (previa.data.version !== Number(version)) return falla("version_cambiada", { version_actual: previa.data.version });
     if (previa.data.estado !== "borrador") return falla("estado_invalido", { estado: previa.data.estado });
+    // Un sorteo instantáneo no se programa: se publica con publicarAhora.
+    if (previa.data.publicacion_inmediata) return falla("validacion", { errores: [{ campo: "publicacion_inmediata", mensaje: "Es un sorteo instantáneo: se publica con «Publicar ahora» (sección Sorteo instantáneo)." }] });
     if (previa.data.bloqueos.length) return falla("bloqueado", { bloqueos: previa.data.bloqueos });
     if (new Date(previa.data.publicar_en).getTime() <= reloj.ahora().getTime()) return falla("validacion", { errores: [{ campo: "publicar_en", mensaje: "La hora de publicación ya pasó. Edita el sorteo." }] });
 
@@ -354,6 +367,152 @@ async function confirmar(usuarioId, id, { version, confirmacion, reinicio } = {}
     if (!r.ok) return r.motivo === "conflicto" ? falla("version_cambiada") : r;
 
     return repo.obtenerSorteo(usuarioId, id);
+
+}
+
+// ---------------------------------------------------- sorteo instantáneo ---
+// Un sorteo creado con publicacion_inmediata se publica AL CONFIRMARLO, con
+// el MISMO publicador de los programados (publicador.tick: guardar el
+// evento, imagen de la tabla con el diseño del sorteo, texto, abrir el grupo
+// y «Compartir» protegido contra duplicados). No hay un publicador aparte:
+// solo se adelanta su ciclo a este momento en vez de esperar al siguiente.
+//
+// Doble clic o reintento: la confirmación está condicionada a la versión y
+// al estado «borrador», así que solo una petición publica; las demás
+// devuelven el estado real del sorteo. Cada grupo se envía una sola vez
+// (clave sorteo-<id>-publicacion-<n> del ExecutionGuard).
+
+const instantaneo = {
+    _socketDe: socketActivoDeSesion,
+    // Dependencias del publicador (null = las reales). Las pruebas las sustituyen.
+    _deps: null
+};
+
+function socketActivoDeSesion(usuarioId) {
+    return require("../services/baileys/manager").getSocketActivoDe(usuarioId);
+}
+
+// Estado por grupo tras publicar, en el idioma del panel.
+function resumenPublicacion(sorteo) {
+    const grupos = (sorteo.grupos || []).filter(g => g.estado !== "cancelado").map(g => ({
+        grupo_id: g.grupo_id,
+        nombre: g.grupo_nombre || null,
+        estado: g.estado,
+        error: g.ultimo_error || null
+    }));
+    const cuenta = (e) => grupos.filter(g => g.estado === e).length;
+    return {
+        sorteo_id: sorteo.id,
+        estado: sorteo.estado,
+        publicados: cuenta("publicado"),
+        fallidos: cuenta("fallido"),
+        en_revision: cuenta("requiere_revision"),
+        pendientes: cuenta("pendiente") + cuenta("publicando"),
+        grupos
+    };
+}
+
+async function publicarAhora(usuarioId, id, { version, confirmacion, reinicio } = {}) {
+
+    if (confirmacion !== true) return falla("confirmacion_requerida");
+
+    const actual = await repo.obtenerSorteo(usuarioId, id);
+    if (!actual.ok) return actual;
+    if (actual.data.config?.publicacion_inmediata !== true) {
+        return falla("validacion", { errores: [{ campo: "publicacion_inmediata", mensaje: "Este sorteo es programado: se publica a su hora." }] });
+    }
+
+    // Ya confirmado (otra pestaña, doble clic o reintento tras un corte):
+    // no se publica otra vez, se devuelve cómo va.
+    if (actual.data.estado !== "borrador") return { ok: true, data: { ...resumenPublicacion(actual.data), repetido: true } };
+
+    // Sin el WhatsApp de ESTE cliente no se toca nada: ni confirmar ni crear el evento.
+    const sock = instantaneo._socketDe(usuarioId);
+    if (!sock) return falla("sin_sesion_activa");
+    const puedeActuar = instantaneo._deps?.puedeActuar || require("../services/baileys/propiedadSesion").puedeActuar;
+    if (!puedeActuar(sock)) return falla("sesion_no_disponible");
+
+    const previa = await vistaPrevia(usuarioId, id);
+    if (!previa.ok) return previa;
+
+    if (previa.data.version !== Number(version)) return falla("version_cambiada", { version_actual: previa.data.version });
+    if (previa.data.bloqueos.length) return falla("bloqueado", { bloqueos: previa.data.bloqueos });
+    // Publicar YA: si algún grupo tendría que esperar a que cierre el sorteo
+    // actual (o la tabla solo se podría reiniciar después), no es inmediato.
+    if (previa.data.estado_publicacion !== "listo") {
+        const espera = [
+            ...previa.data.grupos.filter(g => g.estado_previo === "programado").map(g => `${g.nombre || g.grupo_id}: ${g.motivo}`),
+            ...(previa.data.reinicio?.diferido ? ["La tabla solo se podría reiniciar cuando cierre el sorteo actual."] : [])
+        ];
+        return falla("no_inmediato", { mensaje: "No se puede publicar ahora sin esperar a otro sorteo. Elige «Sustituir el sorteo activo», cierra el actual o prográmalo.", bloqueos: espera });
+    }
+
+    const ahora = reloj.ahora();
+    const cambios = {
+        estado: "programado",
+        confirmado_en: ahora.toISOString(),
+        confirmado_version: Number(version),
+        publicar_en: ahora.toISOString()
+    };
+
+    if (previa.data.reinicio?.al_publicar) {
+        if (reinicio?.confirmado !== true) return falla("confirmacion_reinicio_requerida");
+        cambios.config = { ...actual.data.config, tabla: { ...actual.data.config.tabla, reiniciar_al_publicar: true, reiniciado_en: null } };
+    }
+
+    const r = await repo.actualizarSorteoSi(usuarioId, id, { version: Number(version), estados: ["borrador"] }, cambios);
+    if (!r.ok) {
+        if (r.motivo !== "conflicto") return r;
+        // Otra petición lo confirmó en este instante: su estado, sin repetir.
+        const ya = await repo.obtenerSorteo(usuarioId, id);
+        return ya.ok ? { ok: true, data: { ...resumenPublicacion(ya.data), repetido: true } } : ya;
+    }
+
+    // El ciclo del publicador, ahora (lo que haría el siguiente tick).
+    const publicador = require("./publicador");
+    try {
+        await publicador.tick(sock, { ahora, deps: instantaneo._deps });
+    } catch (err) {
+        console.error("❌ [SORTEO INSTANTÁNEO] error en la publicación:", err?.message);
+    }
+
+    const final = await repo.obtenerSorteo(usuarioId, id);
+    if (!final.ok) return final;
+
+    return { ok: true, data: resumenPublicacion(final.data) };
+
+}
+
+// Imagen que se enviará, generada EN EL SERVIDOR con la misma función que
+// usa la publicación (compartirTabla.capturarImagenTabla) y los mismos datos
+// (números de la vista previa + diseño guardado en el sorteo). Comprueba,
+// antes de publicar, que el servidor puede producirla. No envía ni escribe.
+async function probarImagen(usuarioId, id) {
+
+    const s = await repo.obtenerSorteo(usuarioId, id);
+    if (!s.ok) return s;
+
+    const previa = await vistaPrevia(usuarioId, id);
+    if (!previa.ok) return previa;
+
+    const d = previa.data;
+    const datos = {
+        numerosDisponibles: d.numeros.numerosDisponibles,
+        numerosOcupados: d.numeros.numerosOcupados,
+        cifras: s.data.cifras,
+        cantidad: d.cantidad_numeros,
+        diseno: normalizarConfigDiseno(d.diseno?.config ?? null)
+    };
+
+    const capturar = instantaneo._deps?.capturarImagen || require("../services/compartirTabla").capturarImagenTabla;
+
+    try {
+        const png = await capturar(Number(s.data.config.valor), usuarioId, null, { datos });
+        if (!Buffer.isBuffer(png) || !png.length) return falla("error_imagen", { mensaje: "El servidor no devolvió ninguna imagen." });
+        return { ok: true, data: { imagen: `data:image/png;base64,${png.toString("base64")}`, bytes: png.length } };
+    } catch (err) {
+        return falla("error_imagen", { mensaje: `El servidor no pudo generar la imagen de la tabla: ${err?.message || err}` });
+    }
 
 }
 
@@ -557,6 +716,9 @@ const detalle = (usuarioId, id) => administracion.detalle(usuarioId, id, { ahora
 module.exports = {
     activos,
     eventos,
+    instantaneo,
+    publicarAhora,
+    probarImagen,
     crearSorteo,
     vistaPrevia,
     confirmar,

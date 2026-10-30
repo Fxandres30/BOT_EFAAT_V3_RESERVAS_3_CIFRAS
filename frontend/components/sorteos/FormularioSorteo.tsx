@@ -38,6 +38,9 @@ interface Props {
     onGuardado: (sorteo: Sorteo) => void;
     /** Valor por número precargado al crear un sorteo nuevo (p. ej. desde /tablas/[precio]). */
     valorInicial?: number;
+    /** «Sorteo instantáneo»: sin hora de publicación; se publica al
+     *  confirmarlo en la vista previa (publicar-ahora). */
+    instantaneo?: boolean;
 }
 
 export interface PremioForm { nombre: string; premio: string; tipo: string }
@@ -141,7 +144,10 @@ function desdeConfig(config: ConfigSorteo, extra: Partial<Form> = {}): Form {
     };
 }
 
-function aConfig(f: Form, disenoGuardado?: DisenoSorteo | null): ConfigSorteo {
+function aConfig(f: Form, disenoGuardado?: DisenoSorteo | null, inmediato = false): ConfigSorteo {
+    // Instantáneo: se publica al confirmar; el sorteo se juega hoy salvo que
+    // se elija otra fecha.
+    const hoy = colombiaDesdeIso(new Date().toISOString()).slice(0, 10);
     return {
         modalidad: f.modalidad,
         nombre: f.nombre,
@@ -152,8 +158,9 @@ function aConfig(f: Form, disenoGuardado?: DisenoSorteo | null): ConfigSorteo {
         premios: f.premios.filter(p => p.nombre.trim()).map(p => ({ nombre: p.nombre, premio: Number(p.premio) || null, tipo: p.tipo })),
         grupos: f.grupos,
         cuentas: f.cuentas,
-        publicar_en: isoDesdeColombia(f.publicarEn),
-        fecha_sorteo: f.fechaSorteo || (f.publicarEn ? f.publicarEn.slice(0, 10) : null),
+        publicar_en: inmediato ? null : isoDesdeColombia(f.publicarEn),
+        fecha_sorteo: f.fechaSorteo || (inmediato ? hoy : f.publicarEn ? f.publicarEn.slice(0, 10) : null),
+        ...(inmediato ? { publicacion_inmediata: true } : {}),
         tabla: { reiniciar: f.reiniciarTabla, liberar_bloqueados: f.reiniciarTabla && f.liberarBloqueados },
         sustituir_activo: f.sustituirActivo,
         diseno: formADiseno(f.diseno, disenoGuardado),
@@ -169,7 +176,7 @@ type CargaSorteo =
     | { tipo: "ok"; sorteo: Sorteo }
     | { tipo: "error"; mensaje: string };
 
-export default function FormularioSorteo({ open, sorteoId = null, onClose, onGuardado, valorInicial }: Props) {
+export default function FormularioSorteo({ open, sorteoId = null, onClose, onGuardado, valorInicial, instantaneo = false }: Props) {
 
     // Estado inicial al montar: la página remonta este componente (key) cada
     // vez que se abre, así no hay que "reiniciar" estado dentro de un efecto.
@@ -180,6 +187,8 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
     const [intentoCarga, setIntentoCarga] = useState(0);
     const sorteo = carga.tipo === "ok" ? carga.sorteo : null;
     const [form, setForm] = useState<Form>(() => ({ ...VACIO, valor: valorInicial ? String(valorInicial) : "" }));
+    // Un sorteo instantáneo sigue siéndolo al editarlo.
+    const inmediato = instantaneo || sorteo?.config.publicacion_inmediata === true;
 
     useEffect(() => {
 
@@ -268,7 +277,7 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
 
     // Horario habitual de la lotería elegida para la FECHA DEL SORTEO (puede
     // ser posterior a la publicación). Solo sugiere: nunca programa nada.
-    const fechaSorteo = form.fechaSorteo || (form.publicarEn ? form.publicarEn.slice(0, 10) : "");
+    const fechaSorteo = form.fechaSorteo || (inmediato ? colombiaDesdeIso(new Date().toISOString()).slice(0, 10) : form.publicarEn ? form.publicarEn.slice(0, 10) : "");
 
     useEffect(() => {
 
@@ -372,9 +381,9 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
         setErrores([]);
         setError(null);
 
-        const config = aConfig(form, sorteo?.config.diseno);
+        const config = aConfig(form, sorteo?.config.diseno, inmediato);
 
-        if (!config.publicar_en) {
+        if (!inmediato && !config.publicar_en) {
             setErrores([{ campo: "publicar_en", mensaje: "Indica la fecha y hora de publicación." }]);
             setGuardando(false);
             return;
@@ -409,10 +418,12 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
             open={open}
             onClose={onClose}
             size="lg"
-            title={edicion ? "Editar sorteo" : "Nuevo sorteo"}
-            description={edicion
-                ? "Al guardar verás la vista previa y tendrás que confirmarlo otra vez. Nada se publica hasta entonces."
-                : "Al guardar verás la vista previa. Nada se publica hasta que la revises y confirmes."}
+            title={inmediato ? (edicion ? "Editar sorteo instantáneo" : "Sorteo instantáneo") : edicion ? "Editar sorteo" : "Nuevo sorteo"}
+            description={inmediato
+                ? "Al guardar verás la vista previa con la imagen real. Se publica en los grupos en el momento en que pulses «Publicar ahora»."
+                : edicion
+                    ? "Al guardar verás la vista previa y tendrás que confirmarlo otra vez. Nada se publica hasta entonces."
+                    : "Al guardar verás la vista previa. Nada se publica hasta que la revises y confirmes."}
             footer={
                 <>
                     <Button variant="secondary" onClick={onClose} disabled={guardando}>Cancelar</Button>
@@ -467,8 +478,14 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
                 {avisoLoterias && <p className={`${styles.alerta} ${styles.alertaAviso}`}>{avisoLoterias}</p>}
 
                 <div className={styles.fila}>
-                    <Input label="Fecha y hora de publicación (hora de Colombia)" type="datetime-local" value={form.publicarEn} onChange={e => cambiarPublicacion(e.target.value)} error={errorDe("publicar_en")} hint="Puede ser el día anterior al sorteo o antes." />
-                    <Input label="Fecha del sorteo" type="date" value={fechaSorteo} min={form.publicarEn ? form.publicarEn.slice(0, 10) : undefined} onChange={e => cambiar("fechaSorteo", e.target.value)} error={errorDe("fecha_sorteo")} hint="Día en que se juega. Se publica antes del cierre de reservas de ese día." />
+                    {inmediato ? (
+                        <Input label="Fecha del sorteo" type="date" value={fechaSorteo || colombiaDesdeIso(new Date().toISOString()).slice(0, 10)} min={colombiaDesdeIso(new Date().toISOString()).slice(0, 10)} onChange={e => cambiar("fechaSorteo", e.target.value)} error={errorDe("fecha_sorteo")} hint="Día en que se juega. Se publica en el momento de confirmar, antes del cierre de reservas." />
+                    ) : (
+                        <>
+                            <Input label="Fecha y hora de publicación (hora de Colombia)" type="datetime-local" value={form.publicarEn} onChange={e => cambiarPublicacion(e.target.value)} error={errorDe("publicar_en")} hint="Puede ser el día anterior al sorteo o antes." />
+                            <Input label="Fecha del sorteo" type="date" value={fechaSorteo} min={form.publicarEn ? form.publicarEn.slice(0, 10) : undefined} onChange={e => cambiar("fechaSorteo", e.target.value)} error={errorDe("fecha_sorteo")} hint="Día en que se juega. Se publica antes del cierre de reservas de ese día." />
+                        </>
+                    )}
                 </div>
 
                 {form.loteriaId && !fechaSorteo && (
@@ -636,9 +653,15 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
                         <input type="checkbox" checked={form.sustituirActivo} onChange={e => cambiar("sustituirActivo", e.target.checked)} />
                         Sustituir el sorteo activo al publicar
                     </label>
+                    {inmediato ? (
+                        <p className={styles.ayuda}>
+                            Sin marcar, si el grupo tiene otro sorteo abierto no se puede publicar ahora (ciérralo o desactívalo antes desde «Administrar»). Marcado, al publicar el sorteo actual se cierra solo en ese grupo, sin mensaje de cierre y sin perder sus reservas ni pagos.
+                        </p>
+                    ) : (
                     <p className={styles.ayuda}>
                         Sin marcar, la publicación espera a que el sorteo actual del grupo cierre (también puedes cerrarlo o desactivarlo desde «Administrar»). Marcado, a la hora de publicar el sorteo actual se cierra solo en ese grupo, sin mensaje de cierre y sin perder sus reservas ni pagos.
                     </p>
+                    )}
                 </section>
 
                 <section className={styles.seccion}>

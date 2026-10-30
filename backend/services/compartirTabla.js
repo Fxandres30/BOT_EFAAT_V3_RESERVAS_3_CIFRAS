@@ -126,7 +126,12 @@ function construirTextoCompartir(evento) {
 // habría imagen).
 const RUTA_DATOS_PAGINA = "/api/tablas/imprimir";
 
-async function capturarImagenTabla(precio, usuarioId, eventoId = null) {
+// `datos` (opcional): los datos ya resueltos de la tabla (los de
+// datosTablaImprimir). Lo usa la prueba de imagen del «Sorteo instantáneo»
+// (sorteos/servicio.probarImagen) para ver, ANTES de publicar, la misma
+// imagen con el diseño guardado en el sorteo; la página y la captura son
+// las de siempre.
+async function capturarImagenTabla(precio, usuarioId, eventoId = null, { datos: datosDados = null } = {}) {
 
     if (!usuarioId || !USUARIO_VALIDO.test(String(usuarioId))) {
         throw new Error("No se puede generar la imagen sin el dueño de la tabla.");
@@ -134,7 +139,9 @@ async function capturarImagenTabla(precio, usuarioId, eventoId = null) {
 
     // Perezoso: lee tablas del cliente (bot/funciones/eventos) solo al capturar.
     const { datosTablaImprimir } = require("./datosTablaImprimir");
-    const datos = await datosTablaImprimir(usuarioId, Number(precio), eventoId != null && EVENTO_VALIDO.test(String(eventoId)) ? String(eventoId) : null);
+    const datos = datosDados
+        ? { ok: true, data: datosDados }
+        : await datosTablaImprimir(usuarioId, Number(precio), eventoId != null && EVENTO_VALIDO.test(String(eventoId)) ? String(eventoId) : null);
 
     if (!datos.ok) throw new Error(datos.error);
 
@@ -172,9 +179,18 @@ async function capturarImagenTabla(precio, usuarioId, eventoId = null) {
             }
         });
 
-        await page.goto(url, { waitUntil: "networkidle0", timeout: 20000 });
-
-        const contenedor = await page.waitForSelector("[data-tabla-imprimir]", { timeout: 15000 });
+        // Sin tabla en la página casi siempre es FRONTEND_URL apuntando a otra
+        // web (otro proyecto o un panel antiguo): el error dice qué panel se
+        // abrió (solo el host, público) para poder corregirlo.
+        let contenedor;
+        try {
+            await page.goto(url, { waitUntil: "networkidle0", timeout: 20000 });
+            contenedor = await page.waitForSelector("[data-tabla-imprimir]", { timeout: 15000 });
+        } catch (err) {
+            let host = FRONTEND_URL;
+            try { host = new URL(FRONTEND_URL).host; } catch { /* se deja el valor tal cual */ }
+            throw new Error(`${err?.message || err} (panel abierto por el servidor: ${host}; debe ser el panel de EFAAT, revisa FRONTEND_URL)`);
+        }
 
         if (!contenedor) {
             throw new Error("La vista de impresión no renderizó el contenedor esperado.");

@@ -242,6 +242,26 @@
   border-radius: var(--efaat-radius-control);
 }
 
+/* Enlace de texto a otra sección del panel. */
+.enlace {
+  color: var(--efaat-primary);
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  text-decoration: none;
+}
+
+.enlace:hover { text-decoration: underline; }
+
+/* Imagen generada por el servidor («Sorteo instantáneo»): ancho completo
+   en móvil, sin pasar de su tamaño real. */
+.imagenServidor {
+  display: block;
+  width: 100%;
+  max-width: 720px;
+  height: auto;
+  margin: 0 auto;
+}
+
 /* Campo fijo de un sorteo en curso (no editable, con su motivo). */
 .fijo {
     padding: 8px 0;

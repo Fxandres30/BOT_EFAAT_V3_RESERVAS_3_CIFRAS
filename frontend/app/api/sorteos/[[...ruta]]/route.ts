@@ -59,6 +59,9 @@ function destino(metodo: Metodo, ruta: string[]): string | null {
         if ((a === "plantillas" || a === "cuentas") && UUID.test(b)) return metodo === "PATCH" ? `/${a}/${b}` : null;
         if (UUID.test(a) && b === "vista-previa") return metodo === "GET" ? `/${a}/vista-previa` : null;
         if (UUID.test(a) && b === "detalle") return metodo === "GET" ? `/${a}/detalle` : null;
+        // «Sorteo instantáneo»: publicar ya y la imagen de prueba del servidor.
+        if (UUID.test(a) && b === "publicar-ahora") return metodo === "POST" ? `/${a}/publicar-ahora` : null;
+        if (UUID.test(a) && b === "imagen-prueba") return metodo === "GET" ? `/${a}/imagen-prueba` : null;
         if (UUID.test(a) && (b === "confirmar" || b === "cancelar" || b === "eliminar" || b === "archivar")) return metodo === "POST" ? `/${a}/${b}` : null;
         return null;
     }
@@ -113,7 +116,9 @@ async function reenviar(metodo: Metodo, req: Request, params: Promise<{ ruta?: s
             headers: botApiHeaders({ Authorization: autorizacion, "Content-Type": "application/json" }),
             body: cuerpo,
             cache: "no-store",
-            signal: AbortSignal.timeout(20000)
+            // Publicar ya (imagen + envío a cada grupo) e imagen de prueba
+            // (Chromium en el servidor) tardan más que el resto.
+            signal: AbortSignal.timeout(camino.endsWith("/publicar-ahora") ? 120000 : camino.endsWith("/imagen-prueba") ? 60000 : 20000)
         });
 
         const datos = await res.json().catch(() => ({ ok: false, motivo: "respuesta_invalida" }));
@@ -123,6 +128,9 @@ async function reenviar(metodo: Metodo, req: Request, params: Promise<{ ruta?: s
     } catch (error) {
 
         console.error(`❌ [PROXY SORTEOS] ${metodo} ${camino} → backend no disponible (${BOT_API_HOST}): ${(error as Error)?.name || "error"}`);
+        // Sin respuesta a tiempo de una acción que envía: pudo hacerse igual
+        // (el panel vuelve a leer el estado en vez de darla por fallida).
+        if ((error as Error)?.name === "TimeoutError") return NextResponse.json({ ok: false, motivo: "tiempo_agotado" }, { status: 504, headers: CABECERAS });
         return NextResponse.json({ ok: false, motivo: "backend_no_disponible" }, { status: 502, headers: CABECERAS });
 
     }

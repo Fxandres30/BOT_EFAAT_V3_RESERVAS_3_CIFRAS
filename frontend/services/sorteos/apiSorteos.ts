@@ -43,6 +43,8 @@ export interface ConfigSorteo {
     /** Si al publicar el grupo sigue con otro sorteo propio abierto: false =
      *  esperar a que cierre; true = sustituirlo en ese grupo. */
     sustituir_activo?: boolean;
+    /** «Sorteo instantáneo»: se publica al confirmarlo (publicar-ahora). */
+    publicacion_inmediata?: boolean;
     diseno?: DisenoSorteo;
     mensajes: { publicacion: string; aviso_cierre: string };
     recordatorios: Recordatorio[];
@@ -273,7 +275,21 @@ export interface VistaPrevia {
     avisos: string[];
     variables: Record<string, string>;
     estado_publicacion: EstadoPublicacion;
+    publicacion_inmediata?: boolean;
     puede_confirmar: boolean;
+}
+
+/** Resultado de «Publicar ahora»: el estado REAL de cada grupo. */
+export interface ResultadoPublicacionInmediata {
+    sorteo_id: string;
+    estado: EstadoSorteo;
+    publicados: number;
+    fallidos: number;
+    en_revision: number;
+    pendientes: number;
+    grupos: { grupo_id: string; nombre: string | null; estado: EstadoGrupo; error: string | null }[];
+    /** Ya estaba confirmado (doble clic o reintento): no se publicó otra vez. */
+    repetido?: boolean;
 }
 
 export type EstadoPublicacion = "listo" | "programado" | "bloqueado";
@@ -372,11 +388,16 @@ const MENSAJES: Record<string, string> = {
     reservas_anticipadas: "El sorteo tiene reservas anticipadas: libéralas antes desde Tablas.",
     no_eliminable: "Esta programación tiene actividad y no se puede eliminar.",
     nada_que_cancelar: "No queda nada pendiente que cancelar.",
-    conflicto: "La programación cambió mientras tanto. Recarga y vuelve a intentarlo."
+    conflicto: "La programación cambió mientras tanto. Recarga y vuelve a intentarlo.",
+    no_inmediato: "No se puede publicar ahora sin esperar a otro sorteo.",
+    sin_sesion_activa: "Tu WhatsApp no está conectado: conéctalo en Sesiones. No se publicó nada.",
+    sesion_no_disponible: "Tu WhatsApp está conectado en otro servidor o reconectándose. Espera un momento; no se publicó nada.",
+    error_imagen: "El servidor no pudo generar la imagen de la tabla.",
+    tiempo_agotado: "El servidor tardó demasiado en responder. Puede que se haya publicado: revisa el estado antes de reintentar."
 };
 
 // Rechazos que traen del servidor un mensaje concreto (cantidades, motivos).
-const CON_MENSAJE = new Set(["reservas_anticipadas", "no_eliminable", "nada_que_cancelar", "estado_invalido"]);
+const CON_MENSAJE = new Set(["reservas_anticipadas", "no_eliminable", "nada_que_cancelar", "estado_invalido", "no_inmediato", "error_imagen"]);
 
 // Lo que ve el cliente cuando falla algo interno (servidor, configuración,
 // base de datos): nunca detalles técnicos. Esos van a la consola.
@@ -453,6 +474,11 @@ export const apiSorteos = {
     confirmar: (id: string, version: number, reinicio?: { confirmado: boolean }) =>
         llamar<Sorteo>("POST", `/${id}/confirmar`, { version, confirmacion: true, ...(reinicio ? { reinicio } : {}) }),
     cancelar: (id: string) => llamar<Sorteo>("POST", `/${id}/cancelar`),
+    /** «Sorteo instantáneo»: confirma y publica YA con el publicador de siempre. */
+    publicarAhora: (id: string, version: number, reinicio?: { confirmado: boolean }) =>
+        llamar<ResultadoPublicacionInmediata>("POST", `/${id}/publicar-ahora`, { version, confirmacion: true, ...(reinicio ? { reinicio } : {}) }),
+    /** Imagen que se enviará, generada en el servidor (no envía nada). */
+    imagenPrueba: (id: string) => llamar<{ imagen: string; bytes: number }>("GET", `/${id}/imagen-prueba`),
     /** Listado de la pantalla de programados (estados, impacto y acciones). */
     gestion: () => llamar<SorteoGestionado[]>("GET", "/gestion"),
     detalle: (id: string) => llamar<DetalleSorteo>("GET", `/${id}/detalle`),

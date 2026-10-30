@@ -29,6 +29,11 @@ const ESTADO_HTTP = {
     reservas_anticipadas: 409,
     no_eliminable: 409,
     nada_que_cancelar: 409,
+    no_inmediato: 409,
+    sin_sesion_activa: 409,
+    sesion_no_disponible: 409,
+    confirmacion_reinicio_requerida: 400,
+    error_imagen: 502,
     migracion_pendiente: 503
 };
 
@@ -114,6 +119,11 @@ router.get("/:id", conId(async (req, res) => responder(res, await servicio.obten
 router.put("/:id", conId(async (req, res) => responder(res, await servicio.editar(req.usuarioId, req.params.id, req.body || {}))));
 router.get("/:id/vista-previa", conId(async (req, res) => responder(res, await servicio.vistaPrevia(req.usuarioId, req.params.id))));
 router.post("/:id/confirmar", conId(async (req, res) => responder(res, await servicio.confirmar(req.usuarioId, req.params.id, req.body || {}))));
+// «Sorteo instantáneo»: confirmar = publicar ya (mismo publicador). Exige
+// { version, confirmacion: true }. imagen-prueba: la imagen que se enviará,
+// generada en el servidor; no envía ni escribe nada.
+router.post("/:id/publicar-ahora", conId(async (req, res) => responder(res, await servicio.publicarAhora(req.usuarioId, req.params.id, req.body || {}))));
+router.get("/:id/imagen-prueba", conId(async (req, res) => responder(res, await servicio.probarImagen(req.usuarioId, req.params.id))));
 router.get("/:id/detalle", conId(async (req, res) => responder(res, await servicio.detalle(req.usuarioId, req.params.id))));
 router.post("/:id/cancelar", conId(async (req, res) => responder(res, await servicio.cancelar(req.usuarioId, req.params.id))));
 // Exige { version, confirmacion: true }: la versión que se vio al confirmar.
