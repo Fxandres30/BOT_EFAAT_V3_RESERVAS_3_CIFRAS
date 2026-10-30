@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { cargar, invalidar } from "@/lib/cache/almacen";
 import { TABLAS_CONFIG, type TablaConfig } from "@/lib/tablasConfig";
 
 // Qué precios ofrece EL CLIENTE de la sesión y en qué tabla física vive cada
@@ -20,9 +21,10 @@ const BASE: ConfiguracionTabla[] = Object.entries(TABLAS_CONFIG)
     .sort((a, b) => a.precio - b.precio);
 
 // Una lectura por usuario cada minuto como mucho: la tabla se recarga en
-// cada cambio en tiempo real y la configuración casi nunca cambia.
+// cada cambio en tiempo real y la configuración casi nunca cambia. Vive en
+// la caché común del panel (lib/cache/almacen.ts).
 const VIGENCIA_MS = 60_000;
-const cache = new Map<string, { hasta: number; lista: Promise<ConfiguracionTabla[]> }>();
+const clave = (usuarioId: string) => `${usuarioId}|tablasCliente`;
 
 async function leer(usuarioId: string): Promise<ConfiguracionTabla[]> {
 
@@ -44,13 +46,7 @@ export async function obtenerTablasCliente(usuarioId: string | null | undefined)
 
     if (!usuarioId) return [];
 
-    const ahora = Date.now();
-    const vigente = cache.get(usuarioId);
-    if (vigente && vigente.hasta > ahora) return vigente.lista;
-
-    const lista = leer(usuarioId).catch(() => BASE);
-    cache.set(usuarioId, { hasta: ahora + VIGENCIA_MS, lista });
-    return lista;
+    return cargar(clave(usuarioId), () => leer(usuarioId).catch(() => BASE), { vigenciaMs: VIGENCIA_MS });
 
 }
 
@@ -64,6 +60,5 @@ export async function obtenerTablaConfigCliente(precio: number, usuarioId: strin
 
 // Tras inicializar o editar la configuración.
 export function olvidarTablasCliente(usuarioId?: string) {
-    if (usuarioId) cache.delete(usuarioId);
-    else cache.clear();
+    invalidar((c) => (usuarioId ? c === clave(usuarioId) : c.endsWith("|tablasCliente")));
 }

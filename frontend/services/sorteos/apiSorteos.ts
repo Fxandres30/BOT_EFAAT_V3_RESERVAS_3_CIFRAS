@@ -194,8 +194,9 @@ export interface SorteoActivo {
     cantidad_numeros: number | null;
     estado: string | null;
     grupos: { evento_id: string; grupo_id: string; grupo_nombre: string | null; abierto: boolean }[];
-    reservados: number;
-    pagados: number;
+    /** null = no se pudieron contar en este momento (nunca se muestra 0). */
+    reservados: number | null;
+    pagados: number | null;
     cuentas: CuentaPago[] | null;
     cuentas_ids: string[] | null;
     diseno: DisenoSorteo | null;
@@ -237,8 +238,9 @@ export interface SorteoEnGrupos {
     hora_cierre: string | null;
     valor: number | null;
     estado: EstadoEventoGrupo;
-    reservados: number;
-    pagados: number;
+    /** null = no se pudieron contar en este momento (nunca se muestra 0). */
+    reservados: number | null;
+    pagados: number | null;
     grupos: { evento_id: string; grupo_id: string; grupo_nombre: string | null; estado: EstadoEventoGrupo; abierto_whatsapp: boolean }[];
 }
 

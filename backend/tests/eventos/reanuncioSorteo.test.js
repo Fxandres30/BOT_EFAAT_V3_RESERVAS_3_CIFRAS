@@ -9,7 +9,8 @@
 // repos — vía tests/deteccion/entornoFake.js (Supabase fake, socket fake).
 // También eventHandler.js + mensajeConCruz/dispatcher para los casos de
 // imagen y ❌ (vía detectarEvento real).
-// Simulado: consultarDisponibilidad (para fijar "lleno" / "con libres").
+// Simulado: sorteoSinNumerosLibres (para fijar "lleno" / "con libres"); es
+// la lectura propia del cierre, separada de la disponibilidad del cliente.
 //
 //     node backend/tests/eventos/reanuncioSorteo.test.js
 // ==========================================================================
@@ -20,18 +21,17 @@ require("../utils/politicaGruposPermisiva");
 const path = require("path");
 
 const RAIZ = path.resolve(__dirname, "../..");
-const RUTA_DISPONIBILIDAD = path.join(RAIZ, "bot/funciones/consultas/consultarDisponibilidad.js");
+const RUTA_SIN_LIBRES = path.join(RAIZ, "bot/funciones/eventos/lifecycle/sorteoSinNumerosLibres.js");
 
-// Estado controlable de la tabla del sorteo (lo que vería el bot al
-// responder "¿qué números quedan?").
+// Estado controlable de la tabla del sorteo.
 const tabla = { disponibles: [], ocupados: [], error: null };
 
-require.cache[RUTA_DISPONIBILIDAD] = {
-    id: RUTA_DISPONIBILIDAD, filename: RUTA_DISPONIBILIDAD, loaded: true,
+require.cache[RUTA_SIN_LIBRES] = {
+    id: RUTA_SIN_LIBRES, filename: RUTA_SIN_LIBRES, loaded: true,
     exports: {
-        consultarDisponibilidad: async () => {
+        sorteoSinNumerosLibres: async () => {
             if (tabla.error) throw tabla.error;
-            return { numerosDisponibles: [...tabla.disponibles], numerosOcupados: [...tabla.ocupados] };
+            return tabla.disponibles.length === 0 && tabla.ocupados.length > 0;
         }
     }
 };

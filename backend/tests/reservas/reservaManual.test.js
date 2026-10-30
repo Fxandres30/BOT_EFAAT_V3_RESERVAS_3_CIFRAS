@@ -466,6 +466,83 @@ prueba("ninguna operación de A cambia datos de B (cuadrícula, eventos, contact
     assert.strictEqual(fila(A, "00").estado, "libre");
 });
 
+// ------------------------------------------- pagos sin duplicar (UX-F1) ---
+
+prueba("pago: dos POST simultáneos de la MISMA solicitud pagan una vez y ambos responden éxito", async () => {
+    sembrar();
+    const cuerpo = { metodoPago: "Nequi", solicitudId: "doble-clic-1" };
+    const [r1, r2] = await Promise.all([
+        pedir("POST", "/tablas/5000/numeros/05/pagar", { cuerpo }),
+        pedir("POST", "/tablas/5000/numeros/05/pagar", { cuerpo })
+    ]);
+    assert.deepStrictEqual([r1.status, r2.status], [200, 200], JSON.stringify([r1.json, r2.json]));
+    assert.strictEqual(fila(A, "05").estado, "pagado");
+    const pagos = auditoria().filter(x => x.accion === "pagar" && x.numero === "05");
+    assert.strictEqual(pagos.length, 1, "una sola ejecución auditada: " + JSON.stringify(pagos.map(p => [p.resultado, p.codigo])));
+    assert.strictEqual(pagos[0].resultado, "ok");
+    assert.strictEqual((fake.tablas.reservas_actividad || []).filter(x => x.numero === "05" && x.tipo === "pagado").length, 1);
+});
+
+prueba("pago: reintento de una solicitud ya hecha = idempotente aunque la auditoría no se pueda leer", async () => {
+    sembrar();
+    const cuerpo = { solicitudId: "reintento-sin-032" };
+    assert.strictEqual((await pedir("POST", "/tablas/5000/numeros/05/pagar", { cuerpo })).status, 200);
+    fake.tablas.reservas_auditoria = [];          // como sin la migración 032
+    const otra = await pedir("POST", "/tablas/5000/numeros/05/pagar", { cuerpo });
+    assert.strictEqual(otra.status, 200, JSON.stringify(otra.json));
+    assert.strictEqual(otra.json.idempotente, true);
+    // Regla intacta: OTRA solicitud sobre un número pagado se rechaza.
+    const distinta = await pedir("POST", "/tablas/5000/numeros/05/pagar", { cuerpo: { solicitudId: "otra-solicitud" } });
+    assert.strictEqual(distinta.status, 409);
+    assert.strictEqual(distinta.json.motivo, "no_reservado");
+    // Y sin solicitud, igual que siempre.
+    assert.strictEqual((await pedir("POST", "/tablas/5000/numeros/05/pagar", { cuerpo: {} })).status, 409);
+});
+
+prueba("pago: la solicitud de un cliente no sirve para otro ni para otro número", async () => {
+    sembrar();
+    Object.assign(fila(A, "04"), { estado: "reservado", usuario_global_id: C2, comprador: "Juan Gómez", telefono: "3104445566", contacto: "3104445566", evento_id: EV_A2, identidad_evento_real: "idA" });
+    const cuerpo = { solicitudId: "misma-cadena" };
+    await pedir("POST", "/tablas/5000/numeros/05/pagar", { cuerpo });
+    const r04 = await pedir("POST", "/tablas/5000/numeros/04/pagar", { cuerpo });
+    assert.strictEqual(r04.status, 200);
+    assert.ok(!r04.json.idempotente, "04 se paga de verdad");
+    assert.strictEqual(fila(A, "04").estado, "pagado");
+    const rB = await pedir("POST", "/tablas/5000/numeros/05/pagar", { cuerpo, token: "jwt-B" });
+    assert.strictEqual(rB.status, 409, "B no hereda el pago de A");
+    assert.strictEqual(fila(B, "05").estado, "libre");
+});
+
+prueba("lote de pagos: dos envíos simultáneos del mismo lote escriben una vez", async () => {
+    sembrar();
+    const cuerpo = { accion: "pagar", numeros: ["05"], solicitudId: "lote-doble-1" };
+    const [r1, r2] = await Promise.all([
+        pedir("POST", "/tablas/5000/lote", { cuerpo }),
+        pedir("POST", "/tablas/5000/lote", { cuerpo })
+    ]);
+    assert.deepStrictEqual([r1.status, r2.status], [200, 200], JSON.stringify([r1.json, r2.json]));
+    // Según llegue el segundo: comparte la ejecución (misma respuesta) o ve el número ya pagado.
+    assert.strictEqual(r1.json.hechos + r2.json.hechos, 1, JSON.stringify([r1.json, r2.json]));
+    assert.strictEqual(auditoria().filter(x => x.accion === "pagar" && x.numero === "05" && x.resultado === "ok").length, 1);
+});
+
+prueba("servicio: llamadas solapadas de la misma solicitud comparten UNA ejecución (pago y lote)", async () => {
+    sembrar();
+    const servicio = require("../../services/reservaManual");
+    const datos = { usuarioId: A, operador: { id: A, email: "dueno@a.co" }, precio: "5000", numero: "05", solicitudId: "solapada-1" };
+    const [p1, p2, p3] = await Promise.all([servicio.pagarManual(datos), servicio.pagarManual(datos), servicio.pagarManual(datos)]);
+    assert.ok(p1.ok && p2.ok && p3.ok, JSON.stringify([p1, p2, p3]));
+    assert.strictEqual(p1, p2, "misma respuesta compartida");
+    assert.strictEqual(auditoria().filter(x => x.accion === "pagar" && x.numero === "05").length, 1);
+
+    sembrar();
+    const lote = { accion: "pagar", usuarioId: A, operador: { id: A, email: "dueno@a.co" }, precio: "5000", numeros: ["05"], solicitudId: "solapada-lote" };
+    const [l1, l2] = await Promise.all([servicio.operarLote(lote), servicio.operarLote(lote)]);
+    assert.strictEqual(l1, l2, "misma respuesta compartida");
+    assert.strictEqual(l1.hechos, 1);
+    assert.strictEqual(auditoria().filter(x => x.accion === "pagar" && x.numero === "05").length, 1);
+});
+
 prueba("estático: las rutas sacan cliente y operador del token, nunca del cuerpo", () => {
     const fuente = require("fs").readFileSync(path.join(RAIZ, "routes/tablas.js"), "utf8");
     const bloque = fuente.slice(fuente.indexOf("Intervención MANUAL"));

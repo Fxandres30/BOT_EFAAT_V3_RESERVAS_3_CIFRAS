@@ -100,6 +100,17 @@
   color: var(--efaat-text-secondary);
 }
 
+.accionesFila {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.filaDetalle td {
+  background: var(--efaat-surface);
+  padding-top: 0;
+}
+
 .contactoIdentificadores span {
   display: inline-flex;
   align-items: center;

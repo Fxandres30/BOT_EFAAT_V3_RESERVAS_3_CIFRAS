@@ -2,8 +2,21 @@ const supabase = require("../../../lib/supabase");
 const { soloDelCliente } = require("./filtroCliente");
 const { validarFormatoNumero } = require("./extraerNumeros");
 const { registrarAuditoria } = require("./auditoriaReservas");
+const { buscarBloqueo } = require("../bloqueo/bloqueoActivo");
 
-async function reservarNumeros({
+// Devuelve las filas que el UPDATE realmente reservó (array; vacío si no
+// tomó ninguna o si falló). El panel (services/reservaManual.js) usa esta
+// forma de siempre.
+async function reservarNumeros(datos) {
+
+    return (await reservarNumerosDetallado(datos)).filas;
+
+}
+
+// Igual, pero distingue «no tomé ninguna» de «falló la escritura»:
+// -> { filas, error } (error = el de Supabase, o null). detectarReserva.js
+// la usa para no presentar nunca un fallo al guardar como número ocupado.
+async function reservarNumerosDetallado({
 
     evento,
     numeros,
@@ -24,7 +37,7 @@ async function reservarNumeros({
 }) {
 
     if (!Array.isArray(numeros) || numeros.length === 0) {
-        return [];
+        return { filas: [], error: null };
     }
 
     // Última capa de defensa (auditoría "reservas por número de cifras")
@@ -45,7 +58,7 @@ async function reservarNumeros({
         numeros = numeros.filter(n => validarFormatoNumero(n, evento.cifras));
 
         if (numeros.length === 0) {
-            return [];
+            return { filas: [], error: null };
         }
 
     }
@@ -69,6 +82,21 @@ async function reservarNumeros({
     const lid =
         usuario?.lid ||
         null;
+
+    // Contacto bloqueado por este cliente: no se reserva, venga del bot o
+    // del panel. Lectura fresca (sin caché): cubre un bloqueo hecho mientras
+    // la reserva estaba en curso. Ante un error de lectura se reserva como
+    // siempre (ver bloqueoActivo.js).
+    if (evento?.usuario_id && (telefono || lid || lib)) {
+
+        const { bloqueado } = await buscarBloqueo(evento.usuario_id, { telefono, lid: lid || lib || null }, { fresco: true });
+
+        if (bloqueado) {
+            console.warn(`🚫 [BLOQUEO] reserva rechazada: el contacto está bloqueado (${bloqueado.id}) — origen ${origen}`);
+            return { filas: [], error: null, contactoBloqueado: true };
+        }
+
+    }
 
     const nombre =
         usuario?.nombre ||
@@ -168,7 +196,7 @@ async function reservarNumeros({
         console.error("❌ Error reservando números");
         console.error(error);
 
-        return [];
+        return { filas: [], error };
 
     }
 
@@ -176,7 +204,7 @@ async function reservarNumeros({
 
         console.log("⚠ No se reservó ningún número.");
 
-        return [];
+        return { filas: [], error: null };
 
     }
 
@@ -252,12 +280,13 @@ async function reservarNumeros({
 
     }
 
-    return data;
+    return { filas: data, error: null };
 
 }
 
 module.exports = {
 
-    reservarNumeros
+    reservarNumeros,
+    reservarNumerosDetallado
 
 };

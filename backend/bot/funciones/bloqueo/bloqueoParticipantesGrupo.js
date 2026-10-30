@@ -15,6 +15,11 @@
 // resolverIdentidadExistente() (solo lectura, sin escribir "usuarios") de
 // obtenerUsuarioGlobal.js — NO se reimplementa una segunda normalización.
 //
+// Expulsión (2026-10-30): ya no llama a groupParticipantsUpdate directamente
+// (registraba "expulsado" aunque WhatsApp respondiera 403/404). Programa la
+// tarea del grupo y la procesa con el motor único, procesarExpulsion.js, en
+// el modo configurado (BLOQUEO_EXPULSION_MODO: sin definir = no se procesa).
+//
 // Deduplicación: si el mismo participante entra varias veces en pocos
 // segundos (reintentos de WhatsApp, eventos duplicados), solo se procesa
 // una vez por participante+grupo dentro de la ventana — evita expulsiones
@@ -22,13 +27,11 @@
 // ==========================================================================
 
 const {
-    buscarBloqueoActivo,
-    registrarIntento
+    buscarBloqueoActivo
 } = require("./bloqueadosRepo");
 
-const {
-    groupParticipantsUpdate
-} = require("../../../services/baileys/groupQueue");
+const expulsionesRepo = require("./expulsionesRepo");
+const { procesarPendientesDe } = require("./procesarExpulsion");
 
 const {
     normalizarIdentificadoresDesdeJid,
@@ -189,40 +192,29 @@ async function procesarIngresoParticipante(sock, grupoId, participante) {
 
         const grupoNombre = await obtenerNombreGrupoCacheado(grupoId);
 
-        try {
+        // La expulsión la hace el motor único (procesarExpulsion.js): misma
+        // identificación exacta, revisión de permisos, lectura del status de
+        // WhatsApp, verificación posterior y modo simulación/real. La tarea
+        // de este grupo vuelve a "pendiente" aunque antes estuviera
+        // expulsado: ahora está dentro otra vez. El bloqueo interno
+        // permanece activo pase lo que pase con la expulsión.
+        const preparada = await expulsionesRepo.prepararReingreso({ usuarioId: usuarioIdTenant, bloqueado, grupoId, grupoNombre });
 
-            await groupParticipantsUpdate(sock, grupoId, [jid], "remove");
-
-            await registrarIntento({
-                bloqueadoId: bloqueado.id,
-                usuarioId: usuarioIdTenant,
-                grupoId,
-                grupoNombre,
-                resultado: "expulsado"
-            });
-
-            console.log(`✅ [BLOQUEO] expulsado de ${grupoId}: ${jid}`);
-
-            return { evaluado: true, bloqueado: true, expulsado: true };
-
-        } catch (err) {
-
-            // El bloqueo interno permanece activo aunque la expulsión
-            // falle — requisito explícito. Solo se registra el incidente.
-            await registrarIntento({
-                bloqueadoId: bloqueado.id,
-                usuarioId: usuarioIdTenant,
-                grupoId,
-                grupoNombre,
-                resultado: "error",
-                error: err?.message || String(err)
-            });
-
-            console.error(`❌ [BLOQUEO] no se pudo expulsar a ${jid} de ${grupoId}:`, err?.message);
-
-            return { evaluado: true, bloqueado: true, expulsado: false, error: err?.message };
-
+        if (!preparada.ok) {
+            console.error(`❌ [BLOQUEO] no se pudo programar la expulsión de ${grupoId} (${preparada.motivo}) — no se expulsa`);
+            return { evaluado: true, bloqueado: true, expulsado: false, estado: preparada.motivo, error: preparada.error };
         }
+
+        const corrida = await procesarPendientesDe(usuarioIdTenant, { sock, bloqueadoId: bloqueado.id });
+        if (corrida?.encolado && corrida.promesa) await corrida.promesa;
+
+        const { tareas } = await expulsionesRepo.listarDeBloqueo(usuarioIdTenant, bloqueado.id);
+        const tarea = (tareas || []).find(t => t.grupo_id === grupoId) || null;
+        const estado = tarea?.estado || (corrida?.motivo === "desactivado" ? "pendiente" : null);
+
+        console.log(`${estado === "expulsado" ? "✅" : "ℹ️"} [BLOQUEO] reingreso en ${grupoId}: ${estado || "sin resultado"}${tarea?.ultimo_error ? ` (${tarea.ultimo_error})` : ""}`);
+
+        return { evaluado: true, bloqueado: true, expulsado: estado === "expulsado", estado, error: tarea?.ultimo_error || null };
 
     } catch (err) {
 

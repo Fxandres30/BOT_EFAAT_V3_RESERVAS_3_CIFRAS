@@ -1,4 +1,4 @@
-const { reservaPerteneceAUsuario } = require("../usuarios/obtenerUsuarioGlobal");
+const { clasificarFila } = require("./estadoNumeros");
 
 // Recibe `usuario` (el objeto ya resuelto por obtenerUsuarioGlobal, el mismo
 // que reservarNumeros.js usa para escribir usuario_global_id) en vez de
@@ -7,51 +7,54 @@ const { reservaPerteneceAUsuario } = require("../usuarios/obtenerUsuarioGlobal")
 // vez de una comparación de campos crudos propia que no reconocía reservas
 // históricas guardadas con una identidad distinta a la de hoy (ver auditoría
 // identidad/eventos, Fase Identidad Real).
-function validarReservas(reservas = [], usuario) {
+//
+// Cada fila se clasifica con la regla única de estadoNumeros.js. `evento`
+// (opcional) permite reconocer las filas de otro sorteo aunque no traigan
+// la marca deOtroSorteo de consultarReservas.js.
+function validarReservas(reservas = [], usuario, evento = null) {
 
     const disponibles = [];
     const ocupadosPorOtros = [];
     const yaSonMios = [];
     const pagados = [];
-    // Bloqueados o en proceso: no se pueden reservar, pero no son «de otra
-    // persona» (la reacción ❌ no aplica). También se informan al cliente.
+    const bloqueados = [];
+    const enProceso = [];
+    // Bloqueados, en proceso o en un estado que la regla no contempla: no se
+    // pueden reservar, pero no son «de otra persona» (la reacción ❌ no
+    // aplica). También se informan al cliente.
     const noDisponibles = [];
 
     for (const reserva of reservas) {
 
-        // Número libre
-        if (reserva.estado === "libre") {
-            disponibles.push(reserva);
-            continue;
-        }
+        switch (clasificarFila(reserva, { evento, usuario })) {
 
-        // Ocupado por OTRO sorteo en esta cuadrícula: no se puede reservar,
-        // aunque sea del mismo cliente (no es un número suyo de este sorteo).
-        if (reserva.deOtroSorteo) {
-            ocupadosPorOtros.push(reserva);
-            continue;
-        }
+            case "libre":
+                disponibles.push(reserva);
+                break;
 
-        // Ya pertenece al mismo usuario
-        if (reservaPerteneceAUsuario(reserva, usuario)) {
-            yaSonMios.push(reserva);
-            continue;
-        }
+            case "propio":
+                yaSonMios.push(reserva);
+                break;
 
-        // Pagado por otro usuario
-        if (reserva.estado === "pagado") {
-            pagados.push(reserva);
-            ocupadosPorOtros.push(reserva);
-            continue;
-        }
+            case "ocupado":
+                if (reserva.estado === "pagado") pagados.push(reserva);
+                ocupadosPorOtros.push(reserva);
+                break;
 
-        // Reservado por otro usuario
-        if (reserva.estado === "reservado") {
-            ocupadosPorOtros.push(reserva);
-            continue;
-        }
+            case "bloqueado":
+                bloqueados.push(reserva);
+                noDisponibles.push(reserva);
+                break;
 
-        noDisponibles.push(reserva);
+            case "en_proceso":
+                enProceso.push(reserva);
+                noDisponibles.push(reserva);
+                break;
+
+            default:
+                noDisponibles.push(reserva);
+
+        }
 
     }
 
@@ -61,6 +64,8 @@ function validarReservas(reservas = [], usuario) {
         ocupadosPorOtros,
         yaSonMios,
         pagados,
+        bloqueados,
+        enProceso,
         noDisponibles,
 
         libres: disponibles.length,

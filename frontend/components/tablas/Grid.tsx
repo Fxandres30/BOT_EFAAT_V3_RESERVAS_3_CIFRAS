@@ -5,7 +5,7 @@ import { useMemo, useState, type Ref } from "react";
 import NumeroCard from "./NumeroCard";
 import NumeroDetalleModal from "./NumeroDetalleModal";
 import Leyenda from "./Leyenda";
-import type { NumeroReserva, PaqueteReserva, EventoActivo } from "./types";
+import { SIN_ACCIONES, type NumeroReserva, type PaqueteReserva, type EventoActivo } from "./types";
 import type { TablaDisenoConfig } from "./disenoTypes";
 import { cssVarsFromConfig } from "./disenoCssVars";
 import type { DatosLiberar, DatosPago, DatosReserva, Resultado } from "@/services/tablas/reservaManual";
@@ -19,7 +19,8 @@ interface Props {
     /** Números que cumplen la búsqueda y los filtros de «Historial de
      *  números» (historialDatos.numerosCoincidentes); null o ausente = todos. */
     coincidentes?: Set<string> | null;
-    accionando: string | null;
+    /** Números (y "lote" / "*") con una operación en curso. */
+    accionando?: ReadonlySet<string>;
     diseno: TablaDisenoConfig;
     onReservar: (numero: string, datos: DatosReserva) => Promise<Resultado>;
     onMarcarPagado: (numero: string, datos?: DatosPago) => Promise<Resultado>;
@@ -47,7 +48,7 @@ export default function Grid({
     eventoActivo,
     coincidePrecio,
     coincidentes = null,
-    accionando,
+    accionando = SIN_ACCIONES,
     diseno,
     onReservar,
     onMarcarPagado,

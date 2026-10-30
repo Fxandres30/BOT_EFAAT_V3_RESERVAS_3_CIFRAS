@@ -8,6 +8,12 @@ export type { ClassValue } from "./cn";
 export { Button } from "./Button";
 export type { ButtonProps, ButtonVariant, ButtonSize } from "./Button";
 
+export { Spinner } from "./Spinner";
+export type { SpinnerProps } from "./Spinner";
+
+export { Aviso, avisar, ContenedorAvisos } from "./Avisos";
+export type { AvisoProps, TonoAviso } from "./Avisos";
+
 export { IconButton } from "./IconButton";
 export type {
   IconButtonProps,

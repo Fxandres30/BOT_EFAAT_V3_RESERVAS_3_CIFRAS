@@ -204,22 +204,28 @@ function aplicarPlantilla(plantilla, variables, opcionesMostrar = {}, catalogoEx
 //   ctx.reserva, ok:true  -> reserva_completa (todo reservado) | reserva_parcial (algo ocupado)
 //   ctx.reserva, ok:false -> numero_ocupado (1 número ocupado) | todos_ocupados (varios)
 //   ctx.reserva, errorTecnico -> ninguno: no hay nada ocupado que informar
+//   ctx.reserva, ok:false sin ocupados (ya eran suyos, bloqueados...) -> ninguno
 //   ctx.consulta          -> ya trae su propio "tipo" correcto (resolverConsulta.js)
+// Completa = todos los pedidos son ahora del cliente (reservados o ya
+// suyos); cualquier otro número pendiente la vuelve parcial.
 function calcularTipoPresentacion(ctx, resultado) {
 
     if (ctx?.reserva) {
 
+        if (resultado?.errorTecnico) return null;
+
         if (resultado?.ok === true) {
 
-            return (resultado.ocupados && resultado.ocupados.length > 0)
-                ? "reserva_parcial"
-                : "reserva_completa";
+            const pendientes = ["ocupados", "bloqueados", "enProceso", "noDisponibles", "noGuardados"]
+                .some(lista => (resultado[lista] || []).length > 0);
+
+            return pendientes ? "reserva_parcial" : "reserva_completa";
 
         }
 
-        if (resultado?.errorTecnico) return null;
-
         const ocupados = resultado?.ocupados || extraerNumeros(ctx.textoOriginal || "", ctx?.evento?.cifras);
+
+        if (ocupados.length === 0) return null;
 
         return ocupados.length === 1
             ? "numero_ocupado"
@@ -228,6 +234,12 @@ function calcularTipoPresentacion(ctx, resultado) {
     }
 
     if (ctx?.consulta) {
+
+        // Error de lectura: su interruptor es el de su tipo; el de pago no
+        // existe sin estado real (se responde igual, con el mensaje fijo).
+        if (resultado?.errorTecnico) {
+            return resultado.tipo === "consulta_pago" ? null : resultado?.tipo || null;
+        }
 
         // consulta_pago NUNCA usa una sola plantilla universal: se reparte
         // en 4 categorías según el ESTADO REAL de pago del usuario

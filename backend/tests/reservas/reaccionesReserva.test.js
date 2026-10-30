@@ -247,12 +247,16 @@ prueba("libre + uno que ya era del cliente → reserva el libre, sin reacción",
     assert.strictEqual(reacciones().length, 0);
 });
 
-prueba("mensaje repetido (mismo id) → ni respuesta ni reacción duplicadas, ni doble reserva", async () => {
+// Sin la compuerta de ingreso (que en producción descarta el repetido): la
+// segunda vez los números ya son suyos y se le dice (recomendación 1 de la
+// auditoría de veracidad; antes se callaba), sin reacción ni doble reserva.
+prueba("mensaje repetido (mismo id) → «ya son tuyos», sin reacción duplicada ni doble reserva", async () => {
     reiniciar();
     const ctx = ctxMensaje("23 45", { id: "MSG-REPETIDO" });
     await eventHandler(ctx);
     await eventHandler(ctxMensaje("23 45", { id: "MSG-REPETIDO" }));
-    assert.strictEqual(mensajes().length, 1, "la segunda vez los números ya son suyos: no se responde");
+    assert.strictEqual(mensajes().length, 2);
+    assert.ok(/Ya son tuyos: \( 23 - 45 \)/.test(mensajes()[1].text), mensajes()[1].text);
     assert.strictEqual(reacciones().length, 1);
     assert.strictEqual(tablas[TABLA].filter(f => f.estado === "reservado").length, 2);
     // Aunque el mismo mensaje se reintente reaccionar, solo una vez.

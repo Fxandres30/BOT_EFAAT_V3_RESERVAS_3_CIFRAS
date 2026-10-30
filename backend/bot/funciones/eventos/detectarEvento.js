@@ -6,7 +6,7 @@ const { obtenerConfiguracionCliente } = require("./tablasCliente");
 const { abrirGrupo } = require("./grupos/abrirGrupo");
 const { esMismoSorteo, fechaSorteoAnunciado, buscarSorteoVigente, crearIdentidadEventoReal } = require("./identidadEventoReal");
 const { finDelEvento } = require("../../../shared/eventos/estadosGestion");
-const { consultarDisponibilidad } = require("../consultas/consultarDisponibilidad");
+const { sorteoSinNumerosLibres } = require("./lifecycle/sorteoSinNumerosLibres");
 
 // Sorteos creados y programados desde el panel (backend/sorteos). Solo se
 // consulta para NO reemplazar un sorteo programado que sigue activo.
@@ -57,13 +57,13 @@ async function marcarAperturaFallida(eventoId) {
 }
 
 // ¿El evento existente ya terminó? "cerrado" = cerrarEvento() ya lo marcó
-// (activo=false / estado "cerrado"); "lleno" = la MISMA consulta de
-// disponibilidad que usa el bot para responder a los clientes
-// (consultarDisponibilidad, aislada por sorteo real) no encuentra ningún
-// número libre. Ante un error o una tabla sin filas no se puede afirmar que
-// esté lleno -> null (se mantiene el comportamiento de siempre).
-// verificarEventoLleno() no se usa: cuenta por evento_id y no ve las
-// reservas hechas en los otros grupos del mismo sorteo real.
+// (activo=false / estado "cerrado"); "lleno" = este sorteo no tiene ningún
+// número libre (sorteoSinNumerosLibres: su propia lectura, separada de la
+// disponibilidad que se le muestra al cliente, que también cuenta los
+// ocupados de otros sorteos). Ante un error o una tabla sin filas no se
+// puede afirmar que esté lleno -> null (se mantiene el comportamiento de
+// siempre). verificarEventoLleno() no se usa: cuenta por evento_id y no ve
+// las reservas hechas en los otros grupos del mismo sorteo real.
 async function estadoTerminado(evento) {
 
     if (evento.activo === false || evento.estado === "cerrado") {
@@ -72,9 +72,7 @@ async function estadoTerminado(evento) {
 
     try {
 
-        const { numerosDisponibles, numerosOcupados } = await consultarDisponibilidad({ evento });
-
-        if (numerosDisponibles.length === 0 && numerosOcupados.length > 0) {
+        if (await sorteoSinNumerosLibres(evento) === true) {
             return "lleno";
         }
 

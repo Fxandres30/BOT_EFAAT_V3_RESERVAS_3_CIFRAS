@@ -1,0 +1,108 @@
+.contenedor {
+  position: fixed;
+  right: var(--efaat-space-4);
+  bottom: var(--efaat-space-4);
+  /* Por encima de los modales: el resultado de una acción hecha en uno se lee igual. */
+  z-index: calc(var(--efaat-z-modal) + 10);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--efaat-space-2);
+  width: min(380px, calc(100vw - 2 * var(--efaat-space-4)));
+  pointer-events: none;
+}
+
+.flotante,
+.enLinea {
+  --_bg: var(--efaat-primary-soft);
+  --_fg: #1e3a8a;
+  --_border: #bfdbfe;
+
+  display: flex;
+  align-items: flex-start;
+  gap: var(--efaat-space-2);
+  border: 1px solid var(--_border);
+  background: var(--_bg);
+  color: var(--_fg);
+  font-size: var(--efaat-text-sm);
+  line-height: 1.4;
+}
+
+.flotante {
+  width: 100%;
+  padding: var(--efaat-space-3);
+  border-radius: var(--efaat-radius-card);
+  box-shadow: var(--efaat-shadow-md);
+  pointer-events: auto;
+  animation: efaatAvisoIn 0.16s ease;
+}
+
+.enLinea {
+  padding: 10px var(--efaat-space-3);
+  border-radius: var(--efaat-radius-card);
+}
+
+.ok {
+  --_bg: var(--efaat-success-soft);
+  --_fg: #14532d;
+  --_border: #bbf7d0;
+}
+
+.error {
+  --_bg: var(--efaat-error-soft);
+  --_fg: #7f1d1d;
+  --_border: #fecaca;
+}
+
+.aviso {
+  --_bg: var(--efaat-warning-soft);
+  --_fg: #78350f;
+  --_border: #fde68a;
+}
+
+.icono {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.texto {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cerrar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: -2px -4px -2px 0;
+  border: none;
+  border-radius: var(--efaat-radius-control);
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.cerrar:hover {
+  opacity: 1;
+}
+
+@keyframes efaatAvisoIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (max-width: 640px) {
+  .contenedor {
+    right: var(--efaat-space-4);
+    left: var(--efaat-space-4);
+    width: auto;
+    align-items: stretch;
+  }
+}

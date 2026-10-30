@@ -39,12 +39,20 @@ export function crearRecargaAgrupada(recargar: () => Promise<unknown>, esperaMs 
         temporizador = setTimeout(ejecutar, esperaMs);
     }
 
+    // Sin esperar la calma (p. ej. al recuperar la conexión): misma regla de
+    // una sola recarga a la vez.
+    function ahora() {
+        if (cancelada) return;
+        if (temporizador) clearTimeout(temporizador);
+        ejecutar();
+    }
+
     function cancelar() {
         cancelada = true;
         if (temporizador) clearTimeout(temporizador);
         temporizador = null;
     }
 
-    return { senal, cancelar };
+    return { senal, ahora, cancelar };
 
 }

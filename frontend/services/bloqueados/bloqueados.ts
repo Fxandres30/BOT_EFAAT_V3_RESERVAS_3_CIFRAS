@@ -1,4 +1,4 @@
-import type { Bloqueado } from "@/components/bloqueados/types";
+import type { Bloqueado, ContextoExpulsion, DetalleExpulsiones, ResumenExpulsion } from "@/components/bloqueados/types";
 import { fetchConSesion } from "@/lib/fetchConSesion";
 
 // Fase "Bloqueo automático de WhatsApp" — YA funcional. Reemplaza la
@@ -36,6 +36,39 @@ export interface ResultadoBloqueo {
     motivo?: string;
     bloqueado?: Bloqueado;
     reactivado?: boolean;
+    yaActivo?: boolean;
+    // Bloquear: la expulsión queda programada (sigue en segundo plano).
+    expulsion?: ResumenExpulsion & ContextoExpulsion & { programada: boolean; procesando: boolean; motivo: string | null };
+    expulsionesCanceladas?: number;
+}
+
+// Estado de expulsión por grupo + historial — proxy hacia
+// GET /api/bloqueados/expulsiones -> backend GET /bloqueados/:id/expulsiones.
+export async function obtenerExpulsiones(id: string): Promise<DetalleExpulsiones> {
+
+    const res = await fetchConSesion(`/api/bloqueados/expulsiones?id=${encodeURIComponent(id)}`);
+    const data = await res.json();
+
+    if (!res.ok || !data.ok) {
+        throw new Error(data.error || "No se pudo consultar el estado de la expulsión.");
+    }
+
+    return data as DetalleExpulsiones;
+
+}
+
+// «Reintentar»: solo los grupos no resueltos — proxy hacia
+// POST /api/bloqueados/reintentar -> backend POST /bloqueados/:id/reintentar.
+export async function reintentarExpulsiones(id: string): Promise<{ ok: boolean; reprogramadas?: number; procesando?: boolean; motivo?: string }> {
+
+    const res = await fetchConSesion("/api/bloqueados/reintentar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id })
+    });
+
+    return await res.json();
+
 }
 
 // "🚫 BLOQUEAR CONTACTO" — proxy hacia POST /api/bloqueados -> backend

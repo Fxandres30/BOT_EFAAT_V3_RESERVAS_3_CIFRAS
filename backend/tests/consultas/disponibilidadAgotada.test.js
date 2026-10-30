@@ -195,7 +195,7 @@ prueba("4. 0 disponibles porque todos están RESERVADOS -> AGOTADO", async () =>
 
 });
 
-prueba("5. error consultando disponibilidad -> NO se asume agotado (comportamiento de siempre)", async () => {
+prueba("5. error consultando disponibilidad -> ni agotado ni «no quedan números»: mensaje técnico fijo", async () => {
 
     reiniciar();
     estado.error = { message: "fallo simulado de Supabase" };
@@ -203,9 +203,11 @@ prueba("5. error consultando disponibilidad -> NO se asume agotado (comportamien
     const { consulta, enviado } = await consultarYResponder();
 
     assert.notStrictEqual(consulta.agotado, true, "un error no es 'agotado'");
-    assert.strictEqual(consulta.mensaje, "No quedan números disponibles.", "fallback de siempre, sin cambios");
+    assert.strictEqual(consulta.errorTecnico, true);
+    assert.ok(!/No quedan números/.test(enviado), "un error no es un dato (regla de veracidad)");
+    assert.ok(/No pude consultar los números/.test(enviado), enviado);
     assert.ok(!/AGOTADOS/.test(enviado), "nunca el mensaje de agotado ante un error");
-    assert.strictEqual(espias.seleccionarPlantilla, 1, "sigue el camino de presentación de siempre");
+    assert.strictEqual(espias.seleccionarPlantilla, 0, "ni plantillas ni Gemini ante un error");
 
 });
 

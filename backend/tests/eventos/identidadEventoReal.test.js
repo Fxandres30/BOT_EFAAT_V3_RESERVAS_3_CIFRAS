@@ -227,7 +227,11 @@ async function main() {
     // 7-9. Aislamiento: un evento distinto (u otro tenant) que comparte la
     //      misma tabla física por precio NUNCA contamina al evento actual.
     // ======================================================================
-    await test("7. Reserva de un evento DISTINTO (mismo precio, tabla compartida) NO aparece ocupada para este evento", async () => {
+    // Regla de veracidad (30/10/2026, autorizada): antes esta prueba exigía
+    // que el número tomado por OTRO sorteo desapareciera de la respuesta (ni
+    // libre ni ocupado). Si está ocupado, está ocupado; la identidad solo
+    // protege las escrituras (ver test 4 y reservarNumeros).
+    await test("7. Reserva de un evento DISTINTO (mismo precio, tabla compartida) SÍ aparece ocupada para este evento", async () => {
 
         const { fake, reservarNumeros, consultarDisponibilidad } = cargarModulos();
 
@@ -243,8 +247,9 @@ async function main() {
 
         const disponibilidadMia = await consultarDisponibilidad({ evento: miEvento });
 
-        assert.deepStrictEqual(disponibilidadMia.numerosOcupados, [], "el 25 reservado por un evento AJENO no debe verse ocupado para mi evento");
-        assert.deepStrictEqual(disponibilidadMia.numerosDisponibles, [26], "el 25 tampoco debe ofrecerse como disponible: ya está físicamente tomado");
+        assert.deepStrictEqual(disponibilidadMia.numerosOcupados, [25], "el 25 reservado por un evento AJENO está ocupado y se informa");
+        assert.deepStrictEqual(disponibilidadMia.numerosDisponibles, [26], "el 25 no se ofrece como disponible: ya está físicamente tomado");
+        assert.strictEqual(fake.tablas.tabla_test.find(f => f.numero === 25).identidad_evento_real, "hash-evento-AJENO", "la consulta no cambia la reserva del otro sorteo");
 
     });
 

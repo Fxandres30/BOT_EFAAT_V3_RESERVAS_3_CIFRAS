@@ -166,21 +166,29 @@ prueba("el mismo cliente tiene el número en OTRO sorteo: no es suyo en este, no
     assert.strictEqual(tipoDe("12", res), "numero_ocupado");
 });
 
-prueba("todos ya son del cliente en ESTE sorteo: sigue el silencio de siempre", async () => {
+// Recomendación 1 de la auditoría de veracidad (autorizada 30/10): antes
+// silencio; ahora se le dice que ya son suyos, con el mensaje fijo.
+prueba("todos ya son del cliente en ESTE sorteo: «ya es tuyo», sin plantillas ni reacción", async () => {
     sembrar({ "12": { estado: "reservado", usuario_global_id: KATY.id, identidad_evento_real: ESTE } });
-    assert.strictEqual(await pedir("12"), null);
+    const res = await pedir("12");
+    assert.deepStrictEqual([res.ok, res.yaTuyos, res.ocupados, res.reaccion, res.soloMensajeFijo], [false, ["12"], [], null, true]);
+    assert.strictEqual(res.mensaje, "✅ Ya es tuyo: ( 12 )");
+    assert.strictEqual(tipoDe("12", res), null, "no es una plantilla de ocupado");
 });
 
-prueba("bloqueados o en proceso se informan, sin ❌ («ocupado por otra persona» no aplica)", async () => {
+prueba("bloqueados o en proceso se informan como tales (no como ocupados), sin ❌", async () => {
     sembrar({ "23": { estado: "bloqueado" }, "45": { estado: "en_proceso" } });
     const texto = "12 23 45";
     const parcial = await pedir(texto);
-    assert.deepStrictEqual([parcial.reservados, parcial.ocupados], [["12"], ["23", "45"]]);
+    assert.deepStrictEqual([parcial.reservados, parcial.ocupados, parcial.bloqueados, parcial.enProceso], [["12"], [], ["23"], ["45"]]);
     assert.strictEqual(tipoDe(texto, parcial), "reserva_parcial");
+    assert.strictEqual(parcial.soloMensajeFijo, true, "ninguna plantilla sabe decir «bloqueado»");
+    assert.ok(/Está bloqueado y no se puede reservar por ahora: \( 23 \)/.test(parcial.mensaje) && /Está en proceso y no se puede reservar por ahora: \( 45 \)/.test(parcial.mensaje), parcial.mensaje);
     assert.strictEqual(parcial.reaccion, null);
     sembrar({ "23": { estado: "bloqueado" } });
     const solo = await pedir("23");
-    assert.deepStrictEqual([solo.ok, solo.ocupados, solo.reaccion], [false, ["23"], null]);
+    assert.deepStrictEqual([solo.ok, solo.bloqueados, solo.ocupados, solo.reaccion], [false, ["23"], [], null]);
+    assert.ok(!/ocupad/i.test(solo.mensaje), solo.mensaje);
 });
 
 prueba("carrera: otro toma un número entre la lectura y el UPDATE → no se confirma; va a ocupados", async () => {

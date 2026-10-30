@@ -26,11 +26,12 @@ const { obtenerConfiguracionCliente } = require("../bot/funciones/eventos/tablas
 const { obtenerTablasConocidas } = require("../bot/funciones/eventos/configEvento");
 const { soloDelCliente } = require("../bot/funciones/reservas/filtroCliente");
 const { validarFormatoNumero } = require("../bot/funciones/reservas/extraerNumeros");
-const { reservarNumeros } = require("../bot/funciones/reservas/reservarNumeros");
+const { reservarNumerosDetallado } = require("../bot/funciones/reservas/reservarNumeros");
 const { sorteoAceptaReservas } = require("../bot/funciones/reservas/detectarReserva");
 const { actualizarEvento } = require("../bot/funciones/reservas/actualizarEvento");
 const { registrarAuditoria, historialNumero } = require("../bot/funciones/reservas/auditoriaReservas");
 const { evaluarGrupo } = require("../bot/funciones/grupos/politicaGrupos");
+const { buscarBloqueo } = require("../bot/funciones/bloqueo/bloqueoActivo");
 const { listarContactos } = require("../bot/funciones/usuarios/listarContactos");
 const { obtenerUsuarioGlobal } = require("../bot/funciones/usuarios/obtenerUsuarioGlobal");
 const { esErrorTriggerCompradoresSinWhatsapp } = require("../bot/funciones/pagos/marcarReservasPagadasPorAdmin");
@@ -101,6 +102,7 @@ function accionesPara(estado) {
 }
 
 const rechazo = (motivo, mensaje, extra = {}) => ({ ok: false, motivo, mensaje, ...extra });
+const rechazoBloqueado = () => rechazo("contacto_bloqueado", "Este contacto está bloqueado. Desbloquéalo para reservarle números.");
 
 // ------------------------------------------------------------- lecturas ---
 
@@ -637,6 +639,14 @@ async function prepararReserva({ usuarioId, precio, contactoId, nuevoContacto, e
         contacto_telefono: contacto.telefono || null
     };
 
+    // Contacto que el propio cliente bloqueó: excepción de integridad (no un
+    // aviso), porque esa decisión ya la tomó el administrador al bloquear.
+    // Para reservarle, primero se desbloquea.
+    const { bloqueado } = await buscarBloqueo(usuarioId, { telefono: contacto.telefono || null, lid: contacto.lid || null }, { fresco: true });
+    if (bloqueado) {
+        return { ok: false, respuesta: await rechazar(rechazoBloqueado(), ctxContacto) };
+    }
+
     return { ok: true, config, evento, ctx, ctxContacto, contacto, anticipada, cifras };
 
 }
@@ -684,7 +694,7 @@ async function reservarManual({
     }
 
     // ---- guardar: el MISMO servicio que el bot ----
-    const reservadas = await reservarNumeros({
+    const escritura = await reservarNumerosDetallado({
         evento: { ...evento, tabla: config.tabla, cifras },
         numeros: [String(numero)],
         usuario: contacto,
@@ -695,6 +705,13 @@ async function reservarManual({
         operador,
         auditoria: { motivo: motivoLimpio, observaciones: obsLimpias, solicitudId: solicitud, precio: config.precio }
     });
+
+    // Bloqueado entre prepararReserva y el UPDATE (la barrera de
+    // reservarNumeros.js lo detectó): se dice la causa real, no «no se pudo
+    // guardar».
+    if (escritura.contactoBloqueado) return rechazar(rechazoBloqueado(), ctxContacto);
+
+    const reservadas = escritura.filas;
 
     if (!reservadas || reservadas.length === 0) {
 
@@ -722,13 +739,69 @@ async function reservarManual({
 
 }
 
+// ------------------------------------------------ pagos sin duplicar ---
+
+// Una misma solicitud de pago (solicitudId) se ejecuta UNA vez por proceso:
+// dos POST simultáneos (doble clic, reintento del navegador o del proxy)
+// comparten la misma ejecución y la misma respuesta, y el reintento de una
+// solicitud que ya terminó bien se reconoce aunque la auditoría (032) no
+// esté disponible para consultarla. No cambia ninguna regla: el UPDATE
+// sigue condicionado a estado='reservado' y sin solicitudId todo es igual.
+const PAGOS_EN_CURSO = new Map();
+const PAGOS_HECHOS = new Map();     // clave -> expira (ms)
+const TTL_PAGO_HECHO_MS = 15 * 60 * 1000;
+const MAX_PAGOS_HECHOS = 5000;
+
+function clavePago(partes) {
+    const solicitud = texto(partes[partes.length - 1], 80);
+    return solicitud ? [...partes.slice(0, -1), solicitud].map(String).join("|") : null;
+}
+
+function pagoYaHecho(clave) {
+    const expira = clave ? PAGOS_HECHOS.get(clave) : undefined;
+    if (expira === undefined) return false;
+    if (expira > Date.now()) return true;
+    PAGOS_HECHOS.delete(clave);
+    return false;
+}
+
+function recordarPago(clave) {
+    if (!clave) return;
+    PAGOS_HECHOS.delete(clave);
+    PAGOS_HECHOS.set(clave, Date.now() + TTL_PAGO_HECHO_MS);
+    // Map conserva el orden de inserción: se descartan los más antiguos.
+    while (PAGOS_HECHOS.size > MAX_PAGOS_HECHOS) PAGOS_HECHOS.delete(PAGOS_HECHOS.keys().next().value);
+}
+
+async function unaVezPorSolicitud(clave, ejecutar) {
+    if (!clave) return ejecutar();
+    const enCurso = PAGOS_EN_CURSO.get(clave);
+    if (enCurso) return enCurso;
+    const promesa = Promise.resolve().then(ejecutar);
+    PAGOS_EN_CURSO.set(clave, promesa);
+    try {
+        return await promesa;
+    } finally {
+        PAGOS_EN_CURSO.delete(clave);
+    }
+}
+
 // ----------------------------------------------------------------- pagar ---
 
 // El propietario es quien valida los pagos de su tabla: registrar el pago
 // aquí ES la confirmación administrativa (mismo efecto que el sticker del
 // administrador). No existe un estado intermedio "pago por verificar" en las
 // tablas; un número solo pasa de 'reservado' a 'pagado'.
-async function pagarManual({ usuarioId, operador, precio, numero, metodoPago, observaciones, motivo, solicitudId }) {
+function pagarManual(datos) {
+    const clave = clavePago([datos.usuarioId, "pagar", datos.precio, String(datos.numero ?? ""), datos.solicitudId]);
+    return unaVezPorSolicitud(clave, async () => {
+        const r = await pagarManualUnaVez(datos, clave);
+        if (r && r.ok) recordarPago(clave);
+        return r;
+    });
+}
+
+async function pagarManualUnaVez({ usuarioId, operador, precio, numero, metodoPago, observaciones, motivo, solicitudId }, clave) {
 
     const config = await resolverConfig(usuarioId, precio);
     if (!config) return rechazo("tabla_no_configurada", "No existe una tabla configurada para este precio.");
@@ -768,6 +841,8 @@ async function pagarManual({ usuarioId, operador, precio, numero, metodoPago, ob
     };
 
     if (fila.estado === "pagado" && base.solicitud_id) {
+        // Esta misma solicitud ya pagó el número (sin depender de la auditoría).
+        if (pagoYaHecho(clave)) return { ok: true, idempotente: true, estado: "pagado" };
         const h = await historialNumero({ usuarioId, tabla: config.tabla, numero: base.numero, limite: 5 });
         if (h.filas.some(x => x.accion === "pagar" && x.resultado === "ok" && x.solicitud_id === base.solicitud_id)) {
             return { ok: true, idempotente: true, estado: "pagado" };
@@ -1022,7 +1097,7 @@ async function reservarLote({ usuarioId, operador, precio, numeros, contactoId, 
         else candidatos.push(numero);
     }
 
-    const reservadas = candidatos.length === 0 ? [] : await reservarNumeros({
+    const escritura = candidatos.length === 0 ? { filas: [] } : await reservarNumerosDetallado({
         evento: { ...evento, tabla: config.tabla, cifras },
         numeros: candidatos,
         usuario: contacto,
@@ -1034,7 +1109,10 @@ async function reservarLote({ usuarioId, operador, precio, numeros, contactoId, 
         auditoria: { motivo: base.motivo, observaciones: base.observaciones, solicitudId: base.solicitud_id, precio: config.precio }
     });
 
-    const hechos = new Set((reservadas || []).map(f => String(f.numero)));
+    // Bloqueado entre prepararReserva y el UPDATE: no se tocó ningún número.
+    if (escritura.contactoBloqueado) return rechazar(rechazoBloqueado(), ctxContacto);
+
+    const hechos = new Set((escritura.filas || []).map(f => String(f.numero)));
     for (const numero of hechos) resultados.push({ numero, estado: "hecho", mensaje: "Reservado." });
 
     // Otro (bot o panel) los tomó entre la lectura y el UPDATE, o falló la
@@ -1280,7 +1358,8 @@ async function liberarLote({ usuarioId, operador, precio, numeros, confirmar, mo
 
 function operarLote({ accion, ...datos }) {
     if (accion === "reservar") return reservarLote(datos);
-    if (accion === "pagar") return pagarLote(datos);
+    // Dos envíos simultáneos del MISMO lote de pagos comparten la ejecución.
+    if (accion === "pagar") return unaVezPorSolicitud(clavePago([datos.usuarioId, "lote-pagar", datos.precio, datos.solicitudId]), () => pagarLote(datos));
     if (accion === "liberar") return liberarLote(datos);
     return rechazo("accion_invalida", "Operación no válida.");
 }

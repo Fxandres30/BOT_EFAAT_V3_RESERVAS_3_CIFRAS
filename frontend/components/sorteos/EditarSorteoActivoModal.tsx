@@ -202,7 +202,9 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
 
                     <div className={`${styles.alerta} ${styles.alertaInfo}`}>
                         <Badge tone={sorteo.origen === "panel" ? "primary" : "neutral"} dot>{sorteo.origen === "panel" ? "Creado desde el panel" : "Detectado en el grupo"}</Badge>
-                        <p>En curso: <b>{sorteo.reservados}</b> reservado(s) y <b>{sorteo.pagados}</b> pagado(s). Guardar no los modifica.</p>
+                        {sorteo.reservados === null || sorteo.pagados === null
+                            ? <p>No pudimos contar las reservas y pagos en este momento. Guardar no los modifica.</p>
+                            : <p>En curso: <b>{sorteo.reservados}</b> reservado(s) y <b>{sorteo.pagados}</b> pagado(s). Guardar no los modifica.</p>}
                     </div>
 
                     <section className={styles.seccion} aria-label="Datos del sorteo en curso">
@@ -217,7 +219,7 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
                                 {cambiaIdentidad && (
                                     <label className={styles.check}>
                                         <input type="checkbox" checked={confirmarIdentidad} onChange={e => setConfirmarIdentidad(e.target.checked)} />
-                                        Confirmo la corrección: las {sorteo.reservados} reserva(s) y {sorteo.pagados} pago(s) pasan al sorteo corregido en sus {sorteo.grupos.length} grupo(s)
+                                        Confirmo la corrección: {sorteo.reservados === null || sorteo.pagados === null ? "todas las reservas y pagos" : `las ${sorteo.reservados} reserva(s) y ${sorteo.pagados} pago(s)`} pasan al sorteo corregido en sus {sorteo.grupos.length} grupo(s)
                                     </label>
                                 )}
                             </>

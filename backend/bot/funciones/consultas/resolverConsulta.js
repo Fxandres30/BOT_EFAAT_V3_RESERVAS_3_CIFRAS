@@ -3,7 +3,7 @@
 // resultado estructurado con un "mensaje" fijo (fallback determinístico,
 // igual patrón que reserva.mensaje en detectarReserva.js). Gemini solo
 // redacta a partir de este resultado; nunca lo calcula.
-const { consultarMisNumerosPorEstado, consultarPendientesOtrosSorteos } = require("./consultarMisNumeros");
+const { consultarMisNumerosPorEstado, consultarPendientesOtrosSorteosVerificado } = require("./consultarMisNumeros");
 const { determinarEstadoPago } = require("../../../shared/pagos/determinarEstadoPago");
 const { consultarNumero } = require("./consultarNumero");
 const { consultarDisponibilidad } = require("./consultarDisponibilidad");
@@ -16,9 +16,28 @@ const TEXTO_ESTADO = {
     reservado_por_usuario: n => `El número ${formatearListaNumeros([n])} ya lo tienes reservado.`,
     reservado_por_otro: n => `El número ${formatearListaNumeros([n])} está reservado por otra persona.`,
     pagado_por_usuario: n => `El número ${formatearListaNumeros([n])} ya está pagado por ti.`,
-    pagado_por_otro: n => `El número ${formatearListaNumeros([n])} ya fue pagado por otra persona.`
+    pagado_por_otro: n => `El número ${formatearListaNumeros([n])} ya fue pagado por otra persona.`,
+    propio_otro_sorteo: n => `El número ${formatearListaNumeros([n])} lo tienes en otro sorteo; en este no está disponible.`,
+    bloqueado: n => `El número ${formatearListaNumeros([n])} está bloqueado y no se puede reservar por ahora.`,
+    en_proceso: n => `El número ${formatearListaNumeros([n])} está en proceso y no se puede reservar por ahora.`,
+    no_disponible: n => `El número ${formatearListaNumeros([n])} no está disponible.`
 
 };
+
+// Estados que las plantillas de «número específico» del panel ya conocían.
+// Cualquier otro (bloqueado, en proceso, de otro sorteo, sin registro...)
+// solo lo dice bien el mensaje fijo.
+const ESTADOS_CON_PLANTILLA = new Set(["libre", "reservado_por_usuario", "reservado_por_otro", "pagado_por_usuario", "pagado_por_otro"]);
+
+// No se pudo leer: se dice eso, nunca un dato («no tienes números», «no
+// quedan números», «0»). Sin plantillas ni Gemini (responderResultado.js).
+function consultaConError(tipo) {
+    return {
+        tipo,
+        errorTecnico: true,
+        mensaje: "❌ No pude consultar los números en este momento. Intenta nuevamente en unos minutos."
+    };
+}
 
 // ==========================================================================
 // construirFacetaEstadoNumeros() — ÚNICA función que decide texto/datos
@@ -61,22 +80,26 @@ function etiquetaSorteo(o) {
 // Números pendientes del cliente en OTROS sorteos (consultarPendientesOtrosSorteos).
 // "" si no hay ninguno. Lo usa el mensaje fijo y, tras una plantilla del
 // panel, responderResultado.js.
-function textoOtrosPendientes(otros) {
+// verificados=false: alguna lectura de otros sorteos falló; se dice, para no
+// dar a entender que no hay nada pendiente allí.
+function textoOtrosPendientes(otros, verificados = true) {
 
-    if (!otros?.length) return "";
+    const aviso = verificados ? [] : ["⚠️ No pude revisar en este momento si tienes pendientes en otros sorteos."];
+
+    if (!otros?.length) return aviso.join("\n");
 
     const lineas = otros.map(o => {
         const valor = o.montoPendiente != null ? ` — ${formatearMonto(o.montoPendiente)}` : "";
         return `• ${etiquetaSorteo(o)}: ${formatearListaNumeros(o.numeros)}${valor}`;
     });
 
-    return ["⏳ Pendiente en otros sorteos:", ...lineas].join("\n");
+    return ["⏳ Pendiente en otros sorteos:", ...lineas, ...aviso].join("\n");
 
 }
 
-function construirMensajeResumen({ enfoque, todos, reservados, pagados, montoPendiente, otrosPendientes = [] }) {
+function construirMensajeResumen({ enfoque, todos, reservados, pagados, montoPendiente, otrosPendientes = [], otrosVerificados = true }) {
 
-    const otros = enfoque === "pendiente" ? textoOtrosPendientes(otrosPendientes) : "";
+    const otros = enfoque === "pendiente" ? textoOtrosPendientes(otrosPendientes, otrosVerificados) : "";
 
     if (todos.length === 0) {
 
@@ -125,7 +148,7 @@ function construirMensajeResumen({ enfoque, todos, reservados, pagados, montoPen
 
 }
 
-function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, pagados, valorUnidad, otrosPendientes = [] }) {
+function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, pagados, valorUnidad, otrosPendientes = [], otrosVerificados = true }) {
 
     // Montos y estado de pago se calculan SIEMPRE, sin importar el modo
     // (lista/cantidad/monto/resumen): el estado real del usuario (sin_pago/
@@ -167,7 +190,8 @@ function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, p
             reservados,
             pagados,
             montoPendiente,
-            otrosPendientes
+            otrosPendientes,
+            otrosVerificados
         });
 
         const otros = enfoque === "pendiente" ? (otrosPendientes || []) : [];
@@ -175,7 +199,7 @@ function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, p
         return {
             tipo, modo, bucket, total, reservados, pagados, numerosDelUsuario: todos, mensaje, montoTotal, montoPagado, montoPendiente, estadoPago, precioConfigurado,
             otrosPendientes: otros,
-            textoOtrosPendientes: textoOtrosPendientes(otros)
+            textoOtrosPendientes: textoOtrosPendientes(otros, enfoque === "pendiente" ? otrosVerificados : true)
         };
 
     }
@@ -335,6 +359,7 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
         case "multiple": {
 
             const datos = await consultarMisNumerosPorEstado({ evento, usuario });
+            if (datos.errorLectura) return consultaConError(tipo);
             const valorUnidad = Number(evento.valor) || 0;
 
             // La respuesta general (mis_numeros/mis_reservas: todos, pagados
@@ -374,18 +399,20 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
         case "consulta_pago": {
 
             const datos = await consultarMisNumerosPorEstado({ evento, usuario });
+            if (datos.errorLectura) return consultaConError(tipo);
             const valorUnidad = Number(evento.valor) || 0;
 
             const { modo: modoFinal, bucket: bucketFinal } = modoBucketImplicitos(tipo, modo, bucket);
 
             // La respuesta de pago ("qué debo", "cuánto me falta", "estoy al
             // día") también muestra lo pendiente en OTROS sorteos del mismo
-            // cliente: nunca "no debes nada" a quien sí debe.
-            const otrosPendientes = modoFinal === "resumen" && bucketFinal === "pendiente"
-                ? await consultarPendientesOtrosSorteos({ evento, usuario })
-                : [];
+            // cliente: nunca "no debes nada" a quien sí debe. Si no se
+            // pudieron revisar, se avisa (y una plantilla de «al día» no se usa).
+            const otros = modoFinal === "resumen" && bucketFinal === "pendiente"
+                ? await consultarPendientesOtrosSorteosVerificado({ evento, usuario })
+                : { ok: true, lista: [] };
 
-            return construirFacetaEstadoNumeros({ tipo, modo: modoFinal, bucket: bucketFinal, ...datos, valorUnidad, otrosPendientes });
+            return construirFacetaEstadoNumeros({ tipo, modo: modoFinal, bucket: bucketFinal, ...datos, valorUnidad, otrosPendientes: otros.lista, otrosVerificados: otros.ok });
 
         }
 
@@ -397,6 +424,7 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
         case "mis_reservas": {
 
             const datos = await consultarMisNumerosPorEstado({ evento, usuario });
+            if (datos.errorLectura) return consultaConError(tipo);
 
             return construirFacetaEstadoNumeros({
                 tipo,
@@ -410,7 +438,9 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
 
         case "cantidad_reservas": {
 
-            const { total: cantidad } = await consultarMisNumerosPorEstado({ evento, usuario });
+            const datos = await consultarMisNumerosPorEstado({ evento, usuario });
+            if (datos.errorLectura) return consultaConError(tipo);
+            const cantidad = datos.total;
 
             const g = construirVariablesGramaticales(cantidad);
 
@@ -436,20 +466,31 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
                 return null;
             }
 
-            const texto = TEXTO_ESTADO[resultado.estadoReal];
+            if (resultado.estadoReal === "error_lectura") return consultaConError(tipo);
 
-            const mensaje = texto
-                ? texto(resultado.numero)
-                : `El número ${formatearListaNumeros([resultado.numero])} tiene estado: ${resultado.estadoReal}.`;
+            // sin_registro, duplicado o un estado desconocido: no disponible.
+            const texto = TEXTO_ESTADO[resultado.estadoReal] || TEXTO_ESTADO.no_disponible;
 
-            return { tipo, ...resultado, mensaje };
+            return {
+                tipo,
+                ...resultado,
+                mensaje: texto(resultado.numero),
+                ...(ESTADOS_CON_PLANTILLA.has(resultado.estadoReal) ? {} : { soloMensajeFijo: true })
+            };
 
         }
 
         case "disponibilidad": {
 
-            const { numerosDisponibles, numerosOcupados } =
+            const { numerosDisponibles, numerosOcupados, errorLectura } =
                 await consultarDisponibilidad({ evento });
+
+            // No se pudo leer, o la cuadrícula del cliente no tiene ninguna
+            // fila (integridad): no se afirma «no quedan números».
+            if (errorLectura || (numerosDisponibles.length === 0 && numerosOcupados.length === 0)) {
+                if (!errorLectura) console.warn(`⚠️ [CONSULTA] la cuadrícula ${evento.tabla} del cliente ${evento.usuario_id} no tiene filas.`);
+                return consultaConError(tipo);
+            }
 
             let mensaje;
 

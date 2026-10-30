@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import { Check, Pencil, Copy, Trash2 } from "lucide-react";
 
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
 import { Badge } from "@/components/ui/Badge";
+import { avisar } from "@/components/ui/Avisos";
+import { mensajeDeError, useAccionesPorClave } from "@/hooks/useAccion";
 
 import DisenoThumbnail from "./DisenoThumbnail";
 import type { TablaDiseno, TablaDisenoConfig } from "./disenoTypes";
@@ -19,7 +20,6 @@ interface Props {
     onClose: () => void;
     disenos: TablaDiseno[];
     disenoActualId: string | null;
-    aplicando?: boolean;
     onAplicar: (origenId: string | null, config: TablaDisenoConfig) => Promise<void> | void;
     onEditar: (diseno: TablaDiseno) => void;
     onDuplicar: (diseno: TablaDiseno) => Promise<void> | void;
@@ -31,48 +31,43 @@ export default function BibliotecaDisenosModal({
     onClose,
     disenos,
     disenoActualId,
-    aplicando = false,
     onAplicar,
     onEditar,
     onDuplicar,
     onEliminar
 }: Props) {
 
-    const [procesando, setProcesando] = useState<string | null>(null);
+    // Una clave por botón ("aplicar:preset:clasico", "duplicar:<id>"...):
+    // solo gira el pulsado y un doble clic no repite la acción. Antes los
+    // cinco predeterminados compartían la clave "preset" y giraban a la vez.
+    const { activas, ejecutar } = useAccionesPorClave();
+    // Aplicar cambia el diseño de ESTA tabla: uno a la vez.
+    const aplicandoAlguno = [...activas].some(c => c.startsWith("aplicar:"));
 
-    async function aplicar(id: string | null, config: TablaDisenoConfig) {
-        setProcesando(id || "preset");
+    async function accion(clave: string, fn: () => Promise<void> | void, textoError: string, textoOk?: string) {
         try {
-            await onAplicar(id, config);
+            const r = await ejecutar(clave, async () => { await fn(); });
+            if (r && textoOk) avisar.ok(textoOk);
         } catch (e) {
-            alert(e instanceof Error ? e.message : "No se pudo aplicar el diseño.");
-        } finally {
-            setProcesando(null);
+            avisar.error(mensajeDeError(e, textoError));
         }
     }
 
-    async function duplicar(diseno: TablaDiseno) {
-        setProcesando(diseno.id);
-        try {
-            await onDuplicar(diseno);
-        } catch (e) {
-            alert(e instanceof Error ? e.message : "No se pudo duplicar el diseño.");
-        } finally {
-            setProcesando(null);
-        }
+    function aplicar(clave: string, id: string | null, config: TablaDisenoConfig) {
+        if (aplicandoAlguno) return;
+        return accion(`aplicar:${clave}`, () => onAplicar(id, config), "No se pudo aplicar el diseño.", "Diseño aplicado a esta tabla.");
     }
 
-    async function eliminar(diseno: TablaDiseno) {
+    function duplicar(diseno: TablaDiseno) {
+        return accion(`duplicar:${diseno.id}`, () => onDuplicar(diseno), "No se pudo duplicar el diseño.", `Diseño «${diseno.nombre}» duplicado.`);
+    }
+
+    function eliminar(diseno: TablaDiseno) {
         if (!confirm(`¿Eliminar el diseño "${diseno.nombre}"? Las tablas que lo usan conservan su configuración actual.`)) return;
-        setProcesando(diseno.id);
-        try {
-            await onEliminar(diseno);
-        } catch (e) {
-            alert(e instanceof Error ? e.message : "No se pudo eliminar el diseño.");
-        } finally {
-            setProcesando(null);
-        }
+        return accion(`eliminar:${diseno.id}`, () => onEliminar(diseno), "No se pudo eliminar el diseño.", `Diseño «${diseno.nombre}» eliminado.`);
     }
+
+    const ocupado = (id: string) => activas.has(`duplicar:${id}`) || activas.has(`eliminar:${id}`) || activas.has(`aplicar:${id}`);
 
     return (
 
@@ -97,8 +92,9 @@ export default function BibliotecaDisenosModal({
                                         size="sm"
                                         variant="secondary"
                                         leftIcon={<Check size={13} />}
-                                        loading={procesando === "preset" && aplicando}
-                                        onClick={() => aplicar(null, preset.config)}
+                                        loading={activas.has(`aplicar:preset:${preset.key}`)}
+                                        disabled={aplicandoAlguno}
+                                        onClick={() => aplicar(`preset:${preset.key}`, null, preset.config)}
                                     >
                                         Aplicar
                                     </Button>
@@ -137,8 +133,9 @@ export default function BibliotecaDisenosModal({
                                                 size="sm"
                                                 variant="secondary"
                                                 leftIcon={<Check size={13} />}
-                                                loading={procesando === diseno.id && aplicando}
-                                                onClick={() => aplicar(diseno.id, diseno.config)}
+                                                loading={activas.has(`aplicar:${diseno.id}`)}
+                                                disabled={aplicandoAlguno || ocupado(diseno.id)}
+                                                onClick={() => aplicar(diseno.id, diseno.id, diseno.config)}
                                             >
                                                 Aplicar
                                             </Button>
@@ -149,7 +146,8 @@ export default function BibliotecaDisenosModal({
                                                 label="Duplicar diseño"
                                                 variant="solid"
                                                 size="sm"
-                                                disabled={procesando === diseno.id}
+                                                loading={activas.has(`duplicar:${diseno.id}`)}
+                                                disabled={ocupado(diseno.id)}
                                                 onClick={() => duplicar(diseno)}
                                             >
                                                 <Copy size={14} />
@@ -158,7 +156,8 @@ export default function BibliotecaDisenosModal({
                                                 label="Eliminar diseño"
                                                 variant="danger"
                                                 size="sm"
-                                                disabled={procesando === diseno.id}
+                                                loading={activas.has(`eliminar:${diseno.id}`)}
+                                                disabled={ocupado(diseno.id)}
                                                 onClick={() => eliminar(diseno)}
                                             >
                                                 <Trash2 size={14} />

@@ -9,19 +9,15 @@ import {
 
 import type { EstadoNumero, NumeroReserva } from "./types";
 
-// Un número "en_proceso" cuya retención ya venció vuelve a estar
-// disponible aunque nadie lo haya liberado manualmente todavía. Esta es
-// la ÚNICA función que decide eso — nada más debe comparar
-// bloqueado_hasta con la hora actual por su cuenta.
+// Estado con el que la pantalla trata un número: el REAL de la base. Un
+// "en_proceso" con la retención vencida sigue retenido (ni el bot ni el
+// servidor pueden reservarlo hasta desbloquearlo), así que se muestra en
+// proceso, nunca como disponible (regla de veracidad, 30/10/2026). Que la
+// retención esté vencida lo explica el detalle del número
+// (estadoDeFila del backend: "en_proceso_vencido") y se resuelve con
+// «Desbloquear». Sigue siendo la ÚNICA función que decide el estado de
+// pantalla: los componentes no comparan bloqueado_hasta por su cuenta.
 export function estadoEfectivo(numero: NumeroReserva): EstadoNumero {
-
-    if (
-        numero.estado === "en_proceso" &&
-        numero.bloqueado_hasta &&
-        new Date(numero.bloqueado_hasta).getTime() <= Date.now()
-    ) {
-        return "libre";
-    }
 
     return numero.estado;
 

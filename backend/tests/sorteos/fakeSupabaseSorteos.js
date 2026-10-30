@@ -11,7 +11,8 @@ const UNICAS = {
     // Índice parcial (026): se ignora si alguna columna es null.
     loterias_catalogo: [["usuario_id", "nombre", "modalidad"], ["usuario_id", "origen_global_id"]],
     loterias_catalogo_ofrecidas: [["usuario_id", "global_id"]],
-    loterias_catalogo_global: [["clave"]]
+    loterias_catalogo_global: [["clave"]],
+    bloqueo_expulsiones: [["bloqueado_id", "grupo_id"]]
 };
 
 const DEFECTOS = {
@@ -79,6 +80,7 @@ function crearFake() {
                     const lista = (v) => v.replace(/^in\.\(|^\(|\)$/g, "").split(",").filter(Boolean);
                     if (op === "eq") return f => String(f[col]) === val;
                     if (op === "is" && val === "null") return f => f[col] == null;
+                    if (op === "lt") return f => f[col] != null && comparar(f[col], val) < 0;
                     if (op === "in") return f => f[col] != null && lista(val).includes(String(f[col]));
                     if (op === "not" && val.startsWith("in.")) return f => f[col] != null && !lista(val).includes(String(f[col]));
                     throw new Error(`fake or(): condición no soportada ${c}`);

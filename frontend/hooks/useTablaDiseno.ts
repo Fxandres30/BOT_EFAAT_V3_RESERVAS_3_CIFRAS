@@ -105,7 +105,8 @@ export function useTablaDiseno(precio: number) {
         origenId: string | null = disenoOrigenId
     ) => {
 
-        if (!usuarioId) return;
+        // Sin sesión no se guarda: se dice, para no dar por aplicado lo que no se guardó.
+        if (!usuarioId) throw new Error("Tu sesión expiró. Vuelve a iniciar sesión.");
 
         setGuardando(true);
 

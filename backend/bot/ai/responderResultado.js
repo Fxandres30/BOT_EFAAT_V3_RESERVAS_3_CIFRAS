@@ -38,6 +38,11 @@ function usaMontos(contenido) {
 // leída).
 const TIPOS_SIN_IA = new Set(["mis_numeros", "mis_reservas", "cantidad_reservas", "consulta_pago", "multiple"]);
 
+// Regla de veracidad (30/10/2026): el estado de un número nunca lo
+// interpreta Gemini. Reservas, disponibilidad y consulta de un número salen
+// de una plantilla del panel o del mensaje fijo que ya enumera cada número.
+const TIPOS_ESTADO_NUMEROS = new Set(["disponibilidad", "numero_especifico"]);
+
 // Devuelve true si el mensaje se envió, false si no (sin resultado,
 // tipo desactivado o error de envío). Los llamadores que no lo necesitan
 // pueden ignorarlo.
@@ -103,6 +108,10 @@ async function responderResultado(ctx) {
     // Fallo técnico de la reserva: solo el mensaje fijo. Ni plantillas ni
     // Gemini, que podrían decir que los números están ocupados.
     const esErrorTecnico = resultado.errorTecnico === true;
+    // Estados que ninguna plantilla sabe decir (bloqueado, en proceso, no
+    // disponible, no guardado...): solo el mensaje fijo, que los enumera.
+    const soloMensajeFijo = resultado.soloMensajeFijo === true;
+    const sinIA = Boolean(ctx.reserva) || TIPOS_ESTADO_NUMEROS.has(resultado.tipo);
 
     // Resguardo: si por cualquier motivo el tipo no fuera el de agotado, no
     // se pide ninguna plantilla (jamás las de "disponibilidad").
@@ -121,7 +130,11 @@ async function responderResultado(ctx) {
     const plantillaContradiria = Boolean(textoOtros) &&
         (resultado.estadoPago === "pago_completo" || resultado.estadoPago === "sin_saldo");
 
-    const puedeUsarPlantillas = (!esAgotado || tipoPresentacion === "disponibilidad_agotada") && !esPreguntaPuntualDePago && !plantillaContradiria && !esErrorTecnico;
+    // Lo que la plantilla no menciona y sí es cierto (p. ej. «Ya es tuyo: 12»
+    // en una reserva): va después de su texto.
+    const anexo = [textoOtros, resultado.textoAdicional || ""].filter(Boolean).join("\n\n");
+
+    const puedeUsarPlantillas = (!esAgotado || tipoPresentacion === "disponibilidad_agotada") && !esPreguntaPuntualDePago && !plantillaContradiria && !esErrorTecnico && !soloMensajeFijo && Boolean(tipoPresentacion);
 
     let config = null;
     let habilitadas = [];
@@ -164,7 +177,7 @@ async function responderResultado(ctx) {
 
             if (resultadoPlantilla) {
 
-                texto = textoOtros ? `${resultadoPlantilla}\n\n${textoOtros}` : resultadoPlantilla;
+                texto = anexo ? `${resultadoPlantilla}\n\n${anexo}` : resultadoPlantilla;
                 plantillaUtilizada = true;
                 plantillaId = plantilla.id;
 
@@ -192,7 +205,13 @@ async function responderResultado(ctx) {
 
     }
 
-    if (!plantillaUtilizada && !esAgotado && !esConsultaDeEstado && !esErrorTecnico) {
+    if (!plantillaUtilizada && sinIA) {
+
+        console.log("[RESPONSE] estado de números sin plantilla aplicable — mensaje fijo con cada número (sin IA)");
+
+    }
+
+    if (!plantillaUtilizada && !esAgotado && !esConsultaDeEstado && !esErrorTecnico && !sinIA) {
 
         try {
 

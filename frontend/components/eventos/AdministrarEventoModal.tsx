@@ -45,7 +45,7 @@ export default function AdministrarEventoModal({ sorteo: s, origen, onClose, onE
                     </div>
                     <div className={styles.meta}>
                         <span>Sorteo: {fechaLegible(s.fecha_evento)} {s.hora_fin || ""}{s.hora_cierre ? ` · cierre ${s.hora_cierre.slice(0, 5)}` : ""}</span>
-                        <span>{s.valor ? `$${s.valor.toLocaleString("es-CO")} por número` : "Sin valor"} · {s.reservados} reservado(s) · {s.pagados} pagado(s)</span>
+                        <span>{s.valor ? `$${s.valor.toLocaleString("es-CO")} por número` : "Sin valor"} · {s.reservados === null || s.pagados === null ? "reservas sin contar en este momento" : `${s.reservados} reservado(s) · ${s.pagados} pagado(s)`}</span>
                     </div>
                     <BotonesSorteo sorteo={s} onEditar={onEditar} onAccion={setPendiente} />
                 </div>

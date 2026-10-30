@@ -1,12 +1,16 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
-import { RotateCcw, Pencil, Share2, Users, type LucideIcon } from "lucide-react";
+import { RotateCcw, Pencil, Share2, Users, RefreshCw, type LucideIcon } from "lucide-react";
+
+import { Spinner } from "@/components/ui/Spinner";
+import { avisar } from "@/components/ui/Avisos";
+import { useAccion } from "@/hooks/useAccion";
 
 import ReinicioTablaModal from "./ReinicioTablaModal";
 import AnuncioSorteoModal from "./AnuncioSorteoModal";
-import CompartirTablaModal, { nuevaSolicitud, type PanelCompartir } from "./CompartirTablaModal";
-import { compartirTabla, mensajeCompartir } from "@/services/tablas/compartirTabla";
+import CompartirTablaModal, { enviarCompartir, nuevaSolicitud, panelResultado, type PanelCompartir } from "./CompartirTablaModal";
+import { mensajeCompartir } from "@/services/tablas/compartirTabla";
 import type { ConfirmacionReinicio, ResultadoReinicio, RevisionReinicio } from "@/services/tablas/reiniciarTabla";
 
 interface Props {
@@ -21,6 +25,8 @@ interface Props {
     onReiniciar: (confirmacion?: ConfirmacionReinicio) => Promise<ResultadoReinicio>;
     /** PNG (data URL) del `div` de la tabla visible. */
     capturarTabla: () => Promise<string>;
+    /** Vuelve a leer la tabla del servidor (botón «Actualizar»). */
+    onActualizar?: () => Promise<void>;
     /** Acciones de la vista (Personalizar, Diseños…) que van en la segunda
      *  fila, después de «Cambiar grupos». */
     segundaFila?: ReactNode;
@@ -32,8 +38,15 @@ export default function AccionesTabla({
     onRevisarReinicio,
     onReiniciar,
     capturarTabla,
+    onActualizar,
     segundaFila
 }: Props) {
+
+    // «Actualizar»: relectura real de la tabla (la misma que hace el tiempo
+    // real), con el botón girando hasta que los datos nuevos están en pantalla.
+    const actualizar = useAccion(async () => { await onActualizar?.(); }, {
+        onError: (m) => avisar.error(`No se pudo actualizar la tabla: ${m}`)
+    });
 
     const [confirmandoReinicio, setConfirmandoReinicio] = useState(false);
     const [compartiendo, setCompartiendo] = useState(false);
@@ -49,7 +62,7 @@ export default function AccionesTabla({
     async function compartir() {
 
         if (!usuarioId) {
-            alert("Debes iniciar sesión para compartir la tabla.");
+            avisar.error("Debes iniciar sesión para compartir la tabla.");
             return;
         }
 
@@ -70,14 +83,15 @@ export default function AccionesTabla({
 
             setPanelCompartir({ tipo: "enviando" });
 
-            const resultado = await compartirTabla(precio, { solicitudId: nuevaSolicitud(), imagen });
+            const envio = { solicitudId: nuevaSolicitud(), imagen };
+            const resultado = await enviarCompartir(precio, envio);
 
             if (resultado.motivo === "sin_destinos" || resultado.motivo === "destinos_no_disponibles") {
                 setPanelCompartir({ tipo: "configurar", imagen, aviso: resultado.motivo === "sin_destinos" ? "Elige los grupos donde se publicará esta tabla." : mensajeCompartir(resultado.motivo) });
                 return;
             }
 
-            setPanelCompartir({ tipo: "resultado", resultado });
+            setPanelCompartir(panelResultado(resultado, envio));
 
         } catch {
 
@@ -106,6 +120,7 @@ export default function AccionesTabla({
                         icon={RotateCcw}
                         label="Reiniciar"
                         color="text-rose-600 hover:bg-rose-50 hover:border-rose-200"
+                        mostrarTexto
                         onClick={() => setConfirmandoReinicio(true)}
                     />
 
@@ -121,7 +136,7 @@ export default function AccionesTabla({
                         label={compartiendo ? "Compartiendo…" : "Compartir"}
                         color="text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200"
                         destacado
-                        disabled={compartiendo}
+                        cargando={compartiendo}
                         onClick={compartir}
                     />
 
@@ -138,6 +153,16 @@ export default function AccionesTabla({
                     />
 
                     {segundaFila}
+
+                    {onActualizar && (
+                        <BotonIcono
+                            icon={RefreshCw}
+                            label={actualizar.procesando ? "Actualizando…" : "Actualizar"}
+                            color="text-gray-600 hover:bg-gray-50 hover:border-gray-300"
+                            cargando={actualizar.procesando}
+                            onClick={() => { void actualizar.ejecutar(); }}
+                        />
+                    )}
 
                 </div>
 
@@ -175,12 +200,18 @@ export default function AccionesTabla({
 
 }
 
+// Botón con icono y texto de la barra de Tablas. No es IconButton (solo
+// icono, 30/36 px): este lleva texto visible, 44 px táctiles y colores por
+// acción. Comparte con Button/IconButton el estado de carga: el mismo
+// Spinner en lugar del icono (también en móvil, donde el texto se oculta),
+// aria-busy y sin clics mientras carga.
 export function BotonIcono({
     icon: Icon,
     label,
     color,
     destacado = false,
     disabled = false,
+    cargando = false,
     mostrarTexto = false,
     onClick
 }: {
@@ -189,6 +220,8 @@ export function BotonIcono({
     color: string;
     destacado?: boolean;
     disabled?: boolean;
+    /** Operación en curso: spinner en lugar del icono y deshabilitado. */
+    cargando?: boolean;
     /** El texto se ve también en pantallas pequeñas. */
     mostrarTexto?: boolean;
     onClick: () => void;
@@ -197,8 +230,10 @@ export function BotonIcono({
     return (
 
         <button
+            type="button"
             onClick={onClick}
-            disabled={disabled}
+            disabled={disabled || cargando}
+            aria-busy={cargando || undefined}
             aria-label={label}
             title={label}
             className={`flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 rounded-xl text-sm font-medium min-w-[44px] min-h-[44px] border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
@@ -207,7 +242,7 @@ export function BotonIcono({
                     : `bg-white border-gray-200 ${color}`
             }`}
         >
-            <Icon size={16} className="shrink-0" />
+            {cargando ? <Spinner size={16} /> : <Icon size={16} className="shrink-0" />}
             <span className={mostrarTexto ? undefined : "hidden sm:inline"}>{label}</span>
         </button>
 

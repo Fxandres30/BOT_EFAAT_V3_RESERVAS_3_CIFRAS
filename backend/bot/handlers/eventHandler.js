@@ -357,7 +357,9 @@ module.exports = async (ctx) => {
             console.dir(ctx.consulta, { depth: null });
             console.log("==================================");
 
-            enviado = await responderResultado(ctx) === true;
+            // Un mensaje de error técnico no es «la tabla vigente»: no abre
+            // la ventana, el cliente puede volver a pedirla enseguida.
+            enviado = await responderResultado(ctx) === true && ctx.consulta?.errorTecnico !== true;
 
         } finally {
 

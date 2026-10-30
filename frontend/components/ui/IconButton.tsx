@@ -2,6 +2,7 @@ import { forwardRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 import { cn } from "./cn";
+import { Spinner } from "./Spinner";
 import styles from "./IconButton.module.css";
 
 export type IconButtonVariant = "ghost" | "solid" | "danger";
@@ -13,6 +14,8 @@ export interface IconButtonProps
   label: string;
   variant?: IconButtonVariant;
   size?: IconButtonSize;
+  /** En curso: muestra el indicador común en lugar del icono y no admite clics. */
+  loading?: boolean;
   children: ReactNode;
 }
 
@@ -22,6 +25,8 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
       label,
       variant = "ghost",
       size = "md",
+      loading = false,
+      disabled,
       className,
       children,
       type = "button",
@@ -35,6 +40,8 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         type={type}
         aria-label={label}
         title={label}
+        disabled={disabled || loading}
+        aria-busy={loading || undefined}
         className={cn(
           styles.iconButton,
           styles[variant],
@@ -43,7 +50,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         )}
         {...rest}
       >
-        {children}
+        {loading ? <Spinner size={size === "sm" ? 13 : 15} /> : children}
       </button>
     );
   }

@@ -53,7 +53,6 @@ export default function TablaImprimible({ numerosDisponibles, numerosOcupados, n
                 paquetes={[]}
                 eventoActivo={null}
                 coincidePrecio={true}
-                accionando={null}
                 diseno={config}
                 onReservar={sinAccion}
                 onMarcarPagado={sinAccion}

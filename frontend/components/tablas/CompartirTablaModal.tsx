@@ -9,6 +9,7 @@ import {
     vistaPreviaCompartir,
     guardarDestinosCompartir,
     mensajeCompartir,
+    type EnvioCompartir,
     type ResultadoCompartir,
     type VistaPreviaCompartir
 } from "@/services/tablas/compartirTabla";
@@ -20,9 +21,11 @@ import {
 //                texto), elección de grupos y confirmación antes de enviar.
 //                Cargarla NUNCA envía nada. Se envía la MISMA captura que
 //                se ve en la vista previa.
+// `reintento`: envío sin respuesta clara (red caída, tiempo agotado); se
+// puede repetir con la MISMA solicitud, que no reenvía a grupos ya hechos.
 export type PanelCompartir =
     | { tipo: "enviando"; grupos?: string[] }
-    | { tipo: "resultado"; resultado: ResultadoCompartir }
+    | { tipo: "resultado"; resultado: ResultadoCompartir; reintento?: EnvioCompartir }
     | { tipo: "configurar"; aviso?: string; imagen?: string };
 
 interface Props {
@@ -40,14 +43,36 @@ export function nuevaSolicitud(): string {
     return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 
+// Un envío de «Compartir» que SIEMPRE termina con un resultado: si la red
+// falla (fetch lanza) el modal no se queda en «Publicando…» sin poder cerrarse.
+export async function enviarCompartir(precio: number, envio: EnvioCompartir): Promise<ResultadoCompartir> {
+    try {
+        return await compartirTabla(precio, envio);
+    } catch {
+        return { ok: false, enviado: false, motivo: "sin_respuesta" };
+    }
+}
+
+// Resultado -> panel; un envío sin respuesta clara ofrece «Reintentar».
+export function panelResultado(resultado: ResultadoCompartir, envio: EnvioCompartir): PanelCompartir {
+    const dudoso = resultado.motivo === "sin_respuesta" || resultado.motivo === "tiempo_agotado";
+    return { tipo: "resultado", resultado, ...(dudoso ? { reintento: envio } : {}) };
+}
+
 export default function CompartirTablaModal({ precio, capturarTabla, panel, onCambiar, onClose }: Props) {
 
     const enviando = panel.tipo === "enviando";
 
+    async function reintentar(envio: EnvioCompartir) {
+        onCambiar({ tipo: "enviando", grupos: envio.grupos });
+        onCambiar(panelResultado(await enviarCompartir(precio, envio), envio));
+    }
+
     return (
         <Modal
             open
-            onClose={enviando ? () => {} : onClose}
+            onClose={onClose}
+            bloquearCierre={enviando}
             size="lg"
             title={panel.tipo === "configurar" ? "Compartir tabla en WhatsApp" : "Compartir tabla"}
             description={panel.tipo === "configurar" ? "Revisa la imagen y el texto, elige los grupos y confirma. Nada se envía hasta que confirmes." : undefined}
@@ -58,7 +83,12 @@ export default function CompartirTablaModal({ precio, capturarTabla, panel, onCa
                 </p>
             )}
             {panel.tipo === "resultado" && (
-                <Resultado resultado={panel.resultado} onCambiarGrupos={() => onCambiar({ tipo: "configurar" })} onClose={onClose} />
+                <Resultado
+                    resultado={panel.resultado}
+                    onCambiarGrupos={() => onCambiar({ tipo: "configurar", imagen: panel.reintento?.imagen })}
+                    onReintentar={panel.reintento ? () => reintentar(panel.reintento!) : undefined}
+                    onClose={onClose}
+                />
             )}
             {panel.tipo === "configurar" && (
                 <Configurar precio={precio} aviso={panel.aviso} imagenInicial={panel.imagen} capturarTabla={capturarTabla} onCambiar={onCambiar} onClose={onClose} />
@@ -75,7 +105,7 @@ const ETIQUETA = {
     fallido: "Falló"
 } as const;
 
-function Resultado({ resultado, onCambiarGrupos, onClose }: { resultado: ResultadoCompartir; onCambiarGrupos: () => void; onClose: () => void }) {
+function Resultado({ resultado, onCambiarGrupos, onReintentar, onClose }: { resultado: ResultadoCompartir; onCambiarGrupos: () => void; onReintentar?: () => void; onClose: () => void }) {
 
     const lista = resultado.resultados || [];
 
@@ -108,6 +138,7 @@ function Resultado({ resultado, onCambiarGrupos, onClose }: { resultado: Resulta
             {resultado.aviso && <p className="text-sm text-amber-700">{resultado.aviso}</p>}
             <div className="flex flex-wrap justify-end gap-2">
                 <Button variant="secondary" onClick={onCambiarGrupos}>Cambiar grupos</Button>
+                {onReintentar && <Button variant="secondary" onClick={onReintentar}>Reintentar</Button>}
                 <Button onClick={onClose}>Cerrar</Button>
             </div>
         </div>
@@ -147,6 +178,8 @@ function Configurar({ precio, aviso, imagenInicial, capturarTabla, onCambiar, on
             setSeleccion(r.data.seleccion);
             setTexto(r.data.texto);
             setCarga({ tipo: "ok", vista: r.data });
+        }).catch(() => {
+            if (vigente) setCarga({ tipo: "error", mensaje: mensajeCompartir("vista_previa_sin_respuesta") });
         });
         if (!imagenInicial) {
             capturarTabla()
@@ -166,29 +199,36 @@ function Configurar({ precio, aviso, imagenInicial, capturarTabla, onCambiar, on
     const cambiar = (id: string) => { setMensaje(null); setConfirmando(false); setSeleccion(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]); };
 
     async function guardarGrupos() {
+        if (guardando) return;
         setGuardando(true);
-        const r = await guardarDestinosCompartir(precio, seleccion);
-        setGuardando(false);
-        setMensaje(r.ok ? { tono: "ok", texto: "Grupos guardados. El próximo «Compartir» publicará en ellos directamente." } : { tono: "error", texto: mensajeCompartir(r.motivo) });
+        try {
+            const r = await guardarDestinosCompartir(precio, seleccion);
+            setMensaje(r.ok ? { tono: "ok", texto: "Grupos guardados. El próximo «Compartir» publicará en ellos directamente." } : { tono: "error", texto: mensajeCompartir(r.motivo) });
+        } catch {
+            setMensaje({ tono: "error", texto: "No se pudieron guardar los grupos (sin conexión con el servidor). Inténtalo de nuevo." });
+        } finally {
+            setGuardando(false);
+        }
     }
 
     async function enviar() {
         if (enviandoRef.current || !imagen) return;
         enviandoRef.current = true;
         const grupos = [...seleccion];
-        onCambiar({ tipo: "enviando", grupos });
-        const resultado = await compartirTabla(precio, {
+        const envio: EnvioCompartir = {
             solicitudId: nuevaSolicitud(),
             imagen,
             grupos,
             guardarDestinos: true,
             ...(texto.trim() !== vista.texto.trim() ? { texto } : {})
-        });
+        };
+        onCambiar({ tipo: "enviando", grupos });
+        const resultado = await enviarCompartir(precio, envio);
         if (resultado.motivo === "destinos_no_disponibles" || resultado.motivo === "sin_destinos") {
             onCambiar({ tipo: "configurar", imagen, aviso: mensajeCompartir(resultado.motivo) });
             return;
         }
-        onCambiar({ tipo: "resultado", resultado });
+        onCambiar(panelResultado(resultado, envio));
     }
 
     return (
@@ -246,7 +286,7 @@ function Configurar({ precio, aviso, imagenInicial, capturarTabla, onCambiar, on
             ) : (
                 <div className="flex flex-wrap justify-end gap-2">
                     <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-                    {vista.persistencia && <Button variant="secondary" onClick={guardarGrupos} loading={guardando} disabled={!seleccion.length}>Guardar grupos sin enviar</Button>}
+                    {vista.persistencia && <Button variant="secondary" onClick={guardarGrupos} loading={guardando} loadingText="Guardando grupos…" disabled={!seleccion.length}>Guardar grupos sin enviar</Button>}
                     <Button onClick={() => setConfirmando(true)} disabled={!seleccion.length || !vista.sesion_conectada || !imagen}>Continuar</Button>
                 </div>
             )}

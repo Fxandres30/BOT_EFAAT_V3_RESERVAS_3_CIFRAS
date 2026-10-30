@@ -13,7 +13,8 @@
 //
 // Reales: detectarEvento.js, extraerEvento.js, consultarEvento.js,
 // guardarEvento.js, identidadEventoReal.js, abrirGrupo.js, automation/*
-// (tests/deteccion/entornoFake.js). Simulado: consultarDisponibilidad.
+// (tests/deteccion/entornoFake.js). Simulado: sorteoSinNumerosLibres
+// (el sorteo siempre tiene números libres).
 //
 //     node backend/tests/deteccion/correccionSorteoPorAnuncio.test.js
 // ==========================================================================
@@ -23,11 +24,11 @@ require("../utils/politicaGruposPermisiva");
 const path = require("path");
 
 const RAIZ = path.resolve(__dirname, "../..");
-const RUTA_DISPONIBILIDAD = path.join(RAIZ, "bot/funciones/consultas/consultarDisponibilidad.js");
+const RUTA_SIN_LIBRES = path.join(RAIZ, "bot/funciones/eventos/lifecycle/sorteoSinNumerosLibres.js");
 
-require.cache[RUTA_DISPONIBILIDAD] = {
-    id: RUTA_DISPONIBILIDAD, filename: RUTA_DISPONIBILIDAD, loaded: true,
-    exports: { consultarDisponibilidad: async () => ({ numerosDisponibles: ["50"], numerosOcupados: ["10"] }) }
+require.cache[RUTA_SIN_LIBRES] = {
+    id: RUTA_SIN_LIBRES, filename: RUTA_SIN_LIBRES, loaded: true,
+    exports: { sorteoSinNumerosLibres: async () => false }
 };
 
 const { crearEntorno } = require("./entornoFake");

@@ -66,11 +66,12 @@ async function obtenerFilasDelUsuario({ evento, usuario }) {
 
     }
 
+    // null = no se pudo leer («no sé» no es «no tienes números»).
     if (error) {
 
         console.log("❌ Error consultando mis números:", error.message);
 
-        return [];
+        return null;
 
     }
 
@@ -101,9 +102,16 @@ async function obtenerFilasDelUsuario({ evento, usuario }) {
 // (pendiente de pago) y "pagado" son números del cliente — un estado
 // operativo del panel ("bloqueado", "en_proceso") nunca se cuenta como
 // suyo ni como deuda.
+//
+// Si la lectura falla devuelve errorLectura: true (listas vacías): el
+// llamador responde con un mensaje técnico, nunca «no tienes números».
 async function consultarMisNumerosPorEstado({ evento, usuario }) {
 
     const filas = await obtenerFilasDelUsuario({ evento, usuario });
+
+    if (filas === null) {
+        return { total: 0, todos: [], reservados: [], pagados: [], errorLectura: true };
+    }
 
     const reservados = filas.filter(f => f.estado === "reservado").map(f => f.numero);
     const pagados = filas.filter(f => f.estado === "pagado").map(f => f.numero);
@@ -142,21 +150,30 @@ function momentoDe(fila) {
     return fechas.length ? Math.max(...fechas) : 0;
 }
 
-// Nunca lanza: ante cualquier fallo se responde solo con el sorteo actual.
-async function consultarPendientesOtrosSorteos(args) {
+// Nunca lanza. -> { ok, lista }: ok=false si alguna lectura falló (la
+// lista trae lo que sí se pudo leer). Así «no tienes pendientes en otros
+// sorteos» solo se afirma cuando de verdad se revisaron.
+async function consultarPendientesOtrosSorteosVerificado(args) {
 
     try {
         return await leerPendientesOtrosSorteos(args);
     } catch (err) {
-        console.log("⚠️ No se pudieron leer los pendientes de otros sorteos (se responde solo el actual):", err?.message);
-        return [];
+        console.log("⚠️ No se pudieron leer los pendientes de otros sorteos:", err?.message);
+        return { ok: false, lista: [] };
     }
+
+}
+
+// Compatibilidad: solo la lista.
+async function consultarPendientesOtrosSorteos(args) {
+
+    return (await consultarPendientesOtrosSorteosVerificado(args)).lista;
 
 }
 
 async function leerPendientesOtrosSorteos({ evento, usuario, ahora = new Date() }) {
 
-    if (!evento?.usuario_id || !usuario?.id) return [];
+    if (!evento?.usuario_id || !usuario?.id) return { ok: true, lista: [] };
 
     const { data: eventos, error } = await supabase
         .from("eventos_bot")
@@ -166,8 +183,8 @@ async function leerPendientesOtrosSorteos({ evento, usuario, ahora = new Date() 
         .limit(200);
 
     if (error) {
-        console.log("⚠️ No se pudieron leer los otros sorteos del cliente (se responde solo el actual):", error.message);
-        return [];
+        console.log("⚠️ No se pudieron leer los otros sorteos del cliente:", error.message);
+        return { ok: false, lista: [] };
     }
 
     const limite = ahora.getTime() - DIAS_OTROS_SORTEOS * 24 * 60 * 60 * 1000;
@@ -189,7 +206,7 @@ async function leerPendientesOtrosSorteos({ evento, usuario, ahora = new Date() 
         if (sinDeuda(e)) porIdentidad.delete(e.identidad_evento_real);
     }
 
-    if (!porIdentidad.size) return [];
+    if (!porIdentidad.size) return { ok: true, lista: [] };
 
     const condiciones = [`usuario_global_id.eq.${usuario.id}`];
     if (usuario.lid) condiciones.push(`lid.eq.${usuario.lid}`);
@@ -204,6 +221,7 @@ async function leerPendientesOtrosSorteos({ evento, usuario, ahora = new Date() 
     }
 
     const resultado = [];
+    let ok = true;
 
     for (const [tabla, identidades] of porTabla) {
 
@@ -218,6 +236,7 @@ async function leerPendientesOtrosSorteos({ evento, usuario, ahora = new Date() 
 
         if (errorTabla) {
             console.log(`⚠️ No se pudieron leer los pendientes de otros sorteos en ${tabla}:`, errorTabla.message);
+            ok = false;
             continue;
         }
 
@@ -248,7 +267,7 @@ async function leerPendientesOtrosSorteos({ evento, usuario, ahora = new Date() 
     }
 
     // Más reciente primero (fecha del sorteo).
-    return resultado.sort((a, b) => String(b.fecha_evento || "").localeCompare(String(a.fecha_evento || "")));
+    return { ok, lista: resultado.sort((a, b) => String(b.fecha_evento || "").localeCompare(String(a.fecha_evento || ""))) };
 
 }
 
@@ -264,5 +283,6 @@ async function consultarMisNumeros({ evento, usuario }) {
 module.exports = {
     consultarMisNumeros,
     consultarMisNumerosPorEstado,
-    consultarPendientesOtrosSorteos
+    consultarPendientesOtrosSorteos,
+    consultarPendientesOtrosSorteosVerificado
 };

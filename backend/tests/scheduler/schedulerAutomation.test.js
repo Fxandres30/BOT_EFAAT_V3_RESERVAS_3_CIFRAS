@@ -181,6 +181,15 @@ function crearNumero(fakeSupabase, { tabla = "reservas_dos_cifras", numero, esta
 
 }
 
+// Cuadrícula 00-99 completa y libre del cliente, como en producción. Las
+// pruebas de recordatorios leen el estado real del sorteo (sorteoReal.js):
+// un número sin fila ya no cuenta como libre (regla de veracidad, 30/10).
+function sembrarCuadriculaLibre(fakeSupabase, tabla = "reservas_dos_cifras") {
+
+    for (let i = 0; i < 100; i++) crearNumero(fakeSupabase, { tabla, numero: String(i).padStart(2, "0") });
+
+}
+
 async function main() {
 
     // ---------------------------------------------------------------
@@ -228,6 +237,7 @@ async function main() {
         const horaCierre = sumarMinutos(ahoraHHmm, 30); // exactamente 30 min desde "ahora"
 
         const evento = crearEventoBot(fakeSupabase, { hora_cierre: horaCierre });
+        sembrarCuadriculaLibre(fakeSupabase);
         crearEventSession(fakeSupabase, evento);
         crearConfig(fakeSupabase, { recordatorios: { "30": { activo: true, categoria: null } } });
         crearMensaje(fakeSupabase, { tipo: "REMINDER_MESSAGE", texto: "Quedan pocos cupos de {nombre_evento}" });
@@ -393,6 +403,7 @@ async function main() {
         const { fakeSupabase, scheduler, crearFakeSock } = crearEntorno();
 
         const evento = crearEventoBot(fakeSupabase, { reservados: 8, libres: 2 });
+        sembrarCuadriculaLibre(fakeSupabase);
 
         const abiertoEn = new Date(AHORA.getTime() - 40 * 60000).toISOString(); // 40 min antes
 
@@ -453,6 +464,7 @@ async function main() {
         const horaCierre = sumarMinutos(ahoraHHmm, 10);
 
         const evento = crearEventoBot(fakeSupabase, { hora_cierre: horaCierre });
+        sembrarCuadriculaLibre(fakeSupabase);
         crearEventSession(fakeSupabase, evento);
         crearConfig(fakeSupabase, { recordatorios: { "10": { activo: true, categoria: null } } });
         crearMensaje(fakeSupabase, { tipo: "REMINDER_MESSAGE" });
@@ -480,6 +492,7 @@ async function main() {
         const horaCierre = sumarMinutos(ahoraHHmm, 10);
 
         const evento = crearEventoBot(fakeSupabase, { hora_cierre: horaCierre });
+        sembrarCuadriculaLibre(fakeSupabase);
         crearEventSession(fakeSupabase, evento);
         crearConfig(fakeSupabase, { recordatorios: { "10": { activo: true, categoria: null } } });
         crearMensaje(fakeSupabase, { tipo: "REMINDER_MESSAGE" });
@@ -517,6 +530,7 @@ async function main() {
             reservados: 9,
             libres: 1
         });
+        sembrarCuadriculaLibre(fakeSupabase);
 
         crearEventSession(fakeSupabase, evento);
         crearConfig(fakeSupabase, { recordatorios: { "5": { activo: true, categoria: null } } });
@@ -552,6 +566,7 @@ async function main() {
 
         // Sin premios -> {premio} nunca se resuelve.
         const evento = crearEventoBot(fakeSupabase, { hora_cierre: horaCierre, premios: [] });
+        sembrarCuadriculaLibre(fakeSupabase);
 
         crearEventSession(fakeSupabase, evento);
         crearConfig(fakeSupabase, { recordatorios: { "5": { activo: true, categoria: null } } });
@@ -721,6 +736,7 @@ async function main() {
         const horaCierre = sumarMinutos(ahoraHHmm, 10);
 
         const evento = crearEventoBot(primero.fakeSupabase, { hora_cierre: horaCierre });
+        sembrarCuadriculaLibre(primero.fakeSupabase);
         crearEventSession(primero.fakeSupabase, evento);
         crearConfig(primero.fakeSupabase, { recordatorios: { "10": { activo: true, categoria: null } } });
         crearMensaje(primero.fakeSupabase, { tipo: "REMINDER_MESSAGE" });

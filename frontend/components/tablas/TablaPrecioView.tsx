@@ -8,6 +8,8 @@ import { useTablaPrecio } from "@/hooks/useTablaPrecio";
 import { useTablaDiseno } from "@/hooks/useTablaDiseno";
 import { useSeccionesPanel } from "@/hooks/useSeccionesPanel";
 import { Badge } from "@/components/ui/Badge";
+import { avisar } from "@/components/ui/Avisos";
+import { nuevaSolicitudId } from "@/services/tablas/reservaManual";
 import AccionesTabla, { BotonIcono } from "./AccionesTabla";
 import StatsBar from "./StatsBar";
 import Grid from "./Grid";
@@ -49,6 +51,7 @@ export default function TablaPrecioView({ precio }: Props) {
         historial,
         auditoriaDisponible,
         accionando,
+        recargar,
         reservar,
         marcarPagado,
         procesarLote,
@@ -57,26 +60,34 @@ export default function TablaPrecioView({ precio }: Props) {
         reiniciar
     } = useTablaPrecio(precio);
 
-    // «Reservas recientes»: mismas operaciones del backend; un rechazo se
-    // avisa (antes el error se perdía en una promesa sin capturar).
-    // Resultado visible de las acciones de «Reservas recientes»: confirma el
-    // éxito (antes no decía nada) y explica el error, sin ventanas del navegador.
-    const [avisoAccion, setAvisoAccion] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
-
-    async function pagarDesdeLista(numero: string) {
-        setAvisoAccion(null);
-        const r = await marcarPagado(numero);
-        setAvisoAccion(r.ok ? { tipo: "ok", texto: `Pago del ${numero} registrado.` } : { tipo: "error", texto: `${numero}: ${r.mensaje}` });
+    // «Reservas recientes»: mismas operaciones del backend. El resultado se
+    // avisa con un aviso flotante: éxito solo con la confirmación del
+    // servidor, y el error explicado, sin ventanas del navegador.
+    async function avisarResultado(numero: string, accion: () => Promise<{ ok: true } | { ok: false; mensaje: string }>, textoOk: string) {
+        try {
+            const r = await accion();
+            if (r.ok) avisar.ok(textoOk);
+            else avisar.error(`${numero}: ${r.mensaje}`);
+        } catch {
+            avisar.error(`${numero}: no se pudo completar la operación. Revisa el número antes de reintentar.`);
+        }
     }
 
-    async function liberarDesdeLista(numero: string) {
+    function pagarDesdeLista(numero: string) {
+        // Una solicitud por clic: el servidor no duplica un reintento de la misma.
+        return avisarResultado(numero, () => marcarPagado(numero, { solicitudId: nuevaSolicitudId() }), `Pago del ${numero} registrado.`);
+    }
+
+    function liberarDesdeLista(numero: string) {
         const pagado = numeros.find(n => n.numero === numero)?.estado === "pagado";
         const motivo = pagado ? window.prompt(`Motivo para anular el pago del ${numero}:`) : undefined;
         if (pagado && !motivo?.trim()) return;
-        setAvisoAccion(null);
-        const r = await liberar(numero, { motivo: motivo?.trim() || undefined });
-        setAvisoAccion(r.ok ? { tipo: "ok", texto: `Número ${numero} liberado.` } : { tipo: "error", texto: `${numero}: ${r.mensaje}` });
+        return avisarResultado(numero, () => liberar(numero, { motivo: motivo?.trim() || undefined, solicitudId: nuevaSolicitudId() }), `Número ${numero} liberado.`);
     }
+
+    // Tras un lote de pagos la tabla se recarga en segundo plano: hasta que
+    // termine, la selección no cambia (no se elige sobre estados viejos).
+    const seleccionBloqueada = accionando.has("lote");
 
     // ÚNICA búsqueda del panel: el buscador y los filtros viven en «Historial
     // de números» y filtran a la vez el historial y la cuadrícula, con la
@@ -121,8 +132,10 @@ export default function TablaPrecioView({ precio }: Props) {
     const conjuntoSeleccion = useMemo(() => new Set(modoSeleccion.numeros), [modoSeleccion.numeros]);
     const cambiarSeleccion = (cambio: Partial<{ activo: boolean; numeros: string[] }>) =>
         setSeleccionDe(prev => ({ ...(prev.precio === precio ? prev : { precio, activo: false, numeros: [] }), ...cambio }));
-    const alternarSeleccion = (numero: string) =>
+    const alternarSeleccion = (numero: string) => {
+        if (seleccionBloqueada) return;
         cambiarSeleccion({ numeros: conjuntoSeleccion.has(numero) ? modoSeleccion.numeros.filter(n => n !== numero) : [...modoSeleccion.numeros, numero] });
+    };
 
     // Estado efectivo de cada número: lo que clasifican la selección y las
     // acciones rápidas (el servidor vuelve a comprobarlo al operar).
@@ -233,6 +246,7 @@ export default function TablaPrecioView({ precio }: Props) {
                 onRevisarReinicio={revisarReinicio}
                 onReiniciar={reiniciar}
                 capturarTabla={capturarSinSeleccion}
+                onActualizar={recargar}
                 segundaFila={
                     <>
                         <BotonIcono
@@ -273,6 +287,7 @@ export default function TablaPrecioView({ precio }: Props) {
             <SeleccionPagos
                 precio={precio}
                 activo={modoSeleccion.activo}
+                bloqueado={seleccionBloqueada}
                 numeros={seleccionables}
                 seleccion={modoSeleccion.numeros}
                 onActivar={() => cambiarSeleccion({ activo: true, numeros: [] })}
@@ -309,7 +324,7 @@ export default function TablaPrecioView({ precio }: Props) {
                 onFiltrosChange={setFiltros}
                 expandido={secciones.historial}
                 onToggleExpandido={() => alternarSeccion("historial")}
-                ocupado={accionando !== null}
+                ocupado={accionando.size > 0}
                 onAccion={(numero, accion) => (accion === "detalle" ? setDetalle(numero) : setAccionRapida({ operacion: accion, numero }))}
                 seleccion={modoSeleccion.activo ? conjuntoSeleccion : null}
                 onAlternarSeleccion={alternarSeleccion}
@@ -326,16 +341,6 @@ export default function TablaPrecioView({ precio }: Props) {
                     incluirOtroSorteoInicial
                     onClose={() => setAccionRapida(null)}
                 />
-            )}
-
-            {avisoAccion && (
-                <div
-                    role={avisoAccion.tipo === "ok" ? "status" : "alert"}
-                    className={`flex items-center justify-between gap-2 text-sm rounded-xl border px-3 py-2 ${avisoAccion.tipo === "ok" ? "bg-emerald-50 border-emerald-200 text-emerald-900" : "bg-red-50 border-red-200 text-red-800"}`}
-                >
-                    <span className="min-w-0">{avisoAccion.texto}</span>
-                    <button type="button" onClick={() => setAvisoAccion(null)} aria-label="Cerrar aviso" className="shrink-0 font-medium hover:underline">Cerrar</button>
-                </div>
             )}
 
             <ReservasRecientes
@@ -378,7 +383,6 @@ export default function TablaPrecioView({ precio }: Props) {
                 onClose={() => setBibliotecaAbierta(false)}
                 disenos={disenos}
                 disenoActualId={disenoOrigenId}
-                aplicando={guardandoDiseno}
                 onAplicar={async (origenId, configOrigen) => {
                     await aplicarDiseno(origenId, configOrigen);
                     setBibliotecaAbierta(false);

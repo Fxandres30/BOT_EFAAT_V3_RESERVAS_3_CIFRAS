@@ -30,6 +30,8 @@ export type ProcesarLote = (
 interface Props {
     precio: number;
     activo: boolean;
+    /** La tabla se está recargando tras un lote: la selección no cambia hasta que termine. */
+    bloqueado?: boolean;
     numeros: NumeroSeleccionable[];
     seleccion: string[];
     onActivar: () => void;
@@ -70,7 +72,7 @@ function textoProcesando(operacion: OperacionLote, n: number) {
 // operación. Solo se ofrecen las operaciones que admite al menos uno de los
 // seleccionados; cada número se procesa con la misma operación de su
 // detalle (el servidor decide) y el resultado se informa número a número.
-export default function SeleccionPagos({ precio, activo, numeros, seleccion, onActivar, onSalir, onLimpiar, onCambiarSeleccion, onQuitar, onProcesar }: Props) {
+export default function SeleccionPagos({ precio, activo, bloqueado = false, numeros, seleccion, onActivar, onSalir, onLimpiar, onCambiarSeleccion, onQuitar, onProcesar }: Props) {
 
     const [dialogo, setDialogo] = useState<OperacionLote | null>(null);
     const [verSeleccion, setVerSeleccion] = useState(false);
@@ -113,19 +115,24 @@ export default function SeleccionPagos({ precio, activo, numeros, seleccion, onA
                             ? "Toca los números en la tabla o márcalos en «Historial de números»."
                             : `${seleccion.length} seleccionado${seleccion.length === 1 ? "" : "s"}`}
                         {ninguna && <span className="block text-xs font-normal text-indigo-800">Ninguno admite una acción rápida (en proceso): ábrelos desde su detalle.</span>}
+                        {bloqueado && (
+                            <span className="flex items-center gap-1.5 text-xs font-normal text-indigo-800" role="status">
+                                <Loader2 size={13} className="animate-spin" /> Actualizando la tabla con el resultado...
+                            </span>
+                        )}
                     </span>
                     <div className="flex flex-wrap gap-2">
                         {OPERACIONES.filter(op => compatibles[op] > 0).map(op => {
                             const { texto, icon: Icon, clase } = BOTON[op];
                             return (
-                                <button key={op} type="button" onClick={() => setDialogo(op)} className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg ${clase}`}>
+                                <button key={op} type="button" onClick={() => setDialogo(op)} disabled={bloqueado} className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed ${clase}`}>
                                     <Icon size={15} /> {texto} ({compatibles[op]})
                                 </button>
                             );
                         })}
                         <button
                             type="button"
-                            disabled={seleccion.length === 0}
+                            disabled={bloqueado || seleccion.length === 0}
                             onClick={() => { onLimpiar(); setVerSeleccion(false); }}
                             className="text-sm px-3 py-1.5 rounded-lg border bg-white hover:bg-gray-50 disabled:opacity-50"
                         >
@@ -134,7 +141,8 @@ export default function SeleccionPagos({ precio, activo, numeros, seleccion, onA
                         <button
                             type="button"
                             onClick={onSalir}
-                            className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg border bg-white hover:bg-gray-50"
+                            disabled={bloqueado}
+                            className="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg border bg-white hover:bg-gray-50 disabled:opacity-50"
                             aria-label="Terminar la selección"
                         >
                             <X size={15} /> Terminar
@@ -146,7 +154,7 @@ export default function SeleccionPagos({ precio, activo, numeros, seleccion, onA
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                     <button
                         type="button"
-                        disabled={libres.length === 0}
+                        disabled={bloqueado || libres.length === 0}
                         onClick={() => onCambiarSeleccion(anadirSeleccion(seleccion, libres))}
                         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border bg-white hover:bg-gray-50 disabled:opacity-50"
                     >
@@ -164,9 +172,9 @@ export default function SeleccionPagos({ precio, activo, numeros, seleccion, onA
                             className="w-14 border rounded-lg px-2 py-1 bg-white tabular-nums"
                             inputMode="numeric" aria-label="Hasta" placeholder="99" maxLength={4}
                             value={hasta} onChange={(e) => { setHasta(e.target.value); setErrorRango(null); }}
-                            onKeyDown={(e) => { if (e.key === "Enter") anadirRango(); }}
+                            onKeyDown={(e) => { if (e.key === "Enter" && !bloqueado) anadirRango(); }}
                         />
-                        <button type="button" onClick={anadirRango} disabled={!desde || !hasta} className="px-2.5 py-1 rounded-lg border bg-white hover:bg-gray-50 disabled:opacity-50">
+                        <button type="button" onClick={anadirRango} disabled={bloqueado || !desde || !hasta} className="px-2.5 py-1 rounded-lg border bg-white hover:bg-gray-50 disabled:opacity-50">
                             Añadir
                         </button>
                     </span>
@@ -184,7 +192,7 @@ export default function SeleccionPagos({ precio, activo, numeros, seleccion, onA
                 </div>
 
                 {verSeleccion && seleccion.length > 0 && (
-                    <ResumenSeleccion numeros={numeros} seleccion={seleccion} onQuitar={onQuitar} />
+                    <ResumenSeleccion numeros={numeros} seleccion={seleccion} onQuitar={(n) => { if (!bloqueado) onQuitar(n); }} />
                 )}
 
             </div>

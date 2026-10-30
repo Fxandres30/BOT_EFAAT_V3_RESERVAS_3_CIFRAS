@@ -75,8 +75,10 @@ async function contarNumeros(usuarioId, tabla, identidad) {
     if (!tabla || !identidad) return { reservados: 0, pagados: 0, ok: true };
     const { data, error } = await supabase.from(tabla).select("estado")
         .eq("usuario_id", usuarioId).eq("identidad_evento_real", identidad);
+    // Sin lectura no hay conteo: null, nunca «0 reservados».
+    if (error) return { ok: false, reservados: null, pagados: null };
     const filas = data || [];
-    return { ok: !error, reservados: filas.filter(f => f.estado === "reservado").length, pagados: filas.filter(f => f.estado === "pagado").length };
+    return { ok: true, reservados: filas.filter(f => f.estado === "reservado").length, pagados: filas.filter(f => f.estado === "pagado").length };
 }
 
 function estadoFila(f) {

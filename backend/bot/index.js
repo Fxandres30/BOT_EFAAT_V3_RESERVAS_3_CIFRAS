@@ -53,6 +53,14 @@ const {
     detenerWorkerInactividad
 } = require("./funciones/inactividad/workerInactividad");
 
+// Expulsión de bloqueados de los grupos del cliente (migración 040). No
+// arranca con BLOQUEO_EXPULSION_MODO sin definir o "desactivado"; en
+// "simulacion" nunca expulsa (ver configExpulsiones.js).
+const {
+    iniciarWorkerExpulsiones,
+    detenerWorkerExpulsiones
+} = require("./funciones/bloqueo/workerExpulsiones");
+
 // Sorteos programados desde el panel: publicación, recordatorios, aviso de
 // cierre y vencimientos (backend/sorteos/publicador.js).
 const {
@@ -93,6 +101,7 @@ function detenerSesion(sessionId, motivo) {
     detenerEscanerIdentidades(sessionId);
     scheduler.stop(sessionId);
     detenerWorkerInactividad(sessionId);
+    detenerWorkerExpulsiones(sessionId);
     detenerPublicadorSorteos(sessionId);
 
     registradas.delete(sessionId);
@@ -165,6 +174,8 @@ function conectar(socket, sessionId) {
     scheduler.start(socket);
 
     iniciarWorkerInactividad(socket);
+
+    iniciarWorkerExpulsiones(socket);
 
     iniciarPublicadorSorteos(socket);
 

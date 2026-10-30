@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { X, Users, DollarSign, Unlock, Loader2, RotateCcw, CheckCircle2 } from "lucide-react";
 
-import type { NumeroReserva, PaqueteReserva } from "./types";
+import { SIN_ACCIONES, type NumeroReserva, type PaqueteReserva } from "./types";
 import { ESTADOS_META_VISUAL, estadoVisualSimplificado } from "./estadoVisual";
 import ReservaManualForm, { Aviso } from "./ReservaManualForm";
 import HistorialNumero from "./HistorialNumero";
@@ -22,7 +22,8 @@ interface Props {
     precio: number;
     numero: NumeroReserva | null;
     paquete: PaqueteReserva | null;
-    accionando: string | null;
+    /** Números (y "lote" / "*") con una operación en curso. */
+    accionando?: ReadonlySet<string>;
     onClose: () => void;
     onReservar: (numero: string, datos: DatosReserva) => Promise<Resultado>;
     onMarcarPagado: (numero: string, datos?: DatosPago) => Promise<Resultado>;
@@ -58,7 +59,7 @@ function DetalleNumero({
     precio,
     numero,
     paquete,
-    accionando,
+    accionando = SIN_ACCIONES,
     onClose,
     onReservar,
     onMarcarPagado,
@@ -88,19 +89,38 @@ function DetalleNumero({
         return () => { vivo = false; };
     }, [precio, numero.numero]);
 
+    // Tras la respuesta del servidor se relee el estado real del número;
+    // mientras tanto sus acciones siguen deshabilitadas (antes «Confirmar
+    // pago» se reactivaba aquí y un segundo clic volvía a enviar el pago).
+    const [actualizando, setActualizando] = useState(false);
+
     // El formulario de reserva muestra su propio error (con reintento).
     async function tras(r: Resultado, textoOk: string, errorEnFormulario = false) {
+        // En curso = este número ya se está procesando: no hay nada nuevo que releer.
+        if (!r.ok && r.motivo === "en_curso") { setAviso({ tipo: "error", texto: r.mensaje }); return r; }
         if (r.ok) setAviso({ tipo: "ok", texto: r.idempotente ? `${textoOk} (ya estaba registrado).` : textoOk });
         // Si el número dejó de estar libre, el formulario desaparece: el aviso va arriba.
         else setAviso(errorEnFormulario && r.motivo !== "no_disponible" ? null : { tipo: "error", texto: r.mensaje });
         setCargando(true);
-        await cargar();
+        setActualizando(true);
+        try {
+            await cargar();
+        } finally {
+            setActualizando(false);
+        }
+        return r;
+    }
+
+    // Pagar / liberar: el resultado (éxito solo si el servidor lo confirmó)
+    // se muestra al llegar; la relectura sigue detrás con las acciones bloqueadas.
+    function alResponder(r: Resultado, textoOk: string): Resultado {
+        void tras(r, textoOk);
         return r;
     }
 
     const meta = ESTADOS_META_VISUAL[estadoVisualSimplificado(numero)];
     const Icon = meta.icon;
-    const procesando = accionando === numero.numero;
+    const procesando = accionando.has(numero.numero) || actualizando;
     const estado = contexto?.estado;
 
     return (
@@ -185,8 +205,8 @@ function DetalleNumero({
                             contexto={contexto}
                             paquete={paquete}
                             procesando={procesando}
-                            onPagar={(datos) => onMarcarPagado(numero.numero, datos).then(r => tras(r, "Pago registrado"))}
-                            onLiberar={(datos) => onLiberar(numero.numero, datos).then(r => tras(r, contexto.acciones.includes("desbloquear") ? "Número desbloqueado" : "Número liberado"))}
+                            onPagar={(datos) => onMarcarPagado(numero.numero, datos).then(r => alResponder(r, "Pago registrado"))}
+                            onLiberar={(datos) => onLiberar(numero.numero, datos).then(r => alResponder(r, contexto.acciones.includes("desbloquear") ? "Número desbloqueado" : "Número liberado"))}
                         />
 
                     )}
@@ -225,11 +245,29 @@ function Ocupado({
     const [motivo, setMotivo] = useState("");
     const [observaciones, setObservaciones] = useState("");
     const [solicitudId] = useState(nuevaSolicitudId);
+    const [errorEnvio, setErrorEnvio] = useState<string | null>(null);
+    // Bloqueo síncrono: un doble clic antes de que se pinte «procesando» no
+    // envía dos veces (además, el servidor no duplica la misma solicitud).
+    const enviando = useRef(false);
 
     const bloqueado = estado === "bloqueado" || estado === "en_proceso" || estado === "en_proceso_vencido";
     const motivoObligatorio = estado === "pagado";
 
-    const abrir = (p: "pagar" | "liberar") => { setPanel(p); setMotivo(""); setObservaciones(""); };
+    const abrir = (p: "pagar" | "liberar") => { setPanel(p); setMotivo(""); setObservaciones(""); setErrorEnvio(null); };
+
+    async function confirmar(accion: () => Promise<Resultado>) {
+        if (enviando.current || procesando) return;
+        enviando.current = true;
+        setErrorEnvio(null);
+        try {
+            const r = await accion();
+            if (r.ok) setPanel(null);
+        } catch (e) {
+            setErrorEnvio(e instanceof Error && e.message ? e.message : "No se pudo completar la operación. Revisa el número antes de reintentar.");
+        } finally {
+            enviando.current = false;
+        }
+    }
 
     return (
 
@@ -284,7 +322,7 @@ function Ocupado({
                     <div className="flex gap-2">
                         <button type="button" onClick={() => setPanel(null)} className="flex-1 text-sm px-4 py-2.5 rounded-xl border bg-white" disabled={procesando}>Cancelar</button>
                         <BotonAccion icon={DollarSign} texto="Confirmar pago" textoCargando="Registrando pago..." color="bg-emerald-600 hover:bg-emerald-700" cargando={procesando}
-                            onClick={async () => { const r = await onPagar({ metodoPago: metodo || undefined, observaciones: observaciones.trim() || undefined, solicitudId }); if (r.ok) setPanel(null); }} />
+                            onClick={() => confirmar(() => onPagar({ metodoPago: metodo || undefined, observaciones: observaciones.trim() || undefined, solicitudId }))} />
                     </div>
                 </div>
             )}
@@ -305,21 +343,23 @@ function Ocupado({
                         <button type="button" onClick={() => setPanel(null)} className="flex-1 text-sm px-4 py-2.5 rounded-xl border bg-white" disabled={procesando}>Cancelar</button>
                         <BotonAccion icon={Unlock} texto={bloqueado ? "Sí, desbloquear" : "Sí, liberar"} textoCargando={bloqueado ? "Desbloqueando..." : "Liberando..."} color="bg-gray-900 hover:bg-black" cargando={procesando}
                             deshabilitado={motivoObligatorio && motivo.trim().length < 3}
-                            onClick={async () => { const r = await onLiberar({ motivo: motivo.trim() || undefined, observaciones: observaciones.trim() || undefined, solicitudId }); if (r.ok) setPanel(null); }} />
+                            onClick={() => confirmar(() => onLiberar({ motivo: motivo.trim() || undefined, observaciones: observaciones.trim() || undefined, solicitudId }))} />
                     </div>
                 </div>
             )}
 
+            {errorEnvio && <Aviso>{errorEnvio}</Aviso>}
+
             {panel === null && (
                 <div className="flex flex-col sm:flex-row gap-2">
                     {acciones.includes("pagar") && (
-                        <BotonAccion icon={DollarSign} texto="Registrar pago" color="bg-emerald-600 hover:bg-emerald-700" cargando={procesando} onClick={() => abrir("pagar")} />
+                        <BotonAccion icon={DollarSign} texto="Registrar pago" textoCargando="Actualizando..." color="bg-emerald-600 hover:bg-emerald-700" cargando={procesando} onClick={() => abrir("pagar")} />
                     )}
                     {acciones.includes("liberar") && (
-                        <BotonAccion icon={Unlock} texto={estado === "pagado" ? "Anular y liberar" : "Liberar reserva"} color="bg-gray-800 hover:bg-black" cargando={procesando} onClick={() => abrir("liberar")} />
+                        <BotonAccion icon={Unlock} texto={estado === "pagado" ? "Anular y liberar" : "Liberar reserva"} textoCargando="Actualizando..." color="bg-gray-800 hover:bg-black" cargando={procesando} onClick={() => abrir("liberar")} />
                     )}
                     {acciones.includes("desbloquear") && (
-                        <BotonAccion icon={Unlock} texto="Desbloquear" color="bg-slate-700 hover:bg-slate-800" cargando={procesando} onClick={() => abrir("liberar")} />
+                        <BotonAccion icon={Unlock} texto="Desbloquear" textoCargando="Actualizando..." color="bg-slate-700 hover:bg-slate-800" cargando={procesando} onClick={() => abrir("liberar")} />
                     )}
                 </div>
             )}

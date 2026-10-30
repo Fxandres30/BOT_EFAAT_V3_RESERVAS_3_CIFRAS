@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ShieldBan, Search, Unlock, Phone, Hash } from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
+import { ShieldBan, Search, Unlock, Phone, Hash, ChevronDown, ChevronUp } from "lucide-react";
 
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -12,14 +12,16 @@ import { Badge } from "@/components/ui/Badge";
 import { getUser } from "@/services/auth/getUser";
 import { listarBloqueados, desbloquear } from "@/services/bloqueados/bloqueados";
 import type { Bloqueado } from "@/components/bloqueados/types";
+import { ChipExpulsion, DetalleExpulsion } from "@/components/bloqueados/EstadoExpulsion/EstadoExpulsion";
 
 import styles from "./BloqueadosPage.module.css";
 
 // ==========================================================================
-// Panel "Bloqueados" — bloqueo automático de WhatsApp: un contacto
-// bloqueado no puede usar el bot, no puede reservar, y se expulsa
-// automáticamente de cualquier grupo administrado por el bot (ver
-// backend/bot/funciones/bloqueo/bloqueoParticipantesGrupo.js).
+// Panel "Bloqueados" — un contacto bloqueado no recibe respuestas
+// automáticas, no puede reservar y se retira de los grupos autorizados de
+// la cuenta. La columna «Expulsión» es el estado REAL por grupo (verificado
+// con la lista de participantes), distinto del bloqueo registrado (ver
+// backend/bot/funciones/bloqueo/procesarExpulsion.js).
 //
 // UN SOLO CONCEPTO DE NEGOCIO: "bloqueado" — no existe un panel/tabla
 // separado de "vetados".
@@ -54,6 +56,7 @@ export default function BloqueadosPage() {
     const [busqueda, setBusqueda] = useState("");
     const [mostrarDesbloqueados, setMostrarDesbloqueados] = useState(false);
     const [procesandoId, setProcesandoId] = useState<string | null>(null);
+    const [abiertoId, setAbiertoId] = useState<string | null>(null);
 
     useEffect(() => {
 
@@ -109,9 +112,16 @@ export default function BloqueadosPage() {
         setProcesandoId(null);
 
         if (resultado.ok) {
-            setBloqueados((prev) => prev.map((b) => (b.id === bloqueado.id ? { ...b, activo: false } : b)));
+            setBloqueados((prev) => prev.map((b) => (b.id === bloqueado.id
+                ? { ...b, activo: false, expulsion: b.expulsion ? { ...b.expulsion, estado: "desbloqueado" } : b.expulsion }
+                : b)));
         }
 
+    }
+
+    // El detalle desplegado refresca el resumen de su fila.
+    function actualizarResumen(id: string, expulsion: Bloqueado["expulsion"]) {
+        setBloqueados((prev) => prev.map((b) => (b.id === id ? { ...b, expulsion } : b)));
     }
 
     const filtrados = bloqueados
@@ -140,7 +150,7 @@ export default function BloqueadosPage() {
             <PageHeader
                 icon={<ShieldBan size={20} />}
                 title="🚫 Bloqueados"
-                description="Contactos bloqueados en EFAAT: no reciben respuestas automáticas ni pueden reservar, y se expulsan automáticamente en cuanto intentan entrar a cualquier grupo que gestiona EFAAT."
+                description="Contactos bloqueados en EFAAT: no reciben respuestas automáticas ni pueden reservar, y se retiran de los grupos autorizados de tu cuenta. La expulsión solo figura como hecha cuando WhatsApp la confirma en la lista real del grupo."
             />
 
             <div className={styles.resumen}>
@@ -196,11 +206,9 @@ export default function BloqueadosPage() {
                                 <th>Contacto</th>
                                 <th>Motivo</th>
                                 <th>Bloqueado desde</th>
-                                <th>Intentos</th>
-                                <th>Expulsiones</th>
-                                <th>Último grupo</th>
-                                <th>Último intento</th>
                                 <th>Estado</th>
+                                <th>Expulsión de grupos</th>
+                                <th>Último intento</th>
                                 <th />
                             </tr>
                         </thead>
@@ -208,7 +216,9 @@ export default function BloqueadosPage() {
                         <tbody>
                             {filtrados.map((b) => (
 
-                                <tr key={b.id} className={!b.activo ? styles.filaInactiva : undefined}>
+                                <Fragment key={b.id}>
+
+                                <tr className={!b.activo ? styles.filaInactiva : undefined}>
 
                                     <td>
                                         <div className={styles.contactoCelda}>
@@ -222,10 +232,6 @@ export default function BloqueadosPage() {
 
                                     <td>{b.motivo || "—"}</td>
                                     <td>{formatearFecha(b.creado_en)}</td>
-                                    <td>{b.intentos_ingreso}</td>
-                                    <td>{b.expulsiones}</td>
-                                    <td>{b.ultimo_grupo_nombre || b.ultimo_grupo_id || "—"}</td>
-                                    <td>{formatearFecha(b.ultimo_intento_en)}</td>
 
                                     <td>
                                         {b.activo ? (
@@ -235,21 +241,49 @@ export default function BloqueadosPage() {
                                         )}
                                     </td>
 
+                                    <td>{b.activo ? <ChipExpulsion resumen={b.expulsion} /> : "—"}</td>
+                                    <td>{formatearFecha(b.ultimo_intento_en)}</td>
+
                                     <td>
-                                        {b.activo && (
+                                        <div className={styles.accionesFila}>
                                             <Button
                                                 size="sm"
-                                                variant="secondary"
-                                                leftIcon={<Unlock size={13} />}
-                                                onClick={() => onDesbloquear(b)}
-                                                disabled={procesandoId === b.id}
+                                                variant="ghost"
+                                                leftIcon={abiertoId === b.id ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                                                onClick={() => setAbiertoId(abiertoId === b.id ? null : b.id)}
+                                                aria-expanded={abiertoId === b.id}
                                             >
-                                                {procesandoId === b.id ? "Desbloqueando..." : "Desbloquear"}
+                                                Detalle
                                             </Button>
-                                        )}
+                                            {b.activo && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    leftIcon={<Unlock size={13} />}
+                                                    onClick={() => onDesbloquear(b)}
+                                                    loading={procesandoId === b.id}
+                                                    loadingText="Desbloqueando…"
+                                                >
+                                                    Desbloquear
+                                                </Button>
+                                            )}
+                                        </div>
                                     </td>
 
                                 </tr>
+
+                                {abiertoId === b.id && (
+                                    <tr className={styles.filaDetalle}>
+                                        <td colSpan={7}>
+                                            <DetalleExpulsion
+                                                bloqueadoId={b.id}
+                                                onActualizado={(d) => actualizarResumen(b.id, d.expulsion)}
+                                            />
+                                        </td>
+                                    </tr>
+                                )}
+
+                                </Fragment>
 
                             ))}
                         </tbody>

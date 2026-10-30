@@ -4,13 +4,14 @@ import { DollarSign, Loader2, Unlock } from "lucide-react";
 
 import BotonContraer from "./BotonContraer";
 
-import type { NumeroReserva } from "./types";
+import { SIN_ACCIONES, type NumeroReserva } from "./types";
 import { ESTADOS_META_VISUAL, estadoEfectivo, estadoVisualSimplificado } from "./estadoVisual";
 
 interface Props {
     precio: number;
     numeros: NumeroReserva[];
-    accionando: string | null;
+    /** Números (y "lote" / "*") con una operación en curso. */
+    accionando?: ReadonlySet<string>;
     onMarcarPagado: (numero: string) => void;
     onLiberar: (numero: string) => void;
     expandido: boolean;
@@ -20,7 +21,7 @@ interface Props {
 export default function ReservasRecientes({
     precio,
     numeros,
-    accionando,
+    accionando = SIN_ACCIONES,
     onMarcarPagado,
     onLiberar,
     expandido,
@@ -83,7 +84,7 @@ export default function ReservasRecientes({
 
                                     const estado = estadoEfectivo(n);
                                     const meta = ESTADOS_META_VISUAL[estadoVisualSimplificado(n)];
-                                    const procesando = accionando === n.numero;
+                                    const procesando = accionando.has(n.numero);
 
                                     return (
 
@@ -142,7 +143,7 @@ export default function ReservasRecientes({
 
                             const estado = estadoEfectivo(n);
                             const meta = ESTADOS_META_VISUAL[estadoVisualSimplificado(n)];
-                            const procesando = accionando === n.numero;
+                            const procesando = accionando.has(n.numero);
 
                             return (
 

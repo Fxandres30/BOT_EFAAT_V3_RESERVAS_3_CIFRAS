@@ -53,6 +53,10 @@ const cicloMensaje = require("../../diagnostico/cicloMensaje");
 // Aislamiento multiusuario: cada cliente solo actúa en SUS grupos autorizados.
 const politicaGrupos = require("../funciones/grupos/politicaGrupos");
 
+// Bloqueados del cliente: su mensaje queda en el historial, pero no llega a
+// stickers de pago, eventos, reservas, consultas, comandos ni respuestas.
+const bloqueoActivo = require("../funciones/bloqueo/bloqueoActivo");
+
 module.exports = async ({
 
     sock,
@@ -161,6 +165,10 @@ module.exports = async ({
         const esSalidaDelPrograma =
             !!message.key.fromMe && fueEnviadoPorPrograma(message.key.id);
 
+        // Autor bloqueado por ESTE cliente (null para fromMe y si no se pudo
+        // leer: ver bloqueoActivo.js).
+        const autorBloqueado = await bloqueoActivo.bloqueoDelAutor(clienteUsuarioId, ctx);
+
         if (ctx.chat.esGrupo) {
 
             console.log("3️⃣ Guardando mensaje del grupo");
@@ -204,7 +212,7 @@ module.exports = async ({
 
             // Un mensaje histórico queda en el historial, pero no se
             // clasifica para ningún worker de negocio.
-            if (mensaje && !esSalidaDelPrograma && !ingreso?.historico && !conCruz) {
+            if (mensaje && !esSalidaDelPrograma && !ingreso?.historico && !conCruz && !autorBloqueado) {
 
                 console.log("5️⃣ Clasificando mensaje");
 
@@ -257,6 +265,16 @@ module.exports = async ({
         if (esSalidaDelPrograma) {
 
             console.log(`↩️ Mensaje enviado por el programa, solo registrado [${traceId}]`);
+
+            return;
+
+        }
+
+        if (autorBloqueado) {
+
+            console.log(`🚫 [BLOQUEO] mensaje de un contacto bloqueado (${autorBloqueado.id}) — solo historial, sin acciones ni respuestas [${traceId}]`);
+
+            cicloMensaje.etapa("compuerta", { DECISION: "SOLO_HISTORIAL", MOTIVO: "AUTOR_BLOQUEADO" });
 
             return;
 

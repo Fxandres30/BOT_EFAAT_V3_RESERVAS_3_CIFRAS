@@ -107,7 +107,9 @@ inyectar("bot/funciones/bloqueo/bloqueadosRepo.js", {
     listarBloqueados: async usuarioId => { anotar("listarBloqueados", { usuarioId }); return { ok: true, bloqueados: [] }; },
     obtenerBloqueoDeContacto: async usuarioId => { anotar("bloqueoContacto", { usuarioId }); return { ok: true, bloqueado: null }; },
     crearBloqueo: async ({ usuarioId }) => { anotar("crearBloqueo", { usuarioId }); return { ok: true, bloqueado: { telefono: "3000000000" } }; },
-    desbloquear: async (id, usuarioId) => { anotar("desbloquear", { usuarioId }); return { ok: true, bloqueado: { telefono: "3000000000" } }; }
+    desbloquear: async (id, usuarioId) => { anotar("desbloquear", { usuarioId }); return { ok: true, bloqueado: { telefono: "3000000000" } }; },
+    listarIntentos: async () => ({ ok: true, intentos: [] }),
+    registrarBloqueoNativo: async () => {}
 });
 
 inyectar("bot/funciones/eventos/configEvento.js", {

@@ -103,6 +103,8 @@ function filaDelSorteo(fila, evento, sinIdentidad = false) {
 //   reservado   -> alguna fila de este sorteo en 'reservado'.
 //   en_proceso / bloqueado -> estado físico de la cuadrícula del tenant.
 //   ocupado_otro_sorteo -> reservado/pagado por OTRA identidad.
+//   sin_registro -> el número no tiene fila en la cuadrícula: no se puede
+//                  reservar, así que nunca se cuenta como libre.
 //   libre       -> el resto.
 function clasificarNumeros(evento, filas, sinIdentidad = false) {
 
@@ -124,7 +126,8 @@ function clasificarNumeros(evento, filas, sinIdentidad = false) {
 
         let clase;
 
-        if (estadosPropios.size === 1 && estadosPropios.has("pagado")) clase = "pagado";
+        if (filasNumero.length === 0) clase = "sin_registro";
+        else if (estadosPropios.size === 1 && estadosPropios.has("pagado")) clase = "pagado";
         else if (estadosPropios.has("reservado")) clase = "reservado";
         else if (estadosFisicos.has("en_proceso")) clase = "en_proceso";
         else if (estadosFisicos.has("bloqueado")) clase = "bloqueado";
@@ -141,7 +144,7 @@ function clasificarNumeros(evento, filas, sinIdentidad = false) {
 
 function resumir(evento, clasificacion) {
 
-    const conteo = { pagado: 0, reservado: 0, en_proceso: 0, bloqueado: 0, ocupado_otro_sorteo: 0, libre: 0 };
+    const conteo = { pagado: 0, reservado: 0, en_proceso: 0, bloqueado: 0, ocupado_otro_sorteo: 0, sin_registro: 0, libre: 0 };
 
     for (const clase of clasificacion.values()) conteo[clase] = (conteo[clase] || 0) + 1;
 
@@ -154,6 +157,7 @@ function resumir(evento, clasificacion) {
         enProceso: conteo.en_proceso,
         bloqueados: conteo.bloqueado,
         ocupadosOtroSorteo: conteo.ocupado_otro_sorteo,
+        sinRegistro: conteo.sin_registro,
         libres: conteo.libre,
         // Completo SOLO con todos los números únicos pagados (y al menos uno).
         completo: total > 0 && conteo.pagado === total

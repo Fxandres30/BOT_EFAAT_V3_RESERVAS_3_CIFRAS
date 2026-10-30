@@ -1,0 +1,123 @@
+.detalle {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-surface-muted);
+  font-size: var(--efaat-text-sm);
+  white-space: normal;
+}
+
+.compacto {
+  padding: 10px;
+}
+
+.capas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.capas li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--efaat-text-secondary);
+}
+
+.capaTitulo {
+  font-size: var(--efaat-text-xs);
+}
+
+.capaTexto {
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text);
+  font-weight: 600;
+}
+
+.aviso,
+.cargando,
+.error {
+  margin: 0;
+  font-size: var(--efaat-text-xs);
+  line-height: 1.5;
+  color: var(--efaat-text-secondary);
+}
+
+.error {
+  color: var(--efaat-error);
+}
+
+.resumen {
+  margin: 0;
+  font-weight: 600;
+}
+
+.grupos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.grupo {
+  padding: 8px 10px;
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+}
+
+.grupoCabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.grupoNombre {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.motivo {
+  margin: 4px 0 0;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  margin: 2px 0 0;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+}
+
+.acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.historial {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--efaat-text-xs);
+}
+
+.historial li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}

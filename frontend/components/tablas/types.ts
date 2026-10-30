@@ -100,3 +100,6 @@ export interface ActividadReserva {
     realizado_por: string | null;
     creado_en: string;
 }
+
+/** Ninguna operación en curso (valor por defecto de `accionando`). */
+export const SIN_ACCIONES: ReadonlySet<string> = new Set();

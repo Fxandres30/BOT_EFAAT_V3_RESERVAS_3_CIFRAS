@@ -73,9 +73,14 @@
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.close:hover {
+.close:hover:not(:disabled) {
   background: var(--efaat-surface-muted);
   color: var(--efaat-text);
+}
+
+.close:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .body {

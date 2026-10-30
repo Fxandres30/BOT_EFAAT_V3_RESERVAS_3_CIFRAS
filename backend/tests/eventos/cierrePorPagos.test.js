@@ -18,7 +18,6 @@ const assert = require("assert");
 // Suite anterior a la política de grupos autorizados (ver el ayudante).
 require("../utils/politicaGruposPermisiva");
 const path = require("path");
-const { execSync } = require("child_process");
 const fs = require("fs");
 
 const RAIZ = path.resolve(__dirname, "../..");
@@ -229,15 +228,13 @@ prueba("5b. reintento: el worker real (workerEventos) reintenta en el siguiente 
 
 });
 
-prueba("6a. la hora de cierre sigue igual, ahora siempre en hora de Colombia (solo cambia el cálculo de la hora respecto a HEAD)", async () => {
+// La comparación con `git show HEAD` que tenía esta prueba solo servía para
+// revisar el diff del 16/10 antes de commitearlo; ya en HEAD fallaba siempre
+// sin que hubiera regresión (retirada el 30/10/2026). Se conserva lo que
+// protege de verdad: hora de Colombia y el comportamiento por instantes.
+prueba("6a. la hora de cierre se calcula siempre en hora de Colombia", async () => {
 
-    const actual = fs.readFileSync(r("bot/funciones/eventos/lifecycle/verificarHoraCierre.js"), "utf8").replace(/\r\n/g, "\n");
-    const head = execSync("git show HEAD:backend/bot/funciones/eventos/lifecycle/verificarHoraCierre.js", { cwd: RAIZ, encoding: "utf8" }).replace(/\r\n/g, "\n");
-    // Fuera del bloque de la hora actual, el archivo es el de HEAD.
-    const recortadoActual = actual.replace(/\n    \/\/ Hora del día EN COLOMBIA[\s\S]*?    const horaActual =[\s\S]*?;\n/, "\n<HORA>\n");
-    const recortadoHead = head.replace(/\n    const horaActual =[\s\S]*?;\n/, "\n<HORA>\n");
-    assert.ok(recortadoActual.includes("<HORA>") && recortadoHead.includes("<HORA>"));
-    assert.strictEqual(recortadoActual, recortadoHead);
+    const actual = fs.readFileSync(r("bot/funciones/eventos/lifecycle/verificarHoraCierre.js"), "utf8");
     assert.ok(/timeZone: "America\/Bogota"/.test(actual) && !/getHours\(\)/.test(actual));
 
     // Comportamiento (instantes UTC fijos; da igual la zona del servidor):

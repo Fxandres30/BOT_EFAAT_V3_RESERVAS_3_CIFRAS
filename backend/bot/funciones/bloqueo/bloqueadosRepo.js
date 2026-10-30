@@ -13,6 +13,9 @@
 // ==========================================================================
 
 const supabase = require("../../../lib/supabase");
+const { olvidarBloqueos } = require("./bloqueoActivo");
+
+const VIOLACION_UNICA = "23505";
 
 // PostgREST no distingue "la tabla no existe" de otros errores con un campo
 // simple — el código real es "42P01" (undefined_table). Se usa para dar un
@@ -35,7 +38,11 @@ function migracionPendiente(error) {
 // de un bloqueo previo sobre la misma persona: volver a bloquear no
 // reinicia su historial.
 // ==========================================================================
-async function crearBloqueo({ usuarioId, telefono, lid, jid, nombre, motivo, bloqueadoPor }) {
+// Devuelve también `yaActivo`: el contacto YA estaba bloqueado (segundo clic
+// o petición repetida) — quien llama no debe reiniciar nada.
+async function crearBloqueo(datos, { reintentoPorCarrera = false } = {}) {
+
+    const { usuarioId, telefono, lid, jid, nombre, motivo, bloqueadoPor } = datos;
 
     if (!usuarioId) return { ok: false, motivo: "falta_usuario_id" };
 
@@ -62,7 +69,8 @@ async function crearBloqueo({ usuarioId, telefono, lid, jid, nombre, motivo, blo
             return { ok: false, motivo: "error_supabase", error: error.message };
         }
 
-        existente = (data || [])[0] || null;
+        // Si hay varias (una activa y otras históricas), manda la activa.
+        existente = (data || []).find(f => f.activo) || (data || [])[0] || null;
 
     }
 
@@ -86,7 +94,9 @@ async function crearBloqueo({ usuarioId, telefono, lid, jid, nombre, motivo, blo
 
         if (error) return { ok: false, motivo: "error_supabase", error: error.message };
 
-        return { ok: true, bloqueado: data, reactivado: true };
+        olvidarBloqueos(usuarioId);
+
+        return { ok: true, bloqueado: data, reactivado: true, yaActivo: existente.activo === true };
 
     }
 
@@ -106,11 +116,21 @@ async function crearBloqueo({ usuarioId, telefono, lid, jid, nombre, motivo, blo
         .single();
 
     if (error) {
+
         if (migracionPendiente(error)) return { ok: false, motivo: "migracion_pendiente", error: error.message };
+
+        // Dos bloqueos simultáneos del mismo contacto (doble clic): el índice
+        // único de la 019 rechaza el segundo INSERT. No es un error: se relee
+        // y se responde con el bloqueo que ganó.
+        if (error.code === VIOLACION_UNICA && !reintentoPorCarrera) return crearBloqueo(datos, { reintentoPorCarrera: true });
+
         return { ok: false, motivo: "error_supabase", error: error.message };
+
     }
 
-    return { ok: true, bloqueado: data, reactivado: false };
+    olvidarBloqueos(usuarioId);
+
+    return { ok: true, bloqueado: data, reactivado: false, yaActivo: false };
 
 }
 
@@ -145,6 +165,8 @@ async function desbloquear(id, usuarioId) {
         return { ok: false, motivo: "error_supabase", error: error.message };
 
     }
+
+    olvidarBloqueos(usuarioId);
 
     return { ok: true, bloqueado: data };
 
@@ -309,11 +331,116 @@ async function registrarIntento({ bloqueadoId, usuarioId, grupoId, grupoNombre, 
 
 }
 
+// ==========================================================================
+// registrarIntentoExpulsion(...) — historial de la expulsión centralizada
+// (procesarExpulsion.js, migración 040): un registro por intento real o
+// simulado, vinculado a su tarea. Contadores: "expulsiones" solo con una
+// expulsión VERIFICADA; "intentos_ingreso" solo cuando el origen fue un
+// reingreso al grupo (su significado de siempre). Best-effort: nunca lanza.
+// ==========================================================================
+async function registrarIntentoExpulsion({ bloqueadoId, usuarioId, expulsionId, grupoId, grupoNombre, resultado, error: detalle, origen, modo, statusWhatsapp, sessionId }) {
+
+    try {
+
+        const { error: errorInsert } = await supabase
+            .from("bloqueo_intentos")
+            .insert({
+                bloqueado_id: bloqueadoId,
+                usuario_id: usuarioId,
+                expulsion_id: expulsionId || null,
+                grupo_id: grupoId,
+                grupo_nombre: grupoNombre || null,
+                resultado,
+                error: detalle || null,
+                origen: origen || null,
+                modo: modo || null,
+                status_whatsapp: statusWhatsapp || null,
+                session_id: sessionId || null
+            });
+
+        if (errorInsert) {
+            console.error("❌ [BLOQUEOS] no se pudo registrar el intento de expulsión:", errorInsert.code || errorInsert.message);
+            return { ok: false, motivo: migracionPendiente(errorInsert) || errorInsert.code === "42703" ? "migracion_pendiente" : "error_supabase" };
+        }
+
+        const { data: actual } = await supabase
+            .from("bloqueados")
+            .select("intentos_ingreso, expulsiones")
+            .eq("id", bloqueadoId)
+            .maybeSingle();
+
+        if (!actual) return { ok: true, contadoresActualizados: false };
+
+        await supabase
+            .from("bloqueados")
+            .update({
+                intentos_ingreso: (actual.intentos_ingreso || 0) + (origen === "reingreso" ? 1 : 0),
+                expulsiones: (actual.expulsiones || 0) + (resultado === "expulsado" ? 1 : 0),
+                ultimo_grupo_id: grupoId,
+                ultimo_grupo_nombre: grupoNombre || null,
+                ultimo_intento_en: new Date().toISOString(),
+                actualizado_en: new Date().toISOString()
+            })
+            .eq("id", bloqueadoId);
+
+        return { ok: true, contadoresActualizados: true };
+
+    } catch (err) {
+
+        console.error("❌ [BLOQUEOS] excepción registrando el intento de expulsión:", err?.message);
+        return { ok: false, motivo: "error_interno" };
+
+    }
+
+}
+
+// Historial de intentos de UN bloqueo (panel), del cliente dueño.
+async function listarIntentos(usuarioId, bloqueadoId, { limite = 50 } = {}) {
+
+    const { data, error } = await supabase
+        .from("bloqueo_intentos")
+        .select("*")
+        .eq("usuario_id", usuarioId)
+        .eq("bloqueado_id", bloqueadoId)
+        .order("creado_en", { ascending: false })
+        .limit(limite);
+
+    if (error) return { ok: false, motivo: migracionPendiente(error) ? "migracion_pendiente" : "error_supabase", intentos: [] };
+
+    return { ok: true, intentos: data || [] };
+
+}
+
+// Resultado del bloqueo NATIVO de WhatsApp (columnas de la 040). Sin la
+// migración (42703) simplemente no se guarda.
+async function registrarBloqueoNativo(bloqueadoId, usuarioId, { estado, error: detalle = null }) {
+
+    try {
+
+        const { error } = await supabase
+            .from("bloqueados")
+            .update({ bloqueo_nativo_estado: estado, bloqueo_nativo_error: detalle, bloqueo_nativo_en: new Date().toISOString() })
+            .eq("id", bloqueadoId)
+            .eq("usuario_id", usuarioId);
+
+        if (error && error.code !== "42703") console.error("⚠️ [BLOQUEOS] no se pudo guardar el estado del bloqueo nativo:", error.code || error.message);
+
+    } catch (err) {
+
+        console.error("⚠️ [BLOQUEOS] excepción guardando el estado del bloqueo nativo:", err?.message);
+
+    }
+
+}
+
 module.exports = {
     crearBloqueo,
     desbloquear,
     listarBloqueados,
     obtenerBloqueoDeContacto,
     buscarBloqueoActivo,
-    registrarIntento
+    registrarIntento,
+    registrarIntentoExpulsion,
+    listarIntentos,
+    registrarBloqueoNativo
 };

@@ -62,6 +62,7 @@ const fakeSupabase = {
             or() { return b; },
             in() { return b; },
             order(c) { orden = c; return b; },
+            limit() { return b; },
             update(x) { operacion = "update"; cambios = x; return b; },
             maybeSingle() { unico = true; return b; },
             single() { unico = true; return b; },

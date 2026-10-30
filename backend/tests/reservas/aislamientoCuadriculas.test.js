@@ -137,9 +137,10 @@ prueba("evento SIN usuario_id: reservar, consultar y pagar se rechazan sin tocar
         assert.deepStrictEqual(await reservar(huerfano, ["31", "32"]), []);
         assert.strictEqual(await consultarReservas(huerfano, ["30"]), null, "rechazada: no se confunde con «sin filas»");
         const disp = await consultarDisponibilidad({ evento: huerfano });
-        assert.deepStrictEqual(disp, { numerosDisponibles: [], numerosOcupados: [] });
+        // Rechazada = no se pudo leer: se marca como error, nunca como «sin números».
+        assert.deepStrictEqual(disp, { numerosDisponibles: [], numerosOcupados: [], errorLectura: true });
         assert.deepStrictEqual(await consultarMisNumeros({ evento: huerfano, usuario: COMPRADOR }), []);
-        assert.strictEqual(await consultarNumero({ evento: huerfano, usuario: COMPRADOR, numero: "30" }), null);
+        assert.deepStrictEqual(await consultarNumero({ evento: huerfano, usuario: COMPRADOR, numero: "30" }), { numero: "30", estadoReal: "error_lectura" });
         const pago = await marcarReservasPagadasPorAdmin({ evento: huerfano, usuario: COMPRADOR, realizadoPor: "admin" });
         assert.strictEqual(pago.estado, "error");
     } finally {

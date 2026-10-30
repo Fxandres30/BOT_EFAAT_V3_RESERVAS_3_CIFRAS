@@ -1,8 +1,8 @@
 const { validarTextoReserva } = require("./validarTextoReserva");
 const { extraerNumeros, validarFormatoNumero } = require("./extraerNumeros");
 const { consultarReservas } = require("./consultarReservas");
-const { validarReservas } = require("./validarReservas");
-const { reservarNumeros } = require("./reservarNumeros");
+const { clasificarSolicitud } = require("./estadoNumeros");
+const { reservarNumerosDetallado } = require("./reservarNumeros");
 const { actualizarEvento } = require("./actualizarEvento");
 // SOLO presentación: mismo formateador central de listas de números que ya
 // usan plantillaMensaje.js y resolverConsulta.js ("( 27 )" / "( 27 - 45 )").
@@ -31,6 +31,27 @@ function sorteoAceptaReservas(evento, ahora = new Date()) {
     return !verificarHoraCierre(evento, ahora);
 
 }
+
+// Resultado final de cada número pedido (uno y solo uno por número):
+//   reservado    -> el UPDATE lo devolvió: quedó reservado para el cliente.
+//   ocupado      -> otra persona, otro sorteo o tomado durante la operación.
+//   propio       -> ya era del cliente en este sorteo.
+//   bloqueado / en_proceso.
+//   sin_registro / duplicado / desconocido -> no disponible (integridad).
+//   no_guardado  -> estaba libre pero no se pudo guardar ni confirmar
+//                   (error de escritura o de relectura). Nunca se presenta
+//                   como ocupado ni como reservado.
+const LISTAS = {
+    reservados: ["reservado"],
+    ocupados: ["ocupado"],
+    yaTuyos: ["propio"],
+    bloqueados: ["bloqueado"],
+    enProceso: ["en_proceso"],
+    noDisponibles: ["sin_registro", "duplicado", "desconocido"],
+    noGuardados: ["no_guardado"]
+};
+
+const CLASES_FINALES = new Set(Object.values(LISTAS).flat());
 
 async function detectarReserva({
 
@@ -66,143 +87,174 @@ async function detectarReserva({
         return null;
     }
 
-    const reservas = await consultarReservas(evento, numeros);
+    const filas = await consultarReservas(evento, numeros);
 
     // No se pudo leer la tabla: nunca se afirma que están ocupados.
-    if (!reservas) return errorTecnico();
+    if (!filas) return errorTecnico();
 
-    const resultado = validarReservas(
-        reservas,
-        usuario
-    );
+    const clases = clasificarSolicitud({ numeros, filas, evento, usuario });
+
+    const integridad = numeros.filter(n => LISTAS.noDisponibles.includes(clases.get(n)));
+    if (integridad.length) {
+        console.warn(`⚠️ [RESERVAS] números sin una fila válida en ${evento.tabla} (cliente ${evento.usuario_id}): ${integridad.map(n => `${n}=${clases.get(n)}`).join(", ")}`);
+    }
 
     // ===============================
-    // Todos ya son míos
+    // Reservar los libres
     // ===============================
-    if (
-        resultado.disponibles.length === 0 &&
-        resultado.ocupadosPorOtros.length === 0 &&
-        resultado.noDisponibles.length === 0 &&
-        resultado.yaSonMios.length > 0
-    ) {
-        return null;
+    const libres = numeros.filter(n => clases.get(n) === "libre");
+    const hechos = new Set();
+
+    if (libres.length) {
+
+        const escritura = await reservarNumerosDetallado({
+            evento,
+            numeros: libres,
+            usuario,
+            comprador: usuario?.nombre,
+            contacto: usuario?.telefono,
+            lib
+        });
+
+        // Contacto bloqueado por el cliente (bloqueo hecho mientras la reserva
+        // estaba en curso; el dispatcher ya descarta sus mensajes): no se
+        // reservó nada y a un bloqueado no se le responde.
+        if (escritura.contactoBloqueado) return null;
+
+        // Lo reservado es lo que el UPDATE devolvió, no lo que se leyó libre:
+        // otro pudo tomar un número entre la lectura y la escritura.
+        for (const fila of escritura.filas) hechos.add(String(fila.numero));
+        for (const n of hechos) clases.set(n, "reservado");
+
+        const perdidos = libres.filter(n => !hechos.has(n));
+
+        if (perdidos.length) {
+
+            // Se relee para decir la verdad de cada uno. Si sigue libre (falló
+            // la escritura) o no se pudo releer, NO quedó reservado y tampoco
+            // se sabe que esté ocupado.
+            const despues = await consultarReservas(evento, perdidos);
+            const relectura = despues ? clasificarSolicitud({ numeros: perdidos, filas: despues, evento, usuario }) : null;
+
+            for (const n of perdidos) {
+                const clase = relectura?.get(n);
+                clases.set(n, !clase || clase === "libre" ? "no_guardado" : clase);
+            }
+
+        }
+
+    }
+
+    // Ningún número puede quedar sin clasificación final.
+    for (const n of numeros) {
+        if (!CLASES_FINALES.has(clases.get(n))) {
+            console.error(`❌ [RESERVAS] número ${n} sin clasificación final (${clases.get(n)}): se informa como no reservado.`);
+            clases.set(n, "no_guardado");
+        }
     }
 
     // En el orden en que el cliente los pidió (la base los devuelve en otro).
-    const enOrden = (lista) => {
-        const pedidos = new Set(lista.map(String));
-        return numeros.filter(n => pedidos.has(n));
-    };
+    const lista = (nombre) => numeros.filter(n => LISTAS[nombre].includes(clases.get(n)));
 
-    const ocupadosDe = (r) => [...r.ocupadosPorOtros, ...r.noDisponibles].map(n => n.numero);
+    const r = Object.fromEntries(Object.keys(LISTAS).map(nombre => [nombre, lista(nombre)]));
 
-    // ===============================
-    // Ninguno disponible
-    // ===============================
-    if (resultado.disponibles.length === 0) {
+    // Todo falló al guardar o al confirmar: mismo mensaje técnico de siempre.
+    if (r.noGuardados.length === numeros.length) return errorTecnico();
 
-        const ocupados = enOrden(ocupadosDe(resultado));
+    if (r.reservados.length) await actualizarEvento(evento);
 
-        if (ocupados.length === 0) return errorTecnico();
+    const reaccion = decidirReaccion({
+        solicitados: numeros,
+        resultado: {
+            disponibles: libres.map(numero => ({ numero })),
+            ocupadosPorOtros: r.ocupados.map(numero => ({ numero }))
+        },
+        reservados: r.reservados
+    });
 
-        return todosOcupados(ocupados, decidirReaccion({ solicitados: numeros, resultado }));
-
-    }
-
-    // ===============================
-    // Reservar disponibles
-    // ===============================
-    const candidatos = enOrden(resultado.disponibles.map(n => n.numero));
-
-    const reserva = await reservarNumeros({
-        evento,
-        numeros: candidatos,
-        usuario,
-        comprador: usuario?.nombre,
-        contacto: usuario?.telefono,
-        lib
-    }) || [];
-
-    // Lo reservado es lo que el UPDATE devolvió, no lo que se leyó libre:
-    // otro pudo tomar un número entre la lectura y la escritura.
-    const hechos = new Set(reserva.map(r => String(r.numero)));
-    const perdidos = candidatos.filter(n => !hechos.has(n));
-
-    let ocupadosEnCarrera = [];
-    let clasificacion = resultado;
-
-    if (perdidos.length) {
-
-        const despues = await consultarReservas(evento, perdidos);
-        const relectura = despues ? validarReservas(despues, usuario) : null;
-
-        // Sin relectura, o sin reservar nada y sin que nadie los ocupara: fue
-        // un fallo al guardar, no una ocupación.
-        if (relectura) {
-            ocupadosEnCarrera = ocupadosDe(relectura);
-            clasificacion = {
-                ...resultado,
-                disponibles: resultado.disponibles.filter(n => hechos.has(String(n.numero))),
-                ocupadosPorOtros: [...resultado.ocupadosPorOtros, ...relectura.ocupadosPorOtros],
-                noDisponibles: [...resultado.noDisponibles, ...relectura.noDisponibles]
-            };
-        }
-
-        if (hechos.size === 0) {
-
-            if (ocupadosEnCarrera.length === 0) return errorTecnico();
-
-            return todosOcupados(enOrden(ocupadosDe(clasificacion)), decidirReaccion({ solicitados: numeros, resultado: clasificacion }));
-
-        }
-
-    }
-
-    await actualizarEvento(evento);
-
-    const reservados = enOrden([...hechos]);
-    const ocupados = enOrden(ocupadosDe(clasificacion));
-
-    const parcial = ocupados.length > 0;
-
-    let mensaje = parcial ? "⚠️ Reserva parcial.\n\n" : "✅ Reserva realizada correctamente.\n\n";
-
-    mensaje += `🎟️ Reservados: ${formatearListaNumeros(reservados)}`;
-
-    if (parcial) {
-        mensaje += `\n\n🔒 No se reservaron porque ya están ocupados: ${formatearListaNumeros(ocupados)}\n\nElige otros números.`;
-    }
+    // Las plantillas del panel solo saben decir «reservados» y «ocupados».
+    // Lo que ya era del cliente se añade después de la plantilla
+    // (textoAdicional); cualquier otro estado (bloqueado, en proceso, no
+    // disponible, no guardado) solo lo cuenta bien el mensaje fijo, que
+    // enumera cada número. Sin reservados ni ocupados no hay plantilla que
+    // aplique.
+    const otrosEstados = r.bloqueados.length + r.enProceso.length + r.noDisponibles.length + r.noGuardados.length;
+    const soloMensajeFijo = otrosEstados > 0 || (r.reservados.length === 0 && r.ocupados.length === 0);
 
     return {
 
-        ok: true,
+        ok: r.reservados.length > 0,
 
-        reservados,
+        ...r,
 
-        ocupados,
+        mensaje: construirMensaje(r, numeros.length),
 
-        mensaje,
+        ...(r.reservados.length ? { usuario } : {}),
 
-        usuario,
+        reaccion,
 
-        reaccion: decidirReaccion({ solicitados: numeros, resultado: clasificacion, reservados })
+        soloMensajeFijo,
+
+        textoAdicional: r.yaTuyos.length ? lineaYaTuyos(r.yaTuyos) : ""
 
     };
 
 }
 
-// Ninguno se pudo reservar porque están ocupados.
-function todosOcupados(ocupados, reaccion) {
-    return {
-        ok: false,
-        ocupados,
-        mensaje:
-`❌ No se pudo reservar: ${ocupados.length === 1 ? "ese número ya está ocupado" : "esos números ya están ocupados"}.
-🔒 Ocupados: ${formatearListaNumeros(ocupados)}
+const enSingular = (lista) => lista.length === 1;
 
-Elige otros números.`,
-        reaccion
-    };
+function lineaYaTuyos(lista) {
+    return `✅ Ya ${enSingular(lista) ? "es tuyo" : "son tuyos"}: ${formatearListaNumeros(lista)}`;
+}
+
+// Mensaje fijo: TODOS los números pedidos, cada uno en su grupo real.
+function construirMensaje(r, total) {
+
+    const partes = [];
+
+    if (r.reservados.length) {
+
+        const completa = r.reservados.length + r.yaTuyos.length === total;
+
+        partes.push(`${completa ? "✅ Reserva realizada correctamente." : "⚠️ Reserva parcial."}\n\n🎟️ Reservados: ${formatearListaNumeros(r.reservados)}`);
+
+        if (r.ocupados.length) {
+            partes.push(`🔒 No se reservaron porque ya están ocupados: ${formatearListaNumeros(r.ocupados)}`);
+        }
+
+    } else if (r.ocupados.length) {
+
+        partes.push(`❌ No se pudo reservar: ${enSingular(r.ocupados) ? "ese número ya está ocupado" : "esos números ya están ocupados"}.\n🔒 Ocupados: ${formatearListaNumeros(r.ocupados)}`);
+
+    }
+
+    if (r.yaTuyos.length) partes.push(lineaYaTuyos(r.yaTuyos));
+
+    if (r.bloqueados.length) {
+        const uno = enSingular(r.bloqueados);
+        partes.push(`⛔ ${uno ? "Está bloqueado" : "Están bloqueados"} y no se ${uno ? "puede" : "pueden"} reservar por ahora: ${formatearListaNumeros(r.bloqueados)}`);
+    }
+
+    if (r.enProceso.length) {
+        const uno = enSingular(r.enProceso);
+        partes.push(`⏳ ${uno ? "Está" : "Están"} en proceso y no se ${uno ? "puede" : "pueden"} reservar por ahora: ${formatearListaNumeros(r.enProceso)}`);
+    }
+
+    if (r.noDisponibles.length) {
+        partes.push(`🚫 No ${enSingular(r.noDisponibles) ? "está disponible" : "están disponibles"}: ${formatearListaNumeros(r.noDisponibles)}`);
+    }
+
+    if (r.noGuardados.length) {
+        const uno = enSingular(r.noGuardados);
+        partes.push(`⚠️ No se ${uno ? "pudo" : "pudieron"} reservar por un problema técnico: ${formatearListaNumeros(r.noGuardados)}. Intenta de nuevo con ${uno ? "ese número" : "esos números"}.`);
+    }
+
+    if (r.ocupados.length + r.bloqueados.length + r.enProceso.length + r.noDisponibles.length > 0) {
+        partes.push("Elige otros números.");
+    }
+
+    return partes.join("\n\n");
+
 }
 
 // Fallo técnico: no se sabe nada de los números, así que no se dice que

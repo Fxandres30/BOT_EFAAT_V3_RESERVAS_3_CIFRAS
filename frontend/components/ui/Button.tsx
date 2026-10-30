@@ -2,6 +2,7 @@ import { forwardRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 import { cn } from "./cn";
+import { Spinner } from "./Spinner";
 import styles from "./Button.module.css";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
@@ -12,6 +13,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: ButtonSize;
   fullWidth?: boolean;
   loading?: boolean;
+  /** Texto mientras `loading` (qué se está haciendo). Sin él, el de siempre. */
+  loadingText?: ReactNode;
   leftIcon?: ReactNode;
   rightIcon?: ReactNode;
 }
@@ -22,6 +25,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     size = "md",
     fullWidth = false,
     loading = false,
+    loadingText,
     leftIcon,
     rightIcon,
     disabled,
@@ -48,7 +52,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       {...rest}
     >
       {loading ? (
-        <span className={styles.spinner} aria-hidden="true" />
+        <Spinner />
       ) : (
         leftIcon && (
           <span className={styles.icon} aria-hidden="true">
@@ -56,7 +60,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
           </span>
         )
       )}
-      {children}
+      {loading && loadingText != null ? loadingText : children}
       {!loading && rightIcon && (
         <span className={styles.icon} aria-hidden="true">
           {rightIcon}

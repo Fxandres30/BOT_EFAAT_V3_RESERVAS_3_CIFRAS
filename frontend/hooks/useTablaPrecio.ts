@@ -32,6 +32,7 @@ import { derivarPaquetes } from "@/components/tablas/derivarPaquetes";
 import { estadoEfectivo } from "@/components/tablas/estadoVisual";
 import { construirHistorial, type ContactoIdentidad } from "@/components/tablas/historialDatos";
 import { obtenerContactos } from "@/services/contactos/obtenerContactos";
+import { useAccionesPorClave } from "@/hooks/useAccion";
 import type { NumeroReserva, EventoActivo, ActividadReserva } from "@/components/tablas/types";
 
 // Único hook fuente-de-verdad de la pantalla /tablas/:precio. Todo lo que
@@ -53,9 +54,12 @@ export function useTablaPrecio(precio: number) {
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [accionando, setAccionando] = useState<string | null>(null);
-    // Operación por lote en curso: una segunda (doble clic) no se lanza.
-    const loteEnCurso = useRef(false);
+    // Operaciones en curso, una clave por número ("lote" = operación por
+    // lote, "*" = reinicio): cada número se procesa por su cuenta, así
+    // operar el 05 no bloquea ni hace girar el 07. Una segunda operación
+    // sobre la MISMA clave (doble clic) no se lanza.
+    const acciones = useAccionesPorClave();
+    const accionando = acciones.activas;
 
     // Sin filas visibles: qué dice el backend (cuadrícula creada, migración
     // pendiente, RLS que oculta las filas...). null mientras haya filas.
@@ -64,60 +68,80 @@ export function useTablaPrecio(precio: number) {
     // real no la repite.
     const preparado = useRef<string | null>(null);
 
-    const cargar = useCallback(async (uid: string, config: TablaConfig | null) => {
+    // Recargas solapadas (tiempo real, dos números operados a la vez): solo
+    // se aplica la lectura más reciente, y quien espera una recarga anterior
+    // termina cuando la más reciente ya está en pantalla.
+    const cargaSeq = useRef(0);
+    const cargaVigente = useRef<Promise<void> | null>(null);
 
-        if (!config) {
-            setError("No existe una tabla configurada para este precio.");
-            setLoading(false);
-            return;
-        }
+    const cargar = useCallback((uid: string, config: TablaConfig | null): Promise<void> => {
+        const p = leer(++cargaSeq.current);
+        cargaVigente.current = p;
+        return p;
 
-        try {
+        async function leer(mia: number): Promise<void> {
 
-            // La actividad se lee una sola vez con el límite del historial;
-            // «Actividad reciente» muestra sus primeras filas (misma consulta
-            // y mismo orden que antes).
-            const [leidos, evt, act, hist] = await Promise.all([
-                obtenerTabla(precio, uid),
-                obtenerEventoActivo(config.tabla, uid),
-                obtenerActividad(config.tabla, uid, LIMITE_HISTORIAL),
-                obtenerEventosHistorial(config.tabla, uid)
-            ]);
+            const superada = () => mia !== cargaSeq.current;
 
-            let nums = leidos;
-
-            // Ninguna fila visible no significa "tabla vacía": puede que el
-            // cliente aún no tenga cuadrícula (se crea aquí si la base lo
-            // permite) o que la base la tenga y no deje leerla.
-            if (nums.length === 0 && preparado.current !== `${uid}:${precio}`) {
-
-                preparado.current = `${uid}:${precio}`;
-
-                const r = await prepararCuadricula(precio);
-                if (r.ok && r.estado === "completa") nums = await obtenerTabla(precio, uid);
-
-                const d = diagnosticar(r, nums.length);
-                setDiagnostico(d.tipo === "lista" ? null : d);
-
-            } else if (nums.length > 0) {
-
-                setDiagnostico(null);
-
+            if (!config) {
+                setError("No existe una tabla configurada para este precio.");
+                setLoading(false);
+                return;
             }
 
-            setNumeros(nums);
-            setEventoActivo(evt);
-            setActividad(act);
-            setEventosHistorial(hist);
-            setError(null);
+            try {
 
-        } catch (e) {
+                // La actividad se lee una sola vez con el límite del historial;
+                // «Actividad reciente» muestra sus primeras filas (misma consulta
+                // y mismo orden que antes).
+                const [leidos, evt, act, hist] = await Promise.all([
+                    obtenerTabla(precio, uid),
+                    obtenerEventoActivo(config.tabla, uid),
+                    obtenerActividad(config.tabla, uid, LIMITE_HISTORIAL),
+                    obtenerEventosHistorial(config.tabla, uid)
+                ]);
 
-            setError(e instanceof Error ? e.message : "No se pudo cargar la tabla.");
+                if (superada()) return cargaVigente.current ?? undefined;
 
-        } finally {
+                let nums = leidos;
 
-            setLoading(false);
+                // Ninguna fila visible no significa "tabla vacía": puede que el
+                // cliente aún no tenga cuadrícula (se crea aquí si la base lo
+                // permite) o que la base la tenga y no deje leerla.
+                if (nums.length === 0 && preparado.current !== `${uid}:${precio}`) {
+
+                    preparado.current = `${uid}:${precio}`;
+
+                    const r = await prepararCuadricula(precio);
+                    if (r.ok && r.estado === "completa") nums = await obtenerTabla(precio, uid);
+
+                    if (superada()) return cargaVigente.current ?? undefined;
+
+                    const d = diagnosticar(r, nums.length);
+                    setDiagnostico(d.tipo === "lista" ? null : d);
+
+                } else if (nums.length > 0) {
+
+                    setDiagnostico(null);
+
+                }
+
+                setNumeros(nums);
+                setEventoActivo(evt);
+                setActividad(act);
+                setEventosHistorial(hist);
+                setError(null);
+
+            } catch (e) {
+
+                if (superada()) return cargaVigente.current ?? undefined;
+                setError(e instanceof Error ? e.message : "No se pudo cargar la tabla.");
+
+            } finally {
+
+                setLoading(false);
+
+            }
 
         }
 
@@ -280,27 +304,47 @@ export function useTablaPrecio(precio: number) {
 
     }, [numeros]);
 
-    const ejecutar = useCallback(async <T,>(numero: string, accion: () => Promise<T>): Promise<T> => {
+    // Operación sobre una clave + recarga de la tabla (también tras un
+    // rechazo: el número pudo cambiar entretanto). Con `recargaEnSegundoPlano`
+    // el resultado del servidor se devuelve en cuanto llega y la clave sigue
+    // ocupada hasta que la tabla recargada está en pantalla: no se vuelve a
+    // operar sobre un estado viejo. null = esa clave ya estaba en curso.
+    const { iniciar, terminar } = acciones;
 
-        setAccionando(numero);
+    const ejecutar = useCallback(async <T,>(clave: string, accion: () => Promise<T>, recargaEnSegundoPlano = false): Promise<T | null> => {
+
+        if (!iniciar(clave)) return null;
+
+        const recargar = () => (usuarioId ? cargar(usuarioId, config) : Promise.resolve());
+
+        let resultado: T;
 
         try {
-
-            const resultado = await accion();
-            // También tras un rechazo: el número pudo cambiar entretanto.
-            if (usuarioId) await cargar(usuarioId, config);
-            return resultado;
-
-        } finally {
-
-            setAccionando(null);
-
+            resultado = await accion();
+        } catch (e) {
+            // Sin respuesta clara: la tabla se relee igualmente.
+            recargar().catch(() => {}).finally(() => terminar(clave));
+            throw e;
         }
 
-    }, [usuarioId, config, cargar]);
+        if (recargaEnSegundoPlano) {
+            // cargar ya deja en pantalla un error de lectura.
+            recargar().catch(() => {}).finally(() => terminar(clave));
+            return resultado;
+        }
+
+        try {
+            await recargar();
+            return resultado;
+        } finally {
+            terminar(clave);
+        }
+
+    }, [usuarioId, config, cargar, iniciar, terminar]);
 
     // Sin sesión todavía: nada que operar.
     const sinSesion: Resultado = { ok: false, motivo: "sin_sesion", mensaje: "Debes iniciar sesión." };
+    const enCurso: Resultado = { ok: false, motivo: "en_curso", mensaje: "Ya se está procesando este número. Espera a que termine." };
 
     return {
 
@@ -326,42 +370,37 @@ export function useTablaPrecio(precio: number) {
 
         reservar: async (numero: string, datos: DatosReserva): Promise<Resultado> => {
             if (!usuarioId) return sinSesion;
-            return ejecutar(numero, () => reservarNumeroManual(precio, numero, datos));
+            return (await ejecutar(numero, () => reservarNumeroManual(precio, numero, datos))) ?? enCurso;
         },
 
         marcarPagado: async (numero: string, datos?: DatosPago): Promise<Resultado> => {
             if (!usuarioId) return sinSesion;
-            return ejecutar(numero, () => pagarNumeroManual(precio, numero, datos));
+            // Éxito en cuanto el servidor lo confirma; la tabla se pone al día detrás.
+            return (await ejecutar(numero, () => pagarNumeroManual(precio, numero, datos), true)) ?? enCurso;
         },
 
         // Varios números (o uno, desde las acciones rápidas): UNA solicitud y
-        // una escritura en el servidor, y una recarga de la tabla al final
-        // (se espera: el resultado se muestra con la cuadrícula ya al día, para
-        // no seleccionar sobre estados viejos). null = ya había un lote en
-        // curso (no se lanza).
+        // una escritura en el servidor, y una recarga de la tabla al final.
+        // Pagos: el resultado se muestra en cuanto el servidor lo confirma y
+        // la tabla se recarga detrás; mientras tanto "lote" sigue ocupado y la
+        // selección queda bloqueada (no se selecciona sobre estados viejos).
+        // Las demás operaciones esperan la recarga, como antes.
+        // null = ya había un lote en curso (no se lanza).
         procesarLote: async (operacion: OperacionLote, incluidos: NumeroSeleccionable[], datos: DatosOperacion, solicitudLote: string): Promise<ResultadoOperacion | null> => {
-            if (!usuarioId || loteEnCurso.current) return null;
-            loteEnCurso.current = true;
-            setAccionando("lote");
-            try {
-                return await procesarOperacion({
-                    operacion,
-                    incluidos,
-                    enviar: (cuerpo) => operarLote(precio, cuerpo),
-                    datos,
-                    solicitudLote
-                });
-            } finally {
-                await cargar(usuarioId, config);
-                setAccionando(null);
-                loteEnCurso.current = false;
-            }
+            if (!usuarioId) return null;
+            return ejecutar("lote", () => procesarOperacion({
+                operacion,
+                incluidos,
+                enviar: (cuerpo) => operarLote(precio, cuerpo),
+                datos,
+                solicitudLote
+            }), operacion === "pagar");
         },
 
         // Libera una reserva, anula un pago o desbloquea, según el estado real.
         liberar: async (numero: string, datos?: DatosLiberar): Promise<Resultado> => {
             if (!usuarioId) return sinSesion;
-            return ejecutar(numero, () => liberarNumeroManual(precio, numero, datos));
+            return (await ejecutar(numero, () => liberarNumeroManual(precio, numero, datos))) ?? enCurso;
         },
 
         // Impacto del reinicio (solo lectura) para el diálogo de confirmación.
@@ -374,7 +413,9 @@ export function useTablaPrecio(precio: number) {
         // anticipadas aceptadas y la huella revisada). Recarga al terminar.
         reiniciar: async (confirmacion?: ConfirmacionReinicio): Promise<ResultadoReinicio> => {
             if (!usuarioId) throw new Error("Tu sesión expiró. Vuelve a iniciar sesión.");
-            return ejecutar("*", () => reiniciarTabla(precio, usuarioId, confirmacion));
+            const r = await ejecutar("*", () => reiniciarTabla(precio, usuarioId, confirmacion));
+            if (!r) throw new Error("Ya se está reiniciando esta tabla. Espera a que termine.");
+            return r;
         }
 
     };

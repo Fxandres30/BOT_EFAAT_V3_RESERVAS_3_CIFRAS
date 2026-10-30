@@ -100,6 +100,8 @@ export const MENSAJES_COMPARTIR: Record<string, string> = {
     error_imagen: "No se pudo generar la imagen de la tabla. No se envió nada.",
     imagen_invalida: "La imagen de la tabla no es válida o es demasiado grande. No se envió nada.",
     tiempo_agotado: "El envío tardó demasiado en responder. Puede que se haya enviado: revisa los grupos antes de reintentar.",
+    sin_respuesta: "No llegó la respuesta del servidor (conexión interrumpida). Puede que se haya publicado en algún grupo: «Reintentar» repite la MISMA solicitud y no vuelve a enviar a los grupos ya hechos.",
+    vista_previa_sin_respuesta: "No se pudo cargar la vista previa (sin conexión con el servidor). No se envió nada.",
     migracion_pendiente: "Guardar la selección de grupos todavía no está disponible."
 };
 

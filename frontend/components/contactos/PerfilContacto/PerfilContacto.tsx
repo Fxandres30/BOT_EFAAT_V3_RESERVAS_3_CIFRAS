@@ -11,6 +11,7 @@ import { obtenerBloqueoDeContacto, crearBloqueo, desbloquear } from "@/services/
 import { getUser } from "@/services/auth/getUser";
 import type { Contacto, PerfilContacto as PerfilContactoTipo } from "@/components/contactos/types";
 import type { Bloqueado } from "@/components/bloqueados/types";
+import { DetalleExpulsion } from "@/components/bloqueados/EstadoExpulsion/EstadoExpulsion";
 
 interface Props {
     contacto: Contacto;
@@ -347,6 +348,11 @@ export default function PerfilContacto({ contacto, usuarioId, onTelefonoAgregado
                 </div>
 
             )}
+
+            {/* Bloqueo registrado ≠ expulsado: estado real por grupo. */}
+            {bloqueo && bloqueo.activo && <DetalleExpulsion key={bloqueo.id} bloqueadoId={bloqueo.id} compacto />}
+
+            {bloqueo && errorBloqueo && <p className="perfil-error">{errorBloqueo}</p>}
 
             {formularioAbierto && (
 

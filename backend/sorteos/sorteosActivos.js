@@ -108,13 +108,21 @@ function publicacionDetectado(filas) {
     return typeof guardado?.texto === "string" ? guardado.texto : "";
 }
 
+// ok=false: no se pudo leer. Nunca se presenta como «0 reservados» ni deja
+// pasar una corrección que exige que no haya números tomados.
 async function contarNumeros(usuarioId, tabla, identidad) {
-    if (!tabla || !identidad) return { reservados: 0, pagados: 0 };
-    const { data } = await supabase.from(tabla).select("estado")
+    if (!tabla || !identidad) return { ok: true, reservados: 0, pagados: 0 };
+    const { data, error } = await supabase.from(tabla).select("estado")
         .eq("usuario_id", usuarioId).eq("identidad_evento_real", identidad);
+    if (error) {
+        console.error("❌ [SORTEOS ACTIVOS] no se pudieron contar los números:", error.message);
+        return { ok: false, reservados: null, pagados: null };
+    }
     const filas = data || [];
-    return { reservados: filas.filter(f => f.estado === "reservado").length, pagados: filas.filter(f => f.estado === "pagado").length };
+    return { ok: true, reservados: filas.filter(f => f.estado === "reservado").length, pagados: filas.filter(f => f.estado === "pagado").length };
 }
+
+const SIN_CONTEO = "No pudimos revisar los números de la tabla en este momento. No se cambió nada; inténtalo de nuevo en unos minutos.";
 
 async function sorteoProgramadoDe(usuarioId, identidad) {
     if (!identidad) return null;
@@ -379,7 +387,7 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
     }
 
     const despues = await contarNumeros(usuarioId, actual.tabla, actual.identidad);
-    if (antes.reservados !== despues.reservados || antes.pagados !== despues.pagados) {
+    if (antes.ok && despues.ok && (antes.reservados !== despues.reservados || antes.pagados !== despues.pagados)) {
         // Solo puede deberse a reservas/pagos reales llegando a la vez (el
         // guardado no escribe en la tabla); se informa, no se revierte nada.
         console.warn("⚠️ [SORTEOS ACTIVOS] reservas/pagos cambiaron durante la edición (actividad simultánea del bot).");
@@ -433,6 +441,7 @@ async function corregirIdentidad(usuarioId, filas, actual, nuevo, programado) {
         if (!conf) return falla("validacion", { errores: [{ campo: "valor", mensaje: `No tienes una tabla configurada para $${nuevo.valor}.` }] });
         if (conf.tabla !== actual.tabla) {
             const tomados = await contarNumeros(usuarioId, actual.tabla, identidadAnterior);
+            if (!tomados.ok) return falla("error_supabase", { mensaje: SIN_CONTEO });
             if (tomados.reservados + tomados.pagados > 0) {
                 return falla("validacion", { errores: [{ campo: "valor", mensaje: `Ese valor usa otra tabla de números y este sorteo ya tiene ${tomados.reservados} reservado(s) y ${tomados.pagados} pagado(s). Desactívalo y crea un sorteo nuevo con ese valor.` }] });
             }
@@ -443,6 +452,7 @@ async function corregirIdentidad(usuarioId, filas, actual, nuevo, programado) {
 
     // La identidad nueva no puede tener ya números en la tabla (serían de otro sorteo).
     const ajenos = await contarNumeros(usuarioId, tabla, identidad);
+    if (!ajenos.ok) return falla("error_supabase", { mensaje: SIN_CONTEO });
     if (ajenos.reservados + ajenos.pagados > 0) {
         return falla("conflicto", { mensaje: "La tabla ya tiene números de un sorteo con esa lotería, fecha, hora y valor. No se cambió nada." });
     }

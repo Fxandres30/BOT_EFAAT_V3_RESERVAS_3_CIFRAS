@@ -104,21 +104,32 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
         setConfirmando(true);
         setError(null);
 
-        const r = await apiSorteos.publicarAhora(vista.id, vista.version, imagen.imagen, vista.reinicio?.al_publicar ? { confirmado: reinicioConfirmado } : undefined, perfil ?? undefined);
+        try {
 
-        if (r.ok) {
-            setResultado(r.data);
-        } else if (r.motivo === "tiempo_agotado" || r.motivo === "backend_no_disponible") {
-            // Sin respuesta: pudo publicarse. Se lee el estado real.
-            const s = await apiSorteos.obtener(vista.id);
-            if (s.ok && s.data.estado !== "borrador") setResultado(resumenDesdeSorteo(s.data));
-            else setError(describirError(r));
-        } else {
-            setError([r.mensaje || describirError(r), ...(r.bloqueos || []), ...(r.errores || []).map(e => e.mensaje)].join(" "));
+            const r = await apiSorteos.publicarAhora(vista.id, vista.version, imagen.imagen, vista.reinicio?.al_publicar ? { confirmado: reinicioConfirmado } : undefined, perfil ?? undefined);
+
+            if (r.ok) {
+                setResultado(r.data);
+            } else if (r.motivo === "tiempo_agotado" || r.motivo === "backend_no_disponible") {
+                // Sin respuesta: pudo publicarse. Se lee el estado real.
+                const s = await apiSorteos.obtener(vista.id);
+                if (s.ok && s.data.estado !== "borrador") setResultado(resumenDesdeSorteo(s.data));
+                else setError(describirError(r));
+            } else {
+                setError([r.mensaje || describirError(r), ...(r.bloqueos || []), ...(r.errores || []).map(e => e.mensaje)].join(" "));
+            }
+
+        } catch {
+
+            setError("No se pudo confirmar la publicación. Revisa el estado del sorteo antes de reintentar: pudo haberse publicado.");
+
+        } finally {
+
+            // El modal vuelve a poder cerrarse aunque algo falle.
+            setConfirmando(false);
+            publicandoRef.current = false;
+
         }
-
-        setConfirmando(false);
-        publicandoRef.current = false;
 
     }
 
@@ -135,17 +146,27 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
 
         if (!vista) return;
 
+        if (publicandoRef.current) return;
+        publicandoRef.current = true;
         setConfirmando(true);
         setError(null);
 
-        const r = await apiSorteos.confirmar(
-            vista.id,
-            vista.version,
-            pideConfirmarReinicio ? { confirmado: reinicioConfirmado } : undefined,
-            perfil ?? undefined
-        );
+        let r: Awaited<ReturnType<typeof apiSorteos.confirmar>>;
 
-        setConfirmando(false);
+        try {
+            r = await apiSorteos.confirmar(
+                vista.id,
+                vista.version,
+                pideConfirmarReinicio ? { confirmado: reinicioConfirmado } : undefined,
+                perfil ?? undefined
+            );
+        } catch {
+            setError("No se pudo confirmar la programación. Revisa el sorteo antes de reintentar.");
+            return;
+        } finally {
+            setConfirmando(false);
+            publicandoRef.current = false;
+        }
 
         if (!r.ok) {
             setError([describirError(r), ...(r.bloqueos || []), ...(r.errores || []).map(e => e.mensaje)].join(" "));
@@ -156,10 +177,13 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
 
     }
 
+    // Publicando o confirmando, ni la X, ni Escape, ni el fondo cierran el
+    // modal (antes se podía cerrar a mitad y el resultado se perdía).
     return (
         <Modal
             open={!!sorteoId}
             onClose={onClose}
+            bloquearCierre={confirmando}
             size="lg"
             title={inmediato ? "Sorteo instantáneo · vista previa" : "Vista previa"}
             footer={

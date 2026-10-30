@@ -20,6 +20,9 @@ export interface ModalProps {
   closeOnBackdrop?: boolean;
   /** Mostrar la X. Por defecto true. */
   showClose?: boolean;
+  /** Operación en curso: ni la X, ni Escape, ni el fondo cierran el modal.
+   *  Quien lo usa debe liberarlo al terminar (también si falla). */
+  bloquearCierre?: boolean;
   footer?: ReactNode;
   children?: ReactNode;
   className?: string;
@@ -33,6 +36,7 @@ export function Modal({
   size = "md",
   closeOnBackdrop = true,
   showClose = true,
+  bloquearCierre = false,
   footer,
   children,
   className,
@@ -42,7 +46,15 @@ export function Modal({
   const labelId = useId();
   const descId = useId();
 
-  const handleClose = useCallback(() => onClose(), [onClose]);
+  // El valor vigente sin re-suscribir el efecto (que devolvería el foco).
+  const bloqueado = useRef(bloquearCierre);
+  useEffect(() => {
+    bloqueado.current = bloquearCierre;
+  }, [bloquearCierre]);
+
+  const handleClose = useCallback(() => {
+    if (!bloqueado.current) onClose();
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -113,6 +125,8 @@ export function Modal({
                 type="button"
                 className={styles.close}
                 aria-label="Cerrar"
+                disabled={bloquearCierre}
+                title={bloquearCierre ? "Espera a que termine la operación" : undefined}
                 onClick={handleClose}
               >
                 <X size={18} />

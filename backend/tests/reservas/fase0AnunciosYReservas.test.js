@@ -80,8 +80,10 @@ inyectar(r("bot/funciones/reservas/actualizarEvento.js"), { actualizarEvento: as
 inyectar(r("bot/funciones/reservas/consultarReservas.js"), {
     consultarReservas: async (_evento, numeros) => numeros.map(numero => ({ numero, estado: "libre" }))
 });
+const reservarFalso = async ({ numeros }) => { espias.reservados.push(...numeros); return numeros.map(numero => ({ numero })); };
 inyectar(r("bot/funciones/reservas/reservarNumeros.js"), {
-    reservarNumeros: async ({ numeros }) => { espias.reservados.push(...numeros); return numeros.map(numero => ({ numero })); }
+    reservarNumeros: reservarFalso,
+    reservarNumerosDetallado: async (datos) => ({ filas: await reservarFalso(datos), error: null })
 });
 
 const { extraerNumeros } = require(r("bot/funciones/reservas/extraerNumeros.js"));
