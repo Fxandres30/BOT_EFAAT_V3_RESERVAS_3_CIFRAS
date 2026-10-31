@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -19,6 +19,7 @@ import {
   LogOut,
   UserCog,
   GraduationCap,
+  ChevronDown,
   type LucideIcon,
 } from "lucide-react";
 
@@ -65,6 +66,61 @@ export const NAV: NavItem[] = [
   { href: "/bloqueados", label: "Bloqueados", icon: ShieldBan, seccion: "Control" },
 ];
 
+// Entradas de NAV agrupadas por sección, en el mismo orden.
+const SECCIONES = NAV.reduce<{ seccion: SeccionNav; items: NavItem[] }[]>((grupos, item) => {
+  const ultimo = grupos[grupos.length - 1];
+  if (ultimo && ultimo.seccion === item.seccion) ultimo.items.push(item);
+  else grupos.push({ seccion: item.seccion, items: [item] });
+  return grupos;
+}, []);
+
+function esActiva(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+// Secciones contraídas: preferencia visual de este navegador. El Sidebar se
+// monta de nuevo en cada página, así que se recuerda en localStorage (sin
+// almacenamiento, solo en memoria). En el servidor todas están abiertas.
+const CLAVE_CONTRAIDAS = "efaat:sidebar:contraidas";
+let contraidasEnMemoria = "[]";
+const oyentesContraidas = new Set<() => void>();
+
+function suscribirContraidas(oyente: () => void) {
+  oyentesContraidas.add(oyente);
+  window.addEventListener("storage", oyente);
+  return () => {
+    oyentesContraidas.delete(oyente);
+    window.removeEventListener("storage", oyente);
+  };
+}
+
+function leerContraidasCrudo(): string {
+  try {
+    return window.localStorage.getItem(CLAVE_CONTRAIDAS) ?? contraidasEnMemoria;
+  } catch {
+    return contraidasEnMemoria;
+  }
+}
+
+function guardarContraidas(lista: SeccionNav[]) {
+  contraidasEnMemoria = JSON.stringify(lista);
+  try {
+    window.localStorage.setItem(CLAVE_CONTRAIDAS, contraidasEnMemoria);
+  } catch {
+    // Sin almacenamiento: el cambio vale mientras la página siga abierta.
+  }
+  oyentesContraidas.forEach((oyente) => oyente());
+}
+
+function interpretarContraidas(crudo: string): SeccionNav[] {
+  try {
+    const valor = JSON.parse(crudo);
+    return Array.isArray(valor) ? valor.filter((s) => SECCIONES.some((g) => g.seccion === s)) : [];
+  } catch {
+    return [];
+  }
+}
+
 // Entrada del menú de la ruta actual (la barra superior la muestra).
 export function entradaActual(pathname: string): NavItem | null {
   return NAV.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) ?? null;
@@ -78,6 +134,16 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     pathname === "/aprende" || pathname.startsWith("/aprende/");
 
   const [email, setEmail] = useState<string | null>(null);
+  const contraidasCrudo = useSyncExternalStore(suscribirContraidas, leerContraidasCrudo, () => "[]");
+  const contraidas = useMemo(() => interpretarContraidas(contraidasCrudo), [contraidasCrudo]);
+
+  function alternarSeccion(seccion: SeccionNav) {
+    guardarContraidas(
+      contraidas.includes(seccion)
+        ? contraidas.filter((s) => s !== seccion)
+        : [...contraidas, seccion]
+    );
+  }
   const [cerrando, setCerrando] = useState(false);
 
   useEffect(() => {
@@ -104,42 +170,66 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       <div className="sidebar__brand">
         <span className="sidebar__logo" aria-hidden="true">E</span>
         <span className="sidebar__brandText">EFAAT</span>
-        <span className="sidebar__brandTag">Panel</span>
       </div>
 
       <nav className="sidebar__nav" aria-label="Navegación principal">
-        {NAV.map((item, i) => {
-          const active =
-            pathname === item.href || pathname.startsWith(`${item.href}/`);
-
-          const Icon = item.icon;
-
-          const abreSeccion = i === 0 || NAV[i - 1].seccion !== item.seccion;
+        {SECCIONES.map(({ seccion, items }) => {
+          const abierta = !contraidas.includes(seccion);
+          const contieneActiva = items.some((item) => esActiva(pathname, item.href));
+          const idLista = `sidebar-seccion-${seccion}`;
 
           return (
-            <Fragment key={item.href}>
-              {abreSeccion && (
-                <span className="sidebar__section">{item.seccion}</span>
-              )}
-              <Link
-                href={item.href}
-                prefetch={false}
-                onClick={onClose}
-                aria-current={active ? "page" : undefined}
-                className={
-                  active
-                    ? "sidebar__item sidebar__item--active"
-                    : "sidebar__item"
-                }
+            <div key={seccion} className="sidebar__group">
+              <button
+                type="button"
+                className="sidebar__section"
+                aria-expanded={abierta}
+                aria-controls={idLista}
+                onClick={() => alternarSeccion(seccion)}
               >
-                <Icon
-                  size={17}
-                  className="sidebar__itemIcon"
-                  aria-hidden="true"
-                />
-                <span className="sidebar__itemText">{item.label}</span>
-              </Link>
-            </Fragment>
+                <span className="sidebar__sectionText">{seccion}</span>
+                {/* Contraída con la página actual dentro: se sigue indicando. */}
+                {!abierta && contieneActiva && (
+                  <span className="sidebar__sectionDot" role="img" aria-label="Contiene la página actual" />
+                )}
+                <ChevronDown size={14} className="sidebar__sectionChevron" aria-hidden="true" />
+              </button>
+
+              <div
+                id={idLista}
+                className={abierta ? "sidebar__collapse sidebar__collapse--open" : "sidebar__collapse"}
+                inert={!abierta}
+              >
+                <div className="sidebar__collapseInner">
+                  {items.map((item) => {
+                    const active = esActiva(pathname, item.href);
+                    const Icon = item.icon;
+
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        prefetch={false}
+                        onClick={onClose}
+                        aria-current={active ? "page" : undefined}
+                        className={
+                          active
+                            ? "sidebar__item sidebar__item--active"
+                            : "sidebar__item"
+                        }
+                      >
+                        <Icon
+                          size={17}
+                          className="sidebar__itemIcon"
+                          aria-hidden="true"
+                        />
+                        <span className="sidebar__itemText">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           );
         })}
       </nav>

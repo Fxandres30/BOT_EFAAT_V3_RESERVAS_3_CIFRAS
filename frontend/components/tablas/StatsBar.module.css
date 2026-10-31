@@ -4,56 +4,13 @@
 .resumen {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
-  padding: 18px 20px 20px;
+  padding: 16px 18px;
   background: #ffffff;
   border: 1px solid #e3e8f0;
   border-radius: 16px;
   box-shadow: 0 1px 2px rgba(16, 24, 48, 0.05), 0 2px 6px -2px rgba(16, 24, 48, 0.06);
-}
-
-.cabecera {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.cifra {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.derecha {
-  align-items: flex-end;
-  text-align: right;
-}
-
-.rotulo {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #5b6b85;
-}
-
-.valor {
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-  color: #0b1630;
-}
-
-.unidad {
-  margin-left: 1px;
-  font-size: 18px;
-  font-weight: 700;
-  color: #5b6b85;
 }
 
 /* --- Barra segmentada --- */
@@ -88,46 +45,74 @@
   --_c: #cbd5e1;
 }
 
-/* --- Leyenda --- */
-.leyenda {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 20px;
+/* --- Tres columnas iguales, centradas, del mismo ancho que la barra --- */
+.estados {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.leyenda li {
+.estado {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px 4px;
+  text-align: center;
+}
+
+.estado + .estado::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: #edf1f6;
+}
+
+.estadoNombre {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  font-size: 13px;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: #5b6b85;
 }
 
-.punto {
-  width: 9px;
-  height: 9px;
+/* Marca del color del segmento antes del nombre. */
+.estadoNombre::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
   border-radius: 3px;
   background: var(--_c);
 }
 
-.leyendaValor {
-  font-weight: 700;
+.estadoValor {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+  line-height: 1.15;
   color: #0b1630;
 }
 
-/* --- Recaudo --- */
+/* --- Recaudo: franja compacta --- */
 .recaudo {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-top: 2px;
-  padding: 14px 16px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf9 55%, #eff6ff 100%);
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #ecfdf5 0%, #f4fdf9 60%, #f5f9ff 100%);
   box-shadow: inset 0 0 0 1px #c6f0dc;
 }
 
@@ -135,44 +120,44 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
-  border-radius: 12px;
+  border-radius: 8px;
   background: #ffffff;
-  box-shadow: inset 0 0 0 1px #c6f0dc, 0 1px 2px rgba(16, 24, 48, 0.05);
+  box-shadow: inset 0 0 0 1px #c6f0dc;
   color: #059669;
 }
 
 .recaudoTexto {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  flex: 1;
   min-width: 0;
 }
 
 .recaudoRotulo {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #047857;
 }
 
-.recaudoValor {
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.15;
-  color: #064e3b;
+.recaudoDetalle {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: #5b6b85;
   overflow-wrap: anywhere;
 }
 
-.recaudoDetalle {
-  font-size: 12px;
-  color: #5b6b85;
-  overflow-wrap: anywhere;
+.recaudoValor {
+  flex-shrink: 0;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: #064e3b;
 }
 
 .recaudoSinSorteo {
@@ -190,27 +175,28 @@
 }
 
 .recaudoSinDato {
-  font-size: 18px;
+  flex-shrink: 0;
+  font-size: 15px;
   font-weight: 700;
-  color: #0b1630;
+  color: #94a3b8;
 }
 
 @media (max-width: 640px) {
   .resumen {
-    padding: 14px 14px 16px;
-    gap: 12px;
+    padding: 14px;
   }
 
-  .valor {
-    font-size: 24px;
+  .estadoNombre {
+    font-size: 10px;
+    letter-spacing: 0.06em;
   }
 
-  .leyenda {
-    gap: 6px 14px;
+  .estadoValor {
+    font-size: 20px;
   }
 
   .recaudoValor {
-    font-size: 22px;
+    font-size: 16px;
   }
 }
 
