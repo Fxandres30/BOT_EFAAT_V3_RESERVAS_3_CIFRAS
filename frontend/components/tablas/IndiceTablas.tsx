@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { getUser } from "@/services/auth/getUser";
 import { apiSorteos, type SorteoActivo } from "@/services/sorteos/apiSorteos";
 import { estadoSorteoPrecio, type EntradaEstadoSorteo, type ProgramacionTarjeta } from "@/services/tablas/estadoSorteoPrecio";
+import { ordenarPorSorteoActivo } from "@/services/tablas/resumenTabla";
 import { obtenerTablasCliente, type ConfiguracionTabla } from "@/services/tablas/tablasCliente";
 
 import TarjetaPrecio from "./TarjetaPrecio";
@@ -89,11 +90,12 @@ export default function IndiceTablas() {
     }
 
     // El estado de cada precio se calcula una vez y lo usan el resumen y
-    // las tarjetas (null mientras se consultan los sorteos).
-    const estados = tablas.map(({ precio, tabla }) => ({
+    // las tarjetas (null mientras se consultan los sorteos). Las tarjetas con
+    // sorteo activo van primero; el orden se recalcula en cada refresco.
+    const estados = ordenarPorSorteoActivo(tablas.map(({ precio, tabla }) => ({
         precio,
         entradas: fuentes ? estadoSorteoPrecio({ precio, tabla, ...fuentes, ahora }) : null
-    }));
+    })));
 
     return (
 

@@ -1,103 +1,86 @@
-import { Percent } from "lucide-react";
+import { Wallet } from "lucide-react";
 
-import { ESTADOS_META_VISUAL } from "./estadoVisual";
+import type { ResumenTabla } from "@/services/tablas/resumenTabla";
 import styles from "./StatsBar.module.css";
 
-interface Stats {
-    total: number;
-    disponibles: number;
-    reservados: number;
-    pagados: number;
-    enProceso: number;
-    bloqueados: number;
-    ocupacion: number;
-}
-
 interface Props {
-    stats: Stats;
+    resumen: ResumenTabla;
+    precio: number;
 }
 
-export default function StatsBar({ stats }: Props) {
+const pesos = (n: number) => `$${n.toLocaleString("es-CO")}`;
+const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
 
-    // "Reservados" agrupa también en_proceso/bloqueado: de cara al
-    // usuario son números que no están disponibles ni pagados todavía.
-    const reservadosVisual = stats.reservados + stats.enProceso + stats.bloqueados;
+// Resumen de la tabla en un solo bloque: total, ocupación, barra
+// segmentada (reservados · pagados · libres) con su leyenda y, debajo, el
+// recaudo del sorteo. Las cifras llegan ya calculadas (resumenTabla.ts).
+export default function StatsBar({ resumen, precio }: Props) {
 
-    const tarjetas = [
-        {
-            label: "Disponibles",
-            valor: stats.disponibles,
-            meta: ESTADOS_META_VISUAL.libre,
-            tono: styles.libre
-        },
-        {
-            label: "Reservados",
-            valor: reservadosVisual,
-            meta: ESTADOS_META_VISUAL.reservado,
-            tono: styles.reservado
-        },
-        {
-            label: "Pagados",
-            valor: stats.pagados,
-            meta: ESTADOS_META_VISUAL.pagado,
-            tono: styles.pagado
-        }
+    const { total, libres, reservados, pagados, ocupacion, recaudo, pagadosDelSorteo, pagadosDeOtroSorteo } = resumen;
+
+    const segmentos = [
+        { clave: "reservados", etiqueta: "Reservados", valor: reservados, tono: styles.reservado },
+        { clave: "pagados", etiqueta: "Pagados", valor: pagados, tono: styles.pagado },
+        { clave: "libres", etiqueta: "Libres", valor: libres, tono: styles.libre }
     ];
-
-    // La barra solo dibuja el porcentaje ya calculado (0–100).
-    const ocupacion = Math.min(100, Math.max(0, stats.ocupacion));
 
     return (
 
-        <div className={styles.barra}>
+        <section className={styles.resumen} aria-label="Resumen de la tabla">
 
-            {tarjetas.map((t) => {
-
-                const Icon = t.meta.icon;
-
-                return (
-
-                    <div key={t.label} className={`${styles.cifra} ${t.tono}`}>
-
-                        <div className={styles.cifraFila}>
-                            <p className={styles.etiqueta}>{t.label}</p>
-                            <span className={styles.icono} aria-hidden="true"><Icon size={14} /></span>
-                        </div>
-
-                        <p className={styles.valor}>
-                            {t.valor}
-                            <span className={styles.total}>/ {stats.total}</span>
-                        </p>
-
-                    </div>
-
-                );
-
-            })}
-
-            <div className={`${styles.cifra} ${styles.ocupacion}`}>
-
-                <div className={styles.cifraFila}>
-                    <p className={styles.etiqueta}>Ocupación</p>
-                    <span className={styles.icono} aria-hidden="true"><Percent size={14} /></span>
+            <div className={styles.cabecera}>
+                <div className={styles.cifra}>
+                    <span className={styles.rotulo}>Total de números</span>
+                    <span className={styles.valor}>{total}</span>
                 </div>
-
-                <p className={styles.valor}>{stats.ocupacion}%</p>
-
-                <div
-                    className={styles.progreso}
-                    role="progressbar"
-                    aria-label="Ocupación de la tabla"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={ocupacion}
-                >
-                    <span style={{ width: `${ocupacion}%` }} />
+                <div className={`${styles.cifra} ${styles.derecha}`}>
+                    <span className={styles.rotulo}>Ocupación</span>
+                    <span className={styles.valor}>{ocupacion}<span className={styles.unidad}>%</span></span>
                 </div>
-
             </div>
 
-        </div>
+            <div
+                className={styles.barra}
+                role="img"
+                aria-label={`${reservados} reservados, ${pagados} pagados y ${libres} libres de ${total}`}
+            >
+                {total > 0 && segmentos.filter(s => s.valor > 0).map(s => (
+                    <span key={s.clave} className={`${styles.segmento} ${s.tono}`} style={{ flexGrow: s.valor }} />
+                ))}
+            </div>
+
+            <ul className={styles.leyenda}>
+                {segmentos.map(s => (
+                    <li key={s.clave} className={s.tono}>
+                        <span className={styles.punto} aria-hidden="true" />
+                        <span>{s.etiqueta}</span>
+                        <span className={styles.leyendaValor}>{s.valor}</span>
+                    </li>
+                ))}
+            </ul>
+
+            <div className={`${styles.recaudo} ${recaudo === null ? styles.recaudoSinSorteo : ""}`}>
+                <span className={styles.recaudoIcono} aria-hidden="true"><Wallet size={18} /></span>
+                <div className={styles.recaudoTexto}>
+                    <span className={styles.recaudoRotulo}>Recaudo del sorteo</span>
+                    {recaudo === null ? (
+                        <>
+                            <span className={styles.recaudoSinDato}>Sin sorteo activo</span>
+                            <span className={styles.recaudoDetalle}>No hay un sorteo activo de {pesos(precio)} en esta tabla.</span>
+                        </>
+                    ) : (
+                        <>
+                            <span className={styles.recaudoValor}>{pesos(recaudo)}</span>
+                            <span className={styles.recaudoDetalle}>
+                                {plural(pagadosDelSorteo, "número pagado", "números pagados")} × {pesos(precio)}
+                                {pagadosDeOtroSorteo > 0 && ` · ${plural(pagadosDeOtroSorteo, "pagado", "pagados")} de otro sorteo no se suma${pagadosDeOtroSorteo === 1 ? "" : "n"}`}
+                            </span>
+                        </>
+                    )}
+                </div>
+            </div>
+
+        </section>
 
     );
 

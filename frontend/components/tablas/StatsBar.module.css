@@ -1,145 +1,221 @@
 /* Resumen de la tabla. Los tonos siguen la paleta de estados de la
-   cuadrícula (estadoVisual.ts): disponible neutro, reservado rosa,
-   pagado verde; la ocupación usa el azul de la marca. */
+   cuadrícula (estadoVisual.ts): reservado rosa, pagado verde, libre gris. */
 
-.barra {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  background: var(--efaat-surface);
-  border: 1px solid var(--efaat-border);
-  border-radius: var(--efaat-radius-card);
-  box-shadow: var(--efaat-shadow-sm);
-  overflow: hidden;
+.resumen {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px 20px 20px;
+  background: #ffffff;
+  border: 1px solid #e3e8f0;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(16, 24, 48, 0.05), 0 2px 6px -2px rgba(16, 24, 48, 0.06);
+}
+
+.cabecera {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .cifra {
-  --_c: var(--efaat-ink-soft);
-  --_c-suave: var(--efaat-surface-sunken);
-
-  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
   min-width: 0;
-  padding: 14px 18px 16px;
 }
 
-.cifra + .cifra {
-  border-left: 1px solid var(--efaat-border-subtle);
+.derecha {
+  align-items: flex-end;
+  text-align: right;
 }
 
-.cifraFila {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.etiqueta {
-  margin: 0;
-  font-size: var(--efaat-text-2xs);
-  font-weight: var(--efaat-weight-semibold);
-  letter-spacing: 0.06em;
+.rotulo {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--efaat-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.icono {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  flex-shrink: 0;
-  border-radius: 8px;
-  background: var(--_c-suave);
-  color: var(--_c);
+  color: #5b6b85;
 }
 
 .valor {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  margin: 0;
-  font-size: 24px;
-  font-weight: var(--efaat-weight-bold);
-  letter-spacing: var(--efaat-tracking-tight);
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
-  color: var(--efaat-ink);
-  min-width: 0;
+  color: #0b1630;
 }
 
-.total {
-  font-size: var(--efaat-text-xs);
-  font-weight: var(--efaat-weight-medium);
-  letter-spacing: 0;
-  color: var(--efaat-text-muted);
+.unidad {
+  margin-left: 1px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #5b6b85;
 }
 
-.progreso {
-  height: 6px;
-  margin-top: 2px;
-  border-radius: var(--efaat-radius-pill);
-  background: var(--efaat-surface-sunken);
+/* --- Barra segmentada --- */
+.barra {
+  display: flex;
+  gap: 3px;
+  height: 14px;
+  padding: 2px;
+  border-radius: 999px;
+  background: #eef2f8;
   overflow: hidden;
 }
 
-.progreso span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--efaat-blue-400) 0%, var(--efaat-primary) 100%);
-  transition: width var(--efaat-dur-slow) var(--efaat-ease);
-}
-
-.libre {
-  --_c: var(--efaat-text-secondary);
-  --_c-suave: var(--efaat-surface-sunken);
+.segmento {
+  flex-basis: 0;
+  min-width: 6px;
+  border-radius: 999px;
+  background: var(--_c);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: flex-grow 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .reservado {
-  --_c: #e11d48;
-  --_c-suave: #fff1f2;
+  --_c: #f43f5e;
 }
 
 .pagado {
-  --_c: #059669;
-  --_c-suave: #ecfdf5;
+  --_c: #10b981;
 }
 
-.ocupacion {
-  --_c: var(--efaat-primary);
-  --_c-suave: var(--efaat-blue-50);
+.libre {
+  --_c: #cbd5e1;
+}
+
+/* --- Leyenda --- */
+.leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.leyenda li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: #5b6b85;
+}
+
+.punto {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--_c);
+}
+
+.leyendaValor {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #0b1630;
+}
+
+/* --- Recaudo --- */
+.recaudo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 2px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf9 55%, #eff6ff 100%);
+  box-shadow: inset 0 0 0 1px #c6f0dc;
+}
+
+.recaudoIcono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px #c6f0dc, 0 1px 2px rgba(16, 24, 48, 0.05);
+  color: #059669;
+}
+
+.recaudoTexto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.recaudoRotulo {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #047857;
+}
+
+.recaudoValor {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  color: #064e3b;
+  overflow-wrap: anywhere;
+}
+
+.recaudoDetalle {
+  font-size: 12px;
+  color: #5b6b85;
+  overflow-wrap: anywhere;
+}
+
+.recaudoSinSorteo {
+  background: #f7f9fc;
+  box-shadow: inset 0 0 0 1px #e3e8f0;
+}
+
+.recaudoSinSorteo .recaudoIcono {
+  box-shadow: inset 0 0 0 1px #e3e8f0;
+  color: #94a3b8;
+}
+
+.recaudoSinSorteo .recaudoRotulo {
+  color: #5b6b85;
+}
+
+.recaudoSinDato {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0b1630;
 }
 
 @media (max-width: 640px) {
-  .barra {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .cifra {
-    padding: 12px 14px 14px;
-  }
-
-  .cifra:nth-child(3) {
-    border-left: none;
-  }
-
-  .cifra:nth-child(n + 3) {
-    border-top: 1px solid var(--efaat-border-subtle);
+  .resumen {
+    padding: 14px 14px 16px;
+    gap: 12px;
   }
 
   .valor {
-    font-size: 20px;
+    font-size: 24px;
+  }
+
+  .leyenda {
+    gap: 6px 14px;
+  }
+
+  .recaudoValor {
+    font-size: 22px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .progreso span {
+  .segmento {
     transition: none;
   }
 }

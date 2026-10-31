@@ -28,6 +28,7 @@ import type { EventoActivo } from "./types";
 import type { TablaDiseno } from "./disenoTypes";
 import type { OperacionLote } from "@/services/tablas/pagoLote";
 import { esDeOtroSorteo } from "@/services/tablas/seleccionTabla";
+import { calcularResumenTabla } from "@/services/tablas/resumenTabla";
 
 import styles from "./TablaPrecioView.module.css";
 
@@ -148,6 +149,13 @@ export default function TablaPrecioView({ precio }: Props) {
         return { numero: n.numero, estado, ...(esDeOtroSorteo({ ...n, estado }, coincidePrecio ? eventoActivo : null) ? { otroSorteo: true } : {}) };
     }), [numeros, eventoActivo, coincidePrecio]);
 
+    // Resumen de la tabla (estados reales y recaudo del sorteo activo de
+    // este precio): mismo estado efectivo que la cuadrícula.
+    const resumen = useMemo(
+        () => calcularResumenTabla(numeros.map(n => ({ ...n, estado: estadoEfectivo(n) })), precio, coincidePrecio ? eventoActivo : null),
+        [numeros, precio, eventoActivo, coincidePrecio]
+    );
+
     // Acciones rápidas de «Historial de números»: una operación sobre un
     // solo número (mismo diálogo y misma ruta que el lote) o su detalle.
     const [accionRapida, setAccionRapida] = useState<{ operacion: Exclude<OperacionLote, "reservar">; numero: string } | null>(null);
@@ -240,7 +248,7 @@ export default function TablaPrecioView({ precio }: Props) {
 
             <Cabecera precio={precio} eventoActivo={eventoActivo} coincidePrecio={coincidePrecio} />
 
-            <StatsBar stats={stats} />
+            <StatsBar resumen={resumen} precio={precio} />
 
             <AccionesTabla
                 precio={precio}

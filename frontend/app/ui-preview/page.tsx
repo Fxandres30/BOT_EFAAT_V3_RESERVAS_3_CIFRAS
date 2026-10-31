@@ -40,6 +40,7 @@ import {
 } from "@/components/ui";
 import TarjetaPrecio from "@/components/tablas/TarjetaPrecio";
 import StatsBar from "@/components/tablas/StatsBar";
+import { calcularResumenTabla } from "@/services/tablas/resumenTabla";
 import { Cabecera } from "@/components/tablas/TablaPrecioView";
 
 import styles from "./page.module.css";
@@ -330,7 +331,9 @@ export default function UIPreviewPage() {
         <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 16 }}>
           <Cabecera precio={5000} coincidePrecio eventoActivo={{ nombre_evento: "Lotería de Bogotá — jueves", valor: 5000 } as never} />
           <Cabecera precio={10000} coincidePrecio={false} eventoActivo={null} />
-          <StatsBar stats={{ total: 100, disponibles: 62, reservados: 20, pagados: 15, enProceso: 2, bloqueados: 1, ocupacion: 38 }} />
+          <StatsBar precio={5000} resumen={calcularResumenTabla(MUESTRA_MEZCLADA, 5000, { id: "ev-1" })} />
+          <StatsBar precio={10000} resumen={calcularResumenTabla(MUESTRA_MEZCLADA, 10000, null)} />
+          <StatsBar precio={2000} resumen={calcularResumenTabla(MUESTRA_LIBRE, 2000, { id: "ev-1" })} />
         </div>
       </section>
     </div>
@@ -339,3 +342,8 @@ export default function UIPreviewPage() {
 
 // Datos de muestra fijos (sin red): solo para revisar el aspecto.
 const AHORA = new Date("2026-10-31T15:00:00-05:00");
+const MUESTRA_MEZCLADA = Array.from({ length: 100 }, (_, i) => ({
+  estado: i < 20 ? "reservado" : i < 23 ? "en_proceso" : i < 38 ? "pagado" : "libre",
+  evento_id: "ev-1",
+}));
+const MUESTRA_LIBRE = Array.from({ length: 100 }, () => ({ estado: "libre" }));
