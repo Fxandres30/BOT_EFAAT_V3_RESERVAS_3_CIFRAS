@@ -8,7 +8,6 @@ import { Loader2, AlertTriangle, ArrowLeft, Palette, LibraryBig, Filter } from "
 import { useTablaPrecio } from "@/hooks/useTablaPrecio";
 import { useTablaDiseno } from "@/hooks/useTablaDiseno";
 import { useSeccionesPanel } from "@/hooks/useSeccionesPanel";
-import { Badge } from "@/components/ui/Badge";
 import { Aviso, avisar } from "@/components/ui/Avisos";
 import { nuevaSolicitudId } from "@/services/tablas/reservaManual";
 import AccionesTabla, { BotonIcono } from "./AccionesTabla";
@@ -266,9 +265,9 @@ export default function TablaPrecioView({ precio }: Props) {
                             label="Diseños"
                             color="text-gray-600 hover:bg-gray-50 hover:border-gray-300"
                             mostrarTexto
+                            subtitulo={personalizada ? "Diseño personalizado" : undefined}
                             onClick={() => setBibliotecaAbierta(true)}
                         />
-                        {personalizada && <Badge tone="primary" size="sm">Diseño personalizado</Badge>}
                     </>
                 }
             />

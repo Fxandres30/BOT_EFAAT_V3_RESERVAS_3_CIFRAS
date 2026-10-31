@@ -215,6 +215,7 @@ export function BotonIcono({
     disabled = false,
     cargando = false,
     mostrarTexto = false,
+    subtitulo,
     onClick
 }: {
     icon: LucideIcon;
@@ -226,6 +227,8 @@ export function BotonIcono({
     cargando?: boolean;
     /** El texto se ve también en pantallas pequeñas. */
     mostrarTexto?: boolean;
+    /** Línea pequeña bajo el texto, dentro del mismo botón. */
+    subtitulo?: string;
     onClick: () => void;
 }) {
 
@@ -241,7 +244,14 @@ export function BotonIcono({
             className={`${styles.boton} ${destacado ? styles.destacado : `${styles.normal} bg-white border-gray-200 ${color}`}`}
         >
             {cargando ? <Spinner size={16} /> : <Icon size={16} className="shrink-0" />}
-            <span className={mostrarTexto ? undefined : "hidden sm:inline"}>{label}</span>
+            {subtitulo ? (
+                <span className={`${mostrarTexto ? "flex" : "hidden sm:flex"} flex-col items-start text-left leading-tight`}>
+                    <span>{label}</span>
+                    <span className="mt-0.5 text-[11px] font-medium text-indigo-600">{subtitulo}</span>
+                </span>
+            ) : (
+                <span className={mostrarTexto ? undefined : "hidden sm:inline"}>{label}</span>
+            )}
         </button>
 
     );
