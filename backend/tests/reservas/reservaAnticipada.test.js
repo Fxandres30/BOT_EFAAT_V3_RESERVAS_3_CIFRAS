@@ -293,7 +293,7 @@ prueba("2. reserva anticipada: tabla e identidad del sorteo, sin evento_id, sin 
     assert.strictEqual(det.json.fila.sorteoAnticipado, "Antioqueñita Día");
 });
 
-prueba("3. rechazos: borrador, versión sin confirmar, cierre pasado, otro precio, reinicio pendiente, grupo ajeno, ambos destinos, sorteo de otro cliente", async () => {
+prueba("3. rechazos: borrador, versión sin confirmar, otro precio, reinicio pendiente, grupo ajeno, ambos destinos, sorteo de otro cliente", async () => {
     sembrar();
     const s = await programar();
     const motivo = async (numero, cuerpo, token) => (await reservar(numero, cuerpo, token)).json.motivo;
@@ -320,7 +320,10 @@ prueba("3. rechazos: borrador, versión sin confirmar, cierre pasado, otro preci
 
     const cerrado = await programar(otroDia(22, { nombre: "Ya cerró" }));
     Object.assign(fake.tablas.sorteos_programados.find(x => x.id === cerrado.id).config, { fecha_sorteo: "2026-01-01" });
-    assert.strictEqual(await motivo("11", { sorteoProgramadoId: cerrado.id, grupoId: "g3@g.us" }), "sorteo_no_disponible");
+    // La hora de cierre ya no impide reservar: el estado del sorteo no decide.
+    const tarde = await reservar("12", { sorteoProgramadoId: cerrado.id, grupoId: "g3@g.us" });
+    assert.strictEqual(tarde.status, 200, JSON.stringify(tarde.json));
+    assert.strictEqual(fila("12").estado, "reservado");
 
     const deB = await programar(entrada({ grupos: ["gb@g.us"], cuentas: ["cuenta-b1"] }), { usuario: B });
     assert.strictEqual(await motivo("11", { sorteoProgramadoId: deB.id, grupoId: "gb@g.us" }), "sorteo_no_disponible", "A no reserva en el sorteo de B");

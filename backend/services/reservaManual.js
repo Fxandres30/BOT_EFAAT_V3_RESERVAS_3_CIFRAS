@@ -11,10 +11,11 @@
 //     UPDATE condicionado a estado='libre' sobre la cuadrícula del cliente
 //     (filtroCliente.js). Eso es lo que impide reservas dobles, también entre
 //     procesos: de dos intentos simultáneos solo uno encuentra la fila libre.
-//   - Mismas validaciones que una reserva automática: formato del número
-//     según las cifras del sorteo, sorteo activo del precio y abierto
-//     (sorteoAceptaReservas), grupo autorizado (politicaGrupos.js) y
-//     contacto del directorio del cliente (contactos_tenant).
+//   - Validaciones: formato del número según las cifras del sorteo, grupo
+//     autorizado (politicaGrupos.js) y contacto del directorio del cliente
+//     (contactos_tenant). El estado del sorteo NO decide si se puede
+//     reservar: con sorteo activo (abierto o cerrado), programado o sin
+//     ninguno, el propietario reserva cuando quiere.
 //   - Ninguna operación envía mensajes ni toca WhatsApp.
 //   - Cada intento (también rechazos y errores) queda en reservas_auditoria
 //     (migración 032) con origen 'manual'.
@@ -500,8 +501,8 @@ async function contextoNumero({ usuarioId, precio, numero, ahora = new Date() })
 // --------------------------------------------------------------- reservar ---
 
 // Destino de una reserva ANTICIPADA: sorteo programado confirmado (versión
-// vigente), sin publicar, de esta tabla y precio, sin reinicio pendiente,
-// antes de su cierre, y uno de sus grupos. Devuelve un contexto EN MEMORIA
+// vigente), sin publicar, de esta tabla y precio, sin reinicio pendiente, y
+// uno de sus grupos. Devuelve un contexto EN MEMORIA
 // (sin fila en eventos_bot): identidad y tabla del sorteo, evento_id vacío.
 async function destinoProgramado(usuarioId, config, sorteoProgramadoId, grupoId) {
 
@@ -509,7 +510,7 @@ async function destinoProgramado(usuarioId, config, sorteoProgramadoId, grupoId)
     if (!r.ok) return rechazo("error_sorteo", "No se pudo leer el sorteo programado.");
 
     const p = r.data.find(x => x.sorteo.id === sorteoProgramadoId);
-    if (!p) return rechazo("sorteo_no_disponible", "Ese sorteo programado no admite reservas anticipadas en esta tabla (no está confirmado, ya se publicó, cerró o es de otro precio).");
+    if (!p) return rechazo("sorteo_no_disponible", "Ese sorteo programado no admite reservas anticipadas en esta tabla (no está confirmado, ya se publicó o es de otro precio).");
     if (!p.aceptaReservas) return rechazo("sorteo_no_disponible", p.motivo);
 
     if (!grupoId) return rechazo("falta_grupo", "Selecciona el grupo de WhatsApp de la reserva.");
@@ -533,6 +534,25 @@ async function destinoProgramado(usuarioId, config, sorteoProgramadoId, grupoId)
 
 }
 
+// Destino de una reserva SIN sorteo: el propietario reserva cuando quiere,
+// haya o no un sorteo activo o programado. Contexto EN MEMORIA, sin evento,
+// identidad ni grupo: el número queda reservado en la cuadrícula del cliente
+// (mismo UPDATE condicionado a 'libre'). La 030 lo clasifica como
+// protegido_sin_sorteo: ningún reinicio lo libera sin que se decida a mano.
+function destinoSinSorteo(usuarioId, config) {
+    return {
+        id: null,
+        usuario_id: usuarioId,
+        tabla: config.tabla,
+        cifras: config.cifras,
+        valor: config.precio,
+        identidad_evento_real: null,
+        grupo_id: null,
+        grupo_nombre: null,
+        telefono_bot: null
+    };
+}
+
 // Datos comunes de auditoría de una reserva manual (uno o varios números).
 function baseReserva({ usuarioId, operador, precio, motivo, observaciones, solicitudId, numero }) {
     return {
@@ -550,11 +570,14 @@ function baseReserva({ usuarioId, operador, precio, motivo, observaciones, solic
 }
 
 // Todo lo que una reserva manual comprueba ANTES de tocar la tabla: tabla del
-// precio, motivo, sorteo y grupo, cierre, grupo autorizado y contacto. La
-// misma función para un número y para un lote: una sola versión de las reglas.
+// precio, motivo, sorteo y grupo, grupo autorizado y contacto. El estado del
+// sorteo (cerrado, hora de cierre, que no haya ninguno) no impide reservar:
+// sin sorteo elegido ni activo, la reserva queda sin sorteo. La misma función
+// para un número y para un lote: una sola versión de las reglas.
 // Devuelve { ok: true, config, evento, ctx, ctxContacto, contacto, anticipada,
-// cifras } o { ok: false, respuesta }. rechazar audita y devuelve el rechazo.
-async function prepararReserva({ usuarioId, precio, contactoId, nuevoContacto, eventoId, sorteoProgramadoId, grupoId, base, rechazar, comprobarNumero }) {
+// sinSorteo, cifras } o { ok: false, respuesta }. rechazar audita y devuelve
+// el rechazo.
+async function prepararReserva({ usuarioId, precio, contactoId, nuevoContacto, eventoId, sorteoProgramadoId, grupoId, sinSorteo: pedidaSinSorteo, base, rechazar, comprobarNumero }) {
 
     if (!usuarioId) return { ok: false, respuesta: rechazo("sin_usuario", "Sesión no válida.") };
 
@@ -569,13 +592,15 @@ async function prepararReserva({ usuarioId, precio, contactoId, nuevoContacto, e
     }
 
     // ---- sorteo y grupo (contexto) ----
-    // Sorteo activo (eventoId) o programado sin publicar (sorteoProgramadoId
-    // + grupoId): el propietario elige; nunca se deduce por el grupo.
-    if (eventoId && sorteoProgramadoId) {
-        return { ok: false, respuesta: await rechazar(rechazo("destino_ambiguo", "Elige un sorteo activo o uno programado, no ambos.")) };
+    // Sorteo activo (eventoId), programado sin publicar (sorteoProgramadoId
+    // + grupoId) o ninguno (sinSorteo): el propietario elige; nunca se deduce
+    // por el grupo.
+    if ([eventoId, sorteoProgramadoId, pedidaSinSorteo].filter(Boolean).length > 1) {
+        return { ok: false, respuesta: await rechazar(rechazo("destino_ambiguo", "Elige un solo destino: sorteo activo, programado o sin sorteo.")) };
     }
 
     const anticipada = Boolean(sorteoProgramadoId);
+    let sinSorteo = pedidaSinSorteo === true;
     let evento;
 
     if (anticipada) {
@@ -584,14 +609,24 @@ async function prepararReserva({ usuarioId, precio, contactoId, nuevoContacto, e
         if (!destino.ok) return { ok: false, respuesta: await rechazar(destino) };
         evento = destino.evento;
 
+    } else if (sinSorteo) {
+
+        evento = destinoSinSorteo(usuarioId, config);
+
     } else {
 
         const sorteo = await sorteoDelPrecio(usuarioId, config.tabla, config.precio);
         if (!sorteo.ok) return { ok: false, respuesta: await rechazar(rechazo("error_sorteo", "No se pudo leer el sorteo activo.")) };
-        if (sorteo.filas.length === 0) return { ok: false, respuesta: await rechazar(rechazo("sin_sorteo", "No hay un sorteo activo para esta tabla.")) };
 
-        if (eventoId) evento = sorteo.filas.find(e => e.id === eventoId);
-        else if (sorteo.filas.length === 1) evento = sorteo.filas[0];
+        if (eventoId) {
+            evento = sorteo.filas.find(e => e.id === eventoId);
+        } else if (sorteo.filas.length === 0) {
+            // Sin sorteo activo: se reserva igual, sin sorteo.
+            sinSorteo = true;
+            evento = destinoSinSorteo(usuarioId, config);
+        } else if (sorteo.filas.length === 1) {
+            evento = sorteo.filas[0];
+        }
 
     }
 
@@ -608,14 +643,12 @@ async function prepararReserva({ usuarioId, precio, contactoId, nuevoContacto, e
     const numeroMalo = comprobarNumero?.(cifras);
     if (numeroMalo) return { ok: false, respuesta: await rechazar(numeroMalo, ctx) };
 
-    // El programado ya se comprobó (cierre incluido) en destinoProgramado.
-    if (!anticipada && !sorteoAceptaReservas(evento)) {
-        return { ok: false, respuesta: await rechazar(rechazo("sorteo_cerrado", "El sorteo ya no acepta reservas (cerrado o pasó la hora de cierre)."), ctx) };
-    }
-
-    const politica = await evaluarGrupo(usuarioId, evento.grupo_id);
-    if (!politica.permitido) {
-        return { ok: false, respuesta: await rechazar(rechazo("grupo_no_autorizado", "Ese grupo no está autorizado en EFAAT."), ctx) };
+    // Sin sorteo no hay grupo que autorizar.
+    if (!sinSorteo) {
+        const politica = await evaluarGrupo(usuarioId, evento.grupo_id);
+        if (!politica.permitido) {
+            return { ok: false, respuesta: await rechazar(rechazo("grupo_no_autorizado", "Ese grupo no está autorizado en EFAAT."), ctx) };
+        }
     }
 
     // ---- contacto ----
@@ -649,13 +682,13 @@ async function prepararReserva({ usuarioId, precio, contactoId, nuevoContacto, e
         return { ok: false, respuesta: await rechazar(rechazoBloqueado(), ctxContacto) };
     }
 
-    return { ok: true, config, evento, ctx, ctxContacto, contacto, anticipada, cifras };
+    return { ok: true, config, evento, ctx, ctxContacto, contacto, anticipada, sinSorteo, cifras };
 
 }
 
 async function reservarManual({
     usuarioId, operador, precio, numero, contactoId, nuevoContacto, eventoId,
-    sorteoProgramadoId, grupoId, motivo, observaciones, solicitudId
+    sorteoProgramadoId, grupoId, sinSorteo, motivo, observaciones, solicitudId
 }) {
 
     const base = baseReserva({ usuarioId, operador, precio, motivo, observaciones, solicitudId, numero: String(numero ?? "") });
@@ -669,13 +702,13 @@ async function reservarManual({
     };
 
     const preparada = await prepararReserva({
-        usuarioId, precio, contactoId, nuevoContacto, eventoId, sorteoProgramadoId, grupoId, base, rechazar,
+        usuarioId, precio, contactoId, nuevoContacto, eventoId, sorteoProgramadoId, grupoId, sinSorteo, base, rechazar,
         comprobarNumero: (cifras) => (validarFormatoNumero(String(numero), cifras) ? null : rechazo("numero_invalido", `El número debe tener ${cifras} cifras.`))
     });
 
     if (!preparada.ok) return preparada.respuesta;
 
-    const { config, evento, ctx, ctxContacto, contacto, anticipada, cifras } = preparada;
+    const { config, evento, ctx, ctxContacto, contacto, anticipada, sinSorteo: reservaSinSorteo, cifras } = preparada;
     const motivoLimpio = base.motivo;
     const obsLimpias = base.observaciones;
     const solicitud = base.solicitud_id;
@@ -733,11 +766,12 @@ async function reservarManual({
 
     // Contadores del sorteo (lo mismo que hace el bot tras reservar). Una
     // anticipada todavía no tiene evento: los cuenta el publicador al crearlo.
-    if (!anticipada) {
+    // Sin sorteo no hay contadores que actualizar.
+    if (!anticipada && !reservaSinSorteo) {
         try { await actualizarEvento(evento); } catch { /* best-effort */ }
     }
 
-    return { ok: true, estado: "reservado", fila: reservadas[0], ...(anticipada ? { anticipada: true } : {}) };
+    return { ok: true, estado: "reservado", fila: reservadas[0], ...(anticipada ? { anticipada: true } : {}), ...(reservaSinSorteo ? { sinSorteo: true } : {}) };
 
 }
 
@@ -1053,7 +1087,7 @@ async function contadoresDeFilas(usuarioId, filas) {
     for (const eventoId of vistos.values()) await sincronizarContadores(usuarioId, eventoId);
 }
 
-async function reservarLote({ usuarioId, operador, precio, numeros, contactoId, nuevoContacto, eventoId, sorteoProgramadoId, grupoId, motivo, observaciones, solicitudId }) {
+async function reservarLote({ usuarioId, operador, precio, numeros, contactoId, nuevoContacto, eventoId, sorteoProgramadoId, grupoId, sinSorteo, motivo, observaciones, solicitudId }) {
 
     const lote = numerosDelLote(numeros);
     if (!lote.ok) return lote;
@@ -1069,10 +1103,10 @@ async function reservarLote({ usuarioId, operador, precio, numeros, contactoId, 
         return r;
     };
 
-    const preparada = await prepararReserva({ usuarioId, precio, contactoId, nuevoContacto, eventoId, sorteoProgramadoId, grupoId, base, rechazar });
+    const preparada = await prepararReserva({ usuarioId, precio, contactoId, nuevoContacto, eventoId, sorteoProgramadoId, grupoId, sinSorteo, base, rechazar });
     if (!preparada.ok) return preparada.respuesta;
 
-    const { config, evento, ctx, ctxContacto, contacto, anticipada, cifras } = preparada;
+    const { config, evento, ctx, ctxContacto, contacto, anticipada, sinSorteo: reservaSinSorteo, cifras } = preparada;
 
     const esDelMismoSorteo = (f) => f.estado === "reservado" && f.usuario_global_id === contacto.id
         && (ctx.identidad_evento_real ? f.identidad_evento_real === ctx.identidad_evento_real : f.evento_id === evento.id);
@@ -1136,8 +1170,9 @@ async function reservarLote({ usuarioId, operador, precio, numeros, contactoId, 
 
     if (rechazos.length) await auditarRechazos(rechazos);
 
-    // Una anticipada todavía no tiene evento: los cuenta el publicador.
-    if (!anticipada && hechos.size) {
+    // Una anticipada todavía no tiene evento: los cuenta el publicador. Sin
+    // sorteo no hay contadores.
+    if (!anticipada && !reservaSinSorteo && hechos.size) {
         try { await actualizarEvento(evento); } catch { /* best-effort */ }
     }
 

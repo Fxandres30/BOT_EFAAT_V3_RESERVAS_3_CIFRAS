@@ -28,6 +28,8 @@ const MOTIVOS = [
     "Reserva antes de publicar el sorteo"
 ];
 
+const SIN_SORTEO = "sin-sorteo";
+
 const formatoHora = new Intl.DateTimeFormat("es-CO", {
     timeZone: "America/Bogota",
     dateStyle: "medium",
@@ -39,11 +41,13 @@ interface OpcionGrupo {
     clave: string;
     grupoId: string | null;
     grupoNombre: string | null;
-    datos: Pick<DatosReserva, "eventoId" | "sorteoProgramadoId" | "grupoId">;
+    datos: Pick<DatosReserva, "eventoId" | "sorteoProgramadoId" | "grupoId" | "sinSorteo">;
 }
 
-// Sorteo al que va la reserva: el ACTIVO de esta tabla o uno PROGRAMADO que
-// todavía no se publicó (reserva anticipada). Nunca se deduce por el grupo.
+// Sorteo al que va la reserva: el ACTIVO de esta tabla, uno PROGRAMADO que
+// todavía no se publicó (reserva anticipada) o NINGUNO. Nunca se deduce por
+// el grupo. El estado del sorteo (cerrado, hora de cierre) no impide
+// reservar: el propietario decide cuándo.
 interface OpcionSorteo {
     clave: string;
     nombre: string;
@@ -65,10 +69,9 @@ function opcionesDe(contexto: ContextoNumero): OpcionSorteo[] {
         opciones.push({
             clave: "activo",
             nombre: s.nombreEvento || "Sorteo activo",
-            detalle: "Sorteo activo",
-            usable: s.aceptaReservas && grupos.length > 0,
-            motivo: !s.aceptaReservas ? "El sorteo ya no acepta reservas (cerrado o pasó la hora de cierre)."
-                : grupos.length === 0 ? "Ningún grupo de este sorteo está autorizado en EFAAT." : null,
+            detalle: s.aceptaReservas ? "Sorteo activo" : "Sorteo activo · cerrado o pasó la hora de cierre",
+            usable: grupos.length > 0,
+            motivo: grupos.length === 0 ? "Ningún grupo de este sorteo está autorizado en EFAAT." : null,
             grupos
         });
     }
@@ -87,6 +90,16 @@ function opcionesDe(contexto: ContextoNumero): OpcionSorteo[] {
             grupos
         });
     }
+
+    // Siempre disponible: reservar sin vincular el número a ningún sorteo.
+    opciones.push({
+        clave: SIN_SORTEO,
+        nombre: "Sin sorteo",
+        detalle: "Reserva sin vincular a ningún sorteo",
+        usable: true,
+        motivo: null,
+        grupos: [{ clave: SIN_SORTEO, grupoId: null, grupoNombre: null, datos: { sinSorteo: true } }]
+    });
 
     return opciones;
 
@@ -121,29 +134,28 @@ export default function ReservaManualForm({ contexto, onReservar, etiquetaBoton,
     const opciones = useMemo(() => opcionesDe(contexto), [contexto]);
     const usables = opciones.filter(o => o.usable);
 
-    // Sorteo: el que elija el propietario; si no, el único posible.
-    const sorteo = usables.find(o => o.clave === sorteoElegido) ?? (usables.length === 1 ? usables[0] : null);
-    const grupos = sorteo?.grupos ?? [];
+    // Sorteo: el que elija el propietario; si no, el único sorteo real
+    // posible; sin ninguno, «Sin sorteo».
+    const reales = usables.filter(o => o.clave !== SIN_SORTEO);
+    const sorteo = usables.find(o => o.clave === sorteoElegido)
+        ?? (reales.length === 1 ? reales[0] : reales.length === 0 ? usables.find(o => o.clave === SIN_SORTEO) ?? null : null);
+    const sinSorteo = sorteo?.clave === SIN_SORTEO;
+    const grupos = sinSorteo ? [] : sorteo?.grupos ?? [];
 
     // Grupos del sorteo elegido en los que se ha visto al contacto.
     const idsDelContacto = new Set(contacto?.tipo === "existente" ? contacto.contacto.grupos.map(g => g.grupoId) : []);
     const gruposDelContacto = grupos.filter(g => g.grupoId && idsDelContacto.has(g.grupoId));
 
-    // Grupo: el que elija el propietario; si no, el único posible.
-    const grupo = grupos.find(g => g.clave === grupoElegido)
+    // Grupo: el que elija el propietario; si no, el único posible. Sin
+    // sorteo no hay grupo.
+    const grupo = sinSorteo ? sorteo.grupos[0] : grupos.find(g => g.clave === grupoElegido)
         ?? (grupos.length === 1 ? grupos[0] : null)
         ?? (gruposDelContacto.length === 1 ? gruposDelContacto[0] : null);
-
-    const bloqueo = usables.length === 0
-        ? (opciones.length === 0
-            ? "No hay un sorteo activo ni programado para esta tabla: no se puede reservar."
-            : opciones.map(o => `${o.nombre}: ${o.motivo}`).join(" "))
-        : null;
 
     const contactoListo = contacto?.tipo === "existente"
         || (contacto?.tipo === "nuevo" && contacto.nombre.trim().length >= 2 && contacto.telefono.replace(/\D/g, "").length >= 7);
 
-    const listo = !bloqueo && sorteo && grupo && contactoListo && motivo.trim().length >= 3 && !enviando;
+    const listo = sorteo && grupo && contactoListo && motivo.trim().length >= 3 && !enviando;
 
     async function enviar() {
 
@@ -180,15 +192,11 @@ export default function ReservaManualForm({ contexto, onReservar, etiquetaBoton,
         <div className="space-y-4">
 
             <div className="grid grid-cols-2 gap-2 text-sm">
-                <Ficha etiqueta="Sorteo" valor={sorteo?.nombre || (usables.length > 1 ? "Elige el sorteo" : "Sin sorteo disponible")} nota={sorteo?.detalle ?? undefined} />
+                <Ficha etiqueta="Sorteo" valor={sorteo?.nombre || "Elige el sorteo"} nota={sorteo?.detalle ?? undefined} />
                 <Ficha etiqueta="Precio" valor={`$${contexto.precio.toLocaleString("es-CO")}`} />
                 <Ficha etiqueta="Estado al guardar" valor="Reservado · pendiente de pago" />
                 <Ficha etiqueta="Fecha y hora" valor={formatoHora.format(ahora)} nota="La fija el servidor al guardar" icon={CalendarClock} />
             </div>
-
-            {bloqueo && (
-                <Aviso>{bloqueo}</Aviso>
-            )}
 
             {opciones.length > 1 && (
                 <Campo etiqueta="Sorteo" requerido>
@@ -213,11 +221,14 @@ export default function ReservaManualForm({ contexto, onReservar, etiquetaBoton,
                     {sorteo?.clave.startsWith("programado:") && (
                         <p className="text-xs text-gray-500 mt-1">Reserva anticipada: queda guardada para este sorteo y se mantiene cuando se publique.</p>
                     )}
+                    {sinSorteo && (
+                        <p className="text-xs text-gray-500 mt-1">El número queda reservado al contacto sin sorteo ni grupo. Un reinicio de la tabla no lo libera sin que lo decidas.</p>
+                    )}
                 </Campo>
             )}
 
             <Campo etiqueta="Contacto" requerido>
-                <SelectorContacto seleccion={contacto} onCambiar={(c) => { setContacto(c); setGrupoElegido(null); setFallo(null); }} deshabilitado={enviando || Boolean(bloqueo)} />
+                <SelectorContacto seleccion={contacto} onCambiar={(c) => { setContacto(c); setGrupoElegido(null); setFallo(null); }} deshabilitado={enviando} />
             </Campo>
 
             {grupos.length > 0 && (

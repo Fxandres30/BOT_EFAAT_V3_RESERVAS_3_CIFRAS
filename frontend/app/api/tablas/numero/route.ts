@@ -10,7 +10,7 @@ const PRECIO = /^\d{1,7}$/;
 const NUMERO = /^\d{1,4}$/;
 
 const CAMPOS: Record<string, string[]> = {
-    reservar: ["contactoId", "nuevoContacto", "eventoId", "sorteoProgramadoId", "grupoId", "motivo", "observaciones", "solicitudId"],
+    reservar: ["contactoId", "nuevoContacto", "eventoId", "sorteoProgramadoId", "grupoId", "sinSorteo", "motivo", "observaciones", "solicitudId"],
     pagar: ["metodoPago", "observaciones", "motivo", "solicitudId"],
     liberar: ["confirmar", "motivo", "observaciones", "solicitudId"]
 };

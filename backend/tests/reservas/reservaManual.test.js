@@ -272,10 +272,12 @@ prueba("contacto de otro cliente -> 404 y nada cambia", async () => {
     assert.strictEqual(fila(A, "00").estado, "libre");
 });
 
-prueba("sorteo cerrado o grupo desautorizado -> rechazo (mismas reglas que el bot)", async () => {
+prueba("sorteo cerrado -> se reserva igual (el estado del sorteo no bloquea); grupo desautorizado -> rechazo", async () => {
     sembrar();
-    fake.tablas.eventos_bot.filter(e => e.usuario_id === A).forEach(e => { e.estado = "cerrado"; });
-    assert.strictEqual((await reservar("00", { contactoId: C1, eventoId: EV_A1, motivo: "prueba" })).json.motivo, "sorteo_cerrado");
+    fake.tablas.eventos_bot.filter(e => e.usuario_id === A).forEach(e => { e.estado = "cerrado"; e.hora_cierre = "00:00"; e.fecha_evento = "2000-01-01"; });
+    const cerrado = await reservar("00", { contactoId: C1, eventoId: EV_A1, motivo: "prueba" });
+    assert.strictEqual(cerrado.status, 200, JSON.stringify(cerrado.json));
+    assert.deepStrictEqual([fila(A, "00").estado, fila(A, "00").evento_id], ["reservado", EV_A1]);
     sembrar();
     fake.tablas.grupos_autorizados.find(g => g.grupo_id === "gA2@g.us").activo = false;
     require("../../bot/funciones/grupos/politicaGrupos").olvidarAutorizacion();
@@ -541,6 +543,134 @@ prueba("servicio: llamadas solapadas de la misma solicitud comparten UNA ejecuci
     assert.strictEqual(l1, l2, "misma respuesta compartida");
     assert.strictEqual(l1.hechos, 1);
     assert.strictEqual(auditoria().filter(x => x.accion === "pagar" && x.numero === "05").length, 1);
+});
+
+// ------------------------------- reservas independientes de los sorteos ---
+
+const pagar = (numero, cuerpo = {}) => pedir("POST", `/tablas/5000/numeros/${numero}/pagar`, { cuerpo });
+const lote = (cuerpo) => pedir("POST", "/tablas/5000/lote", { cuerpo });
+
+prueba("D-reservas 1. con sorteo activo: se vincula al sorteo y grupo elegidos", async () => {
+    sembrar();
+    const r = await reservar("01", { contactoId: C1, eventoId: EV_A2, motivo: "prueba activo" });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    const f = fila(A, "01");
+    assert.deepStrictEqual([f.estado, f.evento_id, f.identidad_evento_real, f.grupo_id], ["reservado", EV_A2, "idA", "gA2@g.us"]);
+    assert.ok(!r.json.sinSorteo);
+});
+
+prueba("D-reservas 2. con sorteo activo, el propietario puede elegir reservar sin sorteo", async () => {
+    sembrar();
+    const r = await reservar("01", { contactoId: C1, sinSorteo: true, motivo: "sin vincular" });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(r.json.sinSorteo, true);
+    const f = fila(A, "01");
+    assert.deepStrictEqual([f.estado, f.evento_id, f.identidad_evento_real, f.grupo_id, f.usuario_global_id], ["reservado", null, null, null, C1]);
+    assert.strictEqual((await reservar("02", { contactoId: C1, sinSorteo: true, eventoId: EV_A1, motivo: "dos destinos" })).json.motivo, "destino_ambiguo");
+});
+
+prueba("D-reservas 3. sin sorteo activo ni programado: la reserva se permite (antes: sin_sorteo)", async () => {
+    sembrar();
+    fake.tablas.eventos_bot = fake.tablas.eventos_bot.filter(e => e.usuario_id !== A);
+    const ctx = await pedir("GET", "/tablas/5000/numeros/03");
+    assert.strictEqual(ctx.json.sorteo, null);
+    assert.deepStrictEqual(ctx.json.programados, []);
+    const r = await reservar("03", { contactoId: C2, motivo: "sin ningún sorteo" });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(r.json.sinSorteo, true);
+    assert.strictEqual(fila(A, "03").estado, "reservado");
+    assert.strictEqual(fila(A, "03").usuario_global_id, C2);
+    const a = auditoria().find(x => x.numero === "03" && x.resultado === "ok");
+    assert.deepStrictEqual([a.evento_id, a.grupo_id, a.origen], [null, null, "manual"]);
+});
+
+prueba("D-reservas 4. sin sorteo se conservan las validaciones: disponibilidad, concurrencia, duplicado, formato y contacto", async () => {
+    sembrar();
+    fake.tablas.eventos_bot = [];
+    assert.strictEqual((await reservar("05", { contactoId: C1, motivo: "ocupado" })).json.motivo, "no_disponible", "reservado de otro");
+    assert.strictEqual((await reservar("07", { contactoId: C1, motivo: "bloqueado" })).json.motivo, "no_disponible", "bloqueado");
+    assert.strictEqual((await reservar("08", { contactoId: C1, motivo: "en proceso" })).json.motivo, "no_disponible", "retención temporal");
+    assert.strictEqual((await reservar("000", { contactoId: C1, motivo: "formato" })).json.motivo, "numero_invalido");
+    assert.strictEqual((await reservar("04", { motivo: "sin contacto" })).json.motivo, "falta_contacto");
+    assert.strictEqual((await reservar("04", { contactoId: C3, motivo: "contacto ajeno" })).status, 404);
+    const [r1, r2] = await Promise.all([
+        reservar("04", { contactoId: C1, motivo: "simultáneo 1", solicitudId: "x1" }),
+        reservar("04", { contactoId: C2, motivo: "simultáneo 2", solicitudId: "x2" })
+    ]);
+    assert.deepStrictEqual([r1.status, r2.status].sort(), [200, 409], JSON.stringify([r1.json, r2.json]));
+    const ganador = r1.status === 200 ? C1 : C2;
+    const repetido = await reservar("04", { contactoId: ganador, motivo: "reintento" });
+    assert.strictEqual(repetido.json.idempotente, true, "reintento del mismo contacto: no duplica");
+    assert.strictEqual(auditoria().filter(x => x.numero === "04" && x.resultado === "ok").length, 1);
+});
+
+prueba("D-reservas 5. lote sin sorteo: una solicitud, reserva solo los libres", async () => {
+    sembrar();
+    fake.tablas.eventos_bot = [];
+    const r = await lote({ accion: "reservar", numeros: ["01", "02", "05"], contactoId: C1, motivo: "lote sin sorteo", solicitudId: "lote-ss" });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.deepStrictEqual([r.json.hechos, r.json.omitidos], [2, 1]);
+    assert.deepStrictEqual(["01", "02"].map(n => fila(A, n).estado), ["reservado", "reservado"]);
+    assert.strictEqual(fila(A, "05").usuario_global_id, C2, "el ocupado no se tocó");
+});
+
+// ------------------------------- pagos independientes del contacto ---
+
+// Reservas con distintos datos de contacto, todas 'reservado' en la cuadrícula de A.
+function sembrarPagos() {
+    sembrar();
+    Object.assign(fila(A, "01"), { estado: "reservado", usuario_global_id: C2, comprador: "Juan", telefono: "3104445566", contacto: "3104445566", lid: null, evento_id: EV_A1, identidad_evento_real: "idA" });
+    Object.assign(fila(A, "02"), { estado: "reservado", usuario_global_id: C1, comprador: "Solo LID", telefono: null, contacto: null, lid: "999@lid", evento_id: EV_A1, identidad_evento_real: "idA" });
+    Object.assign(fila(A, "03"), { estado: "reservado", usuario_global_id: C2, comprador: "Sin JID", telefono: "3104445566", contacto: "3104445566", lid: null, lib: null, evento_id: EV_A1, identidad_evento_real: "idA" });
+    Object.assign(fila(A, "04"), { estado: "reservado", usuario_global_id: null, comprador: "Sin WhatsApp", telefono: null, contacto: null, lid: null, evento_id: EV_A1, identidad_evento_real: "idA" });
+    Object.assign(fila(A, "09"), { estado: "reservado" });  // datos incompletos: solo el estado
+}
+
+prueba("D-pagos 1-5. con teléfono, sin teléfono, sin JID, sin contacto de WhatsApp y datos incompletos: se registra el pago", async () => {
+    sembrarPagos();
+    for (const [n, caso] of [["01", "con teléfono"], ["02", "sin teléfono"], ["03", "sin JID"], ["04", "sin contacto WhatsApp"], ["09", "datos incompletos"]]) {
+        const antes = { ...fila(A, n) };
+        const r = await pagar(n, { metodoPago: "Efectivo", solicitudId: `p-${n}` });
+        assert.strictEqual(r.status, 200, `${caso}: ${JSON.stringify(r.json)}`);
+        const f = fila(A, n);
+        assert.strictEqual(f.estado, "pagado", caso);
+        assert.ok(f.fecha_pago && f.hora_pago, caso);
+        for (const c of ["comprador", "telefono", "contacto", "lid", "usuario_global_id", "evento_id", "grupo_id"]) {
+            assert.strictEqual(f[c] ?? null, antes[c] ?? null, `${caso}: no inventa ni cambia ${c}`);
+        }
+    }
+    assert.strictEqual(envios, 0, "ningún pago toca WhatsApp");
+});
+
+prueba("D-pagos 6. lote con contactos incompletos: todos pagados en una solicitud", async () => {
+    sembrarPagos();
+    const r = await lote({ accion: "pagar", numeros: ["01", "02", "03", "04", "09"], solicitudId: "lote-incompletos", otrosSorteoAutorizados: ["09"] });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(r.json.hechos, 5, JSON.stringify(r.json.resultados));
+    assert.ok(["01", "02", "03", "04", "09"].every(n => fila(A, n).estado === "pagado"));
+});
+
+prueba("D-pagos 7. pago parcial y completo: cada número conserva su estado (pendiente/pagado)", async () => {
+    sembrar();
+    for (const n of ["01", "02", "03"]) Object.assign(fila(A, n), { estado: "reservado", usuario_global_id: C1, comprador: "María", telefono: null, contacto: null, lid: "111@lid", evento_id: EV_A1, identidad_evento_real: "idA" });
+    assert.strictEqual((await pagar("01", { solicitudId: "parcial-1" })).status, 200);
+    assert.deepStrictEqual(["01", "02", "03"].map(n => fila(A, n).estado), ["pagado", "reservado", "reservado"], "parcial: 1 pagado, 2 pendientes");
+    const r = await lote({ accion: "pagar", numeros: ["01", "02", "03"], solicitudId: "completo-1" });
+    assert.deepStrictEqual([r.json.hechos, r.json.sinCambio], [2, 1], JSON.stringify(r.json));
+    assert.deepStrictEqual(["01", "02", "03"].map(n => fila(A, n).estado), ["pagado", "pagado", "pagado"], "completo");
+    assert.strictEqual((await pagar("00", {})).json.motivo, "no_reservado", "un libre nunca pasa a pagado");
+});
+
+prueba("D-pagos 8. reserva hecha sin sorteo se puede pagar (uno y lote)", async () => {
+    sembrar();
+    fake.tablas.eventos_bot = [];
+    assert.strictEqual((await reservar("01", { contactoId: C1, motivo: "sin sorteo" })).status, 200);
+    assert.strictEqual((await reservar("02", { contactoId: C1, motivo: "sin sorteo" })).status, 200);
+    const uno = await pagar("01", { solicitudId: "ss-1" });
+    assert.strictEqual(uno.status, 200, JSON.stringify(uno.json));
+    assert.strictEqual(fila(A, "01").estado, "pagado");
+    const varios = await lote({ accion: "pagar", numeros: ["02"], solicitudId: "ss-lote", otrosSorteoAutorizados: ["02"] });
+    assert.strictEqual(varios.json.hechos, 1, JSON.stringify(varios.json));
 });
 
 prueba("estático: las rutas sacan cliente y operador del token, nunca del cuerpo", () => {

@@ -174,10 +174,12 @@ export function obtenerContextoNumero(precio: number, numero: string) {
 export interface DatosReserva {
     contactoId?: string;
     nuevoContacto?: { nombre: string; telefono: string };
-    /** Sorteo activo (su fila del grupo) o, en su lugar, sorteo programado + grupo. */
+    /** Sorteo activo (su fila del grupo) o, en su lugar, sorteo programado + grupo,
+     *  o ninguno (sinSorteo): reservar no depende del estado de los sorteos. */
     eventoId?: string;
     sorteoProgramadoId?: string;
     grupoId?: string;
+    sinSorteo?: boolean;
     motivo: string;
     observaciones?: string;
     solicitudId: string;

@@ -1,6 +1,8 @@
 # Pagos que fallan: `compradores_semanales.whatsapp` NOT NULL 🔐
 
-**Estado:** diagnosticado. Arreglo preparado y probado en Postgres en memoria: **B1** en `parte_b_compradores_semanales.sql` (variante de la opción A que no necesita reescribir la función heredada). **No está aplicado** y requiere tu autorización.
+**Estado:** diagnosticado. Arreglo como migración oficial **041** (`backend/supabase_migrations/041_pagos_sin_whatsapp.sql`, 31/10/2026), probado en Postgres en memoria (`backend/tests/seguridad/migracion041.test.js`). Sustituye a la antigua B1 (retirada de `parte_b_compradores_semanales.sql`). **No está aplicada** y requiere tu autorización.
+
+> La 041 omite la escritura en `compradores_semanales` cuando no hay WhatsApp válido (NULL, vacío, con `@` o sin 7–15 dígitos) y no toca la función heredada, la columna NOT NULL ni ningún dato. El resto de este documento es el diagnóstico original.
 
 ## Qué pasa
 

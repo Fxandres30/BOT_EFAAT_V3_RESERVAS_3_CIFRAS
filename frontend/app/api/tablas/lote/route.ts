@@ -9,7 +9,7 @@ const PRECIO = /^\d{1,7}$/;
 const MAX_NUMEROS = 1000;
 
 const CAMPOS: Record<string, string[]> = {
-    reservar: ["numeros", "contactoId", "nuevoContacto", "eventoId", "sorteoProgramadoId", "grupoId", "motivo", "observaciones", "solicitudId"],
+    reservar: ["numeros", "contactoId", "nuevoContacto", "eventoId", "sorteoProgramadoId", "grupoId", "sinSorteo", "motivo", "observaciones", "solicitudId"],
     pagar: ["numeros", "metodoPago", "observaciones", "motivo", "otrosSorteoAutorizados", "solicitudId"],
     liberar: ["numeros", "confirmar", "motivo", "observaciones", "otrosSorteoAutorizados", "solicitudId"]
 };

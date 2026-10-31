@@ -118,7 +118,8 @@ function describirAnticipadas(r) {
 
 // Sorteos programados de ESTA tabla y precio que podrían recibir reservas
 // anticipadas, con el motivo cuando no (para explicarlo en el panel). Solo
-// confirmados en su versión vigente (D1) y antes de su cierre.
+// confirmados en su versión vigente (D1). La hora de cierre no lo excluye:
+// el estado del sorteo no decide si el propietario puede reservar.
 async function sorteosParaReservar(usuarioId, { tabla, precio, ahora = new Date() }) {
 
     const { data, error } = await supabase.from("sorteos_programados")
@@ -137,7 +138,6 @@ async function sorteosParaReservar(usuarioId, { tabla, precio, ahora = new Date(
 
         const fecha = fechaSorteoDe(s.config, s.publicar_en);
         const cierre = s.config?.hora_cierre ? instanteBogota(fecha, s.config.hora_cierre) : null;
-        if (cierre && ahora.getTime() >= cierre.getTime()) continue;
 
         const { data: grupos, error: errorGrupos } = await supabase.from("sorteos_programados_grupos")
             .select("grupo_id, grupo_nombre, estado")

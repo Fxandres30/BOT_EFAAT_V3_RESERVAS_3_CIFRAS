@@ -1,10 +1,9 @@
 -- ==========================================================================
 -- PARTE B (NO APLICADA, NO ES UNA MIGRACIÓN) — compradores_semanales.
--- Dos bloques independientes, cada uno en su propia transacción:
 --
---   B1  Pagos de clientes solo LID: el pago se guarda; el cliente sin
---       teléfono no se suma a compradores_semanales. No se inventa ningún
---       teléfono. NO toca la función heredada.
+--   B1  RETIRADA (2026-10-31): los pagos sin teléfono se corrigen con la
+--       migración oficial backend/supabase_migrations/041_pagos_sin_whatsapp.sql
+--       (si B1 se hubiera aplicado a mano, la 041 la retira).
 --   B2  Cerrar la lectura: hoy anon (sin sesión) lee las 1929 filas (nombre +
 --       WhatsApp) y cualquier usuario del panel también. Requiere la Parte A
 --       aplicada antes.
@@ -49,62 +48,14 @@
 --
 -- Si la consulta 1 muestra que el trigger es BEFORE y modifica NEW, o la 2
 -- muestra que la función escribe whatsapp con UPDATE (no INSERT), avísame
--- antes de aplicar: B1 está pensado para un INSERT/UPSERT.
+-- antes de aplicar la 041: está pensada para un INSERT/UPSERT.
 -- ==========================================================================
 
 
 -- ==========================================================================
--- B1 — omitir (no insertar) filas sin whatsapp. Una sola transacción.
---
--- Cómo funciona: un trigger BEFORE INSERT en compradores_semanales que
--- devuelve NULL cuando whatsapp es NULL. Postgres entonces no inserta esa
--- fila (también con INSERT ... ON CONFLICT) y no lanza error, así que el
--- UPDATE a 'pagado' de la reserva se completa. Las filas con teléfono siguen
--- exactamente igual. whatsapp = '' (vacío) no se toca: hoy ya se inserta.
+-- B1 RETIRADA: ahora es la migración oficial
+-- backend/supabase_migrations/041_pagos_sin_whatsapp.sql.
 -- ==========================================================================
-
-begin;
-
-create or replace function public.compradores_semanales_omitir_sin_whatsapp()
-returns trigger
-language plpgsql
-set search_path = public, pg_temp
-as $$
-begin
-
-    if new.whatsapp is null then
-        -- Sin datos personales en el log.
-        raise warning 'compradores_semanales: compra omitida, comprador sin telefono (solo LID)';
-        return null;
-    end if;
-
-    return new;
-
-end;
-$$;
-
-revoke all on function public.compradores_semanales_omitir_sin_whatsapp() from public, anon, authenticated;
-
-drop trigger if exists omitir_sin_whatsapp on public.compradores_semanales;
-
-create trigger omitir_sin_whatsapp
-    before insert on public.compradores_semanales
-    for each row execute function public.compradores_semanales_omitir_sin_whatsapp();
-
-commit;
-
--- DESPUÉS (B1):
---   select tgname, tgenabled from pg_trigger
---   where tgrelid = 'public.compradores_semanales'::regclass and not tgisinternal;
---   -> omitir_sin_whatsapp | O
---   Prueba real: el siguiente pago por sticker de un cliente solo LID debe
---   quedar 'pagado' (log "[PAGO-STICKER]" sin "Pago NO guardado").
---
--- VUELTA ATRÁS (B1):
---   begin;
---   drop trigger if exists omitir_sin_whatsapp on public.compradores_semanales;
---   drop function if exists public.compradores_semanales_omitir_sin_whatsapp();
---   commit;
 
 
 

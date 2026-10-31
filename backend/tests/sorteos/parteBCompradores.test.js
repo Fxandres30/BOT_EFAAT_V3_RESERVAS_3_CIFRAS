@@ -1,5 +1,6 @@
 // ==========================================================================
-// PRUEBA SQL de docs/activacion/parte_b_compradores_semanales.sql (B1, B2) y
+// PRUEBA SQL de docs/activacion/parte_b_compradores_semanales.sql (B2), de la
+// migración 041 (sustituye a la antigua B1) y de
 // parte_c_tablas_legado.sql (NO aplicadas en producción) contra Postgres
 // real en memoria (PGlite), junto con la Parte A.
 //
@@ -27,6 +28,8 @@ const DOCS = path.join(__dirname, "..", "..", "..", "docs", "activacion");
 const PARTE_A = fs.readFileSync(path.join(DOCS, "propuesta_rls_tablas_antiguas.sql"), "utf8");
 const PARTE_B = fs.readFileSync(path.join(DOCS, "parte_b_compradores_semanales.sql"), "utf8");
 const PARTE_C = fs.readFileSync(path.join(DOCS, "parte_c_tablas_legado.sql"), "utf8");
+// La antigua B1 es ahora la migración oficial 041.
+const M041 = fs.readFileSync(path.join(__dirname, "..", "..", "supabase_migrations", "041_pagos_sin_whatsapp.sql"), "utf8");
 
 // Cada bloque ejecutable va de una línea "begin;" a la siguiente "commit;"
 // (los de los comentarios empiezan por "--" y no cuentan).
@@ -34,7 +37,8 @@ function bloques(sql) {
     return [...sql.matchAll(/^begin;$[\s\S]*?^commit;$/gm)].map(m => m[0]);
 }
 
-const [B1, B2] = bloques(PARTE_B);
+const [B2] = bloques(PARTE_B);
+const B1 = M041;
 const [C1, C2] = bloques(PARTE_C);
 
 // B2 exige el md5 del cuerpo revisado de la función heredada (lo da el

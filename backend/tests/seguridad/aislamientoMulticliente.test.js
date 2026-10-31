@@ -40,6 +40,7 @@ const PARTE_A = leer("docs/activacion/propuesta_rls_tablas_antiguas.sql");
 const M033 = leer("backend/supabase_migrations/033_cuadricula_por_cliente.sql");
 const M027 = leer("backend/supabase_migrations/027_tablas_cliente.sql");
 const PARTE_B = leer("docs/activacion/parte_b_compradores_semanales.sql");
+const M041 = leer("backend/supabase_migrations/041_pagos_sin_whatsapp.sql");
 const M034 = leer("backend/supabase_migrations/034_compradores_por_cliente.sql");
 const PARTE_G = leer("docs/activacion/parte_g_funciones_definer.sql");
 const M035 = leer("backend/supabase_migrations/035_rls_tablas_cliente.sql");
@@ -198,6 +199,7 @@ async function activar(db) {
     await aplicarOk(db, M033, "033");
     await aplicarOk(db, M027, "027");
     await aplicarOk(db, await conMd5(db, PARTE_B), "Parte B");
+    await aplicarOk(db, M041, "041");
     await aplicarOk(db, M034, "034");
     await aplicarOk(db, PARTE_G, "Parte G");
     await aplicarOk(db, M035, "035");
@@ -487,7 +489,7 @@ prueba("idempotencia: toda la secuencia se puede volver a aplicar sin errores ni
     const db = await crearDb();
     await activar(db);
     const antes = await huella(db, T5K, A);
-    for (const [n, sql] of [["031", M031], ["A", PARTE_A], ["033", M033], ["027", M027], ["B", await conMd5(db, PARTE_B)], ["034", M034], ["G", PARTE_G], ["035", M035]]) {
+    for (const [n, sql] of [["031", M031], ["A", PARTE_A], ["033", M033], ["027", M027], ["B", await conMd5(db, PARTE_B)], ["041", M041], ["034", M034], ["G", PARTE_G], ["035", M035]]) {
         await aplicarOk(db, sql, `${n} (2.ª vez)`);
     }
     assert.deepStrictEqual(await huella(db, T5K, A), antes);

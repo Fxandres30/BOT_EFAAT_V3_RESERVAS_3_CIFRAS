@@ -149,7 +149,7 @@ export interface ResultadoOperacion {
 }
 
 export type DatosOperacion = Omit<DatosPago & DatosLiberar, "solicitudId">
-    & Partial<Pick<DatosReserva, "contactoId" | "nuevoContacto" | "eventoId" | "sorteoProgramadoId" | "grupoId">>;
+    & Partial<Pick<DatosReserva, "contactoId" | "nuevoContacto" | "eventoId" | "sorteoProgramadoId" | "grupoId" | "sinSorteo">>;
 
 /** Envía el lote al servidor en UNA solicitud (operarLote). */
 export type EnviarLote = (cuerpo: Record<string, unknown>) => Promise<Resultado<RespuestaLote>>;
@@ -166,7 +166,7 @@ export function cuerpoDelLote(operacion: OperacionLote, incluidos: NumeroSelecci
         return {
             ...comunes, accion: "reservar", numeros: incluidos.map(n => n.numero),
             contactoId: datos.contactoId, nuevoContacto: datos.nuevoContacto,
-            eventoId: datos.eventoId, sorteoProgramadoId: datos.sorteoProgramadoId, grupoId: datos.grupoId
+            eventoId: datos.eventoId, sorteoProgramadoId: datos.sorteoProgramadoId, grupoId: datos.grupoId, sinSorteo: datos.sinSorteo
         };
     }
 
