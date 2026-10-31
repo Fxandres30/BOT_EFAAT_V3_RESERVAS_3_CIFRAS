@@ -9,6 +9,7 @@ import { useAccion } from "@/hooks/useAccion";
 
 import ReinicioTablaModal from "./ReinicioTablaModal";
 import AnuncioSorteoModal from "./AnuncioSorteoModal";
+import styles from "./AccionesTabla.module.css";
 import CompartirTablaModal, { enviarCompartir, nuevaSolicitud, panelResultado, type PanelCompartir } from "./CompartirTablaModal";
 import { mensajeCompartir } from "@/services/tablas/compartirTabla";
 import type { ConfirmacionReinicio, ResultadoReinicio, RevisionReinicio } from "@/services/tablas/reiniciarTabla";
@@ -110,11 +111,12 @@ export default function AccionesTabla({
 
         <>
 
-            {/* Dos filas centradas: Reiniciar · Editar · Compartir /
-                Cambiar grupos · Personalizar · Diseños. */}
-            <div className="flex flex-col items-center gap-2 min-w-0">
+            {/* Una barra de herramientas con dos grupos: Reiniciar · Editar ·
+                Compartir / Cambiar grupos · Personalizar · Diseños ·
+                Actualizar (en pantallas pequeñas, uno debajo del otro). */}
+            <div className={styles.barra} role="toolbar" aria-label="Acciones de la tabla">
 
-                <div className="flex flex-wrap justify-center gap-2 min-w-0">
+                <div className={styles.grupo}>
 
                     <BotonIcono
                         icon={RotateCcw}
@@ -134,7 +136,7 @@ export default function AccionesTabla({
                     <BotonIcono
                         icon={Share2}
                         label={compartiendo ? "Compartiendo…" : "Compartir"}
-                        color="text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200"
+                        color="text-blue-700 hover:bg-blue-50 hover:border-blue-200"
                         destacado
                         cargando={compartiendo}
                         onClick={compartir}
@@ -142,12 +144,12 @@ export default function AccionesTabla({
 
                 </div>
 
-                <div className="flex flex-wrap items-center justify-center gap-2 min-w-0">
+                <div className={styles.grupo}>
 
                     <BotonIcono
                         icon={Users}
                         label="Cambiar grupos"
-                        color="text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200"
+                        color="text-blue-700 hover:bg-blue-50 hover:border-blue-200"
                         disabled={compartiendo}
                         onClick={() => setPanelCompartir({ tipo: "configurar" })}
                     />
@@ -236,11 +238,7 @@ export function BotonIcono({
             aria-busy={cargando || undefined}
             aria-label={label}
             title={label}
-            className={`flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 rounded-xl text-sm font-medium min-w-[44px] min-h-[44px] border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                destacado
-                    ? "bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700"
-                    : `bg-white border-gray-200 ${color}`
-            }`}
+            className={`${styles.boton} ${destacado ? styles.destacado : `${styles.normal} bg-white border-gray-200 ${color}`}`}
         >
             {cargando ? <Spinner size={16} /> : <Icon size={16} className="shrink-0" />}
             <span className={mostrarTexto ? undefined : "hidden sm:inline"}>{label}</span>

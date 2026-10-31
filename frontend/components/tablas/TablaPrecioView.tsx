@@ -2,13 +2,14 @@
 
 import { useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { Loader2, AlertTriangle, Info, Palette, LibraryBig, Filter } from "lucide-react";
+import Link from "next/link";
+import { Loader2, AlertTriangle, ArrowLeft, Palette, LibraryBig, Filter } from "lucide-react";
 
 import { useTablaPrecio } from "@/hooks/useTablaPrecio";
 import { useTablaDiseno } from "@/hooks/useTablaDiseno";
 import { useSeccionesPanel } from "@/hooks/useSeccionesPanel";
 import { Badge } from "@/components/ui/Badge";
-import { avisar } from "@/components/ui/Avisos";
+import { Aviso, avisar } from "@/components/ui/Avisos";
 import { nuevaSolicitudId } from "@/services/tablas/reservaManual";
 import AccionesTabla, { BotonIcono } from "./AccionesTabla";
 import StatsBar from "./StatsBar";
@@ -28,6 +29,8 @@ import type { EventoActivo } from "./types";
 import type { TablaDiseno } from "./disenoTypes";
 import type { OperacionLote } from "@/services/tablas/pagoLote";
 import { esDeOtroSorteo } from "@/services/tablas/seleccionTabla";
+
+import styles from "./TablaPrecioView.module.css";
 
 interface Props {
     precio: number;
@@ -214,12 +217,14 @@ export default function TablaPrecioView({ precio }: Props) {
 
                 <Cabecera precio={precio} eventoActivo={eventoActivo} coincidePrecio={coincidePrecio} />
 
-                <div className="border border-red-200 rounded-2xl p-6 sm:p-10 text-center bg-white">
-                    <AlertTriangle size={28} className="mx-auto mb-3 text-red-500" />
-                    <h2 className="text-xl font-bold mb-2">
+                <div className={styles.diagnostico}>
+                    <span className={`${styles.estadoMensajeIcono} ${styles.estadoMensajeError}`}>
+                        <AlertTriangle size={24} />
+                    </span>
+                    <h2 className={styles.estadoMensajeTitulo}>
                         {diagnostico?.titulo || "No se encontraron los números de esta tabla"}
                     </h2>
-                    <p className="text-gray-500 max-w-xl mx-auto">
+                    <p className={styles.estadoMensajeTexto}>
                         {diagnostico?.mensaje || "No se pudo confirmar el estado de tu cuadrícula. No reinicies la tabla; vuelve a cargar la página o avisa al administrador."}
                     </p>
                 </div>
@@ -269,7 +274,7 @@ export default function TablaPrecioView({ precio }: Props) {
             />
 
             {coincidentes && (
-                <div className="flex flex-wrap items-center justify-between gap-2 bg-blue-50 border border-blue-100 text-blue-800 text-sm rounded-xl px-3 py-2 min-w-0">
+                <div className={styles.filtro}>
                     <span className="flex items-center gap-2 min-w-0">
                         <Filter size={14} className="shrink-0" />
                         Cuadrícula filtrada desde «Historial de números»: {coincidentes.size} de {numeros.length} números.
@@ -277,7 +282,7 @@ export default function TablaPrecioView({ precio }: Props) {
                     <button
                         type="button"
                         onClick={() => setFiltros(FILTROS_HISTORIAL_VACIOS)}
-                        className="text-blue-700 font-medium hover:underline"
+                        className={styles.filtroBoton}
                     >
                         Mostrar todos
                     </button>
@@ -416,7 +421,8 @@ export default function TablaPrecioView({ precio }: Props) {
 
 }
 
-function Cabecera({
+// Exportada solo para la página de revisión visual (app/ui-preview).
+export function Cabecera({
     precio,
     eventoActivo,
     coincidePrecio
@@ -426,46 +432,59 @@ function Cabecera({
     coincidePrecio: boolean;
 }) {
 
+    const precioTexto = `$${precio.toLocaleString("es-CO")}`;
+
     return (
 
-        <div className="bg-white border rounded-2xl shadow-sm p-4 sm:p-6 min-w-0">
+        <div className="space-y-3 min-w-0">
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <header className={styles.cabecera}>
 
-                <div className="min-w-0">
-                    <h1 className="font-bold text-gray-900 text-[clamp(1.5rem,5vw,2.25rem)] leading-tight">
-                        Tabla ${precio.toLocaleString("es-CO")}
-                    </h1>
-                    <p className="text-gray-500 mt-1 break-words">
-                        {eventoActivo?.nombre_evento || "Administra las reservas de esta dinámica."}
-                    </p>
+                <Link href="/tablas" prefetch={false} className={styles.volver}>
+                    <ArrowLeft size={14} aria-hidden="true" />
+                    Reservas
+                </Link>
+
+                <div className={styles.cabeceraFila}>
+
+                    <div className="min-w-0">
+                        <h1 className={styles.titulo}>
+                            <span className={styles.tituloRotulo}>Tabla</span>
+                            <span className={styles.tituloPrecio}>{precioTexto}</span>
+                        </h1>
+                        <p className={styles.subtitulo}>
+                            {eventoActivo?.nombre_evento || "Administra las reservas de esta dinámica."}
+                        </p>
+                    </div>
+
+                    <div className={styles.cabeceraAcciones}>
+                        {coincidePrecio ? (
+                            <span className={`${styles.estadoEvento} ${styles.estadoActivo}`}>
+                                <span className={styles.pulso} aria-hidden="true" />
+                                Evento activo
+                            </span>
+                        ) : (
+                            <span className={styles.estadoEvento}>
+                                <span className={styles.punto} aria-hidden="true" />
+                                Sin evento activo para {precioTexto}
+                            </span>
+                        )}
+                        <span className={styles.ayuda}>
+                            <AyudaContextual slug="tablas-de-precio" />
+                        </span>
+                    </div>
+
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    {coincidePrecio ? (
-                        <span className="bg-emerald-100 text-emerald-700 px-4 py-2 rounded-full font-semibold text-sm w-fit shrink-0">
-                            🟢 Evento activo
-                        </span>
-                    ) : (
-                        <span className="bg-gray-100 text-gray-600 px-4 py-2 rounded-full font-semibold text-sm w-fit shrink-0">
-                            ⚪ Sin evento activo para ${precio.toLocaleString("es-CO")}
-                        </span>
-                    )}
-                    <AyudaContextual slug="tablas-de-precio" />
-                </div>
-
-            </div>
+            </header>
 
             {!coincidePrecio && (
 
-                <div className="mt-4 flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl p-3 min-w-0">
-                    <Info size={16} className="shrink-0 mt-0.5" />
-                    <span>
-                        {eventoActivo
-                            ? `El evento activo en esta tabla física ahora mismo es "${eventoActivo.nombre_evento}" por $${Number(eventoActivo.valor).toLocaleString("es-CO")}, no por $${precio.toLocaleString("es-CO")}. Los números ocupados por ese evento se ven como reservados o pagados en esta tabla.`
-                            : `No hay ningún evento activo en esta tabla ahora mismo. Las celdas muestran su último estado real, pero no se pueden reservar hasta abrir un evento de $${precio.toLocaleString("es-CO")}.`}
-                    </span>
-                </div>
+                <Aviso tono="aviso">
+                    {eventoActivo
+                        ? `El evento activo en esta tabla física ahora mismo es "${eventoActivo.nombre_evento}" por $${Number(eventoActivo.valor).toLocaleString("es-CO")}, no por ${precioTexto}. Los números ocupados por ese evento se ven como reservados o pagados en esta tabla.`
+                        : `No hay ningún evento activo en esta tabla ahora mismo. Las celdas muestran su último estado real, pero no se pueden reservar hasta abrir un evento de ${precioTexto}.`}
+                </Aviso>
 
             )}
 
@@ -491,13 +510,12 @@ function EstadoMensaje({
 
     return (
 
-        <div className="flex flex-col items-center justify-center text-center py-12 sm:py-24 px-4 gap-3">
-            <Icon
-                size={32}
-                className={`${tono === "error" ? "text-red-500" : "text-gray-400"} ${animarIcono ? "animate-spin" : ""}`}
-            />
-            <h2 className="text-lg font-bold text-gray-900">{titulo}</h2>
-            <p className="text-gray-500 max-w-sm break-words">{descripcion}</p>
+        <div className={styles.estadoMensaje}>
+            <span className={`${styles.estadoMensajeIcono} ${tono === "error" ? styles.estadoMensajeError : ""}`}>
+                <Icon size={24} className={animarIcono ? "animate-spin" : undefined} />
+            </span>
+            <h2 className={styles.estadoMensajeTitulo}>{titulo}</h2>
+            <p className={styles.estadoMensajeTexto}>{descripcion}</p>
         </div>
 
     );

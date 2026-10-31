@@ -4,8 +4,10 @@
   align-items: center;
   text-align: center;
   gap: var(--efaat-space-3);
-  padding: var(--efaat-space-8) var(--efaat-space-6);
-  background: var(--efaat-surface);
+  padding: var(--efaat-space-10) var(--efaat-space-6);
+  background:
+    radial-gradient(120% 80% at 50% 0%, var(--efaat-blue-50) 0%, transparent 60%),
+    var(--efaat-surface);
   border: 1px dashed var(--efaat-border-strong);
   border-radius: var(--efaat-radius-card);
 }
@@ -19,10 +21,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--efaat-radius-pill);
-  background: var(--efaat-primary-soft);
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--efaat-surface);
+  box-shadow: var(--efaat-shadow-md), inset 0 0 0 1px var(--efaat-primary-border);
   color: var(--efaat-primary);
 }
 
@@ -30,15 +33,16 @@
   margin: 0;
   font-size: var(--efaat-text-md);
   font-weight: var(--efaat-weight-bold);
-  color: var(--efaat-text);
+  letter-spacing: -0.01em;
+  color: var(--efaat-ink);
 }
 
 .description {
   margin: 0;
-  max-width: 42ch;
+  max-width: 44ch;
   font-size: var(--efaat-text-sm);
   color: var(--efaat-text-secondary);
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 .action {

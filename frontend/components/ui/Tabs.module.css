@@ -1,9 +1,10 @@
 .tabs {
   display: inline-flex;
-  gap: 4px;
-  padding: 4px;
-  background: #f1f5f9;
-  border-radius: var(--efaat-radius-control);
+  gap: 2px;
+  padding: 3px;
+  background: var(--efaat-surface-sunken);
+  border: 1px solid var(--efaat-border-subtle);
+  border-radius: calc(var(--efaat-radius-control) + 2px);
   max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
@@ -19,19 +20,27 @@
   gap: var(--efaat-space-2);
   padding: 7px 14px;
   border: none;
-  border-radius: 4px;
+  border-radius: calc(var(--efaat-radius-control) - 1px);
   background: transparent;
   color: var(--efaat-text-secondary);
   font-family: inherit;
-  font-size: var(--efaat-text-base);
+  font-size: var(--efaat-text-sm);
   font-weight: var(--efaat-weight-semibold);
   white-space: nowrap;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color var(--efaat-dur) var(--efaat-ease),
+    color var(--efaat-dur) var(--efaat-ease),
+    box-shadow var(--efaat-dur) var(--efaat-ease);
 }
 
 .tab:hover:not(.active):not(:disabled) {
-  color: var(--efaat-text);
+  color: var(--efaat-ink);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.tab:focus-visible {
+  outline: none;
+  box-shadow: var(--efaat-focus-ring);
 }
 
 .tab:disabled {
@@ -41,8 +50,8 @@
 
 .active {
   background: var(--efaat-surface);
-  color: var(--efaat-text);
-  box-shadow: var(--efaat-shadow-sm);
+  color: var(--efaat-ink);
+  box-shadow: var(--efaat-shadow-sm), 0 0 0 1px rgba(16, 24, 48, 0.04);
 }
 
 .icon {

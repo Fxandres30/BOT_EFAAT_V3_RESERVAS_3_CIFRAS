@@ -5,6 +5,7 @@ import type { LucideIcon } from "lucide-react";
 
 import BotonContraer from "./BotonContraer";
 import type { ActividadReserva, TipoActividad } from "./types";
+import seccion from "./SeccionPanel.module.css";
 
 const ICONOS: Record<TipoActividad, LucideIcon> = {
     reservado: Clock,
@@ -38,7 +39,7 @@ export default function ActividadReciente({ actividad, expandido, onToggleExpand
 
     return (
 
-        <section className="bg-white border rounded-2xl shadow-sm p-4 sm:p-5 min-w-0">
+        <section className={seccion.panel}>
 
             <div className={`flex items-center justify-between gap-2 ${expandido ? "mb-4" : ""}`}>
                 <h2 className="text-lg font-bold text-gray-900">Actividad reciente</h2>

@@ -18,10 +18,10 @@
   max-width: 100%;
 }
 
-/* Desktop: el sidebar (224px, fijo) reserva su espacio a la izquierda. */
+/* Desktop: el sidebar (232px, fijo) reserva su espacio a la izquierda. */
 @media (min-width: 1024px) {
   .content {
-    margin-left: 224px;
+    margin-left: 232px;
   }
 }
 
@@ -29,15 +29,21 @@
   flex: 1;
   width: 100%;
   min-width: 0;
-  padding: 24px;
+  padding: 28px 32px 40px;
   box-sizing: border-box;
   overflow-x: hidden;
   overflow-y: auto;
 }
 
+@media (max-width: 1023.98px) {
+  .content main {
+    padding: 24px;
+  }
+}
+
 @media (max-width: 640px) {
   .content main {
-    padding: 16px;
+    padding: 16px 16px 28px;
   }
 }
 
@@ -46,7 +52,9 @@
   position: fixed;
   inset: 0;
   z-index: 900;
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(10, 18, 38, 0.5);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
 }
 
 @media (min-width: 1024px) {

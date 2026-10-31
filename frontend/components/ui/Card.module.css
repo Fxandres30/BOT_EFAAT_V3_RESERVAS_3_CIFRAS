@@ -15,7 +15,7 @@
 }
 
 .padMd {
-  padding: var(--efaat-space-4);
+  padding: var(--efaat-space-5);
 }
 
 .padLg {
@@ -23,10 +23,25 @@
 }
 
 .interactive {
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--efaat-dur) var(--efaat-ease),
+    box-shadow var(--efaat-dur) var(--efaat-ease),
+    transform var(--efaat-dur) var(--efaat-ease);
 }
 
 .interactive:hover {
   border-color: var(--efaat-border-strong);
   box-shadow: var(--efaat-shadow-md);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 640px) {
+  .padMd {
+    padding: var(--efaat-space-4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .interactive:hover {
+    transform: none;
+  }
 }

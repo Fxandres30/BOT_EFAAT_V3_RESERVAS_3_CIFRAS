@@ -1,13 +1,18 @@
 .statCard {
+  --_accent: var(--efaat-ink-soft);
+  --_accent-soft: var(--efaat-surface-sunken);
+
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--efaat-space-2);
-  padding: var(--efaat-space-4);
+  padding: var(--efaat-space-4) var(--efaat-space-5);
   background: var(--efaat-surface);
   border: 1px solid var(--efaat-border);
   border-radius: var(--efaat-radius-card);
   box-shadow: var(--efaat-shadow-sm);
   min-width: 0;
+  overflow: hidden;
 }
 
 .top {
@@ -18,23 +23,32 @@
 }
 
 .label {
-  font-size: 11px;
+  font-size: var(--efaat-text-2xs);
   font-weight: var(--efaat-weight-semibold);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--efaat-tracking-label);
   text-transform: uppercase;
   color: var(--efaat-text-secondary);
 }
 
 .icon {
   display: inline-flex;
-  color: var(--efaat-text-muted);
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--_accent-soft);
+  color: var(--_accent);
+  flex-shrink: 0;
 }
 
 .value {
   font-size: var(--efaat-text-xl);
   font-weight: var(--efaat-weight-bold);
+  letter-spacing: var(--efaat-tracking-tight);
+  font-variant-numeric: tabular-nums;
   line-height: 1.1;
-  color: var(--efaat-text);
+  color: var(--efaat-ink);
 }
 
 .hint {
@@ -42,15 +56,32 @@
   color: var(--efaat-text-muted);
 }
 
+.tone-primary {
+  --_accent: var(--efaat-primary);
+  --_accent-soft: var(--efaat-primary-soft);
+}
+.tone-success {
+  --_accent: var(--efaat-success);
+  --_accent-soft: var(--efaat-success-soft);
+}
+.tone-warning {
+  --_accent: var(--efaat-warning);
+  --_accent-soft: var(--efaat-warning-soft);
+}
+.tone-error {
+  --_accent: var(--efaat-error);
+  --_accent-soft: var(--efaat-error-soft);
+}
+
 .tone-primary .value {
   color: var(--efaat-primary-active);
 }
 .tone-success .value {
-  color: var(--efaat-success);
+  color: var(--efaat-success-strong);
 }
 .tone-warning .value {
-  color: var(--efaat-warning);
+  color: var(--efaat-warning-strong);
 }
 .tone-error .value {
-  color: var(--efaat-error);
+  color: var(--efaat-error-strong);
 }

@@ -1,4 +1,6 @@
 .page {
+  width: 100%;
+  box-sizing: border-box;
   max-width: 1080px;
   margin: 0 auto;
   padding: var(--efaat-space-8) var(--efaat-space-6) 96px;

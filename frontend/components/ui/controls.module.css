@@ -4,14 +4,21 @@
   border: 1px solid var(--efaat-border);
   border-radius: var(--efaat-radius-control);
   background: var(--efaat-surface);
+  box-shadow: var(--efaat-shadow-xs);
   color: var(--efaat-text);
   font-family: inherit;
   font-size: var(--efaat-text-base);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--efaat-dur) var(--efaat-ease),
+    box-shadow var(--efaat-dur) var(--efaat-ease),
+    background-color var(--efaat-dur) var(--efaat-ease);
 }
 
 .control::placeholder {
   color: var(--efaat-text-muted);
+}
+
+.control:hover:not(:disabled):not(:focus) {
+  border-color: var(--efaat-border-strong);
 }
 
 .control:focus {
@@ -23,6 +30,7 @@
 .control:disabled {
   background: var(--efaat-surface-muted);
   color: var(--efaat-text-muted);
+  box-shadow: none;
   cursor: not-allowed;
 }
 
@@ -31,26 +39,26 @@
 }
 
 .control[aria-invalid="true"]:focus {
-  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.28);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.24);
 }
 
 /* input / select: una línea */
 .line {
-  height: 38px;
+  height: 40px;
   padding: 0 var(--efaat-space-3);
 }
 
 /* textarea: multilínea */
 .area {
   min-height: 96px;
-  padding: var(--efaat-space-3);
+  padding: 10px var(--efaat-space-3);
   line-height: 1.5;
   resize: vertical;
 }
 
 /* input con icono a la izquierda */
 .withLeftIcon {
-  padding-left: 34px;
+  padding-left: 36px;
 }
 
 .inputWrap {
@@ -61,12 +69,17 @@
 
 .leftIcon {
   position: absolute;
-  left: 10px;
+  left: 11px;
   top: 50%;
   transform: translateY(-50%);
   display: inline-flex;
   color: var(--efaat-text-muted);
   pointer-events: none;
+  transition: color var(--efaat-dur) var(--efaat-ease);
+}
+
+.inputWrap:focus-within .leftIcon {
+  color: var(--efaat-primary);
 }
 
 /* select: espacio para la flecha nativa */
@@ -74,7 +87,8 @@
   appearance: none;
   -webkit-appearance: none;
   padding-right: 34px;
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235b6b85' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 10px center;
+  cursor: pointer;
 }

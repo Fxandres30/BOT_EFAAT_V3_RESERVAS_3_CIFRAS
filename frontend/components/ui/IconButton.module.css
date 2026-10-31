@@ -1,6 +1,6 @@
 .iconButton {
   --_bg: transparent;
-  --_bg-hover: var(--efaat-surface-muted);
+  --_bg-hover: var(--efaat-surface-sunken);
   --_fg: var(--efaat-text-secondary);
   --_border: transparent;
 
@@ -13,12 +13,20 @@
   background: var(--_bg);
   color: var(--_fg);
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  transition: background-color var(--efaat-dur) var(--efaat-ease),
+    border-color var(--efaat-dur) var(--efaat-ease),
+    color var(--efaat-dur) var(--efaat-ease),
+    opacity var(--efaat-dur) var(--efaat-ease);
 }
 
 .iconButton:hover:not(:disabled) {
   background: var(--_bg-hover);
-  color: var(--efaat-text);
+  color: var(--efaat-ink);
+}
+
+.iconButton:focus-visible {
+  outline: none;
+  box-shadow: var(--efaat-focus-ring);
 }
 
 .iconButton:disabled {
@@ -32,20 +40,25 @@
 }
 
 .md {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
 }
 
 .solid {
   --_bg: var(--efaat-surface);
   --_bg-hover: var(--efaat-surface-muted);
   --_border: var(--efaat-border);
-  --_fg: var(--efaat-text);
+  --_fg: var(--efaat-ink-soft);
+  box-shadow: var(--efaat-shadow-xs);
+}
+
+.solid:hover:not(:disabled) {
+  border-color: var(--efaat-border-strong);
 }
 
 .ghost {
   --_bg: transparent;
-  --_bg-hover: var(--efaat-surface-muted);
+  --_bg-hover: var(--efaat-surface-sunken);
 }
 
 .danger {
@@ -54,5 +67,5 @@
 }
 
 .danger:hover:not(:disabled) {
-  color: var(--efaat-error);
+  color: var(--efaat-error-strong);
 }

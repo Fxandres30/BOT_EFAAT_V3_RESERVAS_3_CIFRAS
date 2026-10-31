@@ -1,6 +1,6 @@
 // ==========================================================================
 // PRUEBAS (frontend) — FASE UX-05: selección múltiple y acciones rápidas en
-// Tablas («Seleccionar»): todos los libres, rangos, reservar en lote y la
+// Tablas («Seleccionar»): todos los libres, reservar en lote y la
 // protección de los números de otro sorteo.
 //
 // Lógica REAL del panel (services/tablas/pagoLote.ts, seleccionTabla.ts y
@@ -44,12 +44,8 @@ const tabla = [
     { numero: "07", estado: "bloqueado" }, { numero: "08", estado: "en_proceso" }, { numero: "09", estado: "libre" }
 ];
 
-await prueba("todos los libres y rangos (con ceros iniciales, en cualquier orden)", () => {
+await prueba("todos los libres (con ceros iniciales, sin repetir)", () => {
     assert.deepStrictEqual(S.numerosLibres(tabla), ["00", "01", "02", "03", "09"]);
-    assert.deepStrictEqual(S.numerosEnRango(tabla, "2", "05"), { ok: true, numeros: ["02", "03", "04", "05"] });
-    assert.deepStrictEqual(S.numerosEnRango(tabla, "07", "06"), { ok: true, numeros: ["06", "07"] }, "orden invertido");
-    assert.strictEqual(S.numerosEnRango(tabla, "a", "3").ok, false);
-    assert.strictEqual(S.numerosEnRango(tabla, "0", "15").ok, false, "fuera de la tabla");
     assert.deepStrictEqual(S.anadirSeleccion(["05", "01"], ["01", "02"]), ["01", "02", "05"], "sin repetir");
 });
 
@@ -151,9 +147,10 @@ await prueba("acciones rápidas del historial sin cambios: reservar sigue en el 
     assert.deepStrictEqual(L.accionesRapidas("reservado"), ["pagar", "liberar", "detalle"]);
 });
 
-await prueba("interfaz: barra con «Todos los libres», rango, «Ver selección», reservar con el formulario de la reserva manual", () => {
+await prueba("interfaz: barra con «Todos los libres», sin rango, «Ver selección», reservar con el formulario de la reserva manual", () => {
     const barra = leer("components/tablas/SeleccionPagos.tsx");
-    for (const t of ["Todos los libres", "aria-label=\"Seleccionar un rango\"", "Ver selección", "Limpiar", "Terminar", "<ReservaManualForm", "obtenerContextoNumero(precio", "Incluir {plural(otrosSorteo.length"]) assert.ok(barra.includes(t), t);
+    assert.ok(!barra.includes("Seleccionar un rango") && !barra.includes("anadirRango"), "el selector de rango se retiró");
+    for (const t of ["Todos los libres", "Ver selección", "Limpiar", "Terminar", "<ReservaManualForm", "obtenerContextoNumero(precio", "Incluir {plural(otrosSorteo.length"]) assert.ok(barra.includes(t), t);
     assert.match(barra, /onProcesar\("reservar", incluidos, resto, solicitudId\)/);
     assert.ok(!/from\("|\.update\(|\.insert\(/.test(barra), "el componente no escribe en la base");
     const vista = leer("components/tablas/TablaPrecioView.tsx");

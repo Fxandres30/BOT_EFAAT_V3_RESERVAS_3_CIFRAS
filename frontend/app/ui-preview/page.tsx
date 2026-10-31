@@ -38,6 +38,9 @@ import {
   Tabs,
   Textarea,
 } from "@/components/ui";
+import TarjetaPrecio from "@/components/tablas/TarjetaPrecio";
+import StatsBar from "@/components/tablas/StatsBar";
+import { Cabecera } from "@/components/tablas/TablaPrecioView";
 
 import styles from "./page.module.css";
 
@@ -313,6 +316,26 @@ export default function UIPreviewPage() {
           </div>
         </Card>
       </section>
+
+      {/* ---------------------------------------------------------------- */}
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Reservas — tarjetas de precio y resumen de tabla</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 228px), 1fr))", gap: 16 }}>
+          <TarjetaPrecio precio={2000} ahora={AHORA} entradas={[{ estado: "activo", clave: "a", nombre: "Lotería de Medellín", grupos: 3 }]} />
+          <TarjetaPrecio precio={5000} ahora={AHORA} entradas={[{ estado: "programado", clave: "p", nombre: "Lotería de Bogotá", publicarEn: new Date(AHORA.getTime() + 5400000) }]} />
+          <TarjetaPrecio precio={10000} ahora={AHORA} entradas={[{ estado: "revision", clave: "r", nombre: "Antioqueñita", motivo: "La publicación falló. Revísala en Sorteos programados." }]} />
+          <TarjetaPrecio precio={20000} ahora={AHORA} entradas={[{ estado: "sin_sorteo", clave: "s", nombre: null }]} />
+          <TarjetaPrecio precio={50000} ahora={AHORA} entradas={null} />
+        </div>
+        <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+          <Cabecera precio={5000} coincidePrecio eventoActivo={{ nombre_evento: "Lotería de Bogotá — jueves", valor: 5000 } as never} />
+          <Cabecera precio={10000} coincidePrecio={false} eventoActivo={null} />
+          <StatsBar stats={{ total: 100, disponibles: 62, reservados: 20, pagados: 15, enProceso: 2, bloqueados: 1, ocupacion: 38 }} />
+        </div>
+      </section>
     </div>
   );
 }
+
+// Datos de muestra fijos (sin red): solo para revisar el aspecto.
+const AHORA = new Date("2026-10-31T15:00:00-05:00");

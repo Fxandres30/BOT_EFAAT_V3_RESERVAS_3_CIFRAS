@@ -5,6 +5,8 @@ import styles from "./headers.module.css";
 
 export interface PageHeaderProps {
   title: ReactNode;
+  /** Rótulo corto sobre el título (p. ej. la sección del panel). */
+  eyebrow?: ReactNode;
   description?: ReactNode;
   icon?: ReactNode;
   actions?: ReactNode;
@@ -13,6 +15,7 @@ export interface PageHeaderProps {
 
 export function PageHeader({
   title,
+  eyebrow,
   description,
   icon,
   actions,
@@ -21,6 +24,7 @@ export function PageHeader({
   return (
     <div className={cn(styles.pageHeader, className)}>
       <div className={styles.texts}>
+        {eyebrow && <span className={styles.eyebrow}>{eyebrow}</span>}
         <div className={styles.titleRow}>
           {icon && (
             <span className={styles.icon} aria-hidden="true">

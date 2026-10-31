@@ -1,14 +1,14 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--efaat-space-2);
+  gap: 6px;
   min-width: 0;
 }
 
 .label {
   font-size: var(--efaat-text-sm);
   font-weight: var(--efaat-weight-semibold);
-  color: var(--efaat-text);
+  color: var(--efaat-ink-soft);
 }
 
 .optional {
@@ -19,10 +19,12 @@
 
 .hint {
   font-size: var(--efaat-text-xs);
+  line-height: 1.45;
   color: var(--efaat-text-secondary);
 }
 
 .error {
   font-size: var(--efaat-text-xs);
+  font-weight: var(--efaat-weight-medium);
   color: var(--efaat-error);
 }

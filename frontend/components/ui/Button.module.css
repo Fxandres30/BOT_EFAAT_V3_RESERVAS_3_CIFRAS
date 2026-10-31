@@ -1,10 +1,14 @@
 .button {
-  --_bg: var(--efaat-primary);
-  --_bg-hover: var(--efaat-primary-hover);
+  --_bg: var(--efaat-gradient-primary);
+  --_bg-hover: var(--efaat-gradient-primary-hover);
   --_bg-active: var(--efaat-primary-active);
   --_fg: var(--efaat-text-on-primary);
   --_border: transparent;
+  --_shadow: var(--efaat-highlight), var(--efaat-shadow-primary);
+  --_shadow-hover: var(--efaat-highlight), 0 1px 2px rgba(29, 79, 214, 0.3),
+    0 10px 22px -8px rgba(37, 99, 235, 0.65);
 
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -13,26 +17,41 @@
   border-radius: var(--efaat-radius-control);
   background: var(--_bg);
   color: var(--_fg);
+  box-shadow: var(--_shadow);
   font-family: inherit;
   font-weight: var(--efaat-weight-semibold);
+  letter-spacing: -0.005em;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease,
-    color 0.15s ease, opacity 0.15s ease;
+  user-select: none;
+  transition: background var(--efaat-dur) var(--efaat-ease),
+    border-color var(--efaat-dur) var(--efaat-ease),
+    box-shadow var(--efaat-dur) var(--efaat-ease),
+    color var(--efaat-dur) var(--efaat-ease),
+    transform var(--efaat-dur-fast) var(--efaat-ease),
+    opacity var(--efaat-dur) var(--efaat-ease);
 }
 
 .button:hover:not(:disabled) {
   background: var(--_bg-hover);
+  box-shadow: var(--_shadow-hover);
 }
 
 .button:active:not(:disabled) {
   background: var(--_bg-active);
+  transform: translateY(1px);
+}
+
+.button:focus-visible {
+  outline: none;
+  box-shadow: var(--_shadow), var(--efaat-focus-ring);
 }
 
 .button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 /* --- Tamaños --- */
@@ -40,11 +59,12 @@
   height: 32px;
   padding: 0 var(--efaat-space-3);
   font-size: var(--efaat-text-sm);
+  border-radius: calc(var(--efaat-radius-control) - 1px);
 }
 
 .md {
-  height: 38px;
-  padding: 0 var(--efaat-space-4);
+  height: 40px;
+  padding: 0 18px;
   font-size: var(--efaat-text-base);
 }
 
@@ -54,8 +74,8 @@
 
 /* --- Variantes --- */
 .primary {
-  --_bg: var(--efaat-primary);
-  --_bg-hover: var(--efaat-primary-hover);
+  --_bg: var(--efaat-gradient-primary);
+  --_bg-hover: var(--efaat-gradient-primary-hover);
   --_bg-active: var(--efaat-primary-active);
   --_fg: var(--efaat-text-on-primary);
 }
@@ -63,26 +83,44 @@
 .secondary {
   --_bg: var(--efaat-surface);
   --_bg-hover: var(--efaat-surface-muted);
-  --_bg-active: #eef2f7;
-  --_fg: var(--efaat-text);
+  --_bg-active: var(--efaat-surface-sunken);
+  --_fg: var(--efaat-ink);
   --_border: var(--efaat-border);
+  --_shadow: var(--efaat-shadow-xs);
+  --_shadow-hover: var(--efaat-shadow-sm);
+}
+
+.secondary:hover:not(:disabled) {
+  border-color: var(--efaat-border-strong);
 }
 
 .ghost {
   --_bg: transparent;
-  --_bg-hover: var(--efaat-surface-muted);
-  --_bg-active: #eef2f7;
-  --_fg: var(--efaat-text);
+  --_bg-hover: var(--efaat-surface-sunken);
+  --_bg-active: var(--efaat-border);
+  --_fg: var(--efaat-ink-soft);
+  --_shadow: none;
+  --_shadow-hover: none;
 }
 
 .danger {
-  --_bg: var(--efaat-error);
-  --_bg-hover: #b91c1c;
+  --_bg: linear-gradient(180deg, #e84141 0%, var(--efaat-error) 100%);
+  --_bg-hover: linear-gradient(180deg, #dc3434 0%, var(--efaat-error-strong) 100%);
   --_bg-active: #991b1b;
   --_fg: #ffffff;
+  --_shadow: var(--efaat-highlight), 0 1px 2px rgba(185, 28, 28, 0.25),
+    0 6px 16px -6px rgba(220, 38, 38, 0.5);
+  --_shadow-hover: var(--efaat-highlight), 0 1px 2px rgba(185, 28, 28, 0.3),
+    0 10px 22px -8px rgba(220, 38, 38, 0.6);
 }
 
 .icon {
   display: inline-flex;
   flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button:active:not(:disabled) {
+    transform: none;
+  }
 }

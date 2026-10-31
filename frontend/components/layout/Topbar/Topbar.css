@@ -7,9 +7,11 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 52px;
-  padding: 0 16px;
-  background: var(--efaat-surface);
+  height: 56px;
+  padding: 0 24px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: saturate(180%) blur(10px);
+  -webkit-backdrop-filter: saturate(180%) blur(10px);
   border-bottom: 1px solid var(--efaat-border);
   box-sizing: border-box;
 }
@@ -17,6 +19,7 @@
 .topbar__menuSlot {
   display: flex;
   flex-shrink: 0;
+  margin-left: -6px;
 }
 
 /* En desktop el sidebar está siempre visible: el botón de menú sobra. */
@@ -29,35 +32,48 @@
 .topbar__context {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
+  flex: 1;
 }
 
 .topbar__brand {
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--efaat-text);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--efaat-ink);
+  flex-shrink: 0;
 }
 
-.topbar__sep {
-  width: 1px;
-  height: 16px;
+.topbar__chevron {
   flex-shrink: 0;
-  background: var(--efaat-border);
+  color: var(--efaat-text-muted);
+}
+
+.topbar__section {
+  font-size: 13px;
+  color: var(--efaat-text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .topbar__subtitle {
   font-size: 13px;
-  color: var(--efaat-text-secondary);
+  font-weight: 600;
+  color: var(--efaat-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 
 @media (max-width: 640px) {
-  .topbar__sep,
-  .topbar__subtitle {
+  .topbar {
+    padding: 0 16px;
+  }
+
+  .topbar__section,
+  .topbar__section + .topbar__chevron {
     display: none;
   }
 }

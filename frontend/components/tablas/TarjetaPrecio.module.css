@@ -1,0 +1,364 @@
+/* Tarjeta de precio de Reservas, con forma de boleto. El tono del estado
+   principal (--_tono*) pinta la franja superior, el icono y el brillo. */
+
+.tarjeta {
+  --_tono: var(--efaat-text-muted);
+  --_tono-texto: var(--efaat-text-secondary);
+  --_tono-suave: var(--efaat-surface-sunken);
+  --_tono-borde: var(--efaat-border);
+  --_muesca: var(--efaat-bg);
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+  border-radius: 16px;
+  box-shadow: var(--efaat-shadow-sm);
+  color: var(--efaat-text);
+  text-decoration: none;
+  transition: transform var(--efaat-dur) var(--efaat-ease),
+    box-shadow var(--efaat-dur) var(--efaat-ease),
+    border-color var(--efaat-dur) var(--efaat-ease);
+}
+
+/* Franja de estado. */
+.tarjeta::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--_tono);
+}
+
+.tarjeta:hover {
+  transform: translateY(-2px);
+  border-color: var(--efaat-primary-border);
+  box-shadow: var(--efaat-shadow-md), 0 0 0 1px rgba(37, 99, 235, 0.06);
+}
+
+.tarjeta:focus-visible {
+  outline: none;
+  border-color: var(--efaat-primary);
+  box-shadow: var(--efaat-shadow-md), var(--efaat-focus-ring);
+}
+
+/* --- Cara: precio --- */
+.cara {
+  padding: 18px 18px 16px;
+  background: radial-gradient(110% 90% at 100% 0%, var(--_tono-suave) 0%, transparent 62%);
+}
+
+.caraFila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rotulo {
+  font-size: var(--efaat-text-2xs);
+  font-weight: var(--efaat-weight-semibold);
+  letter-spacing: var(--efaat-tracking-label);
+  text-transform: uppercase;
+  color: var(--efaat-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: var(--efaat-surface);
+  box-shadow: inset 0 0 0 1px var(--_tono-borde), var(--efaat-shadow-xs);
+  color: var(--_tono-texto);
+}
+
+.precio {
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
+  margin-top: 10px;
+  min-width: 0;
+  color: var(--efaat-ink);
+}
+
+.moneda {
+  margin-top: 5px;
+  font-size: 17px;
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-text-secondary);
+}
+
+.valor {
+  font-size: clamp(28px, 3.4vw, 34px);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Línea perforada con muescas a los lados --- */
+.perforado {
+  position: relative;
+  margin: 0 14px;
+  border-top: 2px dashed var(--efaat-border);
+}
+
+.perforado::before,
+.perforado::after {
+  content: "";
+  position: absolute;
+  top: -10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--_muesca);
+  box-shadow: inset 0 0 0 1px var(--efaat-border);
+}
+
+.perforado::before {
+  left: -24px;
+}
+
+.perforado::after {
+  right: -24px;
+}
+
+/* --- Talón: estado del sorteo --- */
+.talon {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 14px;
+  padding: 14px 18px 16px;
+  min-width: 0;
+}
+
+.entradas {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.entrada {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.entrada + .entrada {
+  padding-top: 12px;
+  border-top: 1px solid var(--efaat-border-subtle);
+}
+
+.estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 9px;
+  /* No es píldora: los estados largos ocupan dos líneas. */
+  border-radius: 7px;
+  background: var(--_tono-suave);
+  box-shadow: inset 0 0 0 1px var(--_tono-borde);
+  color: var(--_tono-texto);
+  font-size: var(--efaat-text-2xs);
+  font-weight: var(--efaat-weight-semibold);
+  line-height: 1.3;
+}
+
+.estado svg {
+  flex-shrink: 0;
+}
+
+/* Punto «en vivo» del sorteo activo. */
+.pulso {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--_tono);
+}
+
+.pulso::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--_tono);
+  animation: efaatPulso 1.8s var(--efaat-ease) infinite;
+}
+
+@keyframes efaatPulso {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  80%,
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+.nombre {
+  margin: 2px 0 0;
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  line-height: 1.35;
+  color: var(--efaat-ink);
+}
+
+.meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.cuenta {
+  margin: 2px 0 0;
+  padding: 3px 8px;
+  border-radius: var(--efaat-radius-sm);
+  background: var(--efaat-surface-sunken);
+  color: var(--efaat-ink);
+  font-size: var(--efaat-text-xs);
+  font-weight: var(--efaat-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.motivo {
+  margin: 2px 0 0;
+  padding: 6px 8px;
+  border-radius: var(--efaat-radius-sm);
+  background: #fffaeb;
+  box-shadow: inset 0 0 0 1px var(--efaat-warning-border);
+  color: #92400e;
+  line-height: 1.4;
+}
+
+.mas {
+  margin: 0;
+  font-size: var(--efaat-text-xs);
+  font-weight: var(--efaat-weight-medium);
+  color: var(--efaat-text-secondary);
+}
+
+.consultandoTexto {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-muted);
+}
+
+.puntoCarga {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--efaat-border-strong);
+  animation: efaatParpadeo 1.2s ease-in-out infinite;
+}
+
+@keyframes efaatParpadeo {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.abrir {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-primary);
+}
+
+.flecha {
+  transition: transform var(--efaat-dur) var(--efaat-ease);
+}
+
+.tarjeta:hover .flecha,
+.tarjeta:focus-visible .flecha {
+  transform: translateX(3px);
+}
+
+/* --- Tonos por estado --- */
+.activo {
+  --_tono: var(--efaat-success);
+  --_tono-texto: #166534;
+  --_tono-suave: #ecfdf3;
+  --_tono-borde: var(--efaat-success-border);
+}
+
+.programado {
+  --_tono: var(--efaat-primary);
+  --_tono-texto: var(--efaat-primary-active);
+  --_tono-suave: var(--efaat-blue-50);
+  --_tono-borde: var(--efaat-primary-border);
+}
+
+.revision {
+  --_tono: var(--efaat-warning);
+  --_tono-texto: #92400e;
+  --_tono-suave: #fffaeb;
+  --_tono-borde: var(--efaat-warning-border);
+}
+
+.sinSorteo,
+.noDisponible,
+.consultando {
+  --_tono: var(--efaat-border-strong);
+  --_tono-texto: var(--efaat-text-secondary);
+  --_tono-suave: var(--efaat-surface-sunken);
+  --_tono-borde: var(--efaat-border);
+}
+
+@media (max-width: 640px) {
+  .cara {
+    padding: 16px 16px 14px;
+  }
+
+  .talon {
+    padding: 12px 16px 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tarjeta,
+  .flecha {
+    transition: none;
+  }
+
+  .tarjeta:hover {
+    transform: none;
+  }
+
+  .pulso::after,
+  .puntoCarga {
+    animation: none;
+  }
+}

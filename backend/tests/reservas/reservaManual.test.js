@@ -255,14 +255,23 @@ prueba("número reservado, pagado o bloqueado -> 409 no_disponible, sin cambios 
     assert.strictEqual(auditoria().length, 4);
 });
 
-prueba("validaciones: motivo, contacto, grupo, formato del número", async () => {
+prueba("validaciones: contacto, grupo, formato del número (el motivo es opcional)", async () => {
     sembrar();
-    assert.strictEqual((await reservar("00", { contactoId: C1, eventoId: EV_A1 })).json.motivo, "falta_motivo");
     assert.strictEqual((await reservar("00", { eventoId: EV_A1, motivo: "x bot" })).json.motivo, "falta_contacto");
     assert.strictEqual((await reservar("00", { contactoId: C1, motivo: "x bot" })).json.motivo, "falta_grupo", "dos grupos: hay que elegir");
     assert.strictEqual((await reservar("00", { contactoId: C1, eventoId: EV_B1, motivo: "x bot" })).json.motivo, "falta_grupo", "evento de B no es un contexto de A");
     assert.strictEqual((await reservar("000", { contactoId: C1, eventoId: EV_A1, motivo: "x bot" })).json.motivo, "numero_invalido");
     assert.strictEqual(fila(A, "00").estado, "libre");
+});
+
+prueba("reserva sin motivo: basta elegir a la persona", async () => {
+    sembrar();
+    const r = await reservar("01", { contactoId: C1, eventoId: EV_A1 });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(fila(A, "01").estado, "reservado");
+    const ok = auditoria().find(a => a.resultado === "ok" && a.numero === "01");
+    assert.ok(ok, "queda auditada");
+    assert.strictEqual(ok.motivo, null, "sin motivo");
 });
 
 prueba("contacto de otro cliente -> 404 y nada cambia", async () => {

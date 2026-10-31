@@ -107,9 +107,9 @@ function opcionesDe(contexto: ContextoNumero): OpcionSorteo[] {
 
 // Formulario de la reserva manual de un número DISPONIBLE. Rellena lo que ya
 // se sabe (número, precio, sorteo y grupo cuando solo hay uno posible) y pide
-// el sorteo si hay varios (activo o programados sin publicar), el grupo, el
-// contacto, el motivo y las observaciones. El estado final, la fecha/hora y
-// el operador los fija el servidor.
+// el sorteo si hay varios (activo o programados sin publicar), el grupo y el
+// contacto; el motivo y las observaciones son opcionales. El estado final, la
+// fecha/hora y el operador los fija el servidor.
 export default function ReservaManualForm({ contexto, onReservar, etiquetaBoton, etiquetaProcesando }: Props) {
 
     const [contacto, setContacto] = useState<SeleccionContacto | null>(null);
@@ -155,7 +155,7 @@ export default function ReservaManualForm({ contexto, onReservar, etiquetaBoton,
     const contactoListo = contacto?.tipo === "existente"
         || (contacto?.tipo === "nuevo" && contacto.nombre.trim().length >= 2 && contacto.telefono.replace(/\D/g, "").length >= 7);
 
-    const listo = sorteo && grupo && contactoListo && motivo.trim().length >= 3 && !enviando;
+    const listo = sorteo && grupo && contactoListo && !enviando;
 
     async function enviar() {
 
@@ -170,7 +170,7 @@ export default function ReservaManualForm({ contexto, onReservar, etiquetaBoton,
                 ? { contactoId: contacto.contacto.id }
                 : { nuevoContacto: { nombre: contacto.nombre.trim(), telefono: contacto.telefono.trim() } }),
             ...grupo.datos,
-            motivo: motivo.trim(),
+            motivo: motivo.trim() || undefined,
             observaciones: observaciones.trim() || undefined,
             solicitudId
         });
@@ -266,18 +266,18 @@ export default function ReservaManualForm({ contexto, onReservar, etiquetaBoton,
                 </Campo>
             )}
 
-            <Campo etiqueta="Motivo de la intervención manual" requerido>
+            <Campo etiqueta="Motivo de la intervención manual">
                 <input
                     className="w-full border rounded-xl px-3 py-2.5 text-sm"
                     value={motivo}
                     maxLength={500}
                     disabled={enviando}
-                    placeholder="¿Por qué se registra a mano?"
+                    placeholder="Opcional: ¿por qué se registra a mano?"
                     onChange={(e) => setMotivo(e.target.value)}
                 />
                 <div className="flex flex-wrap gap-1.5 mt-1.5">
                     {MOTIVOS.map((m) => (
-                        <button key={m} type="button" disabled={enviando} onClick={() => setMotivo(m)} className={`text-xs px-2.5 py-1 rounded-full border ${motivo === m ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-700 hover:bg-gray-50"}`}>
+                        <button key={m} type="button" disabled={enviando} onClick={() => setMotivo(motivo === m ? "" : m)} className={`text-xs px-2.5 py-1 rounded-full border ${motivo === m ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-700 hover:bg-gray-50"}`}>
                             {m}
                         </button>
                     ))}

@@ -318,17 +318,9 @@ export interface FiltrosHistorial {
     texto: string;
     estado: FiltroEstadoHistorial;
     grupo: string;
-    // "AAAA-MM-DD" (fecha de Colombia) o "".
-    fecha: string;
 }
 
-export const FILTROS_HISTORIAL_VACIOS: FiltrosHistorial = { texto: "", estado: "todos", grupo: "", fecha: "" };
-
-// Fecha de Colombia ("AAAA-MM-DD") de un instante ISO.
-export function fechaColombia(iso: string): string | null {
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString("sv-SE", { timeZone: "America/Bogota" });
-}
+export const FILTROS_HISTORIAL_VACIOS: FiltrosHistorial = { texto: "", estado: "todos", grupo: "" };
 
 const normalizar = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -351,7 +343,7 @@ export function tipoConsulta(consulta: string): { tipo: TipoConsulta; valor: str
 const esNumero = (numero: string, q: string) =>
     numero === q || (q.length < numero.length && numero === q.padStart(numero.length, "0"));
 
-// Números que cumplen la BÚSQUEDA (sin estado/grupo/fecha). Teléfono: igual,
+// Números que cumplen la BÚSQUEDA (sin estado/grupo). Teléfono: igual,
 // nunca «contiene». Nombre: contiene, sin tildes. Una coincidencia en una
 // fuente con identidad trae TODOS los números de esa misma identidad en
 // esta tabla (relación real usuario_global_id / contacto_id), sea cual sea
@@ -384,18 +376,13 @@ function numerosPorConsulta(filas: FilaHistorial[], consulta: string): Set<strin
 
 }
 
-// Estado (ACTUAL), grupo y fecha de una fila.
+// Estado (ACTUAL) y grupo de una fila.
 function cumpleFiltros(fila: FilaHistorial, f: FiltrosHistorial): boolean {
 
     if (f.estado !== "todos" && fila.estado !== f.estado) return false;
 
     const grupos = [fila.grupo, ...fila.eventos.map(e => e.grupo)].filter(Boolean) as string[];
     if (f.grupo && !grupos.includes(f.grupo)) return false;
-
-    if (f.fecha) {
-        const fechas = [fila.reserva?.fecha, fila.pago?.fecha, ...fila.eventos.map(e => fechaColombia(e.en))];
-        if (!fechas.includes(f.fecha)) return false;
-    }
 
     return true;
 
@@ -417,7 +404,7 @@ export function filtrarHistorial(filas: FilaHistorial[], f: FiltrosHistorial): F
 }
 
 export function hayFiltrosActivos(f: FiltrosHistorial): boolean {
-    return Boolean(f.texto.trim() || f.estado !== "todos" || f.grupo || f.fecha);
+    return Boolean(f.texto.trim() || f.estado !== "todos" || f.grupo);
 }
 
 // Números de la cuadrícula que cumplen los filtros (null = sin filtros: se

@@ -5,7 +5,7 @@
 //   - sin auditoría (032 sin aplicar) se usa la actividad registrada; con
 //     auditoría, la actividad que la duplica se descarta;
 //   - archivo de reinicios (030) como movimiento del número;
-//   - búsqueda por número / nombre / contacto y filtros estado/grupo/fecha;
+//   - búsqueda por número / nombre / contacto y filtros estado/grupo;
 //   - obtenerEventosHistorial: solo SELECT, filtrado por usuario y tabla, y
 //     tolera que las tablas no existan;
 //   - la sección no consulta Supabase por su cuenta.
@@ -175,13 +175,10 @@ prueba("búsqueda por nombre (sin tildes) y por contacto (también de movimiento
     assert.deepStrictEqual(filtrar({ texto: "nadie" }), []);
 });
 
-prueba("filtros por estado, grupo y fecha (Colombia)", () => {
+prueba("filtros por estado y grupo", () => {
     assert.deepStrictEqual(filtrar({ estado: "pagado" }), ["12"]);
     assert.deepStrictEqual(filtrar({ estado: "libre" }), ["33", "45"]);
     assert.deepStrictEqual(filtrar({ grupo: "Grupo B" }), ["12"]);
-    assert.deepStrictEqual(filtrar({ fecha: "2026-10-21" }), ["12"]);
-    // 2026-10-15T05:00Z = 15/10 a las 00:00 en Bogotá (archivo del 07).
-    assert.deepStrictEqual(filtrar({ fecha: "2026-10-15" }), ["07"]);
     assert.deepStrictEqual(filtrar({ estado: "reservado", grupo: "Grupo B" }), []);
     assert.deepStrictEqual(H.gruposDelHistorial(FILAS), ["Grupo B", "Sorteos Ana"]);
 });
@@ -235,6 +232,8 @@ prueba("obtenerEventosHistorial: sin 032/030 aplicadas devuelve vacío y auditor
 
 prueba("la sección no consulta Supabase ni escribe: recibe los datos de useTablaPrecio", () => {
     const src = fs.readFileSync(path.join(FRONT, "components/tablas/HistorialNumeros.tsx"), "utf8");
+    assert.ok(!/type="date"|Filtrar por fecha/.test(src), "sin filtro de fecha");
+    assert.ok(!("fecha" in H.FILTROS_HISTORIAL_VACIOS), "los filtros no tienen fecha");
     assert.ok(!/supabase|\.from\(|fetch\(/.test(src));
     assert.ok(!/onMarcarPagado|onLiberar|onReservar/.test(src), "el historial es de solo lectura");
 });
@@ -254,7 +253,7 @@ prueba("cuadrícula: sin filtros -> null (se ven todos); limpiar restaura null",
 });
 
 prueba("cuadrícula e historial dan el mismo resultado para la misma consulta", () => {
-    for (const q of [{ texto: "7" }, { texto: "perez" }, { texto: "300 111" }, { estado: "pagado" }, { grupo: "Grupo B" }, { fecha: "2026-10-21" }, { texto: "eva", grupo: "Sorteos Ana" }]) {
+    for (const q of [{ texto: "7" }, { texto: "perez" }, { texto: "300 111" }, { estado: "pagado" }, { grupo: "Grupo B" }, { texto: "eva", grupo: "Sorteos Ana" }]) {
         assert.deepStrictEqual(coinc(q), filtrar(q), JSON.stringify(q));
     }
 });
@@ -294,8 +293,8 @@ prueba("un solo buscador: sin FiltrosBar, la cuadrícula no filtra por su cuenta
     const hist = leer("components/tablas/HistorialNumeros.tsx");
     assert.ok(!/useState<FiltrosHistorial>/.test(hist), "el historial no guarda una búsqueda propia");
     assert.strictEqual((hist.match(/type="search"/g) || []).length, 1);
-    // El buscador va antes de los filtros de estado, grupo y fecha.
-    const pos = ['type="search"', "Filtrar por estado actual", "Filtrar por grupo", "Filtrar por fecha"].map(t => hist.indexOf(t));
+    // El buscador va antes de los filtros de estado y grupo.
+    const pos = ['type="search"', "Filtrar por estado actual", "Filtrar por grupo"].map(t => hist.indexOf(t));
     assert.ok(pos.every(p => p > 0));
     assert.deepStrictEqual([...pos].sort((a, b) => a - b), pos);
 });
@@ -420,11 +419,10 @@ prueba("número de tabla: 7 y 07 encuentran 07; 9 y 09 encuentran 09; 00 exacto"
     assert.deepStrictEqual(g("9"), ["09"]);
 });
 
-prueba("filtros de estado, grupo y fecha se aplican sobre el resultado sin perder coincidencias", () => {
+prueba("filtros de estado y grupo se aplican sobre el resultado sin perder coincidencias", () => {
     assert.deepStrictEqual(buscar(TEL, { estado: "pagado" }), ["23"]);
     assert.deepStrictEqual(buscar(TEL, { estado: "libre" }), ["52", "61"]);
     assert.deepStrictEqual(buscar(TEL, { grupo: "Rifas" }), ["14", "61"]);
-    assert.deepStrictEqual(buscar(TEL, { fecha: "2026-10-20" }), ["23"]);
     // Limpiar la búsqueda restaura el resultado sin consulta.
     assert.deepStrictEqual(buscar(""), FILAS_MAMA.map(f => f.numero));
 });

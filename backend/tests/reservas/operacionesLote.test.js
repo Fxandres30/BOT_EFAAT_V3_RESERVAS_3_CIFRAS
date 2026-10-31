@@ -208,13 +208,14 @@ prueba("reintento del mismo lote: lo ya reservado vuelve «sin cambio» y nada s
     assert.strictEqual(auditoria().filter(a => a.resultado === "ok").length, 3);
 });
 
-prueba("rechazos generales: sin motivo, contacto ajeno o lote inválido no tocan nada; un sorteo cerrado ya no bloquea", async () => {
+prueba("rechazos generales: contacto ajeno o lote inválido no tocan nada; un sorteo cerrado ya no bloquea", async () => {
     sembrar();
     fake.tablas.eventos_bot.filter(e => e.usuario_id === A).forEach(e => { e.hora_cierre = "00:00"; e.fecha_evento = "2000-01-01"; });
     const cerrado = await pedir({ ...RESERVA, numeros: ["00", "01"] });
     assert.deepStrictEqual(estados(cerrado), { "00": "hecho", "01": "hecho" }, "el estado del sorteo no decide si se reserva");
     sembrar();
-    assert.strictEqual((await pedir({ ...RESERVA, numeros: ["00"], motivo: "" })).json.motivo, "falta_motivo");
+    assert.deepStrictEqual(estados(await pedir({ ...RESERVA, numeros: ["00"], motivo: "", solicitudId: "lote-sin-motivo" })), { "00": "hecho" }, "el motivo es opcional");
+    sembrar();
     assert.strictEqual((await pedir({ ...RESERVA, numeros: ["00"], contactoId: "c9c9c9c9-0000-4000-8000-000000000009" })).json.motivo, "contacto_no_existe");
     assert.strictEqual((await pedir({ ...RESERVA, numeros: [] })).json.motivo, "sin_numeros");
     assert.strictEqual((await pedir({ ...RESERVA, numeros: ["1'; drop"] })).json.motivo, "numero_invalido");

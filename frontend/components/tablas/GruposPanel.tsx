@@ -6,6 +6,7 @@ import { Users } from "lucide-react";
 import BotonContraer from "./BotonContraer";
 import type { PaqueteReserva } from "./types";
 import { ESTADOS_META_VISUAL, bucketEstado } from "./estadoVisual";
+import seccion from "./SeccionPanel.module.css";
 
 interface Props {
     paquetes: PaqueteReserva[];
@@ -18,7 +19,7 @@ export default function GruposPanel({ paquetes, precio, expandido, onToggleExpan
 
     return (
 
-        <section className="bg-white border rounded-2xl shadow-sm p-4 sm:p-5">
+        <section className={seccion.panel}>
 
             <div className={`flex items-start sm:items-center justify-between gap-2 ${expandido ? "mb-4" : ""}`}>
                 <div className="min-w-0 flex flex-col sm:flex-row sm:items-center sm:gap-3 gap-1">

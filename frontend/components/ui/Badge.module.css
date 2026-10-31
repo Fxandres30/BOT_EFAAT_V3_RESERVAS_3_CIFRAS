@@ -1,21 +1,24 @@
 .badge {
-  --_bg: #f1f5f9;
+  --_bg: var(--efaat-surface-sunken);
   --_fg: var(--efaat-text-secondary);
+  --_ring: var(--efaat-border);
 
   display: inline-flex;
   align-items: center;
-  gap: var(--efaat-space-2);
+  gap: 6px;
   border-radius: var(--efaat-radius-pill);
   background: var(--_bg);
   color: var(--_fg);
+  box-shadow: inset 0 0 0 1px var(--_ring);
   font-weight: var(--efaat-weight-semibold);
+  letter-spacing: 0.005em;
   line-height: 1;
   white-space: nowrap;
 }
 
 .sm {
-  padding: 3px 8px;
-  font-size: 11px;
+  padding: 4px 8px;
+  font-size: var(--efaat-text-2xs);
 }
 
 .md {
@@ -24,28 +27,33 @@
 }
 
 .neutral {
-  --_bg: #f1f5f9;
+  --_bg: var(--efaat-surface-sunken);
   --_fg: var(--efaat-text-secondary);
+  --_ring: var(--efaat-border);
 }
 
 .primary {
   --_bg: var(--efaat-primary-soft);
   --_fg: var(--efaat-primary-active);
+  --_ring: var(--efaat-primary-border);
 }
 
 .success {
-  --_bg: var(--efaat-success-soft);
+  --_bg: #effcf3;
   --_fg: #166534;
+  --_ring: var(--efaat-success-border);
 }
 
 .warning {
-  --_bg: var(--efaat-warning-soft);
+  --_bg: #fffaeb;
   --_fg: #92400e;
+  --_ring: var(--efaat-warning-border);
 }
 
 .error {
-  --_bg: var(--efaat-error-soft);
+  --_bg: #fef3f2;
   --_fg: #991b1b;
+  --_ring: var(--efaat-error-border);
 }
 
 .dot {

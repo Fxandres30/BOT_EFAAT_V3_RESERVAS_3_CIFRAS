@@ -1,0 +1,262 @@
+/* Vista de una tabla de precio: cabecera de marca y mensajes de estado. */
+
+.cabecera {
+  position: relative;
+  overflow: hidden;
+  padding: 18px 24px 22px;
+  border-radius: 18px;
+  /* Mismo degradado de la landing, con trama de boleto muy tenue. */
+  background:
+    radial-gradient(60% 120% at 100% 0%, rgba(95, 143, 250, 0.35) 0%, transparent 60%),
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.07) 1px, transparent 0) 0 0 / 18px 18px,
+    var(--efaat-gradient-brand);
+  box-shadow: var(--efaat-shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: #fff;
+  min-width: 0;
+}
+
+.volver {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: -6px;
+  padding: 4px 8px;
+  border-radius: var(--efaat-radius-sm);
+  color: rgba(226, 234, 248, 0.75);
+  font-size: var(--efaat-text-xs);
+  font-weight: var(--efaat-weight-medium);
+  text-decoration: none;
+  transition: background-color var(--efaat-dur-fast) ease, color var(--efaat-dur-fast) ease;
+}
+
+.volver:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.volver:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(147, 182, 253, 0.7);
+}
+
+.cabeceraFila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 10px;
+}
+
+.titulo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+}
+
+.tituloRotulo {
+  font-size: var(--efaat-text-2xs);
+  font-weight: var(--efaat-weight-semibold);
+  letter-spacing: var(--efaat-tracking-label);
+  text-transform: uppercase;
+  color: #93b6fd;
+}
+
+.tituloPrecio {
+  font-size: clamp(30px, 5vw, 42px);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+  color: #fff;
+}
+
+.subtitulo {
+  margin: 6px 0 0;
+  max-width: 60ch;
+  color: rgba(226, 234, 248, 0.78);
+  font-size: var(--efaat-text-base);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.cabeceraAcciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.estadoEvento {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: var(--efaat-radius-pill);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  color: rgba(226, 234, 248, 0.9);
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.estadoActivo {
+  background: rgba(22, 163, 74, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.35);
+  color: #dcfce7;
+}
+
+.punto {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(226, 234, 248, 0.5);
+}
+
+.pulso {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ade80;
+}
+
+.pulso::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #4ade80;
+  animation: efaatPulsoCabecera 1.8s var(--efaat-ease) infinite;
+}
+
+@keyframes efaatPulsoCabecera {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  80%,
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+
+/* «Ayuda» (Button ghost) sobre el fondo oscuro: solo cambian sus colores. */
+.ayuda :global(button) {
+  --_fg: rgba(226, 234, 248, 0.9);
+  --_bg-hover: rgba(255, 255, 255, 0.1);
+  --_bg-active: rgba(255, 255, 255, 0.14);
+}
+
+/* --- Aviso de cuadrícula filtrada --- */
+.filtro {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 14px;
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-blue-50);
+  box-shadow: inset 0 0 0 1px var(--efaat-primary-border);
+  color: #1e3a8a;
+  font-size: var(--efaat-text-sm);
+}
+
+.filtroBoton {
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--efaat-radius-sm);
+  background: var(--efaat-surface);
+  box-shadow: var(--efaat-shadow-xs), inset 0 0 0 1px var(--efaat-primary-border);
+  color: var(--efaat-primary-active);
+  font-family: inherit;
+  font-size: var(--efaat-text-xs);
+  font-weight: var(--efaat-weight-semibold);
+  cursor: pointer;
+}
+
+.filtroBoton:hover {
+  background: var(--efaat-surface-muted);
+}
+
+/* --- Mensajes de carga / error / cuadrícula sin filas --- */
+.estadoMensaje,
+.diagnostico {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.estadoMensaje {
+  justify-content: center;
+  padding: 72px 16px;
+}
+
+.diagnostico {
+  padding: 40px 24px;
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-error-border);
+  border-radius: var(--efaat-radius-card);
+  box-shadow: var(--efaat-shadow-sm);
+}
+
+.estadoMensajeIcono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 4px;
+  border-radius: 16px;
+  background: var(--efaat-surface);
+  box-shadow: var(--efaat-shadow-md), inset 0 0 0 1px var(--efaat-border);
+  color: var(--efaat-text-muted);
+}
+
+.estadoMensajeError {
+  background: #fef3f2;
+  box-shadow: inset 0 0 0 1px var(--efaat-error-border);
+  color: var(--efaat-error);
+}
+
+.estadoMensajeTitulo {
+  margin: 0;
+  font-size: 18px;
+  font-weight: var(--efaat-weight-bold);
+  letter-spacing: -0.01em;
+  color: var(--efaat-ink);
+}
+
+.estadoMensajeTexto {
+  margin: 0;
+  max-width: 52ch;
+  color: var(--efaat-text-secondary);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .cabecera {
+    padding: 14px 16px 18px;
+    border-radius: 16px;
+  }
+
+  .cabeceraFila {
+    align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulso::after {
+    animation: none;
+  }
+}

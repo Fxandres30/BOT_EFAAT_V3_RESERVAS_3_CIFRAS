@@ -1,5 +1,5 @@
 // Ayudas de la selección múltiple de Tablas («Seleccionar»): qué números
-// añadir con «Todos los libres» o con un rango. Módulo puro: solo decide
+// añadir con «Todos los libres». Módulo puro: solo decide
 // QUÉ se selecciona; las operaciones las valida el servidor.
 
 import type { EstadoSeleccion } from "./pagoLote";
@@ -12,28 +12,6 @@ interface Numero {
 /** Números libres de la tabla, en orden. */
 export function numerosLibres(numeros: Numero[]): string[] {
     return numeros.filter(n => n.estado === "libre").map(n => n.numero).sort();
-}
-
-export type Rango = { ok: true; numeros: string[] } | { ok: false; mensaje: string };
-
-/**
- * Números de la tabla entre `desde` y `hasta` (ambos incluidos, en
- * cualquier orden), con sus ceros iniciales tal como están en la tabla.
- * Solo dígitos; un extremo que no existe en la tabla se rechaza.
- */
-export function numerosEnRango(numeros: Numero[], desde: string, hasta: string): Rango {
-
-    const a = String(desde ?? "").trim();
-    const b = String(hasta ?? "").trim();
-
-    if (!/^\d+$/.test(a) || !/^\d+$/.test(b)) return { ok: false, mensaje: "Escribe dos números (solo dígitos)." };
-
-    const [min, max] = [Number(a), Number(b)].sort((x, y) => x - y);
-    const valores = numeros.map(n => Number(n.numero));
-    if (!valores.includes(min) || !valores.includes(max)) return { ok: false, mensaje: "El rango debe estar dentro de la tabla." };
-
-    return { ok: true, numeros: numeros.filter(n => Number(n.numero) >= min && Number(n.numero) <= max).map(n => n.numero).sort() };
-
 }
 
 /**

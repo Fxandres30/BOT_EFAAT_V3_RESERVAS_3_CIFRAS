@@ -8,36 +8,67 @@
    ========================================================================== */
 
 :root {
+  /* --- Escala de marca (azul EFAAT) --- */
+  --efaat-blue-50: #eff5ff;
+  --efaat-blue-100: #dce8ff;
+  --efaat-blue-200: #bfd5ff;
+  --efaat-blue-300: #93b6fd;
+  --efaat-blue-400: #5f8ffa;
+  --efaat-blue-500: #3b6ef5;
+  --efaat-blue-600: #2563eb;
+  --efaat-blue-700: #1d4fd6;
+  --efaat-blue-800: #1e40af;
+  --efaat-blue-900: #13254d;
+
+  /* --- Tinta (azul oscuro para jerarquía) --- */
+  --efaat-ink: #0b1630;
+  --efaat-ink-soft: #1c2a4a;
+
   /* --- Superficie / fondo --- */
-  --efaat-bg: #f6f8fc;
+  --efaat-bg: #f3f6fb;
   --efaat-surface: #ffffff;
-  --efaat-surface-muted: #f8fafc;
-  --efaat-sidebar: #0b1220;
+  --efaat-surface-muted: #f7f9fc;
+  --efaat-surface-sunken: #eef2f8;
+  --efaat-sidebar: #0a1226;
+  --efaat-sidebar-2: #0f1d3d;
 
   /* --- Marca / acción --- */
-  --efaat-primary: #2563eb;
-  --efaat-primary-hover: #1d4ed8;
-  --efaat-primary-active: #1e40af;
-  --efaat-primary-soft: #eff6ff;
+  --efaat-primary: var(--efaat-blue-600);
+  --efaat-primary-hover: var(--efaat-blue-700);
+  --efaat-primary-active: var(--efaat-blue-800);
+  --efaat-primary-soft: var(--efaat-blue-50);
+  --efaat-primary-border: var(--efaat-blue-200);
   --efaat-primary-contrast: #ffffff;
+
+  /* Degradados: el de marca es el mismo de la landing (landing.module.css). */
+  --efaat-gradient-brand: linear-gradient(135deg, #0b1220 0%, #13254d 60%, #1d4ed8 140%);
+  --efaat-gradient-primary: linear-gradient(180deg, #3b74f6 0%, #2563eb 100%);
+  --efaat-gradient-primary-hover: linear-gradient(180deg, #3069f0 0%, #1d4fd6 100%);
 
   /* --- Estados --- */
   --efaat-success: #16a34a;
+  --efaat-success-strong: #15803d;
   --efaat-success-soft: #dcfce7;
+  --efaat-success-border: #bbf7d0;
   --efaat-warning: #d97706;
+  --efaat-warning-strong: #b45309;
   --efaat-warning-soft: #fef3c7;
+  --efaat-warning-border: #fde68a;
   --efaat-error: #dc2626;
+  --efaat-error-strong: #b91c1c;
   --efaat-error-soft: #fee2e2;
+  --efaat-error-border: #fecaca;
 
   /* --- Texto --- */
   --efaat-text: #0f172a;
-  --efaat-text-secondary: #64748b;
+  --efaat-text-secondary: #5b6b85;
   --efaat-text-muted: #94a3b8;
   --efaat-text-on-primary: #ffffff;
 
   /* --- Bordes --- */
-  --efaat-border: #e2e8f0;
-  --efaat-border-strong: #cbd5e1;
+  --efaat-border: #e3e8f0;
+  --efaat-border-strong: #cdd5e2;
+  --efaat-border-subtle: #edf1f6;
 
   /* --- Tipografía --- */
   --efaat-font-sans: var(--font-geist-sans), ui-sans-serif, system-ui,
@@ -45,6 +76,7 @@
   --efaat-font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular,
     Menlo, Consolas, monospace;
 
+  --efaat-text-2xs: 11px;
   --efaat-text-xs: 12px;
   --efaat-text-sm: 13px;
   --efaat-text-base: 14px;
@@ -52,32 +84,50 @@
   --efaat-text-lg: 20px;
   --efaat-text-xl: 24px;
   --efaat-text-2xl: 30px;
+  --efaat-text-3xl: 36px;
 
   --efaat-weight-medium: 500;
   --efaat-weight-semibold: 600;
   --efaat-weight-bold: 700;
+
+  /* Títulos: interletrado algo más cerrado; rótulos (eyebrow): abierto. */
+  --efaat-tracking-tight: -0.022em;
+  --efaat-tracking-label: 0.08em;
 
   /* --- Spacing --- */
   --efaat-space-1: 4px;
   --efaat-space-2: 8px;
   --efaat-space-3: 12px;
   --efaat-space-4: 16px;
+  --efaat-space-5: 20px;
   --efaat-space-6: 24px;
   --efaat-space-8: 32px;
+  --efaat-space-10: 40px;
 
   /* --- Radios --- */
-  --efaat-radius-control: 6px;
-  --efaat-radius-card: 10px;
-  --efaat-radius-modal: 14px;
+  --efaat-radius-sm: 6px;
+  --efaat-radius-control: 9px;
+  --efaat-radius-card: 14px;
+  --efaat-radius-modal: 18px;
   --efaat-radius-pill: 999px;
 
-  /* --- Sombras (sutiles) --- */
-  --efaat-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --efaat-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
-  --efaat-shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.16);
+  /* --- Sombras: en capas, teñidas de azul marino --- */
+  --efaat-shadow-xs: 0 1px 2px rgba(16, 24, 48, 0.05);
+  --efaat-shadow-sm: 0 1px 2px rgba(16, 24, 48, 0.05), 0 1px 3px rgba(16, 24, 48, 0.04);
+  --efaat-shadow-md: 0 1px 2px rgba(16, 24, 48, 0.04), 0 8px 20px -6px rgba(16, 24, 48, 0.12);
+  --efaat-shadow-lg: 0 2px 6px rgba(16, 24, 48, 0.05), 0 28px 56px -16px rgba(16, 24, 48, 0.28);
+  --efaat-shadow-primary: 0 1px 2px rgba(29, 79, 214, 0.25), 0 6px 16px -6px rgba(37, 99, 235, 0.55);
+  /* Brillo interior superior de superficies elevadas (botones sólidos). */
+  --efaat-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 
   /* --- Foco accesible --- */
-  --efaat-focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.35);
+  --efaat-focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.3);
+
+  /* --- Movimiento (discreto) --- */
+  --efaat-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --efaat-dur-fast: 120ms;
+  --efaat-dur: 180ms;
+  --efaat-dur-slow: 260ms;
 
   /* --- Capas --- */
   --efaat-z-modal: 1000;
@@ -108,6 +158,12 @@ body {
   width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--efaat-blue-100);
+  color: var(--efaat-ink);
 }
 
 /* Foco accesible por teclado, sin afectar el layout ni el clic con ratón. */

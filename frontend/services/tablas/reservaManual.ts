@@ -180,7 +180,7 @@ export interface DatosReserva {
     sorteoProgramadoId?: string;
     grupoId?: string;
     sinSorteo?: boolean;
-    motivo: string;
+    motivo?: string;
     observaciones?: string;
     solicitudId: string;
 }

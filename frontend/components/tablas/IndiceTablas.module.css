@@ -1,0 +1,143 @@
+/* Índice de Reservas: resumen + rejilla de tarjetas de precio. */
+
+.indice {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.rejilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 228px), 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 480px) {
+  .rejilla {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+.esqueleto {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 200px;
+  padding: 18px;
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+  border-radius: 16px;
+  box-shadow: var(--efaat-shadow-sm);
+}
+
+/* --- Resumen --- */
+.resumen {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-card);
+  box-shadow: var(--efaat-shadow-sm);
+  overflow: hidden;
+}
+
+.cifra {
+  --_c: var(--efaat-ink-soft);
+  --_c-suave: var(--efaat-surface-sunken);
+
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 18px;
+}
+
+.cifra + .cifra {
+  border-left: 1px solid var(--efaat-border-subtle);
+}
+
+.cifraIcono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--_c-suave);
+  color: var(--_c);
+}
+
+.cifraTexto {
+  min-width: 0;
+}
+
+.cifraTexto dt {
+  font-size: var(--efaat-text-2xs);
+  font-weight: var(--efaat-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--efaat-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cifraTexto dd {
+  margin: 2px 0 0;
+  font-size: 20px;
+  font-weight: var(--efaat-weight-bold);
+  letter-spacing: var(--efaat-tracking-tight);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  color: var(--efaat-ink);
+}
+
+.neutro {
+  --_c: var(--efaat-ink-soft);
+  --_c-suave: var(--efaat-surface-sunken);
+}
+
+.exito {
+  --_c: var(--efaat-success);
+  --_c-suave: #ecfdf3;
+}
+
+.marca {
+  --_c: var(--efaat-primary);
+  --_c-suave: var(--efaat-blue-50);
+}
+
+.alerta {
+  --_c: var(--efaat-warning);
+  --_c-suave: #fffaeb;
+}
+
+@media (max-width: 760px) {
+  .resumen {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cifra:nth-child(3) {
+    border-left: none;
+  }
+
+  .cifra:nth-child(n + 3) {
+    border-top: 1px solid var(--efaat-border-subtle);
+  }
+}
+
+@media (max-width: 480px) {
+  .cifra {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .cifraIcono {
+    width: 30px;
+    height: 30px;
+  }
+}

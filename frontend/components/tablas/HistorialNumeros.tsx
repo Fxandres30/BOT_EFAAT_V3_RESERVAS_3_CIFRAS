@@ -20,6 +20,7 @@ import {
     type FuenteEvento
 } from "./historialDatos";
 import type { EstadoNumero } from "./types";
+import seccion from "./SeccionPanel.module.css";
 
 interface Props {
     filas: FilaHistorial[];
@@ -92,7 +93,7 @@ export default function HistorialNumeros({ filas, auditoriaDisponible, filtros, 
 
     return (
 
-        <section className="bg-white border rounded-2xl shadow-sm p-4 sm:p-5 min-w-0">
+        <section className={seccion.panel}>
 
             <div className={`flex items-center justify-between gap-2 ${expandido ? "mb-4" : ""}`}>
                 <h2 className="text-lg font-bold text-gray-900">
@@ -127,7 +128,7 @@ export default function HistorialNumeros({ filas, auditoriaDisponible, filtros, 
                         />
                     </label>
 
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(3,minmax(0,1fr))_auto] mb-2">
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(2,minmax(0,1fr))_auto] mb-2">
 
                         <select
                             aria-label="Filtrar por estado actual"
@@ -149,14 +150,6 @@ export default function HistorialNumeros({ filas, auditoriaDisponible, filtros, 
                             <option value="">Todos los grupos</option>
                             {grupos.map((g) => <option key={g} value={g}>{g}</option>)}
                         </select>
-
-                        <input
-                            type="date"
-                            aria-label="Filtrar por fecha"
-                            value={filtros.fecha}
-                            onChange={(e) => cambiar({ fecha: e.target.value })}
-                            className="h-10 px-3 rounded-xl border border-gray-200 text-sm bg-white min-w-0"
-                        />
 
                         {hayFiltros ? (
                             <button

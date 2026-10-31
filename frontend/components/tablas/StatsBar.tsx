@@ -1,6 +1,7 @@
 import { Percent } from "lucide-react";
 
 import { ESTADOS_META_VISUAL } from "./estadoVisual";
+import styles from "./StatsBar.module.css";
 
 interface Stats {
     total: number;
@@ -26,23 +27,29 @@ export default function StatsBar({ stats }: Props) {
         {
             label: "Disponibles",
             valor: stats.disponibles,
-            meta: ESTADOS_META_VISUAL.libre
+            meta: ESTADOS_META_VISUAL.libre,
+            tono: styles.libre
         },
         {
             label: "Reservados",
             valor: reservadosVisual,
-            meta: ESTADOS_META_VISUAL.reservado
+            meta: ESTADOS_META_VISUAL.reservado,
+            tono: styles.reservado
         },
         {
             label: "Pagados",
             valor: stats.pagados,
-            meta: ESTADOS_META_VISUAL.pagado
+            meta: ESTADOS_META_VISUAL.pagado,
+            tono: styles.pagado
         }
     ];
 
+    // La barra solo dibuja el porcentaje ya calculado (0–100).
+    const ocupacion = Math.min(100, Math.max(0, stats.ocupacion));
+
     return (
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+        <div className={styles.barra}>
 
             {tarjetas.map((t) => {
 
@@ -50,14 +57,17 @@ export default function StatsBar({ stats }: Props) {
 
                 return (
 
-                    <div key={t.label} className={`min-w-0 rounded-xl border px-3 py-2 sm:px-3.5 sm:py-2.5 ${t.meta.badge}`}>
+                    <div key={t.label} className={`${styles.cifra} ${t.tono}`}>
 
-                        <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-medium opacity-80 truncate">{t.label}</p>
-                            <Icon size={15} className="opacity-70 shrink-0" />
+                        <div className={styles.cifraFila}>
+                            <p className={styles.etiqueta}>{t.label}</p>
+                            <span className={styles.icono} aria-hidden="true"><Icon size={14} /></span>
                         </div>
 
-                        <p className="text-lg sm:text-xl font-bold leading-tight mt-0.5 truncate">{t.valor}</p>
+                        <p className={styles.valor}>
+                            {t.valor}
+                            <span className={styles.total}>/ {stats.total}</span>
+                        </p>
 
                     </div>
 
@@ -65,14 +75,25 @@ export default function StatsBar({ stats }: Props) {
 
             })}
 
-            <div className="min-w-0 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 px-3 py-2 sm:px-3.5 sm:py-2.5">
+            <div className={`${styles.cifra} ${styles.ocupacion}`}>
 
-                <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium opacity-80 truncate">Ocupación</p>
-                    <Percent size={15} className="opacity-70 shrink-0" />
+                <div className={styles.cifraFila}>
+                    <p className={styles.etiqueta}>Ocupación</p>
+                    <span className={styles.icono} aria-hidden="true"><Percent size={14} /></span>
                 </div>
 
-                <p className="text-lg sm:text-xl font-bold leading-tight mt-0.5 truncate">{stats.ocupacion}%</p>
+                <p className={styles.valor}>{stats.ocupacion}%</p>
+
+                <div
+                    className={styles.progreso}
+                    role="progressbar"
+                    aria-label="Ocupación de la tabla"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={ocupacion}
+                >
+                    <span style={{ width: `${ocupacion}%` }} />
+                </div>
 
             </div>
 

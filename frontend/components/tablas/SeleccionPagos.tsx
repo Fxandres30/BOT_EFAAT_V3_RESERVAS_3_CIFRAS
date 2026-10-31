@@ -14,7 +14,7 @@ import {
     type ResultadoOperacion
 } from "@/services/tablas/pagoLote";
 import { nuevaSolicitudId, obtenerContextoNumero, type ContextoNumero, type DatosReserva, type Resultado } from "@/services/tablas/reservaManual";
-import { anadirSeleccion, numerosEnRango, numerosLibres } from "@/services/tablas/seleccionTabla";
+import { anadirSeleccion, numerosLibres } from "@/services/tablas/seleccionTabla";
 import ReservaManualForm, { Aviso } from "./ReservaManualForm";
 
 // Mismas opciones que el pago de un número (NumeroDetalleModal).
@@ -37,7 +37,7 @@ interface Props {
     onActivar: () => void;
     onSalir: () => void;
     onLimpiar: () => void;
-    /** Sustituye la selección («Todos los libres», rango). */
+    /** Sustituye la selección («Todos los libres»). */
     onCambiarSeleccion: (numeros: string[]) => void;
     onQuitar: (numero: string) => void;
     onProcesar: ProcesarLote;
@@ -68,7 +68,7 @@ function textoProcesando(operacion: OperacionLote, n: number) {
 }
 
 // Tablas → «Seleccionar»: marcar varios números (en la cuadrícula, en
-// «Historial de números», todos los libres o un rango) y aplicarles una
+// «Historial de números» o todos los libres) y aplicarles una
 // operación. Solo se ofrecen las operaciones que admite al menos uno de los
 // seleccionados; cada número se procesa con la misma operación de su
 // detalle (el servidor decide) y el resultado se informa número a número.
@@ -76,9 +76,6 @@ export default function SeleccionPagos({ precio, activo, bloqueado = false, nume
 
     const [dialogo, setDialogo] = useState<OperacionLote | null>(null);
     const [verSeleccion, setVerSeleccion] = useState(false);
-    const [desde, setDesde] = useState("");
-    const [hasta, setHasta] = useState("");
-    const [errorRango, setErrorRango] = useState<string | null>(null);
 
     const compatibles = useMemo(() => operacionesCompatibles(numeros, seleccion), [numeros, seleccion]);
     const libres = useMemo(() => numerosLibres(numeros), [numeros]);
@@ -96,13 +93,6 @@ export default function SeleccionPagos({ precio, activo, bloqueado = false, nume
                 </button>
             </div>
         );
-    }
-
-    function anadirRango() {
-        const r = numerosEnRango(numeros, desde, hasta);
-        if (!r.ok) { setErrorRango(r.mensaje); return; }
-        setErrorRango(null);
-        onCambiarSeleccion(anadirSeleccion(seleccion, r.numeros));
     }
 
     return (
@@ -160,24 +150,6 @@ export default function SeleccionPagos({ precio, activo, bloqueado = false, nume
                     >
                         <ListChecks size={14} /> Todos los libres ({libres.length})
                     </button>
-                    <span className="inline-flex items-center gap-1" role="group" aria-label="Seleccionar un rango">
-                        <span className="text-indigo-800">Rango</span>
-                        <input
-                            className="w-14 border rounded-lg px-2 py-1 bg-white tabular-nums"
-                            inputMode="numeric" aria-label="Desde" placeholder="00" maxLength={4}
-                            value={desde} onChange={(e) => { setDesde(e.target.value); setErrorRango(null); }}
-                        />
-                        <span aria-hidden="true">–</span>
-                        <input
-                            className="w-14 border rounded-lg px-2 py-1 bg-white tabular-nums"
-                            inputMode="numeric" aria-label="Hasta" placeholder="99" maxLength={4}
-                            value={hasta} onChange={(e) => { setHasta(e.target.value); setErrorRango(null); }}
-                            onKeyDown={(e) => { if (e.key === "Enter" && !bloqueado) anadirRango(); }}
-                        />
-                        <button type="button" onClick={anadirRango} disabled={bloqueado || !desde || !hasta} className="px-2.5 py-1 rounded-lg border bg-white hover:bg-gray-50 disabled:opacity-50">
-                            Añadir
-                        </button>
-                    </span>
                     {seleccion.length > 0 && (
                         <button
                             type="button"
@@ -188,7 +160,6 @@ export default function SeleccionPagos({ precio, activo, bloqueado = false, nume
                             {verSeleccion ? <EyeOff size={14} /> : <Eye size={14} />} {verSeleccion ? "Ocultar selección" : "Ver selección"}
                         </button>
                     )}
-                    {errorRango && <span className="text-red-700 text-xs" role="alert">{errorRango}</span>}
                 </div>
 
                 {verSeleccion && seleccion.length > 0 && (

@@ -1,0 +1,96 @@
+/* Barra de acciones de una tabla. Los colores del botón normal llegan como
+   utilidades de Tailwind (prop `color`): este módulo no declara color,
+   fondo ni borde para él, porque una regla sin capa les ganaría. */
+
+.barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-card);
+  box-shadow: var(--efaat-shadow-sm);
+}
+
+.grupo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 44px;
+  min-height: 42px;
+  padding: 0 14px;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: var(--efaat-radius-control);
+  font-family: inherit;
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--efaat-dur) var(--efaat-ease),
+    border-color var(--efaat-dur) var(--efaat-ease),
+    box-shadow var(--efaat-dur) var(--efaat-ease),
+    transform var(--efaat-dur-fast) var(--efaat-ease);
+}
+
+.boton:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.boton:focus-visible {
+  outline: none;
+  box-shadow: var(--efaat-focus-ring);
+}
+
+.boton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.normal {
+  box-shadow: var(--efaat-shadow-xs);
+}
+
+.destacado {
+  border-color: transparent;
+  background: var(--efaat-gradient-primary);
+  box-shadow: var(--efaat-highlight), var(--efaat-shadow-primary);
+  color: #fff;
+}
+
+.destacado:hover:not(:disabled) {
+  background: var(--efaat-gradient-primary-hover);
+}
+
+.destacado:focus-visible {
+  box-shadow: var(--efaat-highlight), var(--efaat-shadow-primary), var(--efaat-focus-ring);
+}
+
+@media (max-width: 760px) {
+  .barra {
+    justify-content: center;
+  }
+
+  .grupo {
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boton:active:not(:disabled) {
+    transform: none;
+  }
+}

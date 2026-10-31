@@ -570,7 +570,7 @@ function baseReserva({ usuarioId, operador, precio, motivo, observaciones, solic
 }
 
 // Todo lo que una reserva manual comprueba ANTES de tocar la tabla: tabla del
-// precio, motivo, sorteo y grupo, grupo autorizado y contacto. El estado del
+// precio, sorteo y grupo, grupo autorizado y contacto. El estado del
 // sorteo (cerrado, hora de cierre, que no haya ninguno) no impide reservar:
 // sin sorteo elegido ni activo, la reserva queda sin sorteo. La misma función
 // para un número y para un lote: una sola versión de las reglas.
@@ -587,9 +587,7 @@ async function prepararReserva({ usuarioId, precio, contactoId, nuevoContacto, e
     base.tabla = config.tabla;
     base.precio = config.precio;
 
-    if (!base.motivo || base.motivo.length < 3) {
-        return { ok: false, respuesta: await rechazar(rechazo("falta_motivo", "Indica el motivo de la intervención manual.")) };
-    }
+    // El motivo de la reserva manual es opcional (información complementaria).
 
     // ---- sorteo y grupo (contexto) ----
     // Sorteo activo (eventoId), programado sin publicar (sorteoProgramadoId
