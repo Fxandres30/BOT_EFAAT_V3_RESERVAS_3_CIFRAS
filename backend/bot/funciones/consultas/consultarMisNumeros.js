@@ -1,7 +1,25 @@
 const supabase = require("../../../lib/supabase");
 const { reservaPerteneceAUsuario } = require("../usuarios/obtenerUsuarioGlobal");
 const { soloDelCliente } = require("../reservas/filtroCliente");
-const { sinDeuda } = require("../../../shared/eventos/estadosGestion");
+const { finDelEvento } = require("../../../shared/eventos/estadosGestion");
+const { fechaEventoHoy } = require("../eventos/identidadEventoReal");
+
+// ¿Este sorteo es el VIGENTE de su tabla? Solo un sorteo vigente genera
+// obligaciones actuales: activo, sin cierre ni gestión (cerrado, cancelado,
+// desactivado, eliminado, sustituido: finDelEvento) y que no sea de un día
+// ya pasado — una fila que quedó activo=true porque el cierre no corrió
+// (bot caído a la hora del sorteo) es historia, no el sorteo actual.
+// Un sorteo terminado nunca se presenta como actual ni reconstruye deuda
+// (error en producción 31/10/2026: «¿qué debo?» nombraba sorteos pasados).
+function sorteoVigente(evento, ahora = new Date()) {
+
+    if (!evento || finDelEvento(evento)) return false;
+
+    const fecha = evento.fecha_evento ? String(evento.fecha_evento).slice(0, 10) : null;
+
+    return !fecha || fecha >= fechaEventoHoy(ahora);
+
+}
 
 // READ-ONLY. Busca por usuario_global_id (el identificador de dueño que
 // reservarNumeros.js ya escribe en cada reserva) Y, como respaldo, por
@@ -10,10 +28,9 @@ const { sinDeuda } = require("../../../shared/eventos/estadosGestion");
 // columna, o de una identidad todavía no completada ese día) pero con
 // lid/telefono coincidentes sigue reconociéndose como del mismo usuario. No
 // se inventa ningún criterio nuevo: es el mismo reservaPerteneceAUsuario()
-// que ya usa validarReservas.js. Se aísla por identidad_evento_real (ver
-// más abajo) pero no por evento_id/grupo_id: sigue tratando evento.tabla
-// completa (para el sorteo real de este evento) como el estado vigente (el
-// cierre de evento no resetea las filas).
+// que ya usa validarReservas.js. UNA TABLA = UN SORTEO (31/10/2026): toda
+// la cuadrícula del cliente (evento.tabla + usuario_id) es el sorteo, sin
+// separar por identidad_evento_real, evento_id ni grupo_id (son historia).
 //
 // Única consulta real a Supabase para "los números de este usuario en este
 // evento" — consultarMisNumerosPorEstado() la clasifica por estado y
@@ -78,19 +95,10 @@ async function obtenerFilasDelUsuario({ evento, usuario }) {
     // La consulta trae CANDIDATAS (cualquier fila con su id, LID o teléfono);
     // cada una se confirma con la regla única de pertenencia: una fila de
     // OTRO propietario con este teléfono no es suya (fuga 65/86).
-    const filas = (data || []).filter(f => reservaPerteneceAUsuario(f, usuario));
-
-    // Aísla del mismo sorteo real (independiente del grupo) — una reserva
-    // del mismo usuario pero de OTRO evento/ciclo (mismo precio, tabla
-    // física compartida) no debe mezclarse en "mis números" de este evento.
-    // Ver identidadEventoReal.js. Una fila sin identidad todavía (dato
-    // previo a esta migración) se sigue incluyendo, para no ocultar
-    // reservas reales por falta de backfill.
-    const identidad = evento.identidad_evento_real || null;
-
-    return identidad
-        ? filas.filter(f => !f.identidad_evento_real || f.identidad_evento_real === identidad)
-        : filas;
+    // Antes se descartaban las filas con otra identidad: un número del
+    // cliente en esta misma tabla (reservado a mano, conservado de otro
+    // ciclo...) no aparecía en «mis números» ni en «qué debo».
+    return (data || []).filter(f => reservaPerteneceAUsuario(f, usuario));
 
 }
 
@@ -130,25 +138,19 @@ async function consultarMisNumerosPorEstado({ evento, usuario }) {
 }
 
 // ==========================================================================
-// Deuda en OTROS sorteos del mismo cliente (tenant).
+// Deuda en OTROS sorteos VIGENTES del mismo cliente (tenant).
 //
-// "¿Qué debo?" se responde con el sorteo del grupo (activo o el más
-// reciente). Desde que cada sorteo tiene su propia fila (2026-10-23) y se
-// puede publicar uno nuevo mientras el anterior sigue con pagos pendientes,
-// esa respuesta decía "no debes nada" a quien sí debía números del sorteo
-// anterior (o de otro grupo del mismo cliente). Aquí se leen SOLO los números
-// todavía "reservado" (pendientes de pago) del usuario en los demás sorteos
-// recientes del cliente: nunca otro tenant, nunca un sorteo cancelado o
-// eliminado, nunca se modifica nada.
+// "¿Qué debo?" se responde con el sorteo del grupo y, además, con lo
+// pendiente en las demás TABLAS del cliente que tienen un sorteo VIGENTE
+// (otro grupo, otro precio). Solo números todavía "reservado" del usuario;
+// nunca otro tenant, nunca se modifica nada.
+//
+// Una tabla sin sorteo vigente (su último sorteo cerró, se canceló, se
+// desactivó o quedó de un día pasado) NO aporta deuda: sus filas son
+// historia. Antes se representaba cada tabla con su sorteo más reciente
+// aunque hubiera terminado (bastaba con los últimos 30 días y no estar
+// cancelado) y la respuesta nombraba sorteos pasados con sus números.
 // ==========================================================================
-const DIAS_OTROS_SORTEOS = 30;
-
-function momentoDe(fila) {
-    const fechas = [fila.actualizado_en, fila.creado_en, fila.fecha_evento]
-        .map(f => (f ? new Date(f).getTime() : NaN))
-        .filter(Number.isFinite);
-    return fechas.length ? Math.max(...fechas) : 0;
-}
 
 // Nunca lanza. -> { ok, lista }: ok=false si alguna lectura falló (la
 // lista trae lo que sí se pudo leer). Así «no tienes pendientes en otros
@@ -179,6 +181,7 @@ async function leerPendientesOtrosSorteos({ evento, usuario, ahora = new Date() 
         .from("eventos_bot")
         .select("*")
         .eq("usuario_id", evento.usuario_id)
+        .eq("activo", true)
         .order("creado_en", { ascending: false })
         .limit(200);
 
@@ -187,26 +190,21 @@ async function leerPendientesOtrosSorteos({ evento, usuario, ahora = new Date() 
         return { ok: false, lista: [] };
     }
 
-    const limite = ahora.getTime() - DIAS_OTROS_SORTEOS * 24 * 60 * 60 * 1000;
-
-    // Un sorteo real (identidad) puede tener una fila por grupo: una entrada.
-    const porIdentidad = new Map();
+    // UNA TABLA = UN SORTEO (31/10/2026): la deuda se agrupa por TABLA, no
+    // por identidad, y cada tabla la representa su sorteo VIGENTE (eventos
+    // ya vienen del más nuevo al más viejo). La tabla de este evento solo se
+    // salta si él es el vigente: sus números ya los cuenta «mis números».
+    // Si el sorteo del grupo terminó y su tabla sigue viva con otro sorteo
+    // (tabla conservada, otro grupo), esa deuda se informa con ESE sorteo.
+    const tablaPropia = sorteoVigente(evento, ahora) ? evento.tabla : null;
+    const porTabla = new Map();
 
     for (const e of eventos || []) {
-        if (!e.identidad_evento_real || !e.tabla) continue;
-        if (e.identidad_evento_real === evento.identidad_evento_real) continue;
-        if (sinDeuda(e)) continue;
-        if (momentoDe(e) < limite) continue;
-        if (!porIdentidad.has(e.identidad_evento_real)) porIdentidad.set(e.identidad_evento_real, e);
+        if (!e.tabla || e.tabla === tablaPropia || porTabla.has(e.tabla)) continue;
+        if (sorteoVigente(e, ahora)) porTabla.set(e.tabla, e);
     }
 
-    // Una fila cancelada/eliminada en un grupo anula la deuda de ese sorteo
-    // aunque otra fila del mismo sorteo siga sin ese estado.
-    for (const e of eventos || []) {
-        if (sinDeuda(e)) porIdentidad.delete(e.identidad_evento_real);
-    }
-
-    if (!porIdentidad.size) return { ok: true, lista: [] };
+    if (!porTabla.size) return { ok: true, lista: [] };
 
     const condiciones = [`usuario_global_id.eq.${usuario.id}`];
     if (usuario.lid) condiciones.push(`lid.eq.${usuario.lid}`);
@@ -215,21 +213,15 @@ async function leerPendientesOtrosSorteos({ evento, usuario, ahora = new Date() 
         condiciones.push(`contacto.eq.${usuario.telefono}`);
     }
 
-    const porTabla = new Map();
-    for (const e of porIdentidad.values()) {
-        porTabla.set(e.tabla, [...(porTabla.get(e.tabla) || []), e.identidad_evento_real]);
-    }
-
     const resultado = [];
     let ok = true;
 
-    for (const [tabla, identidades] of porTabla) {
+    for (const [tabla, e] of porTabla) {
 
         const { data, error: errorTabla } = await supabase
             .from(tabla)
-            .select("numero, estado, usuario_global_id, lid, telefono, contacto, identidad_evento_real")
+            .select("numero, estado, usuario_global_id, lid, telefono, contacto")
             .eq("usuario_id", evento.usuario_id)
-            .in("identidad_evento_real", identidades)
             .eq("estado", "reservado")
             .or(condiciones.join(","))
             .order("numero", { ascending: true });
@@ -240,29 +232,24 @@ async function leerPendientesOtrosSorteos({ evento, usuario, ahora = new Date() 
             continue;
         }
 
-        for (const identidad of identidades) {
+        const numeros = (data || [])
+            .filter(f => reservaPerteneceAUsuario(f, usuario))
+            .map(f => f.numero)
+            .sort();
 
-            const numeros = (data || [])
-                .filter(f => f.identidad_evento_real === identidad && reservaPerteneceAUsuario(f, usuario))
-                .map(f => f.numero)
-                .sort();
+        if (!numeros.length) continue;
 
-            if (!numeros.length) continue;
+        const valor = Number(e.valor) || 0;
 
-            const e = porIdentidad.get(identidad);
-            const valor = Number(e.valor) || 0;
-
-            resultado.push({
-                eventoId: e.id,
-                identidad,
-                nombre: e.nombre_evento || null,
-                hora_fin: e.hora_fin || null,
-                fecha_evento: e.fecha_evento ? String(e.fecha_evento).slice(0, 10) : null,
-                numeros,
-                montoPendiente: valor > 0 ? numeros.length * valor : null
-            });
-
-        }
+        resultado.push({
+            eventoId: e.id,
+            identidad: e.identidad_evento_real || null,
+            nombre: e.nombre_evento || null,
+            hora_fin: e.hora_fin || null,
+            fecha_evento: e.fecha_evento ? String(e.fecha_evento).slice(0, 10) : null,
+            numeros,
+            montoPendiente: valor > 0 ? numeros.length * valor : null
+        });
 
     }
 
@@ -281,6 +268,7 @@ async function consultarMisNumeros({ evento, usuario }) {
 }
 
 module.exports = {
+    sorteoVigente,
     consultarMisNumeros,
     consultarMisNumerosPorEstado,
     consultarPendientesOtrosSorteos,

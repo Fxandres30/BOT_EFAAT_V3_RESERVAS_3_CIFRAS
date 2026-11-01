@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Lock, Plus, Trash2 } from "lucide-react";
 
-import { Modal, Button, Input, Select, Textarea, IconButton, Badge } from "@/components/ui";
+import { Modal, Button, Input, Select, IconButton, Badge } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { apiSorteos, describirError, type CuentaPago, type ErrorCampo, type SorteoActivo, type SorteoEnGrupos } from "@/services/sorteos/apiSorteos";
 import { BotonesSorteo, ConfirmarAccionSorteo, type AccionPendiente } from "./AccionesSorteo";
@@ -11,6 +11,7 @@ import { listarDisenos } from "@/services/tablas/disenos";
 import { TABLA_DISENO_PRESETS } from "@/services/tablas/disenoDefaults";
 import type { TablaDiseno } from "@/components/tablas/disenoTypes";
 import { disenoAForm, formADiseno, type PremioForm } from "./FormularioSorteo";
+import SelectorMensaje, { type ValorMensaje } from "./SelectorMensaje";
 import styles from "./Sorteos.module.css";
 
 interface Props {
@@ -47,7 +48,10 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
     const [confirmarIdentidad, setConfirmarIdentidad] = useState(false);
     const [cuentasSel, setCuentasSel] = useState<string[]>([]);
     const [diseno, setDiseno] = useState("guardado");
-    const [publicacion, setPublicacion] = useState("");
+    // Mensaje de publicación tal como está guardado (inicial) y el editado:
+    // solo se envía si cambió.
+    const [mensaje, setMensaje] = useState<ValorMensaje>({ texto: "", estilo: "", activo: true });
+    const [mensajeInicial, setMensajeInicial] = useState<ValorMensaje | null>(null);
     const [cuentas, setCuentas] = useState<CuentaPago[]>([]);
     const [disenos, setDisenos] = useState<TablaDiseno[]>([]);
     const [errores, setErrores] = useState<ErrorCampo[]>([]);
@@ -96,7 +100,15 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
             setConfirmarIdentidad(false);
             setCuentasSel(s.cuentas_ids || []);
             setDiseno(s.diseno ? disenoAForm(s.diseno) : "guardado");
-            setPublicacion(s.publicacion || "");
+            // Panel: el texto que de verdad se publica (en un sorteo antiguo
+            // sin texto, la plantilla de su diseño). Detectado: lo escrito.
+            const inicial = {
+                texto: s.publicacion_texto ?? s.publicacion ?? "",
+                estilo: s.publicacion_meta?.estilo || "",
+                activo: s.publicacion_meta?.activo !== false
+            };
+            setMensaje(inicial);
+            setMensajeInicial(inicial);
             setCarga({ tipo: "ok", sorteo: s });
             if (s.campos.cuentas.editable) {
                 const c = await apiSorteos.cuentas();
@@ -124,6 +136,8 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
     } : {};
     const cambiaIdentidad = Object.keys(identidadCambiada).length > 0;
 
+    const mensajeCambiado = Boolean(mensajeInicial) && (mensaje.texto !== mensajeInicial!.texto || mensaje.estilo !== mensajeInicial!.estilo || mensaje.activo !== mensajeInicial!.activo);
+
     async function guardar() {
 
         if (!sorteo) return;
@@ -139,7 +153,10 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
             hora_cierre: horaCierre,
             ...(sorteo.campos.cuentas.editable ? { cuentas: cuentasSel } : {}),
             ...(sorteo.campos.diseno.editable && diseno !== "guardado" ? { diseno: formADiseno(diseno, sorteo.diseno) } : {}),
-            ...(sorteo.campos.publicacion?.editable ? { publicacion } : {}),
+            ...(sorteo.campos.publicacion?.editable && mensajeCambiado ? {
+                publicacion: mensaje.texto,
+                publicacion_meta: { ...(mensaje.estilo ? { estilo: mensaje.estilo } : {}), ...(sorteo.origen === "panel" ? { activo: mensaje.activo } : {}) }
+            } : {}),
             base: { premios: sorteo.premios, hora_cierre: sorteo.hora_cierre, ...(sorteo.campos.publicacion ? { publicacion: sorteo.publicacion } : {}) }
         });
 
@@ -294,10 +311,25 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
                     {sorteo.campos.publicacion?.editable && (
                         <section className={styles.seccion}>
                             <h3 className={styles.seccionTitulo}>Publicación</h3>
-                            <Textarea label="Mensaje de publicación" optional rows={8} value={publicacion} onChange={e => setPublicacion(e.target.value)} error={errorDe("publicacion")}
-                                hint={sorteo.origen === "panel"
-                                    ? `${sorteo.campos.publicacion.motivo} Variables: {{nombre}} {{hora}} {{hora_cierre}} {{valor}} {{premios}} {{cuentas}} {{cantidad}} {{fecha}}`
-                                    : sorteo.campos.publicacion.motivo} />
+                            <SelectorMensaje
+                                valor={mensaje}
+                                onChange={setMensaje}
+                                error={errorDe("publicacion")}
+                                nota={sorteo.campos.publicacion.motivo}
+                                // Detectado: el texto es solo informativo (EFAAT no lo publica).
+                                permitirActivar={sorteo.origen === "panel"}
+                                rellenarVacio={sorteo.origen === "panel"}
+                                datos={{
+                                    nombre,
+                                    hora_fin: horaFin,
+                                    hora_cierre: horaCierre || null,
+                                    valor: Number(valor) || 0,
+                                    premios: premios.filter(p => p.nombre.trim()).map(p => ({ nombre: p.nombre, premio: Number(p.premio) || null, tipo: p.tipo })),
+                                    fecha_sorteo: fecha || null,
+                                    cuentas: sorteo.campos.cuentas.editable ? cuentasSel : (sorteo.cuentas || []),
+                                    cantidad_numeros: sorteo.cantidad_numeros
+                                }}
+                            />
                         </section>
                     )}
 

@@ -17,7 +17,7 @@ const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno
 // llegan ya calculadas (resumenTabla.ts).
 export default function StatsBar({ resumen, precio }: Props) {
 
-    const { total, libres, reservados, pagados, recaudo, pagadosDelSorteo, pagadosDeOtroSorteo } = resumen;
+    const { total, libres, reservados, pagados, recaudo } = resumen;
 
     const segmentos = [
         { clave: "reservados", etiqueta: "Reservados", valor: reservados, tono: styles.reservado },
@@ -55,10 +55,7 @@ export default function StatsBar({ resumen, precio }: Props) {
                     <span className={styles.recaudoDetalle}>
                         {recaudo === null
                             ? `Sin sorteo activo de ${pesos(precio)} en esta tabla.`
-                            : <>
-                                {plural(pagadosDelSorteo, "número pagado", "números pagados")} × {pesos(precio)}
-                                {pagadosDeOtroSorteo > 0 && ` · ${plural(pagadosDeOtroSorteo, "pagado", "pagados")} de otro sorteo no se suma${pagadosDeOtroSorteo === 1 ? "" : "n"}`}
-                            </>}
+                            : `${plural(pagados, "número pagado", "números pagados")} × ${pesos(precio)}`}
                     </span>
                 </div>
                 {/* Sin sorteo activo no se afirma ninguna cifra: «—» y el porqué en el detalle. */}

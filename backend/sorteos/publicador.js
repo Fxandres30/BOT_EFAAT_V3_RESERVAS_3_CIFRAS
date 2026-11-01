@@ -40,6 +40,15 @@ const { partesBogota, instanteBogota, fechaSorteoDe, identidadDelSorteo } = requ
 const { decidirRecordatoriosSegunEstado } = require("../automation/eventRules");
 const { leerEstadoParaRecordatorios } = require("../automation/repo/estadoSorteo");
 const { cierreSilencioso, finDelEvento } = require("../shared/eventos/estadosGestion");
+const { sorteosQueOcupanLaTabla, filasPorId, reemplazarAnteriores, revertirReemplazo } = require("../shared/eventos/unSorteoPorTabla");
+
+// ¿Otra cuenta tiene un sorteo activo en el grupo? (lo que revisarGrupo
+// comprueba después de los sorteos propios).
+async function otraCuentaEnGrupo(supabase, usuarioId, grupoId) {
+    const { data, error } = await supabase.from("eventos_bot").select("usuario_id, activo").eq("grupo_id", grupoId).eq("activo", true);
+    if (error) return { error };
+    return { hay: (data || []).some(f => f.usuario_id !== usuarioId) };
+}
 
 const MAX_INTENTOS_AUTOMATICOS = 5;
 const VENTANA_RECORDATORIO_MS = 10 * 60 * 1000;
@@ -137,23 +146,23 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
         return { estado: "requiere_revision", ultimo_error: `El cierre (${fechaSorteo} ${config.hora_cierre}) ya pasó; no se publicó.${enEspera(grupo) ? ` El conflicto del grupo no se resolvió a tiempo (${grupo.ultimo_error.slice(EN_ESPERA.length)}).` : ""}` };
     }
 
-    // Conflictos EN ESTE MOMENTO: un sorteo distinto todavía abierto en el
-    // grupo nunca se reemplaza; se espera a que cierre.
+    // Conflictos EN ESTE MOMENTO.
     let rg = await revisarGrupo({ usuarioId, grupoId, identidad: sorteo.identidad_evento_real, autorizados, ahora });
 
-    // «Sustituir el sorteo activo al publicar» (decisión del administrador
-    // al programar): el sorteo PROPIO distinto que sigue abierto se cierra
-    // en ESTE grupo (sin aviso de cierre; reservas y pagos intactos, sus
-    // otros grupos siguen) y se publica a su hora. Nunca el de otra cuenta.
-    if (rg.bloqueo && rg.tipo === "sorteo_activo" && config.sustituir_activo === true && rg.conflictos?.length) {
-        for (const viejo of rg.conflictos) {
-            const motivo = `sustituido por el sorteo programado ${config.nombre || ""} ${config.hora_fin || ""}`.trim();
-            const cambios = { activo: false, estado: "cerrado", cierre_estado: "cerrado", cierre_motivo: motivo, cerrado_en: ahora.toISOString(), actualizado_en: ahora.toISOString() };
-            let { error } = await deps.supabase.from("eventos_bot").update(cambios).eq("usuario_id", usuarioId).eq("id", viejo.id).eq("activo", true);
-            if (error?.code === "42703") ({ error } = await deps.supabase.from("eventos_bot").update({ activo: false, estado: "cerrado", actualizado_en: ahora.toISOString() }).eq("usuario_id", usuarioId).eq("id", viejo.id));
-            if (error) return { estado: "fallido", ultimo_error: `No se pudo sustituir el sorteo actual del grupo (${error.message}); se reintentará.` };
-        }
-        rg = await revisarGrupo({ usuarioId, grupoId, identidad: sorteo.identidad_evento_real, autorizados, ahora });
+    // Publicar otro sorteo REEMPLAZA al anterior (decisión del 31/10, ya no
+    // depende de «Sustituir el sorteo activo»): el sorteo PROPIO distinto
+    // que sigue abierto en el grupo no hace esperar. Se cierra justo antes
+    // de guardar el nuevo (ver más abajo), nunca antes de tener la imagen.
+    // El de OTRA cuenta en el grupo sí hace esperar, como siempre.
+    let delGrupo = [];
+    if (rg.bloqueo && rg.tipo === "sorteo_activo" && rg.conflictos?.length) {
+        delGrupo = rg.conflictos;
+        const ajena = await otraCuentaEnGrupo(deps.supabase, usuarioId, grupoId);
+        rg = ajena.error
+            ? { bloqueo: "No pudimos revisar este grupo en este momento. Inténtalo de nuevo en unos minutos.", tipo: "error_lectura" }
+            : ajena.hay
+                ? { bloqueo: "Otra cuenta tiene un sorteo abierto en este grupo. Se publicará en cuanto termine.", tipo: "otra_cuenta" }
+                : { bloqueo: null };
     }
 
     if (rg.bloqueo && TIPOS_ESPERA.has(rg.tipo)) {
@@ -219,6 +228,17 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
     if (finDelEvento(releido.data)) return eventoTerminado(finDelEvento(releido.data));
     const eventoAnterior = releido.data;
 
+    // UNA TABLA = UN SORTEO: el sorteo anterior de esta tabla se reemplaza en
+    // TODOS sus grupos, y el sorteo propio de otra tabla que seguía abierto en
+    // ESTE grupo, aquí. Antes de guardar el nuevo (la 043 rechaza dos activos);
+    // si el nuevo no se guarda, se deshace.
+    const motivoReemplazo = `sustituido por el sorteo ${config.nombre || ""} ${config.hora_fin || ""}`.trim();
+    const ocupan = await sorteosQueOcupanLaTabla(deps.supabase, { usuarioId, tabla: sorteo.tabla, identidad: sorteo.identidad_evento_real, excepto: eventoAnterior?.id ? [eventoAnterior.id] : [] });
+    const delGrupoCompletas = await filasPorId(deps.supabase, usuarioId, delGrupo.map(f => f.id).filter(id => !(ocupan.filas || []).some(o => o.id === id)));
+    if (!ocupan.ok || !delGrupoCompletas.ok) return { estado: "fallido", ultimo_error: "No se pudo revisar el sorteo anterior de la tabla; no se publicó. Se reintentará." };
+    const reemplazo = await reemplazarAnteriores(deps.supabase, { usuarioId, filas: [...ocupan.filas, ...delGrupoCompletas.filas], motivo: motivoReemplazo, ahora });
+    if (!reemplazo.ok) return { estado: "fallido", ultimo_error: `No se pudo reemplazar el sorteo anterior (${reemplazo.error?.message || "error"}); no se publicó. Se reintentará.` };
+
     const guardado = await deps.guardarEvento({
         sock,
         grupoId,
@@ -236,7 +256,10 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
         sorteoVigente: { identidad_evento_real: sorteo.identidad_evento_real, fecha_evento: fechaSorteo }
     });
 
-    if (!guardado?.id) return { estado: "fallido", ultimo_error: "No se pudo guardar el evento; se reintentará." };
+    if (!guardado?.id) {
+        await revertirReemplazo(deps.supabase, { usuarioId, cerradas: reemplazo.cerradas, motivo: motivoReemplazo });
+        return { estado: "fallido", ultimo_error: "No se pudo guardar el evento; se reintentará." };
+    }
 
     // Contadores del evento con las reservas que ya tiene su identidad
     // (anticipadas desde el panel); la fila nueva nace en cero.
@@ -244,8 +267,10 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
 
     const base = { evento_bot_id: guardado.id };
 
+    // Mensaje desactivado en el sorteo (activo=false): se publica la imagen
+    // sin texto. Un texto vacío por cualquier otro motivo sigue sin publicarse.
     const texto = await deps.textoParaCompartir(usuarioId, guardado);
-    if (texto?.origen !== "sorteo" || !texto.texto) {
+    if (texto?.origen !== "sorteo" || (!texto.texto && texto.activo !== false)) {
         return { ...base, estado: "fallido", ultimo_error: "No se pudo preparar el texto del anuncio del sorteo; no se envió nada. Se reintentará." };
     }
 

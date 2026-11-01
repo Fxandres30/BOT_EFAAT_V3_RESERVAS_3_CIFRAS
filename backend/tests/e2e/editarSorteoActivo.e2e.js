@@ -5,12 +5,16 @@
 //
 //   1. «Editar» abre «Editar sorteo activo» con los datos del evento
 //      detectado (no «Nuevo sorteo» ni «no se editan aquí»).
-//   2. Los campos de identidad aparecen bloqueados con su motivo.
+//   2. Los campos de identidad (lotería, fecha, hora, valor) llegan con sus
+//      datos, corregibles solo con confirmación, explicando por qué.
 //   3. «Guardar cambios» actualiza el MISMO evento y sus grupos; sin
 //      duplicados; reservas y pagos intactos.
-//   4. /sorteos → «En curso» muestra el mismo sorteo; el de otra cuenta no.
+//   4. Eventos → «Administrar sorteo» → «Editar» abre el mismo editor (la
+//      antigua pestaña «En curso» de /sorteos vive ahora en Eventos); el de
+//      otra cuenta no aparece.
 //   5. «Mensaje de publicación»: vacío en un detectado (el bot no guarda el
-//      texto del anuncio), se escribe, se guarda y se vuelve a ver.
+//      texto del anuncio), sin interruptor de activo; se escribe, se guarda
+//      y se vuelve a ver.
 //
 // ENTORNO AISLADO (tests/e2e/entornoPanel.js): no toca Supabase ni WhatsApp.
 //
@@ -60,6 +64,20 @@ t.reservas_dos_cifras = Array.from({ length: 100 }, (_, i) => ({ numero: String(
 
 const { paso, terminar } = crearPasos();
 
+// Espera un MODAL por su título (h2 del diálogo) y pulsa botones dentro de él.
+const esperarModal = (page, titulo, timeout = 60000) =>
+    page.waitForFunction((titulo) => [...document.querySelectorAll('[role="dialog"] h2')].some(h => h.textContent.trim() === titulo), { timeout }, titulo);
+
+async function pulsarEnModal(page, texto) {
+    await page.waitForFunction((texto) => [...document.querySelectorAll('[role="dialog"] button')].some(b => b.textContent.trim() === texto && !b.disabled), { timeout: 60000 }, texto);
+    await page.evaluate((texto) => [...document.querySelectorAll('[role="dialog"] button')].find(b => b.textContent.trim() === texto && !b.disabled).click(), texto);
+}
+
+// El editor del mensaje aparece cuando carga el catálogo de diseños.
+const esperarMensaje = (page, timeout = 60000) =>
+    page.waitForFunction(() => !document.body.innerText.includes("Cargando los diseños del mensaje")
+        && [...document.querySelectorAll("label")].some(l => l.textContent.trim().startsWith("Mensaje de publicación")), { timeout });
+
 async function main() {
 
     // La pantalla de Tablas lee la cuadrícula y el evento desde el navegador.
@@ -84,17 +102,25 @@ async function main() {
         assert.deepStrictEqual(titulos, ["Editar sorteo activo"]);
         paso("Tablas $5.000 → «Editar» abre el sorteo DETECTADO por el bot (no «Nuevo sorteo»)");
 
-        // 2. Datos cargados; identidad bloqueada con su motivo.
-        for (const t1 of ["Chontico Noche", MANANA.split("-").reverse().join("/"), "22:30", "$5.000", "Grupo g1", "Grupo g2"]) assert.ok(texto.includes(t1), t1);
+        // 2. Datos cargados. La identidad (lotería, fecha, hora, valor) se
+        // muestra en sus campos: corregible solo con confirmación expresa.
+        assert.strictEqual(await valorDe(page, "Lotería o nombre del sorteo"), "Chontico Noche");
+        assert.strictEqual(await valorDe(page, "Fecha del sorteo"), MANANA);
+        assert.strictEqual(await valorDe(page, "Hora del sorteo"), "22:30");
+        assert.strictEqual(await valorDe(page, "Valor por número"), "5000");
+        for (const t1 of ["Grupo g1", "Grupo g2"]) assert.ok(texto.includes(t1), t1);
         assert.ok(/1\s+reservado\(s\) y 2\s+pagado\(s\)/.test(texto), "reservas y pagos en curso");
-        assert.ok(/Forma la identidad del sorteo en curso/.test(texto), "motivo de los campos bloqueados");
+        assert.ok(/Forma la identidad del sorteo en curso/.test(texto), "motivo: corregir la identidad exige confirmarlo");
+        assert.ok(!texto.includes("Confirmo la corrección"), "sin cambios, no se pide confirmar nada");
         assert.ok(/no guardan cuentas de pago/.test(texto), "cuentas: limitación documentada, sin inventar");
         assert.ok(!texto.includes("Secreto de B"));
         assert.strictEqual(await valorDe(page, "Cierre de reservas"), "22:26");
         const premios = await page.evaluate(() => Array.from(document.querySelectorAll('[aria-label="Premio"]'), e => e.value));
         assert.deepStrictEqual(premios, ["Premio mayor"]);
+        await esperarMensaje(page);
         assert.strictEqual(await valorDe(page, "Mensaje de publicación"), "", "detectado sin texto: vacío, nada inventado");
-        paso("muestra lotería, fecha, hora, valor, grupos, reservas y premios; bloquea la identidad explicando por qué");
+        assert.ok(!(await textoPagina(page)).includes("Publicar este mensaje con la imagen"), "detectado: sin interruptor (EFAAT no publica su anuncio)");
+        paso("muestra lotería, fecha, hora, valor, grupos, reservas y premios; la identidad solo se corrige confirmándolo");
 
         // 3. Guardar sobre el MISMO evento (y su otro grupo).
         await rellenarAria(page, "Valor del premio", "150000");
@@ -115,18 +141,20 @@ async function main() {
         assert.ok(!t.eventos_bot.find(x => x.id === EV_B).publicacion_panel, "el texto no llega a la otra cuenta");
         paso("«Guardar cambios» actualiza el MISMO evento y su otro grupo; sin duplicados; reservas y pagos intactos");
 
-        // 4. /sorteos → «En curso»: el mismo sorteo, editable igual.
-        await page.goto(`${PANEL}/sorteos`, { waitUntil: "domcontentloaded" });
-        await pulsar(page, "En curso (1)");
-        await esperarTexto(page, "Chontico Noche");
-        assert.ok(!(await textoPagina(page)).includes("Secreto de B"));
-        await pulsar(page, "Editar");
-        await esperarTexto(page, "Editar sorteo activo");
+        // 4. Eventos (donde vive ahora la antigua pestaña «En curso»):
+        // «Administrar sorteo» → «Editar» abre el mismo editor con lo guardado.
+        await page.goto(`${PANEL}/eventos?sorteo=${EV_G1}`, { waitUntil: "domcontentloaded" });
+        await esperarModal(page, "Administrar sorteo");
+        assert.ok((await textoPagina(page)).includes("Chontico Noche"));
+        assert.ok(!(await textoPagina(page)).includes("Secreto de B"), "el sorteo de otra cuenta no aparece");
+        await pulsarEnModal(page, "Editar");
+        await esperarModal(page, "Editar sorteo activo");
         await page.waitForFunction(() => document.querySelectorAll('[aria-label="Valor del premio"]').length > 0);
         const monto = await page.evaluate(() => document.querySelector('[aria-label="Valor del premio"]').value);
         assert.strictEqual(monto, "150000", "lo guardado");
+        await esperarMensaje(page);
         assert.strictEqual(await valorDe(page, "Mensaje de publicación"), "Chontico Noche: anuncio del grupo", "el texto guardado");
-        paso("/sorteos → «En curso» lista el mismo sorteo (sin el de otra cuenta) y abre el mismo editor");
+        paso("Eventos → «Administrar sorteo» → «Editar» abre el mismo editor con lo guardado (sin el de otra cuenta)");
 
         assert.deepStrictEqual(page.erroresJs, [], `errores de JavaScript: ${page.erroresJs.join(" | ")}`);
         paso("sin errores de JavaScript en el navegador");

@@ -212,10 +212,15 @@ prueba("5. libre / reservado / bloqueado / en_proceso NUNCA cuentan como pagados
     }
 });
 
-prueba("6. pagado por OTRO sorteo (otra identidad) no cuenta para este", async () => {
+// UNA TABLA = UN SORTEO (31/10/2026): otra identidad, sin evento o sin
+// grupo en la fila (reserva manual, otro ciclo) sigue siendo de esta tabla.
+prueba("6. pagados con otra identidad o sin evento en la misma tabla cuentan; los de otra cuadrícula no", async () => {
     escenario();
-    db[TABLA][10].identidad_evento_real = "otro-sorteo";
-    assert.strictEqual(await verificarTodosPagados(evento("A@g.us")), false);
+    db[TABLA][10].identidad_evento_real = "otro-ciclo";
+    Object.assign(db[TABLA][11], { identidad_evento_real: null, evento_id: null });
+    assert.strictEqual(await verificarTodosPagados(evento("A@g.us")), true);
+    db[TABLA][12].usuario_id = "otro-cliente";
+    assert.strictEqual(await verificarTodosPagados(evento("A@g.us")), false, "un número de otra cuadrícula no es de esta tabla");
 });
 
 prueba("7. un grupo FALLA: los otros se cierran, el fallido queda activo con su error, sin mensajes", async () => {
@@ -300,12 +305,12 @@ prueba("13. hora de cierre de cualquier grupo cierra el sorteo en todos sus grup
     assert.ok(GRUPOS.every(g => /hora/.test(fila(g).cierre_motivo)));
 });
 
-prueba("14. evento antiguo sin identidad: cada fila es su propio sorteo (comportamiento previo)", async () => {
+prueba("14. eventos antiguos sin identidad en la MISMA tabla: la tabla llena cierra los dos (evento_id es historia)", async () => {
     escenario({ eventos: [evento("A@g.us", { identidad_evento_real: null }), evento("B@g.us", { identidad_evento_real: null })] });
     db[TABLA].forEach(f => { f.identidad_evento_real = null; f.evento_id = "ev-A"; });
     const { sock, cierres } = crearSock();
     await workerEventos(sock);
-    assert.deepStrictEqual(cierres.map(c => c.grupoId), ["A@g.us"], "solo A tenía sus 100 números pagados");
+    assert.deepStrictEqual(cierres.map(c => c.grupoId).sort(), ["A@g.us", "B@g.us"]);
 });
 
 prueba("15. identidad estable: un re-anuncio del sorteo ACTIVO adopta su identidad (mismo día o sin hora de cierre)", async () => {

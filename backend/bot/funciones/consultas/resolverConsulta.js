@@ -3,7 +3,7 @@
 // resultado estructurado con un "mensaje" fijo (fallback determinístico,
 // igual patrón que reserva.mensaje en detectarReserva.js). Gemini solo
 // redacta a partir de este resultado; nunca lo calcula.
-const { consultarMisNumerosPorEstado, consultarPendientesOtrosSorteosVerificado } = require("./consultarMisNumeros");
+const { consultarMisNumerosPorEstado, consultarPendientesOtrosSorteosVerificado, sorteoVigente } = require("./consultarMisNumeros");
 const { determinarEstadoPago } = require("../../../shared/pagos/determinarEstadoPago");
 const { consultarNumero } = require("./consultarNumero");
 const { consultarDisponibilidad } = require("./consultarDisponibilidad");
@@ -17,7 +17,6 @@ const TEXTO_ESTADO = {
     reservado_por_otro: n => `El número ${formatearListaNumeros([n])} está reservado por otra persona.`,
     pagado_por_usuario: n => `El número ${formatearListaNumeros([n])} ya está pagado por ti.`,
     pagado_por_otro: n => `El número ${formatearListaNumeros([n])} ya fue pagado por otra persona.`,
-    propio_otro_sorteo: n => `El número ${formatearListaNumeros([n])} lo tienes en otro sorteo; en este no está disponible.`,
     bloqueado: n => `El número ${formatearListaNumeros([n])} está bloqueado y no se puede reservar por ahora.`,
     en_proceso: n => `El número ${formatearListaNumeros([n])} está en proceso y no se puede reservar por ahora.`,
     no_disponible: n => `El número ${formatearListaNumeros([n])} no está disponible.`
@@ -25,7 +24,7 @@ const TEXTO_ESTADO = {
 };
 
 // Estados que las plantillas de «número específico» del panel ya conocían.
-// Cualquier otro (bloqueado, en proceso, de otro sorteo, sin registro...)
+// Cualquier otro (bloqueado, en proceso, sin registro...)
 // solo lo dice bien el mensaje fijo.
 const ESTADOS_CON_PLANTILLA = new Set(["libre", "reservado_por_usuario", "reservado_por_otro", "pagado_por_usuario", "pagado_por_otro"]);
 
@@ -37,6 +36,23 @@ function consultaConError(tipo) {
         errorTecnico: true,
         mensaje: "❌ No pude consultar los números en este momento. Intenta nuevamente en unos minutos."
     };
+}
+
+// Sorteo del grupo que ya no es el vigente (consultarEvento devuelve el más
+// reciente cuando ninguno está activo: cerrado, cancelado, de un día
+// pasado...). Sus filas son historia: no se leen como «tus números» ni como
+// deuda, y la respuesta nunca lo presenta como el sorteo actual.
+const SIN_SORTEO_VIGENTE = "No hay un sorteo activo en este grupo en este momento.";
+
+// Números del cliente en el sorteo del grupo, solo si es el VIGENTE.
+async function datosDelSorteo({ evento, usuario }) {
+
+    if (!sorteoVigente(evento)) {
+        return { total: 0, todos: [], reservados: [], pagados: [], sinSorteoVigente: true };
+    }
+
+    return consultarMisNumerosPorEstado({ evento, usuario });
+
 }
 
 // ==========================================================================
@@ -148,7 +164,24 @@ function construirMensajeResumen({ enfoque, todos, reservados, pagados, montoPen
 
 }
 
-function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, pagados, valorUnidad, otrosPendientes = [], otrosVerificados = true }) {
+function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, pagados, valorUnidad, otrosPendientes = [], otrosVerificados = true, sinSorteoVigente = false }) {
+
+    // Sin sorteo vigente en el grupo: mismos datos (vacíos) y estado de pago,
+    // pero el texto lo dice y va SIEMPRE fijo — una plantilla del panel
+    // nombraría el sorteo terminado ({{evento}}, {{fecha}}...). La pregunta
+    // de pago conserva lo pendiente en los demás sorteos vigentes.
+    if (sinSorteoVigente) {
+
+        const base = construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, pagados, valorUnidad, otrosPendientes, otrosVerificados });
+        const dePago = modo === "resumen" && bucket === "pendiente";
+        const otros = dePago ? textoOtrosPendientes(otrosPendientes, otrosVerificados) : "";
+        const mensaje = otros
+            ? [SIN_SORTEO_VIGENTE, otros].join("\n")
+            : dePago ? `${SIN_SORTEO_VIGENTE} No tienes pagos pendientes.` : SIN_SORTEO_VIGENTE;
+
+        return { ...base, mensaje, sinSorteoVigente: true, soloMensajeFijo: true };
+
+    }
 
     // Montos y estado de pago se calculan SIEMPRE, sin importar el modo
     // (lista/cantidad/monto/resumen): el estado real del usuario (sin_pago/
@@ -340,8 +373,10 @@ function modoBucketImplicitos(tipo, modo, bucket) {
 
 // Respuesta combinada = sus partes, una por línea. Único lugar que la
 // arma: también la usa eventHandler.js al omitir una parte no habilitada.
+// Partes con el mismo texto (p. ej. «no hay un sorteo activo» en cada una)
+// se dicen una vez.
 function componerCombinada(base, resultados) {
-    return { ...base, resultados, mensaje: resultados.map(r => r.mensaje).join("\n") };
+    return { ...base, resultados, mensaje: [...new Set(resultados.map(r => r.mensaje))].join("\n") };
 }
 
 async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, intenciones }) {
@@ -358,7 +393,7 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
         // (comparten exactamente los mismos reservados/pagados).
         case "multiple": {
 
-            const datos = await consultarMisNumerosPorEstado({ evento, usuario });
+            const datos = await datosDelSorteo({ evento, usuario });
             if (datos.errorLectura) return consultaConError(tipo);
             const valorUnidad = Number(evento.valor) || 0;
 
@@ -387,7 +422,7 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
 
             });
 
-            return componerCombinada({ tipo, ...datos }, resultados);
+            return componerCombinada({ tipo, ...datos, ...(datos.sinSorteoVigente ? { soloMensajeFijo: true } : {}) }, resultados);
 
         }
 
@@ -398,7 +433,7 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
         // columna nueva, nunca pagos parciales/abonos/ledger.
         case "consulta_pago": {
 
-            const datos = await consultarMisNumerosPorEstado({ evento, usuario });
+            const datos = await datosDelSorteo({ evento, usuario });
             if (datos.errorLectura) return consultaConError(tipo);
             const valorUnidad = Number(evento.valor) || 0;
 
@@ -423,7 +458,7 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
         case "mis_numeros":
         case "mis_reservas": {
 
-            const datos = await consultarMisNumerosPorEstado({ evento, usuario });
+            const datos = await datosDelSorteo({ evento, usuario });
             if (datos.errorLectura) return consultaConError(tipo);
 
             return construirFacetaEstadoNumeros({
@@ -438,8 +473,10 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
 
         case "cantidad_reservas": {
 
-            const datos = await consultarMisNumerosPorEstado({ evento, usuario });
+            const datos = await datosDelSorteo({ evento, usuario });
             if (datos.errorLectura) return consultaConError(tipo);
+            if (datos.sinSorteoVigente) return { tipo, cantidad: 0, mensaje: SIN_SORTEO_VIGENTE, sinSorteoVigente: true, soloMensajeFijo: true };
+
             const cantidad = datos.total;
 
             const g = construirVariablesGramaticales(cantidad);

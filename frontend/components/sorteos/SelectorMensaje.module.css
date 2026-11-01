@@ -1,0 +1,284 @@
+.contenedor {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+}
+
+.ayuda {
+    margin: 0;
+    font-size: var(--efaat-text-xs);
+    color: var(--efaat-text-secondary);
+}
+
+.etiqueta {
+    margin: 0 0 6px;
+    font-size: var(--efaat-text-sm);
+    font-weight: 600;
+    color: var(--efaat-text);
+}
+
+/* --- activo / inactivo --- */
+
+.estado {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+}
+
+.interruptor {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: var(--efaat-text-sm);
+    color: var(--efaat-text);
+    cursor: pointer;
+}
+
+.interruptor input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
+.pista {
+    position: relative;
+    flex: none;
+    width: 36px;
+    height: 20px;
+    border-radius: var(--efaat-radius-pill);
+    background: var(--efaat-border-strong);
+    transition: background var(--efaat-dur-fast) var(--efaat-ease);
+}
+
+.pista::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--efaat-surface);
+    box-shadow: var(--efaat-shadow-xs);
+    transition: transform var(--efaat-dur-fast) var(--efaat-ease);
+}
+
+.interruptor input:checked + .pista {
+    background: var(--efaat-success);
+}
+
+.interruptor input:checked + .pista::after {
+    transform: translateX(16px);
+}
+
+.interruptor input:focus-visible + .pista {
+    box-shadow: 0 0 0 3px var(--efaat-focus-ring);
+}
+
+.avisoInactivo {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: var(--efaat-text-sm);
+    background: var(--efaat-warning-soft);
+    color: var(--efaat-warning);
+}
+
+/* --- galería --- */
+
+.galeria {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+    max-height: 360px;
+    overflow-y: auto;
+    padding: 2px;
+}
+
+@media (max-width: 480px) {
+    .galeria {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.tarjeta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    padding: 8px;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    background: var(--efaat-surface);
+    border: 1px solid var(--efaat-border);
+    border-radius: var(--efaat-radius-control);
+    cursor: pointer;
+    transition: border-color var(--efaat-dur-fast) var(--efaat-ease), box-shadow var(--efaat-dur-fast) var(--efaat-ease);
+}
+
+.tarjeta:hover {
+    border-color: var(--efaat-primary-border);
+}
+
+.tarjeta:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--efaat-focus-ring);
+}
+
+.tarjetaElegida {
+    border-color: var(--efaat-primary);
+    box-shadow: 0 0 0 1px var(--efaat-primary);
+    background: var(--efaat-primary-soft);
+}
+
+.tarjetaCabecera {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.tarjetaNombre {
+    font-size: var(--efaat-text-xs);
+    font-weight: 600;
+    color: var(--efaat-text);
+}
+
+.marca {
+    flex: none;
+    color: var(--efaat-primary);
+}
+
+/* Miniatura: el mensaje real con datos de muestra, recortado. */
+.miniatura {
+    position: relative;
+    margin: 0;
+    height: 112px;
+    overflow: hidden;
+    padding: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: var(--efaat-font-sans);
+    font-size: 9px;
+    line-height: 1.35;
+    color: var(--efaat-text-secondary);
+    background: var(--efaat-surface-muted);
+    border-radius: var(--efaat-radius-sm);
+    -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
+    mask-image: linear-gradient(to bottom, #000 70%, transparent);
+}
+
+.predeterminado {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--efaat-text-2xs);
+    color: var(--efaat-primary);
+}
+
+/* --- diseño elegido --- */
+
+.elegido {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px 12px;
+}
+
+.elegidoNombre {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 2px;
+    font-size: var(--efaat-text-sm);
+    font-weight: 600;
+    color: var(--efaat-text);
+}
+
+.acciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+/* --- editor y vista previa --- */
+
+.editorYVista {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px;
+}
+
+.columna {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.editor {
+    font-family: var(--efaat-font-mono);
+    font-size: var(--efaat-text-xs);
+}
+
+.contador {
+    margin: 0;
+    font-size: var(--efaat-text-xs);
+    color: var(--efaat-text-secondary);
+}
+
+.contadorExcede {
+    margin: 0;
+    font-size: var(--efaat-text-xs);
+    color: var(--efaat-error);
+}
+
+.variables {
+    font-size: var(--efaat-text-xs);
+    color: var(--efaat-text-secondary);
+}
+
+.variables summary {
+    cursor: pointer;
+    color: var(--efaat-text);
+}
+
+.variables ul {
+    margin: 6px 0 0;
+    padding-left: 16px;
+    display: grid;
+    gap: 2px;
+}
+
+.variables code {
+    font-family: var(--efaat-font-mono);
+    color: var(--efaat-text);
+}
+
+.vista {
+    margin: 0;
+    min-height: 200px;
+    max-height: 420px;
+    overflow-y: auto;
+    padding: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: var(--efaat-font-sans);
+    font-size: var(--efaat-text-sm);
+    line-height: 1.45;
+    background: var(--efaat-surface-muted);
+    border: 1px solid var(--efaat-border);
+    border-radius: 8px;
+    color: var(--efaat-text);
+}
+
+.vistaInactiva {
+    opacity: 0.55;
+}

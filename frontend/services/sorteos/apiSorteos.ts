@@ -47,10 +47,75 @@ export interface ConfigSorteo {
     /** «Sorteo instantáneo»: se publica al confirmarlo (publicar-ahora). */
     publicacion_inmediata?: boolean;
     diseno?: DisenoSorteo;
-    mensajes: { publicacion: string; aviso_cierre: string };
+    mensajes: MensajesSorteo;
     recordatorios: Recordatorio[];
     reservas: { liberar_no_pagados: boolean; vencimiento_minutos: number | null };
     cantidad_numeros?: number;
+}
+
+/**
+ * Mensaje de publicación guardado en el sorteo: el TEXTO con {{variables}}
+ * (se resuelven al publicar, con los datos reales) y sus metadatos. El
+ * backend calcula personalizado, revisión y fecha; el panel solo envía el
+ * estilo y si está activo.
+ */
+export interface MetaPublicacion {
+    estilo: string;
+    /** false: se publica solo la imagen; el texto sigue guardado. */
+    activo: boolean;
+    personalizado?: boolean;
+    revision?: number;
+    actualizado_en?: string | null;
+}
+
+export interface MensajesSorteo {
+    publicacion: string;
+    aviso_cierre: string;
+    publicacion_meta?: Partial<MetaPublicacion>;
+}
+
+/** Estilo del catálogo (backend/sorteos/estilosMensaje.js). */
+export interface EstiloMensaje {
+    id: string;
+    nombre: string;
+    descripcion: string;
+    /** Texto con {{variables}} que se copia al sorteo. */
+    plantilla: string;
+    /** La plantilla resuelta con datos de muestra (miniatura). */
+    ejemplo: string;
+}
+
+export interface CatalogoEstilos {
+    estilos: EstiloMensaje[];
+    variables: Record<string, string>;
+    /** Estilo predeterminado DE ESTA cuenta (clásico si no eligió). */
+    predeterminado: string;
+    /** false: falta la migración 042 (no se puede guardar la preferencia). */
+    preferencias_disponibles: boolean;
+    limite: number;
+}
+
+/** Datos con los que se genera la vista previa del mensaje. Cuentas: ids
+ *  de cuentas propias o la copia guardada en el sorteo. */
+export interface DatosMensaje {
+    nombre: string;
+    hora_fin: string;
+    hora_cierre: string | null;
+    valor: number;
+    premios: Premio[];
+    fecha_sorteo: string | null;
+    cuentas: (string | Pick<CuentaPago, "nombre" | "numero" | "titular" | "instrucciones">)[];
+    cantidad_numeros?: number | null;
+}
+
+export interface MensajeGenerado {
+    estilo: string | null;
+    plantilla: string;
+    texto: string;
+    desconocidas: string[];
+    longitud: number;
+    excede: boolean;
+    limite: number;
 }
 
 export interface GrupoSorteo {
@@ -200,10 +265,14 @@ export interface SorteoActivo {
     cuentas: CuentaPago[] | null;
     cuentas_ids: string[] | null;
     diseno: DisenoSorteo | null;
-    mensajes: { publicacion: string; aviso_cierre: string } | null;
+    mensajes: MensajesSorteo | null;
     /** Texto que acompaña al anuncio ("" = sin texto guardado). Panel:
      *  config.mensajes.publicacion; detectado: el escrito desde el panel. */
     publicacion: string;
+    /** Texto que de verdad se publica (panel: el guardado o, en un sorteo
+     *  antiguo sin texto, la plantilla de su estilo). */
+    publicacion_texto?: string;
+    publicacion_meta?: MetaPublicacion;
     recordatorios: Recordatorio[] | null;
     campos: Record<"nombre" | "fecha_evento" | "hora_fin" | "valor" | "tabla" | "grupos" | "premios" | "hora_cierre" | "cuentas" | "diseno" | "publicacion" | "mensajes", CampoActivo>;
 }
@@ -222,6 +291,7 @@ export interface EdicionActivo {
     cuentas?: string[];
     diseno?: DisenoSorteo;
     publicacion?: string;
+    publicacion_meta?: { estilo?: string; activo?: boolean };
     base: { premios: Premio[]; hora_cierre: string | null; publicacion?: string };
 }
 
@@ -272,6 +342,9 @@ export interface VistaPrevia {
      *  «Reiniciar la tabla antes de publicar»; reiniciado_en si ya se hizo. */
     tabla_al_publicar?: { reiniciar: boolean; liberar_bloqueados: boolean; reiniciado_en: string | null };
     publicacion: string;
+    /** false: el mensaje está desactivado y se publica solo la imagen. */
+    publicacion_activa?: boolean;
+    publicacion_estilo?: string;
     recordatorios: Recordatorio[];
     aviso_cierre: string | null;
     tabla: { esperados: number; presentes: number; ocupadosOtroSorteo: number; retenidos: number; libres?: number; duplicados?: number } | null;
@@ -513,5 +586,10 @@ export const apiSorteos = {
     crearLoteria: (loteria: LoteriaEntrada) => llamar<Loteria>("POST", "/loterias", loteria),
     actualizarLoteria: (id: string, cambios: Partial<LoteriaEntrada>) => llamar<Loteria>("PATCH", `/loterias/${id}`, cambios),
     eliminarLoteria: (id: string) => llamar<{ id: string }>("DELETE", `/loterias/${id}`),
+    /** Catálogo de estilos del mensaje y el predeterminado de la cuenta. */
+    estilosMensaje: () => llamar<CatalogoEstilos>("GET", "/estilos-mensaje"),
+    guardarEstiloPredeterminado: (estilo: string) => llamar<{ estilo: string; disponible: boolean }>("PUT", "/estilos-mensaje/predeterminado", { estilo }),
+    /** Vista previa: el MISMO generador que el publicador. Nunca envía nada. */
+    generarMensaje: (cuerpo: { estilo?: string; texto?: string; datos: DatosMensaje }) => llamar<MensajeGenerado>("POST", "/mensaje/generar", cuerpo),
     horarioLoteria: (id: string, fecha: string) => llamar<HorarioLoteria>("GET", `/loterias/${id}/horario?fecha=${encodeURIComponent(fecha)}`)
 };

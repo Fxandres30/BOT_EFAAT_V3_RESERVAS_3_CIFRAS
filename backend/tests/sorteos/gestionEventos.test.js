@@ -113,7 +113,8 @@ prueba("1. Listado: sorteos activos e inactivos recientes, con el estado de CADA
     assert.strictEqual(r1.status, 200, JSON.stringify(r1.json));
     const actual = r1.json.data.find(s => s.identidad === "id-actual");
     assert.deepStrictEqual(actual.grupos.map(g => [g.grupo_id, g.estado]).sort(), [["g1@g.us", "en_curso"], ["g2@g.us", "en_curso"]]);
-    assert.deepStrictEqual([actual.reservados, actual.pagados], [1, 1]);
+    // UNA TABLA = UN SORTEO: el 03 (identidad del sorteo viejo) está en su tabla y cuenta; el pagado de B, nunca.
+    assert.deepStrictEqual([actual.reservados, actual.pagados], [2, 1]);
     assert.strictEqual(r1.json.data.find(s => s.identidad === "id-viejo").estado, "cerrado");
     assert.ok(!JSON.stringify(r1.json).includes("Secreto de B"));
 });
@@ -214,9 +215,11 @@ prueba("8. Cancelar: todos sus grupos, publicaciones pendientes detenidas y sus 
     assert.ok([EV_G1, EV_G2].every(id => ev(id).estado === "cancelado" && !ev(id).activo));
     assert.strictEqual(fake.tablas.sorteos_programados_grupos.find(g => g.grupo_id === "g3@g.us").estado, "cancelado");
     assert.strictEqual(numeros(), antes, "reservas y pagos conservados");
-    // Pagos: preguntando desde otro sorteo, el cancelado no aparece como deuda.
+    // Pagos: preguntando desde otro sorteo, el cancelado no aparece como
+    // deuda. UNA TABLA = UN SORTEO: su tabla (con el 03 de un ciclo anterior
+    // incluido) es la del sorteo cancelado, así que nada de ella es deuda.
     const otros = await consultarPendientesOtrosSorteos({ evento: { usuario_id: A, identidad_evento_real: "otro" }, usuario: { id: "u1" }, ahora: T0 });
-    assert.deepStrictEqual(otros.map(o => o.identidad), ["id-viejo"]);
+    assert.deepStrictEqual(otros.map(o => o.identidad), []);
 });
 
 prueba("9. Eliminar (lógico) un sorteo ACTIVO: se oculta del listado y de las consultas, nada se borra", async () => {
@@ -332,7 +335,8 @@ prueba("13. Sin la 039: reabrir un sorteo cancelado limpia el motivo y el cierre
     const actual = (await get("/eventos")).json.data.find(s => s.identidad === "id-actual");
     assert.strictEqual(actual.estado, "en_curso");
     assert.deepStrictEqual(actual.grupos.map(g => g.estado), ["en_curso", "en_curso"]);
-    assert.deepStrictEqual([actual.reservados, actual.pagados], [1, 1]);
+    // UNA TABLA = UN SORTEO: el 03 (identidad del sorteo viejo) está en su tabla y cuenta; el pagado de B, nunca.
+    assert.deepStrictEqual([actual.reservados, actual.pagados], [2, 1]);
     assert.strictEqual((await consultarEvento("g2@g.us", A)).id, EV_G2, "vuelve a ser el sorteo vigente del grupo");
 });
 

@@ -253,14 +253,18 @@ async function main() {
 
     });
 
-    await test("8. actualizarEvento(): reservados/pagados/libres son los del SORTEO (su tabla real), no un conteo físico global", async () => {
+    // UNA TABLA = UN SORTEO (31/10/2026): todos los números de la cuadrícula
+    // del tenant cuentan, sea cual sea la identidad con que se reservaron;
+    // los de OTRO tenant en la misma tabla física, nunca.
+    await test("8. actualizarEvento(): reservados/pagados/libres son los de la TABLA del sorteo (cuadrícula del tenant), nunca los de otro tenant", async () => {
 
         const { fake, reservarNumeros, actualizarEvento } = cargarModulos();
 
         // Cuadrícula 00-99 del tenant, toda libre.
-        fake.tablas.tabla_test = Array.from({ length: 100 }, (_, i) => ({
-            numero: String(i).padStart(2, "0"), estado: "libre", usuario_id: "tenant-A"
-        }));
+        fake.tablas.tabla_test = [
+            ...Array.from({ length: 100 }, (_, i) => ({ numero: String(i).padStart(2, "0"), estado: "libre", usuario_id: "tenant-A" })),
+            { numero: "03", estado: "pagado", usuario_id: "tenant-B", identidad_evento_real: "hash-MIO" }
+        ];
 
         fake.tablas.eventos_bot = [
             { id: "evento-mio", reservados: 0, pagados: 0, pendientes: 0, libres: 0 },
@@ -277,13 +281,13 @@ async function main() {
 
         const filaMia = fake.tablas.eventos_bot.find(e => e.id === "evento-mio");
 
-        assert.strictEqual(filaMia.reservados, 1, "solo debe contar la reserva de MI evento, no la del ajeno");
-        assert.strictEqual(filaMia.pagados, 0);
-        assert.strictEqual(filaMia.libres, 98, "libres = números de MI sorteo aún libres: 100 - el mío reservado - el ocupado por otro sorteo");
+        assert.strictEqual(filaMia.reservados, 2, "las dos reservas son de la misma tabla (otra identidad no separa)");
+        assert.strictEqual(filaMia.pagados, 0, "el pagado de tenant-B no es de esta tabla");
+        assert.strictEqual(filaMia.libres, 98);
 
     });
 
-    await test("9. consultarMisNumeros(): una reserva del MISMO usuario pero de OTRO evento no se mezcla en 'mis números' de este evento", async () => {
+    await test("9. consultarMisNumeros(): las reservas del usuario en la MISMA tabla salen todas, aunque se hicieran con otro evento/identidad", async () => {
 
         const { fake, reservarNumeros, consultarMisNumeros, obtenerUsuarioGlobal } = cargarModulos();
 
@@ -302,7 +306,7 @@ async function main() {
 
         const misNumerosEnElNuevo = await consultarMisNumeros({ evento: eventoNuevo, usuario });
 
-        assert.deepStrictEqual(misNumerosEnElNuevo, [20], "el número reservado en el evento VIEJO no debe aparecer en 'mis números' del evento NUEVO");
+        assert.deepStrictEqual(misNumerosEnElNuevo, [10, 20], "misma tabla = mismo sorteo");
 
     });
 

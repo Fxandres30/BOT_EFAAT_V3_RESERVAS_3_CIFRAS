@@ -27,3 +27,29 @@ export async function obtenerActividad(
     return (data || []) as ActividadReserva[];
 
 }
+
+// Lo registrado desde `desde` (incluido): para ponerse al día sin volver a
+// descargar toda la actividad. A diferencia de obtenerActividad, un fallo
+// se lanza: quien sincroniza decide reintentar.
+export async function obtenerActividadDesde(
+    tabla: string,
+    usuarioId: string,
+    desde: string,
+    limite: number
+): Promise<ActividadReserva[]> {
+
+    const { data, error } = await supabase
+        .from("reservas_actividad")
+        .select("*")
+        .eq("tabla", tabla)
+        .eq("usuario_id", usuarioId)
+        .gte("creado_en", desde)
+        .order("creado_en", { ascending: false })
+        .limit(limite);
+
+    if (error)
+        throw error;
+
+    return (data || []) as ActividadReserva[];
+
+}

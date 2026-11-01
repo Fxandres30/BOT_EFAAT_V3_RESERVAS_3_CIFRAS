@@ -36,6 +36,7 @@ const supabase = require("../lib/supabase");
 const repo = require("./repo");
 const { instanteBogota, HORA } = require("./validar");
 const { motivoGestion, eliminado } = require("../shared/eventos/estadosGestion");
+const { sorteosQueOcupanLaTabla } = require("../shared/eventos/unSorteoPorTabla");
 
 const ACCIONES = new Set(["cerrar", "reabrir", "desactivar", "cancelar", "eliminar"]);
 const SIN_COLUMNA = new Set(["42703", "PGRST204"]);
@@ -113,7 +114,11 @@ async function listar(usuarioId, { ahora = new Date() } = {}) {
 
         // Representante: la activa, si no la más reciente.
         const base = filas.find(f => f.activo) || filas[0];
-        const numeros = await contarNumeros(usuarioId, base.tabla, base.identidad_evento_real);
+        // En curso: toda su tabla (UNA TABLA = UN SORTEO). Cerrado: la tabla
+        // puede ser ya de otro sorteo; solo la identidad de la fila lo recuerda.
+        const numeros = filas.some(f => f.activo)
+            ? await repo.contarNumerosTabla(usuarioId, base.tabla)
+            : await contarNumeros(usuarioId, base.tabla, base.identidad_evento_real);
 
         lista.push({
             id: base.id,
@@ -350,9 +355,16 @@ async function aplicar(usuarioId, eventoId, entrada = {}, { ahora = new Date(), 
             conflictos.push(...otros.data.filter(o => o.id !== f.id));
         }
 
+        // UNA TABLA = UN SORTEO (31/10): también el sorteo que ocupa la MISMA
+        // tabla en otros grupos. Sustituirlo (con la misma confirmación) lo
+        // cierra en todos ellos; la 043 no admitiría dos activos.
+        const enTabla = await sorteosQueOcupanLaTabla(supabase, { usuarioId, tabla: evento.tabla, identidad });
+        if (!enTabla.ok) return falla("error_supabase", { error: enTabla.error?.message });
+        conflictos.push(...enTabla.filas.filter(o => !conflictos.some(c => c.id === o.id) && !objetivo.some(f => f.id === o.id)));
+
         if (conflictos.length && entrada.sustituir !== true) {
             return falla("conflicto", {
-                mensaje: `El grupo ya tiene otro sorteo activo (${[...new Set(conflictos.map(nombreDe))].join(", ")}). Ciérralo o desactívalo, o confirma que este lo sustituye.`,
+                mensaje: `El grupo o la tabla ya tienen otro sorteo activo (${[...new Set(conflictos.map(nombreDe))].join(", ")}). Ciérralo o desactívalo, o confirma que este lo sustituye (se cerrará en todos sus grupos).`,
                 conflictos: conflictos.map(c => ({ evento_id: c.id, grupo_id: c.grupo_id, nombre: nombreDe(c) }))
             });
         }

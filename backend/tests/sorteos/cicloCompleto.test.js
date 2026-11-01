@@ -164,7 +164,7 @@ paso("7. vender y pagar 99 números únicos desde los 3 grupos: el sorteo SIGUE 
         await marcarReservasPagadasPorAdmin({ evento: contexto.eventos[grupo], usuario: { id: dueno }, realizadoPor: "admin" });
     }
     assert.strictEqual(t[TABLA].filter(f => f.usuario_id === A && f.estado === "pagado").length, 99);
-    await workerEventos(sock);
+    await workerEventos(sock, { ahora: new Date("2026-10-15T17:30:00Z") });
     assert.ok(t.eventos_bot.every(e => e.activo), "99/100: no cierra");
     assert.ok(t.eventos_bot.every(e => e.pagados === 99 && e.reservados === 1), "todos los grupos muestran la MISMA tabla (99 pagados)");
     intactaB();
@@ -175,14 +175,14 @@ paso("8. pagar el último: se cierran los 3 grupos; uno falla primero y se reint
     await marcarReservasPagadasPorAdmin({ evento: contexto.eventos["g1@g.us"], usuario: { id: dueno }, realizadoPor: "admin" });
     fallaCierre.add("g2@g.us");
     const antes = ajustes.length;
-    await workerEventos(sock);
+    await workerEventos(sock, { ahora: new Date("2026-10-15T17:30:00Z") });
     const cierres1 = ajustes.slice(antes).filter(a => a.ajuste === "announcement").map(a => a.jid).sort();
     assert.deepStrictEqual(cierres1, GRUPOS);
     assert.strictEqual(t.eventos_bot.find(e => e.grupo_id === "g2@g.us").activo, true, "el grupo que falló sigue activo");
     assert.ok(t.eventos_bot.filter(e => e.grupo_id !== "g2@g.us").every(e => !e.activo));
     fallaCierre.clear();
     const antes2 = ajustes.length;
-    await workerEventos(sock);
+    await workerEventos(sock, { ahora: new Date("2026-10-15T17:30:00Z") });
     assert.deepStrictEqual(ajustes.slice(antes2).filter(a => a.ajuste === "announcement").map(a => a.jid), ["g2@g.us"], "solo se reintenta el fallido");
     assert.ok(t.eventos_bot.every(e => !e.activo && e.estado === "cerrado"));
     intactaB();

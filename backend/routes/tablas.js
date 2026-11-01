@@ -144,6 +144,8 @@ router.get("/compartir/vista-previa", exigirUsuario, async (req, res) => {
                 evento: { id: t.evento.id, nombre: t.evento.nombre_evento || null, hora_fin: t.evento.hora_fin || null, hora_cierre: t.evento.hora_cierre || null },
                 texto: texto.texto,
                 origen_texto: texto.origen,
+                // false: el mensaje del sorteo está desactivado (solo imagen).
+                texto_activo: texto.activo !== false,
                 grupos: disponibles.data,
                 seleccion: validos.map(g => g.grupo_id),
                 invalidos,

@@ -116,14 +116,17 @@ function textoEditado(valor) {
     return t || null;
 }
 
-// Texto que acompaña a la imagen. { texto, origen: "sorteo" | "habitual" }.
+// Texto que acompaña a la imagen. { texto, origen: "sorteo" | "habitual", activo }.
+// activo=false: el sorteo tiene su mensaje desactivado; se publica solo la
+// imagen (texto ""), pero su contenido sigue guardado en el sorteo.
 async function textoParaCompartir(usuarioId, evento) {
 
     const activo = evento?.id ? await sorteosActivos.obtener(usuarioId, evento.id) : null;
     const s = activo?.ok ? activo.data : null;
 
     if (s?.origen === "panel") {
-        return { texto: anuncioDelEvento(evento, { publicacion: s.publicacion, cuentas: s.cuentas }).texto, origen: "sorteo" };
+        const m = anuncioDelEvento(evento, { publicacion: s.publicacion, cuentas: s.cuentas, meta: s.mensajes?.publicacion_meta || null });
+        return { texto: m.activo ? m.texto.slice(0, MAX_TEXTO) : "", origen: "sorteo", activo: m.activo };
     }
 
     if (s?.publicacion) {

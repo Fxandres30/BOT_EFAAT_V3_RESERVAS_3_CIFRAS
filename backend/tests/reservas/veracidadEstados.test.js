@@ -331,11 +331,12 @@ prueba("12c. propio + ocupado → plantilla de ocupado con el ocupado y «Ya es 
     assert.strictEqual(enviado, "( 23 ) ya está ocupado.\n\n✅ Ya es tuyo: ( 12 )");
 });
 
-prueba("12d. suyo en OTRO sorteo → ocupado aquí (no «ya es tuyo»)", async () => {
+// UNA TABLA = UN SORTEO (31/10/2026): la identidad de la fila es historia.
+prueba("12d. suyo en esta tabla con otra identidad → «ya es tuyo» (misma tabla = mismo sorteo)", async () => {
     sembrar({ "12": mioOtro });
     const { reserva } = await pedir("12");
-    assert.deepStrictEqual([reserva.ocupados, reserva.yaTuyos], [["12"], []]);
-    assert.strictEqual(fila("12").identidad_evento_real, OTRO);
+    assert.deepStrictEqual([reserva.ocupados, reserva.yaTuyos], [[], ["12"]]);
+    assert.strictEqual(fila("12").identidad_evento_real, OTRO, "el origen se conserva");
 });
 
 prueba("13. ceros iniciales se conservan en filas y mensaje", async () => {
@@ -435,11 +436,11 @@ prueba("disponibilidad: error de lectura → mensaje técnico, nunca «no quedan
     assert.ok(/No pude consultar los números/.test(enviado) && !/No quedan/.test(enviado), enviado);
 });
 
-prueba("cierre separado: tabla llena por OTRO sorteo no termina el sorteo actual; llena por este sí", async () => {
+prueba("tabla llena: termina el sorteo de esa tabla, sea cual sea la identidad de sus filas", async () => {
     const otro = {}; const propio = {};
     for (let i = 0; i < 100; i++) { const n = String(i).padStart(2, "0"); otro[n] = deOtroSorteo; propio[n] = deOtraPersona; }
     sembrar(otro);
-    assert.strictEqual(await sorteoSinNumerosLibres(evento), false, "no se reemplaza un sorteo vigente");
+    assert.strictEqual(await sorteoSinNumerosLibres(evento), true, "misma tabla = mismo sorteo");
     sembrar(propio);
     assert.strictEqual(await sorteoSinNumerosLibres(evento), true);
     sembrar();
@@ -457,7 +458,7 @@ prueba("número específico: cada estado real con su texto", async () => {
         [{ "23": deOtraPersona }, {}, "reservado por otra persona"],
         [{ "23": pagadoOtra }, {}, "pagado por otra persona"],
         [{ "23": deOtroSorteo }, {}, "reservado por otra persona"],
-        [{ "23": mioOtro }, {}, "lo tienes en otro sorteo; en este no está disponible"],
+        [{ "23": mioOtro }, {}, "ya lo tienes reservado"],
         [{ "23": { estado: "bloqueado" } }, {}, "está bloqueado"],
         [{ "23": { estado: "en_proceso" } }, {}, "está en proceso"],
         [{}, { sin: ["23"] }, "no está disponible"],

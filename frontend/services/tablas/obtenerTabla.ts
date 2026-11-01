@@ -30,3 +30,28 @@ export async function obtenerTabla(
     return (data || []) as NumeroReserva[];
 
 }
+
+// Solo los números indicados (tras una operación propia o un aviso
+// incompleto): unas pocas filas en vez de la cuadrícula entera. La tabla
+// física es la que ya resolvió la pantalla para este cliente.
+export async function obtenerNumerosTabla(
+    tabla: string,
+    usuarioId: string,
+    numeros: string[]
+): Promise<NumeroReserva[]> {
+
+    if (numeros.length === 0) return [];
+
+    const { data, error } = await supabase
+        .from(tabla)
+        .select("*")
+        .eq("usuario_id", usuarioId)
+        .in("numero", numeros)
+        .order("numero", { ascending: true });
+
+    if (error)
+        throw error;
+
+    return (data || []) as NumeroReserva[];
+
+}

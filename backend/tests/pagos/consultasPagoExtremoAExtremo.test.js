@@ -170,29 +170,30 @@ async function test(nombre, fn) {
         }
     });
 
-    await test("9a. reservas en otro evento del mismo grupo: al día en el actual, pero se informa la deuda del anterior", async () => {
+    // UNA TABLA = UN SORTEO (31/10/2026): el 41 se reservó en el ciclo
+    // anterior (Boyacá) pero está en la tabla del sorteo actual (Cauca): es
+    // deuda de ESTE sorteo, no «de otro». La otra tabla del cliente
+    // (Medellín, $10.000) sí es otro sorteo, con todos sus números.
+    await test("9a. misma tabla con otra identidad: deuda de este sorteo; otra tabla del cliente: «otros sorteos»", async () => {
         const [msg] = await preguntar("¿Qué debo?", USUARIOS.multi);
-        assert.match(msg, /En este sorteo estás al día/);
-        assert.match(msg, /Boyacá/);
-        assert.match(msg, /41/);
-        assert.doesNotMatch(msg, /42/, "lo pagado del anterior no es deuda");
-        assert.match(msg, /Medellín/, "deuda del otro grupo del mismo cliente");
-        assert.match(msg, /05/);
+        assert.match(msg, /Te falta pagar: \( 41 \) — \$5\.000/);
+        assert.doesNotMatch(msg, /Boyacá/, "el ciclo anterior de la misma tabla no es otro sorteo");
+        assert.doesNotMatch(msg, /42/, "lo pagado no es deuda");
+        assert.match(msg, /Medellín.*\( 05 - 06 \) — \$20\.000/, "otra tabla: todos sus números, sea cual sea su identidad");
     });
 
-    await test("9b. aislamiento: nunca un sorteo cancelado ni la cuadrícula de otro cliente", async () => {
+    await test("9b. aislamiento: nunca la cuadrícula de otro cliente; el sorteo cancelado no se nombra", async () => {
         const [msg] = await preguntar("¿Cuánto debo?", USUARIOS.multi);
         assert.doesNotMatch(msg, /Santander/);
-        assert.doesNotMatch(msg, /06/);
         assert.doesNotMatch(msg, /Ajeno/);
         assert.doesNotMatch(msg, /90/);
     });
 
-    await test("9c. preguntando en el grupo 2: su sorteo propio ( 05 ) y la deuda del sorteo anterior del grupo 1 ( 41 )", async () => {
+    await test("9c. preguntando en el grupo 2: toda su tabla ( 05 - 06 ) y la deuda de la otra tabla ( 41 )", async () => {
         const [msg] = await preguntar("¿Cuánto me falta?", USUARIOS.multi, G2);
-        assert.match(msg, /Te falta pagar: \( 05 \)/);
-        assert.match(msg, /\$10\.000/);
-        assert.match(msg, /41/);
+        assert.match(msg, /Te falta pagar: \( 05 - 06 \)/);
+        assert.match(msg, /\$20\.000/);
+        assert.match(msg, /Cauca.*\( 41 \)/, "la otra tabla, con su sorteo activo");
         assert.doesNotMatch(msg, /Medellín/, "el sorteo actual no se repite como «otro sorteo»");
     });
 

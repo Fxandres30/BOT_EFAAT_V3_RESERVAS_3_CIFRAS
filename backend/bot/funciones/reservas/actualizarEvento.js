@@ -64,6 +64,9 @@ async function sincronizarContadores(filas, estado) {
 }
 
 // Filas activas de eventos_bot del MISMO sorteo lógico (todos sus grupos).
+// Solo activas, como dice su nombre: una fila ya cerrada con la misma
+// identidad conserva sus contadores finales (antes un pago posterior al
+// cierre los reescribía, junto con su actualizado_en).
 async function filasDelSorteo(evento) {
 
     if (!evento.identidad_evento_real) return [evento];
@@ -71,7 +74,8 @@ async function filasDelSorteo(evento) {
     let query = supabase
         .from("eventos_bot")
         .select("*")
-        .eq("identidad_evento_real", evento.identidad_evento_real);
+        .eq("identidad_evento_real", evento.identidad_evento_real)
+        .eq("activo", true);
 
     if (evento.usuario_id) query = query.eq("usuario_id", evento.usuario_id);
 

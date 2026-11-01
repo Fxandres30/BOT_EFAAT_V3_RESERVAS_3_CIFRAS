@@ -61,10 +61,12 @@ function seguiraAbierto(evento, momento, ahora) {
 
 // AUTORIDAD DEL ADMINISTRADOR (FASE UX-03): la política de tabla la decide
 // él al crear el sorteo y aquí no se contradice. Con «Conservar la tabla
-// actual» los números reservados o pagados de OTROS sorteos (activos o no)
-// se quedan como están, no se venden en este sorteo (el bot solo reserva
-// números libres, sorteoReal.js los cuenta como ocupado_otro_sorteo) y solo
-// se AVISA. Bloquea únicamente lo que impide publicar bien:
+// actual» los números ya reservados o pagados (con la identidad de un ciclo
+// anterior) se quedan como están y, como UNA TABLA = UN SORTEO (31/10/2026),
+// pasan a contar en este sorteo (sorteoReal.js): solo se AVISA.
+// resumen.ocupadosOtroSorteo conserva su nombre (API) y significa «números
+// ocupados conservados de ciclos anteriores». Bloquea únicamente lo que
+// impide publicar bien:
 //   - la tabla no se puede leer;
 //   - la tabla está incompleta (números sin fila: el bot los ofrecería
 //     libres pero nunca podría reservarlos);
@@ -152,7 +154,7 @@ async function avisoConservados({ usuarioId, deOtro, libres }) {
         if (listado.length) detalle = ` de ${listado.join(", ")}`;
     }
 
-    return `Se conserva la tabla actual, como elegiste: ${deOtro.length} número(s) de otros sorteos${detalle} (${reservados} reservado(s), ${pagados} pagado(s)) siguen como están y no se venden en este sorteo. Quedan ${libres} número(s) libres para este sorteo. Como no todos los números serán de este sorteo, no se cerrará automáticamente por «todos pagados»: se cerrará por la hora de cierre o desde el panel.`;
+    return `Se conserva la tabla actual, como elegiste: ${deOtro.length} número(s) ya ocupados${detalle ? ` (anotados en${detalle.slice(3)})` : ""} (${reservados} reservado(s), ${pagados} pagado(s)) siguen como están y, al ser la misma tabla, cuentan en este sorteo: en sus reservados, sus pagos y su recaudo. Quedan ${libres} número(s) libres.`;
 
 }
 

@@ -432,9 +432,14 @@ prueba("10. bot y pagos resuelven el evento correcto: activo; sin activo, el má
     Object.assign(fake.tablas.eventos_bot.find(e => e.id === nuevo.id), { activo: false, estado: "cerrado" });
     assert.strictEqual((await consultarEvento("g1@g.us", A)).id, nuevo.id, "sin activo: el más reciente");
 
-    // Una fila antigua marcada activa por error tiene prioridad sobre una
-    // cerrada (mismo criterio que el bot aplica hoy con activo = true).
+    // Una fila antigua marcada activa por error pero ya CERRADA (estado
+    // cerrado) no es el sorteo en curso (31/10/2026: un reintento no
+    // resucita un sorteo terminado): sigue el más reciente.
     Object.assign(fake.tablas.eventos_bot.find(e => e.id === "ev-bogota-g1"), { activo: true });
+    assert.strictEqual((await consultarEvento("g1@g.us", A)).id, nuevo.id);
+
+    // Una fila antigua activa de verdad (sin cierre) sí tiene prioridad.
+    Object.assign(fake.tablas.eventos_bot.find(e => e.id === "ev-bogota-g1"), { estado: "abierto", cierre_estado: null });
     assert.strictEqual((await consultarEvento("g1@g.us", A)).id, "ev-bogota-g1");
 });
 

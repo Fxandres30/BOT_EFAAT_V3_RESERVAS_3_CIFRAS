@@ -106,33 +106,27 @@ async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) 
     //    lectura: depende exclusivamente del WHERE del UPDATE de abajo.
     // ======================================================================
 
-    // Antes filtraba solo por evento_id (la fila de eventos_bot de ESTE
-    // grupo). Si el mismo sorteo real se anuncia en varios grupos, una
-    // reserva hecha a través de OTRO grupo tiene el evento_id de ESE grupo,
-    // así que un sticker de pago enviado en un grupo distinto al de la
-    // reserva original nunca encontraba la fila ("sin_reservas") y el pago
-    // no quedaba compartido. Se filtra por identidad_evento_real
-    // (independiente del grupo, ver identidadEventoReal.js) para encontrar
-    // la reserva sin importar en qué grupo del mismo sorteo real se hizo. Si
-    // el evento todavía no trae esta identidad (dato histórico previo a esta
-    // migración), se mantiene el comportamiento anterior (por evento_id).
+    // Historia: primero filtraba por evento_id (el grupo: una reserva hecha
+    // por OTRO grupo no se encontraba) y después por identidad_evento_real.
     // Se piden también contacto/telefono/comprador/nombre/lid (no solo
     // numero/estado): calcularCamposIdentidadARellenar() los necesita para
     // decidir qué puede completar sin sobrescribir nada — mismo SELECT,
     // sin ninguna consulta adicional a Supabase.
     // Solo la cuadrícula del dueño del evento (filtroCliente.js): sin
     // usuario_id, ni esta lectura ni el UPDATE llegan a la base.
-    let querySelect = soloDelCliente(
+    //
+    // UNA TABLA = UN SORTEO (31/10/2026): ya no se filtra por identidad ni
+    // por evento_id. Una reserva del cliente en esta tabla hecha a mano desde
+    // el panel («sin sorteo», sin identidad) o conservada de otro ciclo tenía
+    // otra identidad y el sticker respondía «sin reservas» aunque debiera.
+    // La tabla del tenant (soloDelCliente) es el sorteo.
+    const querySelect = soloDelCliente(
         supabase
             .from(evento.tabla)
             .select("numero, estado, contacto, telefono, comprador, nombre, lid")
             .eq("usuario_global_id", usuario.id),
         evento
     );
-
-    querySelect = evento.identidad_evento_real
-        ? querySelect.eq("identidad_evento_real", evento.identidad_evento_real)
-        : querySelect.eq("evento_id", evento.id);
 
     const { data: filas, error: errorSelect } = await querySelect;
 
@@ -146,8 +140,7 @@ async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) 
 
     if (!filas || filas.length === 0) {
 
-        // Cubre tanto "nunca reservó nada" como "sus reservas son de OTRO
-        // evento" (evento_id no coincide, así que ni siquiera aparecen aquí).
+        // El cliente no tiene ningún número en esta tabla.
         return { estado: "sin_reservas", actualizadas: [] };
 
     }
@@ -170,15 +163,9 @@ async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) 
     //
     //    Filtros, en orden de intención:
     //      usuario_global_id   -> SOLO este cliente (nunca otro).
-    //      identidad_evento_real -> SOLO este sorteo real, sin importar en
-    //                           qué grupo se hizo la reserva original (ver
-    //                           identidadEventoReal.js) — antes filtraba por
-    //                           evento_id (el grupo actual), lo que dejaba
-    //                           sin marcar reservas hechas vía OTRO grupo del
-    //                           mismo sorteo. Si el evento no trae esta
-    //                           identidad todavía, cae a evento_id (igual que
-    //                           antes de este cambio).
-    //      usuario_id        -> SOLO el tenant dueño de este evento (mismo
+    //      usuario_id + tabla -> SOLO la tabla del tenant dueño de este
+    //                           evento = el sorteo, se reservara por el grupo
+    //                           que fuera, a mano o en otro flujo (mismo
     //                           campo que reservarNumeros.js ya escribe en
     //                           cada fila — la tabla dinámica es compartida
     //                           entre tenants, ver frontend/services/tablas).
@@ -204,7 +191,7 @@ async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) 
 
     const camposIdentidad = calcularCamposIdentidadARellenar(filasAPagar, usuario);
 
-    let queryUpdate = soloDelCliente(
+    const queryUpdate = soloDelCliente(
         supabase
             .from(evento.tabla)
             .update({
@@ -220,10 +207,6 @@ async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) 
             .eq("estado", "reservado"),
         evento
     );
-
-    queryUpdate = evento.identidad_evento_real
-        ? queryUpdate.eq("identidad_evento_real", evento.identidad_evento_real)
-        : queryUpdate.eq("evento_id", evento.id);
 
     const { data: actualizadas, error: errorUpdate } = await queryUpdate.select();
 

@@ -236,12 +236,16 @@ async function test(nombre, fn) {
         });
     }
 
-    await test("D. sorteo cerrado: las consultas siguen respondiendo (\"mis números\")", async () => {
+    // Regla 31/10/2026 (deuda solo de sorteos vigentes): un sorteo cerrado
+    // ya no es «este sorteo». La consulta responde, pero no presenta sus
+    // números como actuales (antes listaba el 25 como pendiente de pago).
+    await test("D. sorteo cerrado: \"mis números\" responde sin presentar el sorteo cerrado como actual", async () => {
         eventoActual = { ...ABIERTO, activo: false, estado: "cerrado" };
         db[TABLA] = [{ usuario_id: "tenant-test", numero: "25", estado: "reservado", usuario_global_id: "cliente-1" }];
         const { enviados, reservados } = await procesar("mis números");
         assert.strictEqual(enviados.length, 1);
-        assert.match(enviados[0], /25/);
+        assert.doesNotMatch(enviados[0], /25/);
+        assert.match(enviados[0], /no hay un sorteo activo/i);
         assert.deepStrictEqual(reservados, []);
     });
 

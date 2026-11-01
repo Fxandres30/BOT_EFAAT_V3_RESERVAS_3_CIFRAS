@@ -49,11 +49,16 @@ function destino(metodo: Metodo, ruta: string[]): string | null {
         // Sorteos en los grupos (activos y recientes) para administrarlos.
         if (a === "eventos") return metodo === "GET" ? "/eventos" : null;
         if (a === "plantillas" || a === "cuentas" || a === "loterias") return metodo === "GET" || metodo === "POST" ? `/${a}` : null;
+        // Catálogo de estilos del mensaje de publicación (+ preferencia de la cuenta).
+        if (a === "estilos-mensaje") return metodo === "GET" ? "/estilos-mensaje" : null;
         if (UUID.test(a)) return metodo === "GET" || metodo === "PUT" ? `/${a}` : null;
         return null;
     }
 
     if (ruta.length === 2) {
+        if (a === "estilos-mensaje" && b === "predeterminado") return metodo === "PUT" ? "/estilos-mensaje/predeterminado" : null;
+        // Vista previa del mensaje con el generador del publicador (no envía nada).
+        if (a === "mensaje" && b === "generar") return metodo === "POST" ? "/mensaje/generar" : null;
         if (a === "activos" && UUID.test(b)) return metodo === "GET" || metodo === "PUT" ? `/activos/${b}` : null;
         if (a === "loterias" && UUID.test(b)) return metodo === "PATCH" || metodo === "DELETE" ? `/${a}/${b}` : null;
         if ((a === "plantillas" || a === "cuentas") && UUID.test(b)) return metodo === "PATCH" ? `/${a}/${b}` : null;

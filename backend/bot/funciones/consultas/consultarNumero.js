@@ -1,14 +1,13 @@
 const supabase = require("../../../lib/supabase");
 const { soloDelCliente } = require("../reservas/filtroCliente");
-const { clasificarSolicitud, esPropioDeOtroSorteo } = require("../reservas/estadoNumeros");
+const { clasificarSolicitud } = require("../reservas/estadoNumeros");
 
 // READ-ONLY. Determina el estado real de UN número con la regla única de
 // estadoNumeros.js (la misma que usa la reserva). estadoReal:
 //   libre
-//   reservado_por_usuario / pagado_por_usuario  -> suyo en ESTE sorteo
-//   reservado_por_otro / pagado_por_otro         -> de otra persona (en
-//                                                   cualquier sorteo)
-//   propio_otro_sorteo -> suyo, pero de OTRO sorteo: aquí no está disponible
+//   reservado_por_usuario / pagado_por_usuario  -> suyo en esta tabla (= este
+//                                                   sorteo, venga de donde venga)
+//   reservado_por_otro / pagado_por_otro         -> de otra persona
 //   bloqueado / en_proceso
 //   sin_registro / duplicado / desconocido       -> no disponible (integridad)
 //   error_lectura      -> no se pudo leer: nunca se afirma un estado
@@ -50,7 +49,6 @@ async function consultarNumero({ evento, usuario, numero }) {
             return { numero, estadoReal: fila.estado === "pagado" ? "pagado_por_usuario" : "reservado_por_usuario" };
 
         case "ocupado":
-            if (esPropioDeOtroSorteo(fila, { evento, usuario })) return { numero, estadoReal: "propio_otro_sorteo" };
             return { numero, estadoReal: fila.estado === "pagado" ? "pagado_por_otro" : "reservado_por_otro" };
 
         default:

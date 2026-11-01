@@ -25,6 +25,16 @@ const {
     valorDe, rellenar, marcada, pulsar, botonHabilitado, esperarTexto, textoPagina, fechaColombia, crearPasos
 } = require("./entornoPanel");
 
+// Espera el MODAL por su título (h2 del diálogo), no un texto suelto: el
+// formulario también contiene «Vista previa…» (la del mensaje).
+const esperarModal = (page, titulo, timeout = 60000) =>
+    page.waitForFunction((titulo) => [...document.querySelectorAll('[role="dialog"] h2')].some(h => h.textContent.trim() === titulo), { timeout }, titulo);
+
+// El editor del mensaje aparece cuando carga el catálogo de diseños.
+const esperarMensaje = (page, timeout = 60000) =>
+    page.waitForFunction(() => !document.body.innerText.includes("Cargando los diseños del mensaje")
+        && [...document.querySelectorAll("label")].some(l => l.textContent.trim().startsWith("Mensaje de publicación")), { timeout });
+
 const RAIZ = path.resolve(__dirname, "../..");
 const servicio = require(path.join(RAIZ, "sorteos/servicio.js"));
 
@@ -126,7 +136,9 @@ async function main() {
         assert.strictEqual(await valorDe(page, "Cierre de reservas"), "22:20");
         assert.strictEqual(await valorDe(page, "Valor por número"), "5000");
         assert.strictEqual(await valorDe(page, "Estilo de la tabla"), "preset:oscuro");
-        assert.strictEqual(await valorDe(page, "Mensaje de publicación"), "Hoy juega {{nombre}} {{cuentas}}");
+        await esperarMensaje(page);
+        assert.strictEqual(await valorDe(page, "Mensaje de publicación"), "Hoy juega {{nombre}} {{cuentas}}", "el texto guardado, sin regenerar");
+        assert.ok((await textoPagina(page)).includes("Personalizado"), "texto propio: marcado como personalizado");
         assert.strictEqual(await valorDe(page, "Aviso al cerrar"), "Cerrado");
         const premios = await page.$$eval('[aria-label="Premio"]', els => Array.from(els, e => e.value));
         const montos = await page.$$eval('[aria-label="Valor del premio"]', els => Array.from(els, e => e.value));
@@ -150,7 +162,7 @@ async function main() {
         const totalAntes = t.sorteos_programados.length;
         await rellenar(page, "Hora del sorteo", "22:40");
         await pulsarEnModal(page, "Guardar cambios");
-        await esperarTexto(page, "Vista previa");
+        await esperarModal(page, "Vista previa");
         const guardado = t.sorteos_programados.find(s => s.id === ID);
         assert.strictEqual(t.sorteos_programados.length, totalAntes, "no se creó otro sorteo");
         assert.strictEqual(guardado.version, 2);
@@ -161,6 +173,7 @@ async function main() {
         assert.strictEqual(guardado.config.fecha_sorteo, FECHA_SORTEO);
         assert.strictEqual(guardado.config.diseno.nombre, "Oscuro");
         assert.strictEqual(guardado.config.recordatorios.length, 1);
+        assert.strictEqual(guardado.config.mensajes.publicacion, "Hoy juega {{nombre}} {{cuentas}}", "cambiar otro dato no toca el mensaje");
         paso("«Guardar cambios» actualiza el MISMO sorteo (versión 2) sin crear otro ni vaciar campos");
 
         // 3. Cerrar la vista previa y volver a editar: lo guardado.

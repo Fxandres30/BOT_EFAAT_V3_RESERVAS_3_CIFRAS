@@ -26,7 +26,8 @@ function builder() {
     const st = { table: null, op: "select", filters: {} };
     const api = {
         from(t) { st.table = t; return api; },
-        select() { st.op = "select"; return api; },
+        // Como supabase-js: .update(...).select() sigue siendo un UPDATE que devuelve las filas.
+        select() { if (st.op === "update") st.devolver = true; else st.op = "select"; return api; },
         update(v) { st.op = "update"; st.vals = v; return api; },
         insert(v) { st.op = "insert"; st.vals = v; return api; },
         eq(k, v) { st.filters[k] = v; return api; },
@@ -47,9 +48,9 @@ function builder() {
                 fallosUpdateAbiertoFalse.pendientes--;
                 return Promise.resolve({ data: null, error: { message: "fallo transitorio simulado" } });
             }
-            TABLA.filter(r => Object.entries(st.filters).every(([k, v]) => r[k] === v))
-                .forEach(r => Object.assign(r, st.vals));
-            return Promise.resolve({ data: null, error: null });
+            const cambiadas = TABLA.filter(r => Object.entries(st.filters).every(([k, v]) => r[k] === v));
+            cambiadas.forEach(r => Object.assign(r, st.vals));
+            return Promise.resolve({ data: st.devolver ? cambiadas.map(r => ({ ...r })) : null, error: null });
         }
         if (st.op === "insert") {
             const row = { id: `EVT-${TABLA.length + 1}`, ...st.vals };

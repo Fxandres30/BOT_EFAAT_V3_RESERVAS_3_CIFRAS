@@ -159,11 +159,13 @@ prueba("uno ya era del cliente y otro está ocupado: no se dice que el suyo est�
     assert.strictEqual(redactar(P_OCUPADO, texto, res), "( 23 ) ya está ocupado.");
 });
 
-prueba("el mismo cliente tiene el número en OTRO sorteo: no es suyo en este, no se calla", async () => {
+// UNA TABLA = UN SORTEO (31/10/2026): la identidad guardada en la fila (otro
+// ciclo, reserva manual) no lo hace de otro sorteo: es suyo en esta tabla.
+prueba("el mismo cliente tiene el número en esta tabla con otra identidad: es suyo («ya es tuyo»), no ocupado", async () => {
     sembrar({ "12": { estado: "reservado", usuario_global_id: KATY.id, identidad_evento_real: OTRO } });
     const res = await pedir("12");
-    assert.deepStrictEqual([res.ok, res.ocupados], [false, ["12"]], "antes: silencio («ya es tuyo»)");
-    assert.strictEqual(tipoDe("12", res), "numero_ocupado");
+    assert.deepStrictEqual([res.ok, res.yaTuyos, res.ocupados, res.reaccion], [false, ["12"], [], null]);
+    assert.strictEqual(res.mensaje, "✅ Ya es tuyo: ( 12 )");
 });
 
 // Recomendación 1 de la auditoría de veracidad (autorizada 30/10): antes

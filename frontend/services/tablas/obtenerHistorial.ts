@@ -19,26 +19,32 @@ export interface EventosHistorial {
     archivo: FilaArchivo[];
 }
 
-export async function obtenerEventosHistorial(tabla: string, usuarioId: string): Promise<EventosHistorial> {
+// Con `desde`: solo lo registrado a partir de esas fechas (incluidas), para
+// ponerse al día sin volver a descargar todo; null en una de ellas = esa
+// lista entera. Sin `desde`, como siempre: las últimas LIMITE_HISTORIAL.
+// `archivo: false` no consulta el archivo (solo cambia al reiniciar la tabla).
+export async function obtenerEventosHistorial(tabla: string, usuarioId: string, desde?: { auditoria: string | null; archivo: string | null | false }): Promise<EventosHistorial> {
+
+    let consultaAuditoria = supabase
+        .from("reservas_auditoria")
+        .select(COLUMNAS_AUDITORIA)
+        .eq("usuario_id", usuarioId)
+        .eq("tabla", tabla);
+
+    let consultaArchivo = supabase
+        .from("reservas_archivo")
+        .select("id, numero, estado, nombre_evento, fila, motivo, archivado_en")
+        .eq("usuario_id", usuarioId)
+        .eq("tabla", tabla);
+
+    if (desde?.auditoria) consultaAuditoria = consultaAuditoria.gte("creado_en", desde.auditoria);
+    if (desde?.archivo) consultaArchivo = consultaArchivo.gte("archivado_en", desde.archivo);
+
+    const sinArchivo = { data: [] as FilaArchivo[], error: null };
 
     const [auditoria, archivo] = await Promise.all([
-
-        supabase
-            .from("reservas_auditoria")
-            .select(COLUMNAS_AUDITORIA)
-            .eq("usuario_id", usuarioId)
-            .eq("tabla", tabla)
-            .order("creado_en", { ascending: false })
-            .limit(LIMITE_HISTORIAL),
-
-        supabase
-            .from("reservas_archivo")
-            .select("id, numero, estado, nombre_evento, fila, motivo, archivado_en")
-            .eq("usuario_id", usuarioId)
-            .eq("tabla", tabla)
-            .order("archivado_en", { ascending: false })
-            .limit(LIMITE_HISTORIAL)
-
+        consultaAuditoria.order("creado_en", { ascending: false }).limit(LIMITE_HISTORIAL),
+        desde?.archivo === false ? sinArchivo : consultaArchivo.order("archivado_en", { ascending: false }).limit(LIMITE_HISTORIAL)
     ]);
 
     if (auditoria.error) console.warn("[historial] auditoría no disponible:", auditoria.error.message);

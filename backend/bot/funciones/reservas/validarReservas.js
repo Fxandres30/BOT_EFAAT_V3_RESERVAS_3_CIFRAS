@@ -8,9 +8,8 @@ const { clasificarFila } = require("./estadoNumeros");
 // históricas guardadas con una identidad distinta a la de hoy (ver auditoría
 // identidad/eventos, Fase Identidad Real).
 //
-// Cada fila se clasifica con la regla única de estadoNumeros.js. `evento`
-// (opcional) permite reconocer las filas de otro sorteo aunque no traigan
-// la marca deOtroSorteo de consultarReservas.js.
+// Cada fila se clasifica con la regla única de estadoNumeros.js (la tabla
+// es el sorteo: `evento` ya no separa filas; se acepta por compatibilidad).
 function validarReservas(reservas = [], usuario, evento = null) {
 
     const disponibles = [];

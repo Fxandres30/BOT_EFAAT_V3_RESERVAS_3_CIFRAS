@@ -17,7 +17,8 @@ async function verificarEventoLleno(evento) {
             head: true
         })
         .eq("usuario_id", evento.usuario_id)
-        .eq("evento_id", evento.id)
+        // La tabla del cliente es el sorteo: antes contaba solo evento_id
+        // (el grupo) y no veía lo reservado por otros grupos ni a mano.
         .in("estado", ["reservado", "pagado"]);
 
     if (error) {

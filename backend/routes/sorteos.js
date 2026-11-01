@@ -90,6 +90,14 @@ router.get("/plantillas", seguro(async (req, res) => responder(res, await servic
 router.post("/plantillas", seguro(async (req, res) => responder(res, await servicio.crearPlantilla(req.usuarioId, req.body || {}), 201)));
 router.patch("/plantillas/:id", conId(async (req, res) => responder(res, await servicio.actualizarPlantilla(req.usuarioId, req.params.id, req.body || {}))));
 
+// ------------------------------------- estilos del mensaje de publicación ---
+// Catálogo (con el predeterminado de la cuenta), preferencia de la cuenta
+// (migración 042) y generación con el mismo generador que el publicador.
+// Nunca envían nada.
+router.get("/estilos-mensaje", seguro(async (req, res) => responder(res, await servicio.estilosMensaje(req.usuarioId))));
+router.put("/estilos-mensaje/predeterminado", seguro(async (req, res) => responder(res, await servicio.guardarEstiloPredeterminado(req.usuarioId, req.body || {}))));
+router.post("/mensaje/generar", seguro(async (req, res) => responder(res, await servicio.generarMensaje(req.usuarioId, req.body || {}))));
+
 // ------------------------------------------------------ cuentas de pago ---
 router.get("/cuentas", seguro(async (req, res) => responder(res, await servicio.listarCuentas(req.usuarioId))));
 router.post("/cuentas", seguro(async (req, res) => responder(res, await servicio.crearCuenta(req.usuarioId, req.body || {}), 201)));

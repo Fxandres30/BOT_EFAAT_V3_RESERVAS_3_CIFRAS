@@ -247,6 +247,19 @@ async function numerosPorIdentidad(usuarioId, tabla, identidades) {
     return resultado(data || [], error);
 }
 
+// Reservados y pagados del sorteo ACTIVO de una tabla: UNA TABLA = UN
+// SORTEO, así que cuentan todos los números de la cuadrícula del cliente,
+// sin separar por identidad, evento, grupo u origen. ok=false: no se pudo
+// leer (nunca «0 reservados»). Un sorteo ya cerrado no usa esto: la tabla
+// puede pertenecer ahora a otro, y solo la identidad de la fila lo recuerda.
+async function contarNumerosTabla(usuarioId, tabla) {
+    if (!usuarioId || !tabla) return { ok: true, reservados: 0, pagados: 0 };
+    const { data, error } = await supabase.from(tabla).select("estado").eq("usuario_id", usuarioId);
+    if (error) return { ok: false, reservados: null, pagados: null };
+    const filas = data || [];
+    return { ok: true, reservados: filas.filter(f => f.estado === "reservado").length, pagados: filas.filter(f => f.estado === "pagado").length };
+}
+
 // ---------------------------------------------- historial (migración 038) ---
 
 // Anuncios de sorteos programados que pasaron por el ExecutionGuard
@@ -458,6 +471,7 @@ module.exports = {
     gruposDeSorteos,
     eventosPorIdentidad,
     numerosPorIdentidad,
+    contarNumerosTabla,
     registrarHistorial,
     historialDelSorteo,
     reemplazarGrupos,

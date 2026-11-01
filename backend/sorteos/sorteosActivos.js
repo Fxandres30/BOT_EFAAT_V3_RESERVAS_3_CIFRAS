@@ -46,7 +46,10 @@
 const supabase = require("../lib/supabase");
 const repo = require("./repo");
 const tablasCliente = require("../bot/funciones/eventos/tablasCliente");
-const { normalizarPremios, instanteBogota, partesBogota, HORA, texto, LIMITES } = require("./validar");
+const { normalizarPremios, normalizarMetaPublicacion, instanteBogota, partesBogota, HORA, texto, LIMITES } = require("./validar");
+const { metaPublicacion, textoPublicacion, consolidarMensajes, generar, variablesDesconocidas, LIMITE_MENSAJE } = require("./mensajes");
+const { esEstilo, ESTILO_PREDETERMINADO } = require("./estilosMensaje");
+const { sorteosQueOcupanLaTabla } = require("../shared/eventos/unSorteoPorTabla");
 const { crearIdentidadEventoReal } = require("../bot/funciones/eventos/identidadEventoReal");
 
 // Columna inexistente (migración 036 sin aplicar), en Postgres o PostgREST.
@@ -103,9 +106,25 @@ const claveDe = (e) => e.identidad_evento_real || `evento:${e.id}`;
 
 // Texto guardado desde el panel para un sorteo detectado, solo si es de
 // ESTE sorteo (la fila puede venir de uno anterior del mismo grupo).
+function guardadoDetectado(filas) {
+    return filas.map(f => f.publicacion_panel).find(p => p?.identidad === claveDe(filas[0])) || null;
+}
+
 function publicacionDetectado(filas) {
-    const guardado = filas.map(f => f.publicacion_panel).find(p => p?.identidad === claveDe(filas[0]));
+    const guardado = guardadoDetectado(filas);
     return typeof guardado?.texto === "string" ? guardado.texto : "";
+}
+
+// Detectado: solo texto y estilo (no se publica desde EFAAT: siempre "activo").
+function metaDetectado(filas) {
+    const guardado = guardadoDetectado(filas);
+    return {
+        estilo: esEstilo(guardado?.estilo) ? guardado.estilo : ESTILO_PREDETERMINADO,
+        activo: true,
+        personalizado: Boolean(guardado?.texto),
+        revision: Number.isInteger(guardado?.revision) ? guardado.revision : 0,
+        actualizado_en: guardado?.actualizado_en || null
+    };
 }
 
 // ok=false: no se pudo leer. Nunca se presenta como «0 reservados» ni deja
@@ -137,7 +156,8 @@ async function vista(usuarioId, filas) {
 
     const base = filas[0];
     const programado = await sorteoProgramadoDe(usuarioId, base.identidad_evento_real);
-    const numeros = await contarNumeros(usuarioId, base.tabla, base.identidad_evento_real);
+    // Sorteo activo: sus números son los de su tabla, vengan de donde vengan.
+    const numeros = await repo.contarNumerosTabla(usuarioId, base.tabla);
     const desdePanel = Boolean(programado);
 
     return {
@@ -165,6 +185,10 @@ async function vista(usuarioId, filas) {
         // Texto que acompaña al anuncio ("" = no guardado: el panel usa la
         // plantilla por defecto; en un detectado, nadie lo escribió aún).
         publicacion: desdePanel ? (programado.config?.mensajes?.publicacion || "") : publicacionDetectado(filas),
+        // Texto que de verdad se publica (panel: el guardado o, si es un
+        // sorteo antiguo sin texto, la plantilla de su estilo) y su estado.
+        publicacion_texto: desdePanel ? textoPublicacion(programado.config?.mensajes) : publicacionDetectado(filas),
+        publicacion_meta: desdePanel ? metaPublicacion(programado.config?.mensajes) : metaDetectado(filas),
         recordatorios: desdePanel ? (programado.config?.recordatorios || []) : null,
         campos: {
             ...Object.fromEntries(Object.entries(CAMPOS_IDENTIDAD).map(([c, motivo]) => [c, { editable: true, requiere_confirmacion: true, motivo }])),
@@ -178,7 +202,7 @@ async function vista(usuarioId, filas) {
                 ? { editable: true, motivo: "Se usa en las próximas imágenes de la tabla de este sorteo." }
                 : { editable: false, motivo: "Usa el diseño de la tabla de este precio: cámbialo en Tablas → Personalizar." },
             publicacion: desdePanel
-                ? { editable: true, motivo: "Guardar no envía nada y lo ya publicado en los grupos no cambia; un grupo que siga pendiente de publicar recibirá este texto. Vacío = plantilla por defecto." }
+                ? { editable: true, motivo: "Guardar no envía nada y lo ya publicado en los grupos no cambia; un grupo que siga pendiente de publicar recibirá este texto." }
                 : { editable: true, motivo: "EFAAT no guarda el texto del anuncio de WhatsApp. Lo que escribas aquí queda solo en el panel: no cambia ni reenvía el mensaje del grupo." },
             mensajes: { editable: false, motivo: desdePanel ? "Los recordatorios y el aviso de cierre de un sorteo en curso no se cambian desde aquí." : "Los sorteos detectados no tienen mensajes propios: usan los de Automatización." }
         }
@@ -331,12 +355,41 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
         }
     }
 
-    // Texto de la publicación: panel -> su config; detectado -> el evento.
-    if (entrada.publicacion !== undefined) {
-        const publicacion = texto(entrada.publicacion, LIMITES.mensaje);
-        if (publicacion !== actual.publicacion) {
-            if (programado?.ok) cambiosProgramado.publicacion = publicacion;
-            else cambiosEvento.publicacion_panel = { identidad: claveDe(filas[0]), texto: publicacion, actualizado_en: new Date().toISOString() };
+    // Texto de la publicación: panel -> su config (texto + estilo + activo,
+    // misma consolidación que el formulario); detectado -> el evento (texto
+    // y estilo, informativo). Solo se escribe si algo cambió de verdad.
+    if (entrada.publicacion !== undefined || entrada.publicacion_meta !== undefined) {
+        const publicacion = entrada.publicacion !== undefined ? texto(entrada.publicacion, LIMITES.mensaje) : actual.publicacion;
+        const metaPedida = normalizarMetaPublicacion(entrada.publicacion_meta);
+        const fuera = variablesDesconocidas(publicacion);
+        if (fuera.length) errores.push({ campo: "publicacion", mensaje: `El mensaje usa variables que no existen: ${fuera.map(v => `{{${v}}}`).join(", ")}. Corrígelas o bórralas: se enviarían tal cual.` });
+        if (programado?.ok) {
+            const anteriores = programado.data.config?.mensajes || {};
+            const previo = metaPublicacion(anteriores);
+            const nuevos = { publicacion, ...(metaPedida ? { publicacion_meta: metaPedida } : {}) };
+            const consolidados = consolidarMensajes(nuevos, anteriores, { ahora });
+            const cambia = textoPublicacion(anteriores) !== consolidados.publicacion
+                || (metaPedida?.estilo !== undefined && metaPedida.estilo !== previo.estilo)
+                || (metaPedida?.activo !== undefined && metaPedida.activo !== previo.activo);
+            if (cambia) {
+                cambiosProgramado.mensajes = nuevos;
+                const generado = generar(consolidados.publicacion, {
+                    nombre: actual.nombre, hora_fin: actual.hora_fin, hora_cierre: cambiosEvento.hora_cierre || actual.hora_cierre,
+                    valor: actual.valor, premios: cambiosEvento.premios || actual.premios, cantidad_numeros: actual.cantidad_numeros
+                }, cambiosProgramado.cuentas_snapshot || actual.cuentas || [], { fecha: actual.fecha_evento });
+                if (generado.excede) errores.push({ campo: "publicacion", mensaje: `Con los datos del sorteo el mensaje ocupa ${generado.longitud} caracteres y el máximo es ${LIMITE_MENSAJE}. Acórtalo o usa un diseño más compacto.` });
+            }
+        } else {
+            const estiloPrevio = actual.publicacion_meta?.estilo;
+            if (publicacion !== actual.publicacion || (metaPedida?.estilo && metaPedida.estilo !== estiloPrevio)) {
+                cambiosEvento.publicacion_panel = {
+                    identidad: claveDe(filas[0]),
+                    texto: publicacion,
+                    estilo: metaPedida?.estilo || estiloPrevio || ESTILO_PREDETERMINADO,
+                    revision: (actual.publicacion_meta?.revision || 0) + (publicacion !== actual.publicacion ? 1 : 0),
+                    actualizado_en: new Date().toISOString()
+                };
+            }
         }
     }
 
@@ -379,7 +432,8 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
             ...(cambiosEvento.hora_cierre ? { hora_cierre: cambiosEvento.hora_cierre } : {}),
             ...(cambiosProgramado.cuentas ? { cuentas: cambiosProgramado.cuentas } : {}),
             ...(cambiosProgramado.diseno ? { diseno: cambiosProgramado.diseno } : {}),
-            ...(cambiosProgramado.publicacion !== undefined ? { mensajes: { ...p.config?.mensajes, publicacion: cambiosProgramado.publicacion } } : {})
+            // Sobre los mensajes RECIÉN leídos: nada guardado entretanto se pierde.
+            ...(cambiosProgramado.mensajes ? { mensajes: consolidarMensajes(cambiosProgramado.mensajes, p.config?.mensajes || {}, { ahora }) } : {})
         };
         const cambios = { config, ...(cambiosProgramado.cuentas_snapshot ? { cuentas_snapshot: cambiosProgramado.cuentas_snapshot } : {}) };
         const u = await repo.actualizarSorteoSi(usuarioId, p.id, {}, cambios);
@@ -447,6 +501,14 @@ async function corregirIdentidad(usuarioId, filas, actual, nuevo, programado) {
             }
             tabla = conf.tabla;
             extraTabla = { tabla: conf.tabla, cifras: conf.cifras, cantidad_numeros: conf.cantidad };
+            // UNA TABLA = UN SORTEO: corregir no es publicar, así que no
+            // reemplaza al sorteo que ya ocupa la otra tabla; se rechaza.
+            const ocupan = await sorteosQueOcupanLaTabla(supabase, { usuarioId, tabla, identidad: identidadAnterior, excepto: filas.map(f => f.id) });
+            if (!ocupan.ok) return falla("error_supabase", { error: ocupan.error?.message });
+            if (ocupan.filas.length) {
+                const f = ocupan.filas[0];
+                return falla("conflicto", { mensaje: `La tabla de $${nuevo.valor} ya tiene activo el sorteo «${f.nombre_evento || "sin nombre"} ${f.hora_fin ? String(f.hora_fin).slice(0, 5) : ""}». Ciérralo antes o publica este como sorteo nuevo. No se cambió nada.` });
+            }
         }
     }
 

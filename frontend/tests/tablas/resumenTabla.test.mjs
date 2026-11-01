@@ -7,8 +7,9 @@
 //     reordenar el resto, y el orden cambia con el estado;
 //   - libres + reservados + pagados = total, con «en proceso» y «bloqueado»
 //     como reservados; ocupación = no libres / total;
-//   - el recaudo solo cuenta números PAGADOS del sorteo activo × precio:
-//     nunca reservas ni pagos de otro sorteo; sin sorteo activo, null.
+//   - UNA TABLA = UN SORTEO: el recaudo son TODOS los números PAGADOS de la
+//     tabla × precio, sea cual sea su origen (WhatsApp, panel, otro grupo,
+//     otro ciclo, sin evento); nunca reservas; sin sorteo activo, null.
 //
 //     node frontend/tests/tablas/resumenTabla.test.mjs
 // ==========================================================================
@@ -89,7 +90,6 @@ prueba("tabla sin sorteo activo: cuenta estados reales pero no afirma recaudo (n
     const r = calcularResumenTabla(tabla(["pagado", "pagado", "reservado"], delActivo), 5000, null);
     assert.deepStrictEqual([r.pagados, r.reservados, r.libres, r.ocupacion], [2, 1, 97, 3]);
     assert.strictEqual(r.recaudo, null);
-    assert.strictEqual(r.pagadosDeOtroSorteo, 0);
     sumaOk(r);
 });
 
@@ -101,7 +101,7 @@ prueba("tabla con números reservados: no suman recaudo (reservas pendientes)", 
 
 prueba("tabla con números pagados del sorteo activo: recaudo = pagados × precio", () => {
     const r = calcularResumenTabla(tabla(Array(15).fill("pagado"), delActivo), 5000, ACTIVO);
-    assert.deepStrictEqual([r.pagados, r.pagadosDelSorteo, r.recaudo, r.ocupacion], [15, 15, 75000, 15]);
+    assert.deepStrictEqual([r.pagados, r.recaudo, r.ocupacion], [15, 75000, 15]);
     sumaOk(r);
 });
 
@@ -112,13 +112,32 @@ prueba("estados mezclados: en proceso y bloqueado cuentan como reservados; la su
     sumaOk(r);
 });
 
-prueba("tabla física compartida: los pagados de otro sorteo no suman al recaudo (sin duplicar pagos)", () => {
-    const porIndice = { 0: { identidad_evento_real: "ident-otro" }, 1: { identidad_evento_real: "ident-otro" }, 2: { identidad_evento_real: null, evento_id: null } };
-    const r = calcularResumenTabla(tabla(["pagado", "pagado", "pagado", "pagado", "pagado"], { ...delActivo, porIndice }), 1000, ACTIVO);
-    assert.strictEqual(r.pagados, 5, "el estado real se cuenta igual");
-    assert.strictEqual(r.pagadosDelSorteo, 2);
-    assert.strictEqual(r.pagadosDeOtroSorteo, 3, "sin identidad ni evento no se atribuye al activo");
-    assert.strictEqual(r.recaudo, 2000);
+prueba("UNA TABLA = UN SORTEO: 28 pagados de cuatro orígenes a $5.000 = $140.000, sin subtotales «de otro sorteo»", () => {
+    const origen = [
+        ...Array(10).fill({ identidad_evento_real: "ident-1", evento_id: "ev-1", grupo_id: "g1" }),      // WhatsApp
+        ...Array(5).fill({ identidad_evento_real: null, evento_id: null, grupo_id: null }),              // manual «sin sorteo»
+        ...Array(8).fill({ identidad_evento_real: "ident-1", evento_id: "ev-2", grupo_id: "g2" }),       // otros grupos
+        ...Array(5).fill({ identidad_evento_real: "ciclo-anterior", evento_id: "ev-viejo" })             // otros flujos / ciclo conservado
+    ];
+    const numeros = Array.from({ length: 100 }, (_, i) => (i < 28 ? { estado: "pagado", ...origen[i] } : i < 33 ? { estado: "reservado", identidad_evento_real: "otra" } : { estado: "libre" }));
+    const r = calcularResumenTabla(numeros, 5000, ACTIVO);
+    assert.deepStrictEqual([r.pagados, r.reservados, r.libres, r.recaudo], [28, 5, 67, 140000]);
+    assert.ok(!("pagadosDeOtroSorteo" in r) && !("pagadosDelSorteo" in r), "ningún subtotal excluyente");
+    sumaOk(r);
+});
+
+prueba("recaudo coherente tras cada operación: pagar suma, liberar resta, reservar no cambia el recaudo", () => {
+    const numeros = tabla(["pagado", "reservado", "reservado"]);
+    const r0 = calcularResumenTabla(numeros, 2000, ACTIVO);
+    numeros[1] = { estado: "pagado", identidad_evento_real: null, evento_id: null };   // pago manual de una reserva sin evento
+    const r1 = calcularResumenTabla(numeros, 2000, ACTIVO);
+    numeros[0] = { estado: "libre" };                                                   // anular un pago
+    const r2 = calcularResumenTabla(numeros, 2000, ACTIVO);
+    numeros[50] = { estado: "reservado", grupo_id: "g3" };                              // nueva reserva por otro grupo
+    const r3 = calcularResumenTabla(numeros, 2000, ACTIVO);
+    assert.deepStrictEqual([r0.recaudo, r1.recaudo, r2.recaudo, r3.recaudo], [2000, 4000, 2000, 2000]);
+    assert.deepStrictEqual([r3.pagados, r3.reservados], [1, 2]);
+    [r0, r1, r2, r3].forEach(sumaOk);
 });
 
 prueba("tabla vacía: sin división por cero", () => {

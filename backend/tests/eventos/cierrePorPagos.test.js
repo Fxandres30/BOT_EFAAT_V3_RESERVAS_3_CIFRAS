@@ -169,10 +169,25 @@ prueba("4. 99 pagados + 1 libre -> no cierra", async () => {
 
 });
 
-prueba("4b. pagados reales del evento: 100 pagados de OTRO sorteo en la misma tabla física no cuentan", async () => {
+// UNA TABLA = UN SORTEO (31/10/2026): la identidad de la fila es historia.
+prueba("4b. 100 pagados en la tabla del sorteo con otra identidad (otro ciclo, a mano): cuentan y cierra", async () => {
 
     const evento = crearEvento();
-    tabla(n(100, "pagado"), "otro-sorteo");
+    tabla(n(100, "pagado"), "otro-ciclo");
+    const { sock, llamadas } = crearSock();
+
+    await procesarEvento({ sock, evento });
+
+    assert.ok(llamadas.length > 0, "cierra el grupo");
+    assert.strictEqual(fila().activo, false);
+
+});
+
+prueba("4c. 100 pagados en la cuadrícula de OTRO cliente (misma tabla física) no cuentan", async () => {
+
+    const evento = crearEvento();
+    tabla(n(100, "pagado"));
+    db[TABLA].forEach(f => { f.usuario_id = "tenant-otro"; });
     const { sock, llamadas } = crearSock();
 
     await procesarEvento({ sock, evento });
@@ -235,7 +250,9 @@ prueba("5b. reintento: el worker real (workerEventos) reintenta en el siguiente 
 prueba("6a. la hora de cierre se calcula siempre en hora de Colombia", async () => {
 
     const actual = fs.readFileSync(r("bot/funciones/eventos/lifecycle/verificarHoraCierre.js"), "utf8");
-    assert.ok(/timeZone: "America\/Bogota"/.test(actual) && !/getHours\(\)/.test(actual));
+    // Hora de Colombia: por Intl (America/Bogota) o con su desfase fijo -05:00
+    // (sin horario de verano); nunca la hora local del servidor.
+    assert.ok(/America\/Bogota|-05:00/.test(actual) && !/getHours\(\)/.test(actual));
 
     // Comportamiento (instantes UTC fijos; da igual la zona del servidor):
     const { verificarHoraCierre: v } = require(r("bot/funciones/eventos/lifecycle/verificarHoraCierre.js"));

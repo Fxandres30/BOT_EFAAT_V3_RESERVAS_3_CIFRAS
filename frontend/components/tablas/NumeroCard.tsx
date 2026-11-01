@@ -1,5 +1,7 @@
 "use client";
 
+import { memo } from "react";
+
 import type { NumeroReserva } from "./types";
 import { ESTADOS_META_VISUAL, estadoEfectivo, estadoVisualSimplificado } from "./estadoVisual";
 import styles from "./NumeroCard.module.css";
@@ -8,18 +10,20 @@ interface Props {
     numero: NumeroReserva;
     enGrupo: boolean;
     atenuado: boolean;
-    deOtroEvento: boolean;
     /** Modo «Seleccionar» de Tablas: undefined = la cuadrícula no está en
      *  ese modo (la celda se ve exactamente como siempre). */
     seleccionado?: boolean;
-    onClick: () => void;
+    /** Recibe el número pulsado: un solo manejador estable para las 100
+     *  celdas (con memo, solo se vuelve a dibujar la celda que cambia). */
+    onClick: (numero: string) => void;
 }
 
-export default function NumeroCard({
+export default memo(NumeroCard);
+
+function NumeroCard({
     numero,
     enGrupo,
     atenuado,
-    deOtroEvento,
     seleccionado,
     onClick
 }: Props) {
@@ -49,9 +53,9 @@ export default function NumeroCard({
             data-estado={estadoReal}
             data-seleccionado={seleccionado ? "" : undefined}
             aria-pressed={seleccionado === undefined ? undefined : seleccionado}
-            aria-label={`Número ${numero.numero}: ${meta.label}${enGrupo ? ", pertenece a un grupo" : ""}${deOtroEvento ? ", de otro evento" : ""}${seleccionado ? ", seleccionado" : ""}`}
+            aria-label={`Número ${numero.numero}: ${meta.label}${enGrupo ? ", pertenece a un grupo" : ""}${seleccionado ? ", seleccionado" : ""}`}
             title={`${numero.numero} · ${meta.label}${numero.comprador ? ` · ${numero.comprador}` : ""}`}
-            onClick={onClick}
+            onClick={() => onClick(numero.numero)}
             className={`
                 group relative w-full aspect-square min-w-0
                 flex items-center justify-center

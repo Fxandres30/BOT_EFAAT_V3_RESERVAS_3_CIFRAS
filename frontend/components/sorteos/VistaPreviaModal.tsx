@@ -290,7 +290,12 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
 
                         <section className={styles.seccion}>
                             <h3 className={styles.seccionTitulo}>Anuncio que se publicará</h3>
-                            <pre className={styles.mensaje}>{vista.publicacion}</pre>
+                            {vista.publicacion_activa === false ? (
+                                <>
+                                    <p className={`${styles.alerta} ${styles.alertaAviso}`} role="status">Mensaje desactivado: se publicará solo la imagen, sin texto. Este es el texto guardado (no se enviará):</p>
+                                    <pre className={styles.mensaje} style={{ opacity: 0.55 }}>{vista.publicacion}</pre>
+                                </>
+                            ) : <pre className={styles.mensaje}>{vista.publicacion}</pre>}
                         </section>
 
                         <section className={styles.seccion}>
@@ -319,7 +324,7 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                                 <p>
                                     <b>Conservar la tabla actual.</b> No se reiniciará ni al programar ni al publicar.
                                     {vista.tabla?.ocupadosOtroSorteo
-                                        ? <> Los {vista.tabla.ocupadosOtroSorteo} número(s) de otros sorteos se quedan como están y no se venden en este; quedan {vista.tabla.libres ?? 0} libres.</>
+                                        ? <> Los {vista.tabla.ocupadosOtroSorteo} número(s) ya ocupados se quedan como están y, al ser la misma tabla, cuentan en este sorteo; quedan {vista.tabla.libres ?? 0} libres.</>
                                         : null}
                                 </p>
                             </section>

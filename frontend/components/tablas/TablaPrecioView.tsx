@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import Link from "next/link";
 import { Loader2, AlertTriangle, ArrowLeft, Palette, LibraryBig, Filter } from "lucide-react";
@@ -29,6 +29,7 @@ import type { TablaDiseno } from "./disenoTypes";
 import type { OperacionLote } from "@/services/tablas/pagoLote";
 import { esDeOtroSorteo } from "@/services/tablas/seleccionTabla";
 import { calcularResumenTabla } from "@/services/tablas/resumenTabla";
+import { crearSeleccion, type EstadoSeleccion, type Seleccion } from "@/services/tablas/estadoSeleccion";
 
 import styles from "./TablaPrecioView.module.css";
 
@@ -52,8 +53,11 @@ export default function TablaPrecioView({ precio }: Props) {
         recientes,
         actividad,
         historial,
+        historialCargado,
         auditoriaDisponible,
+        desactualizada,
         accionando,
+        cargarHistorial,
         recargar,
         reservar,
         marcarPagado,
@@ -130,27 +134,25 @@ export default function TablaPrecioView({ precio }: Props) {
 
     // «Seleccionar» (pago por lote). Ligada al precio: al cambiar de tabla
     // la selección no se arrastra. Se conserva al filtrar la cuadrícula.
-    const [seleccionDe, setSeleccionDe] = useState<{ precio: number; activo: boolean; numeros: string[] }>({ precio, activo: false, numeros: [] });
-    const modoSeleccion = seleccionDe.precio === precio ? seleccionDe : { precio, activo: false, numeros: [] as string[] };
-    const conjuntoSeleccion = useMemo(() => new Set(modoSeleccion.numeros), [modoSeleccion.numeros]);
-    const cambiarSeleccion = (cambio: Partial<{ activo: boolean; numeros: string[] }>) =>
-        setSeleccionDe(prev => ({ ...(prev.precio === precio ? prev : { precio, activo: false, numeros: [] }), ...cambio }));
-    const alternarSeleccion = (numero: string) => {
-        if (seleccionBloqueada) return;
-        cambiarSeleccion({ numeros: conjuntoSeleccion.has(numero) ? modoSeleccion.numeros.filter(n => n !== numero) : [...modoSeleccion.numeros, numero] });
-    };
+    // Vive fuera del estado de esta vista: un clic solo vuelve a dibujar a
+    // quien la muestra (<ConSeleccion>), no la pantalla entera.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- una selección nueva por cada tabla
+    const seleccion = useMemo(() => crearSeleccion(), [precio]);
+    useEffect(() => { seleccion.bloquear(seleccionBloqueada); }, [seleccion, seleccionBloqueada]);
 
     // Estado efectivo de cada número: lo que clasifican la selección y las
     // acciones rápidas (el servidor vuelve a comprobarlo al operar).
-    // otroSorteo: ocupado por un sorteo que no es el activo (por identidad);
-    // en un lote solo entra si el administrador lo incluye expresamente.
+    // otroSorteo: ocupado sin sorteo activo de este precio (con uno activo,
+    // toda la tabla es suya: seleccionTabla.esDeOtroSorteo); en un lote solo
+    // entra si el administrador lo incluye expresamente.
     const seleccionables = useMemo(() => numeros.map(n => {
         const estado = estadoEfectivo(n);
         return { numero: n.numero, estado, ...(esDeOtroSorteo({ ...n, estado }, coincidePrecio ? eventoActivo : null) ? { otroSorteo: true } : {}) };
     }), [numeros, eventoActivo, coincidePrecio]);
 
     // Resumen de la tabla (estados reales y recaudo del sorteo activo de
-    // este precio): mismo estado efectivo que la cuadrícula.
+    // este precio, con TODOS los pagados de la tabla): mismo estado
+    // efectivo que la cuadrícula.
     const resumen = useMemo(
         () => calcularResumenTabla(numeros.map(n => ({ ...n, estado: estadoEfectivo(n) })), precio, coincidePrecio ? eventoActivo : null),
         [numeros, precio, eventoActivo, coincidePrecio]
@@ -172,6 +174,25 @@ export default function TablaPrecioView({ precio }: Props) {
             setCapturando(false);
         }
     }
+
+    // Auditoría, archivo y movimientos completos: al abrir «Historial de
+    // números» y tenerlo a la vista (no al entrar a la cuadrícula).
+    const historialRef = useRef<HTMLDivElement>(null);
+    const hayNumeros = numeros.length > 0;
+    useEffect(() => {
+        if (!secciones.historial || historialCargado || loading || !hayNumeros) return;
+        const el = historialRef.current;
+        if (!el || typeof IntersectionObserver === "undefined") { cargarHistorial(); return; }
+        const observador = new IntersectionObserver((entradas) => {
+            if (entradas.some(e => e.isIntersecting)) { observador.disconnect(); cargarHistorial(); }
+        }, { rootMargin: "400px 0px" });
+        observador.observe(el);
+        return () => observador.disconnect();
+    }, [secciones.historial, historialCargado, loading, hayNumeros, cargarHistorial]);
+
+    const verDetalleOAccion = useCallback((numero: string, accion: "detalle" | Exclude<OperacionLote, "reservar">) => (
+        accion === "detalle" ? setDetalle(numero) : setAccionRapida({ operacion: accion, numero })
+    ), []);
 
     if (loading) {
 
@@ -248,6 +269,12 @@ export default function TablaPrecioView({ precio }: Props) {
 
             <Cabecera precio={precio} eventoActivo={eventoActivo} coincidePrecio={coincidePrecio} />
 
+            {desactualizada && (
+                <Aviso tono="aviso">
+                    Sin conexión en tiempo real: lo que ves puede no estar al día. Se actualizará solo al recuperar la conexión; cada operación la sigue comprobando el servidor.
+                </Aviso>
+            )}
+
             <StatsBar resumen={resumen} precio={precio} />
 
             <AccionesTabla
@@ -296,24 +323,27 @@ export default function TablaPrecioView({ precio }: Props) {
                 </div>
             )}
 
-            <SeleccionPagos
-                precio={precio}
-                activo={modoSeleccion.activo}
-                bloqueado={seleccionBloqueada}
-                numeros={seleccionables}
-                seleccion={modoSeleccion.numeros}
-                onActivar={() => cambiarSeleccion({ activo: true, numeros: [] })}
-                onSalir={() => cambiarSeleccion({ activo: false, numeros: [] })}
-                onLimpiar={() => cambiarSeleccion({ numeros: [] })}
-                onCambiarSeleccion={(lista) => cambiarSeleccion({ numeros: lista })}
-                onQuitar={(numero) => cambiarSeleccion({ numeros: modoSeleccion.numeros.filter(n => n !== numero) })}
-                onProcesar={procesarLote}
-            />
+            <ConSeleccion seleccion={seleccion}>{(sel) => (
+                <SeleccionPagos
+                    precio={precio}
+                    activo={sel.activo}
+                    bloqueado={seleccionBloqueada}
+                    numeros={seleccionables}
+                    seleccion={sel.numeros}
+                    onActivar={seleccion.activar}
+                    onSalir={seleccion.salir}
+                    onLimpiar={seleccion.limpiar}
+                    onCambiarSeleccion={seleccion.cambiar}
+                    onQuitar={seleccion.quitar}
+                    onProcesar={procesarLote}
+                />
+            )}</ConSeleccion>
 
+            <ConSeleccion seleccion={seleccion}>{(sel) => (
             <Grid
                 contenedorRef={tablaRef}
-                seleccion={modoSeleccion.activo && !capturando ? conjuntoSeleccion : null}
-                onAlternarSeleccion={alternarSeleccion}
+                seleccion={sel.activo && !capturando ? sel.conjunto : null}
+                onAlternarSeleccion={seleccion.alternar}
                 detalle={detalle}
                 onDetalleChange={setDetalle}
                 precio={precio}
@@ -328,7 +358,10 @@ export default function TablaPrecioView({ precio }: Props) {
                 onMarcarPagado={marcarPagado}
                 onLiberar={liberar}
             />
+            )}</ConSeleccion>
 
+            <div ref={historialRef}>
+            <ConSeleccion seleccion={seleccion}>{(sel) => (
             <HistorialNumeros
                 filas={historial}
                 auditoriaDisponible={auditoriaDisponible}
@@ -337,10 +370,13 @@ export default function TablaPrecioView({ precio }: Props) {
                 expandido={secciones.historial}
                 onToggleExpandido={() => alternarSeccion("historial")}
                 ocupado={accionando.size > 0}
-                onAccion={(numero, accion) => (accion === "detalle" ? setDetalle(numero) : setAccionRapida({ operacion: accion, numero }))}
-                seleccion={modoSeleccion.activo ? conjuntoSeleccion : null}
-                onAlternarSeleccion={alternarSeleccion}
+                onAccion={verDetalleOAccion}
+                seleccion={sel.activo ? sel.conjunto : null}
+                onAlternarSeleccion={seleccion.alternar}
+                cargando={secciones.historial && !historialCargado}
             />
+            )}</ConSeleccion>
+            </div>
 
             {accionRapida && (
                 <DialogoOperacion
@@ -426,6 +462,13 @@ export default function TablaPrecioView({ precio }: Props) {
 
     );
 
+}
+
+// Suscripción a la selección: solo quien la muestra se vuelve a dibujar al
+// marcar un número.
+function ConSeleccion({ seleccion, children }: { seleccion: Seleccion; children: (estado: EstadoSeleccion) => ReactNode }) {
+    const estado = useSyncExternalStore(seleccion.suscribir, seleccion.obtener, seleccion.obtener);
+    return children(estado);
 }
 
 // Exportada solo para la página de revisión visual (app/ui-preview).

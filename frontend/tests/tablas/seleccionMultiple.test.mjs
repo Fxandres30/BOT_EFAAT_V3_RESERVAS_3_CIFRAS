@@ -70,13 +70,13 @@ await prueba("números de otro sorteo: fuera del lote salvo que el administrador
     assert.deepStrictEqual(L.clasificarOperacion(tabla, sel, "reservar", { incluirOtroSorteo: true }).incluidos, []);
 });
 
-await prueba("«de otro sorteo» se decide por la identidad del sorteo, no por el grupo", () => {
+await prueba("UNA TABLA = UN SORTEO: con sorteo activo, ningún número de la tabla es «de otro sorteo», venga de donde venga", () => {
     const activo = { id: "ev-g1", identidad_evento_real: "manizales-30" };
-    assert.strictEqual(S.esDeOtroSorteo({ estado: "reservado", identidad_evento_real: "manizales-30", evento_id: "ev-g2" }, activo), false, "mismo sorteo en otro grupo");
-    assert.strictEqual(S.esDeOtroSorteo({ estado: "pagado", identidad_evento_real: "bogota-29", evento_id: "ev-x" }, activo), true);
+    assert.strictEqual(S.esDeOtroSorteo({ estado: "reservado", identidad_evento_real: "manizales-30", evento_id: "ev-g2" }, activo), false, "otro grupo");
+    assert.strictEqual(S.esDeOtroSorteo({ estado: "pagado", identidad_evento_real: "bogota-29", evento_id: "ev-x" }, activo), false, "otra identidad (ciclo conservado)");
+    assert.strictEqual(S.esDeOtroSorteo({ estado: "reservado", identidad_evento_real: null, evento_id: null }, activo), false, "manual «sin sorteo»");
     assert.strictEqual(S.esDeOtroSorteo({ estado: "libre" }, activo), false, "un libre no es de nadie");
-    assert.strictEqual(S.esDeOtroSorteo({ estado: "reservado", evento_id: "ev-g1" }, { id: "ev-g1" }), false, "sin identidad: por evento");
-    assert.strictEqual(S.esDeOtroSorteo({ estado: "reservado", identidad_evento_real: "x" }, null), true, "sin sorteo activo: decide el administrador");
+    assert.strictEqual(S.esDeOtroSorteo({ estado: "reservado", identidad_evento_real: "x" }, null), true, "sin sorteo activo del precio: decide el administrador");
 });
 
 const DATOS = { contactoId: "c1", eventoId: "ev-g1", motivo: "Reserva por llamada o mensaje privado", observaciones: "lote" };

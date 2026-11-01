@@ -19,6 +19,11 @@
 // Se guarda en `estado` y también en `cierre_motivo` con el prefijo
 // "panel:" (o "sustituido"): así se reconoce aunque una base antigua tuviera
 // una restricción sobre los valores de `estado` (ver gestionEventos.js).
+//
+// Las consultas del cliente («¿qué debo?», «mis números») ya no usan esta
+// deuda (31/10/2026): solo cuenta la tabla con un sorteo VIGENTE
+// (consultarMisNumeros.js::sorteoVigente). Un sorteo terminado de cualquier
+// forma nunca se presenta como obligación actual.
 // ==========================================================================
 
 const ESTADOS_GESTION = ["desactivado", "cancelado", "eliminado"];
@@ -43,9 +48,11 @@ function motivoGestion(evento) {
 
 }
 
-// ¿Su fin NO debe anunciarse con el mensaje de cierre?
+// ¿Su fin NO debe anunciarse con el mensaje de cierre? Tampoco un cierre
+// RECUPERADO (procesarSorteo.js): su hora pasó un día anterior con el proceso
+// desconectado, y el aviso llegaría tarde, quizá en medio del sorteo nuevo.
 function cierreSilencioso(evento) {
-    return motivoGestion(evento) !== null;
+    return motivoGestion(evento) !== null || String(evento?.cierre_motivo || "").includes("recuperado:");
 }
 
 // ¿Sus números reservados dejan de ser deuda del cliente?

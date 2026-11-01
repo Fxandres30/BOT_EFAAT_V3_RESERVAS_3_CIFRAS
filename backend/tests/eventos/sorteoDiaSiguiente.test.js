@@ -90,9 +90,11 @@ async function prueba(nombre, fn) {
         assert.strictEqual(verificarHoraCierre(hoy, co("2026-10-20T22:26")), true);
     });
 
-    await prueba("sin fecha_evento y filas de días anteriores: comparación por hora de siempre", () => {
+    // Fecha y hora completas (31/10/2026): antes un sorteo del 19 seguía
+    // abierto el 20 a las 08:00 (solo se comparaba la hora del día).
+    await prueba("sin fecha_evento: hora de hoy; filas de días anteriores: ya cerradas", () => {
         assert.strictEqual(verificarHoraCierre({ hora_cierre: "09:56" }, co("2026-10-20T20:00")), true);
-        assert.strictEqual(verificarHoraCierre({ fecha_evento: "2026-10-19", hora_cierre: "22:26" }, co("2026-10-20T08:00")), false);
+        assert.strictEqual(verificarHoraCierre({ fecha_evento: "2026-10-19", hora_cierre: "22:26" }, co("2026-10-20T08:00")), true);
         assert.strictEqual(verificarHoraCierre({ fecha_evento: "2026-10-19", hora_cierre: "22:26" }, co("2026-10-20T22:30")), true);
     });
 

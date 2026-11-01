@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronRight, History, Info, Search, X } from "lucide-react";
+import { memo, useCallback, useMemo, useState } from "react";
+import { ChevronRight, History, Info, Loader2, Search, X } from "lucide-react";
 
 import BotonContraer from "./BotonContraer";
 import AccionesNumero from "./AccionesNumero";
@@ -36,8 +36,10 @@ interface Props {
     /** Hay una operación en curso: las acciones rápidas esperan. */
     ocupado?: boolean;
     /** Modo «Seleccionar» (compartido con la cuadrícula): null = inactivo. */
-    seleccion?: Set<string> | null;
+    seleccion?: ReadonlySet<string> | null;
     onAlternarSeleccion?: (numero: string) => void;
+    /** Movimientos (auditoría, archivo, actividad completa) todavía en camino. */
+    cargando?: boolean;
 }
 
 const POR_PAGINA = 30;
@@ -77,10 +79,12 @@ function EstadoBadge({ estado }: { estado: EstadoNumero }) {
 
 const sinDato = <span className="text-gray-400">—</span>;
 
-export default function HistorialNumeros({ filas, auditoriaDisponible, filtros, onFiltrosChange, expandido, onToggleExpandido, onAccion, ocupado = false, seleccion = null, onAlternarSeleccion }: Props) {
+export default function HistorialNumeros({ filas, auditoriaDisponible, filtros, onFiltrosChange, expandido, onToggleExpandido, onAccion, ocupado = false, seleccion = null, onAlternarSeleccion, cargando = false }: Props) {
 
     const [visibles, setVisibles] = useState(POR_PAGINA);
     const [abierto, setAbierto] = useState<string | null>(null);
+    // Estable: al marcar un número solo se vuelve a dibujar su fila.
+    const alternarFila = useCallback((numero: string) => setAbierto(a => (a === numero ? null : numero)), []);
 
     const grupos = useMemo(() => gruposDelHistorial(filas), [filas]);
     const filtradas = useMemo(() => filtrarHistorial(filas, filtros), [filas, filtros]);
@@ -112,9 +116,16 @@ export default function HistorialNumeros({ filas, auditoriaDisponible, filtros, 
                         <span>
                             El <strong>estado actual</strong> es el de la tabla ahora mismo. Los <strong>movimientos</strong> son
                             solo los que quedaron registrados.
-                            {!auditoriaDisponible && " La auditoría de operaciones aún no está activada en la base: se muestra la actividad registrada y el archivo de reinicios."}
+                            {!auditoriaDisponible && !cargando && " La auditoría de operaciones aún no está activada en la base: se muestra la actividad registrada y el archivo de reinicios."}
                         </span>
                     </p>
+
+                    {cargando && (
+                        <p className="flex items-center gap-2 text-xs text-gray-500 mb-4" role="status">
+                            <Loader2 size={13} className="animate-spin shrink-0" />
+                            Cargando los movimientos registrados...
+                        </p>
+                    )}
 
                     <label className="relative block min-w-0 mb-2">
                         <span className="sr-only">Buscar por número, nombre o contacto</span>
@@ -189,7 +200,7 @@ export default function HistorialNumeros({ filas, auditoriaDisponible, filtros, 
                                         key={fila.numero}
                                         fila={fila}
                                         abierta={abierto === fila.numero}
-                                        onAlternar={() => setAbierto(abierto === fila.numero ? null : fila.numero)}
+                                        onAlternar={alternarFila}
                                         onAccion={onAccion}
                                         ocupado={ocupado}
                                         seleccionado={seleccion && onAlternarSeleccion ? seleccion.has(fila.numero) : undefined}
@@ -225,10 +236,10 @@ export default function HistorialNumeros({ filas, auditoriaDisponible, filtros, 
 
 }
 
-function FilaNumero({ fila, abierta, onAlternar, onAccion, ocupado, seleccionado, onAlternarSeleccion }: {
+const FilaNumero = memo(function FilaNumero({ fila, abierta, onAlternar, onAccion, ocupado, seleccionado, onAlternarSeleccion }: {
     fila: FilaHistorial;
     abierta: boolean;
-    onAlternar: () => void;
+    onAlternar: (numero: string) => void;
     onAccion?: Props["onAccion"];
     ocupado: boolean;
     /** undefined = no se está seleccionando. */
@@ -260,7 +271,7 @@ function FilaNumero({ fila, abierta, onAlternar, onAccion, ocupado, seleccionado
 
                 <button
                     type="button"
-                    onClick={onAlternar}
+                    onClick={() => onAlternar(fila.numero)}
                     aria-expanded={abierta}
                     aria-controls={idDetalle}
                     className="flex-1 text-left px-3 py-2.5 flex items-center gap-3 hover:bg-gray-50 min-w-0"
@@ -322,7 +333,7 @@ function FilaNumero({ fila, abierta, onAlternar, onAccion, ocupado, seleccionado
 
     );
 
-}
+});
 
 function Movimiento({ evento: e }: { evento: EventoHistorial }) {
 

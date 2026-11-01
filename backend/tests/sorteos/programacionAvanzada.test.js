@@ -221,7 +221,7 @@ prueba("B1. reinicio NUNCA por defecto: sin elegirlo no se llama a la base; los 
     assert.strictEqual(rpc.llamadas.length, 0);
     assert.strictEqual(v.data.reinicio, null);
     assert.ok(!v.data.bloqueos.some(b => /otro sorteo/.test(b)), v.data.bloqueos.join(" | "));
-    assert.ok(v.data.avisos.some(a => /^Se conserva la tabla actual/.test(a) && /6 número\(s\) de otros sorteos/.test(a)), v.data.avisos.join(" | "));
+    assert.ok(v.data.avisos.some(a => /^Se conserva la tabla actual/.test(a) && /6 número\(s\) ya ocupados/.test(a) && /cuentan en este sorteo/.test(a)),v.data.avisos.join(" | "));
     assert.strictEqual(v.data.tabla_al_publicar.reiniciar, false, "vista previa: «Conservar la tabla actual»");
     assert.strictEqual(v.data.puede_confirmar, v.data.bloqueos.length === 0);
 });

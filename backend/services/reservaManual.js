@@ -706,13 +706,14 @@ async function reservarManual({
 
     if (!preparada.ok) return preparada.respuesta;
 
-    const { config, evento, ctx, ctxContacto, contacto, anticipada, sinSorteo: reservaSinSorteo, cifras } = preparada;
+    const { config, evento, ctxContacto, contacto, anticipada, sinSorteo: reservaSinSorteo, cifras } = preparada;
     const motivoLimpio = base.motivo;
     const obsLimpias = base.observaciones;
     const solicitud = base.solicitud_id;
 
-    const esDelMismoSorteo = (f) => f.estado === "reservado" && f.usuario_global_id === contacto.id
-        && (ctx.identidad_evento_real ? f.identidad_evento_real === ctx.identidad_evento_real : f.evento_id === evento.id);
+    // Ya reservado para este contacto en esta tabla (= este sorteo): un
+    // reintento, aunque la fila guarde otro evento, grupo o identidad.
+    const esDelMismoSorteo = (f) => f.estado === "reservado" && f.usuario_global_id === contacto.id;
 
     // ---- disponibilidad, justo antes de guardar ----
     const antes = await leerFila(usuarioId, config.tabla, String(numero));
@@ -762,12 +763,10 @@ async function reservarManual({
 
     }
 
-    // Contadores del sorteo (lo mismo que hace el bot tras reservar). Una
-    // anticipada todavía no tiene evento: los cuenta el publicador al crearlo.
-    // Sin sorteo no hay contadores que actualizar.
-    if (!anticipada && !reservaSinSorteo) {
-        try { await actualizarEvento(evento); } catch { /* best-effort */ }
-    }
+    // Contadores del sorteo de la tabla (lo mismo que hace el bot tras
+    // reservar), también con una reserva anticipada o «sin sorteo»: el
+    // número es de la tabla y cuenta para el sorteo activo que tenga.
+    await sincronizarContadores(usuarioId, config.tabla);
 
     return { ok: true, estado: "reservado", fila: reservadas[0], ...(anticipada ? { anticipada: true } : {}), ...(reservaSinSorteo ? { sinSorteo: true } : {}) };
 
@@ -916,7 +915,7 @@ async function pagarManualUnaVez({ usuarioId, operador, precio, numero, metodoPa
 
     await registrarAuditoria({ ...base, ...ctx, estado_nuevo: "pagado", resultado: "ok" });
 
-    await sincronizarContadores(usuarioId, fila.evento_id);
+    await sincronizarContadores(usuarioId, config.tabla);
 
     return { ok: true, estado: "pagado", fila: data[0] };
 
@@ -999,7 +998,7 @@ async function liberarManual({ usuarioId, operador, precio, numero, confirmar, m
 
     await registrarAuditoria({ ...base, ...ctx, estado_nuevo: "libre", resultado: "ok" });
 
-    await sincronizarContadores(usuarioId, fila.evento_id);
+    await sincronizarContadores(usuarioId, config.tabla);
 
     return { ok: true, estado: "libre", accion };
 
@@ -1055,15 +1054,17 @@ function contextoFila(fila) {
     };
 }
 
-// ¿Ocupado por un sorteo que no es el activo de este precio? (por identidad:
-// un sorteo en varios grupos tiene un evento por grupo).
+// ¿Hace falta autorización expresa para tocar este número? UNA TABLA = UN
+// SORTEO: con un sorteo activo de este precio en la tabla, TODOS sus números
+// ocupados son de ese sorteo, vengan del panel, de WhatsApp, de cualquier
+// grupo o sin evento (la identidad/evento de la fila es solo historia).
+// Antes se comparaba la identidad o el evento_id y una reserva manual «sin
+// sorteo», anticipada o de otro grupo sin identidad quedaba fuera del lote.
+// Solo sin sorteo activo del precio (la tabla está sin sorteo o en uno de
+// otro valor) decide el administrador, como siempre.
 function deOtroSorteo(fila, activos) {
     if (fila.estado !== "reservado" && fila.estado !== "pagado") return false;
-    if (activos.length === 0) return true;
-    if (fila.identidad_evento_real && activos.some(e => e.identidad_evento_real)) {
-        return !activos.some(e => e.identidad_evento_real === fila.identidad_evento_real);
-    }
-    return fila.evento_id ? !activos.some(e => e.id === fila.evento_id) : true;
+    return activos.length === 0;
 }
 
 function respuestaLote(accion, resultados) {
@@ -1075,15 +1076,6 @@ function respuestaLote(accion, resultados) {
 const noExiste = (numero) => ({ numero, estado: "error", codigo: "numero_inexistente", mensaje: "Ese número no existe en tu tabla." });
 const repetido = (numero) => ({ numero, estado: "error", codigo: "numero_repetido", mensaje: "Ese número está repetido en la tabla: revísalo." });
 const ajeno = (numero) => ({ numero, estado: "omitido", codigo: "otro_sorteo", mensaje: "Es de otro sorteo: no se tocó." });
-
-async function contadoresDeFilas(usuarioId, filas) {
-    // Una vez por sorteo: actualizarEvento recalcula todos sus grupos.
-    const vistos = new Map();
-    for (const f of filas) {
-        if (f.evento_id && !vistos.has(f.identidad_evento_real || f.evento_id)) vistos.set(f.identidad_evento_real || f.evento_id, f.evento_id);
-    }
-    for (const eventoId of vistos.values()) await sincronizarContadores(usuarioId, eventoId);
-}
 
 async function reservarLote({ usuarioId, operador, precio, numeros, contactoId, nuevoContacto, eventoId, sorteoProgramadoId, grupoId, sinSorteo, motivo, observaciones, solicitudId }) {
 
@@ -1104,10 +1096,11 @@ async function reservarLote({ usuarioId, operador, precio, numeros, contactoId, 
     const preparada = await prepararReserva({ usuarioId, precio, contactoId, nuevoContacto, eventoId, sorteoProgramadoId, grupoId, sinSorteo, base, rechazar });
     if (!preparada.ok) return preparada.respuesta;
 
-    const { config, evento, ctx, ctxContacto, contacto, anticipada, sinSorteo: reservaSinSorteo, cifras } = preparada;
+    const { config, evento, ctxContacto, contacto, cifras } = preparada;
 
-    const esDelMismoSorteo = (f) => f.estado === "reservado" && f.usuario_global_id === contacto.id
-        && (ctx.identidad_evento_real ? f.identidad_evento_real === ctx.identidad_evento_real : f.evento_id === evento.id);
+    // Ya reservado para este contacto en esta tabla (= este sorteo): un
+    // reintento, aunque la fila guarde otro evento, grupo o identidad.
+    const esDelMismoSorteo = (f) => f.estado === "reservado" && f.usuario_global_id === contacto.id;
 
     const lectura = await leerFilas(usuarioId, config.tabla, lote.lista);
     if (!lectura.ok) return rechazar(rechazo("error_lectura", "No se pudieron leer los números."), ctxContacto);
@@ -1168,11 +1161,8 @@ async function reservarLote({ usuarioId, operador, precio, numeros, contactoId, 
 
     if (rechazos.length) await auditarRechazos(rechazos);
 
-    // Una anticipada todavía no tiene evento: los cuenta el publicador. Sin
-    // sorteo no hay contadores.
-    if (!anticipada && !reservaSinSorteo && hechos.size) {
-        try { await actualizarEvento(evento); } catch { /* best-effort */ }
-    }
+    // Contadores del sorteo de la tabla, también con anticipadas o «sin sorteo».
+    if (hechos.size) await sincronizarContadores(usuarioId, config.tabla);
 
     return respuestaLote("reservar", resultados);
 
@@ -1283,7 +1273,7 @@ async function pagarLote({ usuarioId, operador, precio, numeros, metodoPago, obs
     })));
 
     await registrarAuditoria(auditoria);
-    await contadoresDeFilas(usuarioId, pagadas);
+    if (pagadas.length) await sincronizarContadores(usuarioId, config.tabla);
 
     return respuestaLote("pagar", resultados);
 
@@ -1385,7 +1375,7 @@ async function liberarLote({ usuarioId, operador, precio, numeros, confirmar, mo
     })));
 
     await registrarAuditoria(auditoria);
-    await contadoresDeFilas(usuarioId, liberadas);
+    if (liberadas.length) await sincronizarContadores(usuarioId, config.tabla);
 
     return respuestaLote("liberar", resultados);
 
@@ -1425,11 +1415,23 @@ async function registrarActividadesPanel(filas) {
     }
 }
 
-async function sincronizarContadores(usuarioId, eventoId) {
-    if (!eventoId) return;
+// Contadores del sorteo de la TABLA (UNA TABLA = UN SORTEO): los de cada
+// sorteo activo en esta tabla del cliente, una vez por sorteo
+// (actualizarEvento recalcula todos sus grupos). Antes se buscaba por el
+// evento_id de la fila: una reserva «sin sorteo», anticipada o de otro
+// ciclo (evento_id vacío o viejo) no refrescaba los contadores del activo.
+async function sincronizarContadores(usuarioId, tabla) {
+    if (!usuarioId || !tabla) return;
     try {
-        const { data: evento } = await supabase.from("eventos_bot").select("*").eq("id", eventoId).eq("usuario_id", usuarioId).maybeSingle();
-        if (evento) await actualizarEvento(evento);
+        const { data } = await supabase.from("eventos_bot").select("*")
+            .eq("usuario_id", usuarioId).eq("tabla", tabla).eq("activo", true);
+        const vistos = new Set();
+        for (const evento of data || []) {
+            const clave = evento.identidad_evento_real || evento.id;
+            if (vistos.has(clave)) continue;
+            vistos.add(clave);
+            await actualizarEvento(evento);
+        }
     } catch { /* best-effort */ }
 }
 

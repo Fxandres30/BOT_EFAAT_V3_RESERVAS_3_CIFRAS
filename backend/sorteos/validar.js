@@ -12,6 +12,8 @@ const { obtenerConfiguracion } = require("../bot/funciones/eventos/configEvento"
 const { calcularCierre } = require("../bot/funciones/eventos/extractor/calcularCierre");
 const { normalizarEleccionDiseno } = require("./disenoTabla");
 const { crearIdentidadEventoReal } = require("../bot/funciones/eventos/identidadEventoReal");
+const { esEstilo } = require("./estilosMensaje");
+const { variablesDesconocidas } = require("./mensajes");
 
 const ZONA = "America/Bogota";
 const HORA = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -89,6 +91,16 @@ const aMinutos = (hhmm) => {
 function texto(valor, max) {
     if (valor === undefined || valor === null) return "";
     return String(valor).trim().slice(0, max);
+}
+
+// Estilo (del catálogo) y activo (booleano) pedidos por el panel; lo demás
+// se ignora. null = el panel no envió metadatos (panel antiguo).
+function normalizarMetaPublicacion(meta) {
+    if (!meta || typeof meta !== "object") return null;
+    const r = {};
+    if (esEstilo(meta.estilo)) r.estilo = meta.estilo;
+    if (typeof meta.activo === "boolean") r.activo = meta.activo;
+    return Object.keys(r).length ? r : null;
 }
 
 function idsUnicos(lista, max) {
@@ -193,10 +205,19 @@ function validarSorteo(entrada = {}, { ahora = new Date() } = {}) {
         }
     }
 
+    // Mensaje de publicación: texto con {{variables}} + estilo y activo
+    // (publicacion_meta). Revisión y fechas las calcula el servicio
+    // (mensajes.consolidarMensajes) comparando con lo guardado.
+    const metaPedida = normalizarMetaPublicacion(entrada.mensajes?.publicacion_meta);
     const mensajes = {
         publicacion: texto(entrada.mensajes?.publicacion, LIMITES.mensaje),
-        aviso_cierre: texto(entrada.mensajes?.aviso_cierre, LIMITES.mensaje)
+        aviso_cierre: texto(entrada.mensajes?.aviso_cierre, LIMITES.mensaje),
+        ...(metaPedida ? { publicacion_meta: metaPedida } : {})
     };
+    const fuera = variablesDesconocidas(mensajes.publicacion);
+    if (fuera.length) {
+        error("mensajes", `El mensaje usa variables que no existen: ${fuera.map(v => `{{${v}}}`).join(", ")}. Corrígelas o bórralas: se enviarían tal cual.`);
+    }
 
     const recordatorios = (Array.isArray(entrada.recordatorios) ? entrada.recordatorios : [])
         .slice(0, LIMITES.recordatorios)
@@ -294,6 +315,7 @@ module.exports = {
     fechaSorteoDe,
     identidadDelSorteo,
     normalizarPremios,
+    normalizarMetaPublicacion,
     texto,
     LIMITES,
     HORA,

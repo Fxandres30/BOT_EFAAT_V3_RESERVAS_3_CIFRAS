@@ -6,6 +6,7 @@ const { obtenerConfiguracionCliente } = require("./tablasCliente");
 const { abrirGrupo } = require("./grupos/abrirGrupo");
 const { esMismoSorteo, fechaSorteoAnunciado, buscarSorteoVigente, crearIdentidadEventoReal } = require("./identidadEventoReal");
 const { finDelEvento } = require("../../../shared/eventos/estadosGestion");
+const { sorteosQueOcupanLaTabla, reemplazarAnteriores, revertirReemplazo } = require("../../../shared/eventos/unSorteoPorTabla");
 const { sorteoSinNumerosLibres } = require("./lifecycle/sorteoSinNumerosLibres");
 
 // Sorteos creados y programados desde el panel (backend/sorteos). Solo se
@@ -417,6 +418,41 @@ async function detectarEvento(ctx) {
         }
 
         // ===============================
+        // UNA TABLA = UN SORTEO (31/10)
+        // ===============================
+        // Otro sorteo activo en esta MISMA tabla (en este u otros grupos) se
+        // reemplaza en todos ellos, antes de guardar el nuevo (la 043 rechaza
+        // dos activos) y deshaciéndolo si el nuevo no se guarda. Cerrarlo en
+        // OTROS grupos exige que el anuncio lo publique la cuenta del bot o un
+        // administrador: un cliente que reenvía un anuncio viejo nunca se
+        // apodera de la tabla.
+        const motivoReemplazo = `sustituido por el anuncio de ${eventoCompleto.nombre || "otro sorteo"} ${eventoCompleto.hora || ""}`.trim();
+        const ocupan = await sorteosQueOcupanLaTabla(supabase, { usuarioId: duenoSesion, tabla: config.tabla, identidad: identidadAnunciada, excepto: filaAGuardar?.id ? [filaAGuardar.id] : [] });
+
+        if (!ocupan.ok) {
+
+            console.error("❌ No se pudo revisar si la tabla tiene otro sorteo activo; no se guarda el anuncio:", ocupan.error?.message);
+            return null;
+
+        }
+
+        if (ocupan.filas.some(f => f.grupo_id !== grupoId) && !(await remitenteAutorizado(ctx, grupoId))) {
+
+            console.log(`⏭️ La tabla ${config.tabla} tiene activo otro sorteo en otros grupos y este anuncio no lo publicó un administrador — no se reemplaza.`);
+            return eventoAnterior;
+
+        }
+
+        const reemplazo = await reemplazarAnteriores(supabase, { usuarioId: duenoSesion, filas: ocupan.filas, motivo: motivoReemplazo });
+
+        if (!reemplazo.ok) {
+
+            console.error("❌ No se pudo reemplazar el sorteo anterior de la tabla; no se guarda el anuncio:", reemplazo.error?.message);
+            return null;
+
+        }
+
+        // ===============================
         // GUARDAR EVENTO
         // ===============================
 
@@ -433,14 +469,16 @@ async function detectarEvento(ctx) {
 
         if (!eventoGuardado) {
 
+            await revertirReemplazo(supabase, { usuarioId: duenoSesion, cerradas: reemplazo.cerradas, motivo: motivoReemplazo });
             console.log("❌ No se pudo guardar el evento");
             return null;
 
         }
 
         // Solo después de guardar el nuevo: si guardar falla, el grupo sigue
-        // con su sorteo de siempre.
-        if (sustituir) {
+        // con su sorteo de siempre. (Si era de esta misma tabla, ya se
+        // reemplazó arriba; aquí queda el de otra tabla del mismo grupo.)
+        if (sustituir && !reemplazo.cerradas.some(f => f.id === sustituir.id)) {
             await sustituirEnGrupo(sustituir, `sustituido por el anuncio de ${eventoCompleto.nombre || "otro sorteo"} ${eventoCompleto.hora || ""}`.trim());
         }
 

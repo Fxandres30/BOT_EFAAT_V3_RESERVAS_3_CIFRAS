@@ -236,7 +236,7 @@ await prueba("2 + 5. Conservar con RESERVAS de otro sorteo (cerrado): publicaci�
     assert.deepStrictEqual(v.bloqueos, [], "la decisión de conservar no se contradice");
     assert.ok(v.puede_confirmar);
     const aviso = v.avisos.find(a => a.startsWith("Se conserva la tabla actual"));
-    assert.ok(aviso && aviso.includes("40 número(s) de otros sorteos") && aviso.includes("«Lotería de Bogotá»") && aviso.includes("Quedan 60 número(s) libres"), aviso);
+    assert.ok(aviso && aviso.includes("40 número(s) ya ocupados") && aviso.includes("cuentan en este sorteo") && aviso.includes("«Lotería de Bogotá»") && aviso.includes("Quedan 60 número(s) libres"), aviso);
     assert.ok(!aviso.includes("(activo)"), "el otro sorteo está cerrado");
     assert.strictEqual(v.tabla.ocupadosOtroSorteo, 40);
     assert.strictEqual(v.tabla.libres, 60);
@@ -254,7 +254,7 @@ await prueba("3 + 6. Conservar con PAGADOS de otro sorteo ACTIVO (otro grupo): p
     const s = await crear();
     const v = await vista(s);
     assert.deepStrictEqual(v.bloqueos, [], "otro sorteo activo no bloquea por sí solo");
-    assert.ok(v.avisos.some(a => a.includes("27 número(s) de otros sorteos") && a.includes("«Lotería de Bogotá» (activo)") && a.includes("27 pagado(s)")), JSON.stringify(v.avisos));
+    assert.ok(v.avisos.some(a => a.includes("27 número(s) ya ocupados") && a.includes("«Lotería de Bogotá» (activo)") && a.includes("27 pagado(s)")), JSON.stringify(v.avisos));
     await programarYPublicar(s);
     assert.strictEqual(grupoDb(s.id, "g1@g.us").estado, "publicado", JSON.stringify(grupoDb(s.id, "g1@g.us")));
     assert.strictEqual(enviados.length, 1);

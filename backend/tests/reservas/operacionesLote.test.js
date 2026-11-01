@@ -269,20 +269,43 @@ prueba("pago sin teléfono: el disparador aborta la sentencia, pero los demás p
     assert.strictEqual(auditoria().filter(a => a.resultado === "error" && a.codigo === "pago_sin_telefono").length, 1);
 });
 
-prueba("otro sorteo: pagar y liberar no lo tocan salvo autorización expresa de ese número", async () => {
+prueba("UNA TABLA = UN SORTEO: con sorteo activo, se pagan juntos los de WhatsApp, otro grupo, «sin sorteo» y otro ciclo; el origen se conserva", async () => {
     sembrar();
-    ocupar(A, "00");
-    ocupar(A, "01", { evento_id: "ev-viejo", identidad_evento_real: "viejo" });
+    ocupar(A, "00");                                                                    // WhatsApp, grupo 1
+    ocupar(A, "01", { evento_id: "ev-viejo", identidad_evento_real: "viejo" });           // ciclo anterior conservado
+    ocupar(A, "02", { evento_id: null, identidad_evento_real: null, grupo_id: null });    // manual «sin sorteo»
+    ocupar(A, "03", { evento_id: EV2, grupo_id: "g2@g.us", identidad_evento_real: null }); // otro grupo, sin identidad
+    ocupar(B, "04");                                                                    // otro cliente: nunca
+    const deB = foto(B, ["04"]);
+    const p = await pedir({ accion: "pagar", numeros: ["00", "01", "02", "03", "04"], solicitudId: "p3" });
+    assert.deepStrictEqual(estados(p), { "00": "hecho", "01": "hecho", "02": "hecho", "03": "hecho", "04": "omitido" });
+    assert.strictEqual(p.json.resultados.find(x => x.numero === "04").codigo, "no_reservado", "el 04 de A está libre: el reservado de B no se ve");
+    assert.strictEqual(foto(B, ["04"]), deB, "la tabla de otro cliente queda intacta");
+    // El origen sigue como historia/auditoría.
+    assert.deepStrictEqual([fila(A, "01").identidad_evento_real, fila(A, "02").evento_id, fila(A, "03").grupo_id], ["viejo", null, "g2@g.us"]);
+    // Contadores del sorteo activo (todos sus grupos): los 4 pagados de la tabla.
+    for (const id of [EV, EV2]) {
+        const e = fake.tablas.eventos_bot.find(x => x.id === id);
+        assert.deepStrictEqual([e.pagados, e.reservados], [4, 0], id);
+    }
+    // Liberar un número de otro ciclo con sorteo activo: también es de este sorteo.
+    const l = await pedir({ accion: "liberar", confirmar: true, motivo: "Error de registro", numeros: [{ numero: "01", estado: "pagado" }], solicitudId: "l3" });
+    assert.strictEqual(estados(l)["01"], "hecho");
+    assert.strictEqual(fake.tablas.eventos_bot.find(x => x.id === EV).pagados, 3, "contadores al día tras liberar");
+});
+
+prueba("sin sorteo activo del precio: pagar y liberar no tocan números ocupados salvo autorización expresa", async () => {
+    sembrar();
+    fake.tablas.eventos_bot.filter(e => e.usuario_id === A).forEach(e => { e.activo = false; });
+    ocupar(A, "01", { evento_id: null, identidad_evento_real: null });
     const antes = foto(A, ["01"]);
-    const p = await pedir({ accion: "pagar", numeros: ["00", "01"], solicitudId: "p3" });
-    assert.deepStrictEqual(estados(p), { "00": "hecho", "01": "omitido" });
-    assert.strictEqual(p.json.resultados.find(x => x.numero === "01").codigo, "otro_sorteo");
-    const l = await pedir({ accion: "liberar", confirmar: true, numeros: [{ numero: "01", estado: "reservado" }], solicitudId: "l3" });
+    const p = await pedir({ accion: "pagar", numeros: ["01"], solicitudId: "p3b" });
+    assert.strictEqual(p.json.resultados[0].codigo, "otro_sorteo");
+    const l = await pedir({ accion: "liberar", confirmar: true, numeros: [{ numero: "01", estado: "reservado" }], solicitudId: "l3b" });
     assert.strictEqual(estados(l)["01"], "omitido");
     assert.strictEqual(foto(A, ["01"]), antes, "intacto");
     const a = await pedir({ accion: "pagar", numeros: ["01"], otrosSorteoAutorizados: ["01"], solicitudId: "p4" });
     assert.strictEqual(estados(a)["01"], "hecho", "el administrador decide");
-    assert.strictEqual(fila(A, "01").identidad_evento_real, "viejo", "sigue en su sorteo");
 });
 
 prueba("un sorteo en varios grupos es UN sorteo: un número reservado en otro grupo no cuenta como ajeno", async () => {

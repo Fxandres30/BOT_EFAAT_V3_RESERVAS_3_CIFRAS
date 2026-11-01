@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type Ref } from "react";
+import { useCallback, useMemo, useState, type Ref } from "react";
 
 import NumeroCard from "./NumeroCard";
 import NumeroDetalleModal from "./NumeroDetalleModal";
@@ -33,7 +33,7 @@ interface Props {
     contenedorRef?: Ref<HTMLDivElement>;
     /** Modo «Seleccionar»: con él, un clic marca/desmarca el número en vez
      *  de abrir su detalle. null o ausente = comportamiento de siempre. */
-    seleccion?: Set<string> | null;
+    seleccion?: ReadonlySet<string> | null;
     onAlternarSeleccion?: (numero: string) => void;
     /** Detalle abierto controlado desde fuera («Ver detalle» de «Historial
      *  de números»): mismo modal que al tocar la celda. Ausente = interno. */
@@ -45,7 +45,6 @@ export default function Grid({
     precio,
     numeros,
     paquetes,
-    eventoActivo,
     coincidePrecio,
     coincidentes = null,
     accionando = SIN_ACCIONES,
@@ -81,6 +80,13 @@ export default function Grid({
         paquetes.forEach(p => p.numeros.forEach(n => mapa.set(n, p)));
         return mapa;
     }, [paquetes]);
+
+    // Un manejador para todas las celdas: con NumeroCard memorizada, marcar
+    // un número solo vuelve a dibujar esa celda.
+    const pulsar = useCallback(
+        (n: string) => (seleccionando ? onAlternarSeleccion?.(n) : setDetalle(n)),
+        [seleccionando, onAlternarSeleccion, setDetalle]
+    );
 
     const visibles = useMemo(
         () => (coincidentes ? numeros.filter(n => coincidentes.has(n.numero)) : numeros),
@@ -119,11 +125,9 @@ export default function Grid({
 
                     {visibles.map((numero) => {
 
-                        const deOtroEvento = Boolean(
-                            numero.evento_id &&
-                            (!eventoActivo || numero.evento_id !== eventoActivo.id)
-                        );
-
+                        // Sin marca «de otro evento»: UNA TABLA = UN SORTEO
+                        // (el evento_id de la fila es el del grupo por el que
+                        // se reservó, no otro sorteo).
                         const atenuado = !coincidePrecio && numero.estado === "libre";
 
                         return (
@@ -133,9 +137,8 @@ export default function Grid({
                                 numero={numero}
                                 enGrupo={numerosEnGrupo.has(numero.numero)}
                                 atenuado={atenuado}
-                                deOtroEvento={deOtroEvento}
                                 seleccionado={seleccionando ? Boolean(seleccion?.has(numero.numero)) : undefined}
-                                onClick={() => (seleccionando ? onAlternarSeleccion?.(numero.numero) : setDetalle(numero.numero))}
+                                onClick={pulsar}
                             />
 
                         );

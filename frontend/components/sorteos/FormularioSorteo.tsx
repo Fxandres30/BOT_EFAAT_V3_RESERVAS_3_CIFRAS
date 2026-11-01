@@ -27,6 +27,7 @@ import { TABLA_DISENO_PRESETS } from "@/services/tablas/disenoDefaults";
 import type { TablaDiseno } from "@/components/tablas/disenoTypes";
 import DisenoThumbnail from "@/components/tablas/DisenoThumbnail";
 import { esEditable } from "./ListaSorteos";
+import SelectorMensaje, { type ValorMensaje } from "./SelectorMensaje";
 import styles from "./Sorteos.module.css";
 
 interface Props {
@@ -69,7 +70,11 @@ const VACIO = {
     sustituirActivo: false,
     // Estilo: "actual" | "preset:<key>" | "biblioteca:<id>".
     diseno: "actual",
+    // Mensaje de publicación: texto GUARDADO (con {{variables}}), su diseño
+    // del catálogo ("" = aún sin elegir) y si se publica con la imagen.
     mensajePublicacion: "",
+    estiloMensaje: "",
+    mensajeActivo: true,
     avisoCierre: "",
     recordatorios: [] as RecordatorioForm[],
     liberar: false,
@@ -135,7 +140,10 @@ function desdeConfig(config: ConfigSorteo, extra: Partial<Form> = {}): Form {
         liberarBloqueados: config.tabla?.reiniciar === true && config.tabla?.liberar_bloqueados === true,
         sustituirActivo: config.sustituir_activo === true,
         diseno: disenoAForm(config.diseno),
+        // Exactamente lo guardado: nunca se regenera al abrir el sorteo.
         mensajePublicacion: config.mensajes?.publicacion || "",
+        estiloMensaje: config.mensajes?.publicacion_meta?.estilo || "",
+        mensajeActivo: config.mensajes?.publicacion_meta?.activo !== false,
         avisoCierre: config.mensajes?.aviso_cierre || "",
         recordatorios: (config.recordatorios || []).map(r => ({ minutos: String(r.minutos_antes_cierre), texto: r.texto })),
         liberar: !!config.reservas?.liberar_no_pagados,
@@ -162,9 +170,15 @@ function aConfig(f: Form, disenoGuardado?: DisenoSorteo | null, inmediato = fals
         fecha_sorteo: f.fechaSorteo || (inmediato ? hoy : f.publicarEn ? f.publicarEn.slice(0, 10) : null),
         ...(inmediato ? { publicacion_inmediata: true } : {}),
         tabla: { reiniciar: f.reiniciarTabla, liberar_bloqueados: f.reiniciarTabla && f.liberarBloqueados },
-        sustituir_activo: f.sustituirActivo,
+        // Publicar siempre reemplaza al sorteo anterior (31/10); se envía
+        // para que un backend anterior haga lo mismo en el grupo.
+        sustituir_activo: true,
         diseno: formADiseno(f.diseno, disenoGuardado),
-        mensajes: { publicacion: f.mensajePublicacion, aviso_cierre: f.avisoCierre },
+        mensajes: {
+            publicacion: f.mensajePublicacion,
+            aviso_cierre: f.avisoCierre,
+            publicacion_meta: { ...(f.estiloMensaje ? { estilo: f.estiloMensaje } : {}), activo: f.mensajeActivo }
+        },
         recordatorios: f.recordatorios.map(r => ({ minutos_antes_cierre: Number(r.minutos), texto: r.texto })),
         reservas: { liberar_no_pagados: f.liberar, vencimiento_minutos: f.liberar ? Number(f.vencimiento) : null }
     };
@@ -231,6 +245,7 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
     const [errores, setErrores] = useState<ErrorCampo[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [guardando, setGuardando] = useState(false);
+    const [semillaMensaje, setSemillaMensaje] = useState(0);
 
     // Grupos: cada causa de una lista vacía se explica por separado (antes
     // cualquier fallo de la API acababa en «No tienes grupos autorizados»).
@@ -370,7 +385,12 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
         if (!p) return cambiar("plantillaId", "");
         // La plantilla aporta la configuración; grupos y fecha se eligen aquí.
         setForm(prev => desdeConfig(p.config, { plantillaId: id, grupos: prev.grupos, publicarEn: prev.publicarEn }));
+        // Una plantilla sin texto de mensaje toma el de su diseño.
+        setSemillaMensaje(n => n + 1);
     };
+
+    const valorMensaje: ValorMensaje = { texto: form.mensajePublicacion, estilo: form.estiloMensaje, activo: form.mensajeActivo };
+    const cambiarMensaje = (v: ValorMensaje) => setForm(prev => ({ ...prev, mensajePublicacion: v.texto, estiloMensaje: v.estilo, mensajeActivo: v.activo }));
 
     async function guardar() {
 
@@ -648,26 +668,30 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
                 </section>
 
                 <section className={styles.seccion}>
-                    <h3 className={styles.seccionTitulo}>Si el grupo tiene otro sorteo abierto</h3>
-                    <label className={styles.check}>
-                        <input type="checkbox" checked={form.sustituirActivo} onChange={e => cambiar("sustituirActivo", e.target.checked)} />
-                        Sustituir el sorteo activo al publicar
-                    </label>
-                    {inmediato ? (
-                        <p className={styles.ayuda}>
-                            Sin marcar, si el grupo tiene otro sorteo abierto no se puede publicar ahora (ciérralo o desactívalo antes desde «Administrar»). Marcado, al publicar el sorteo actual se cierra solo en ese grupo, sin mensaje de cierre y sin perder sus reservas ni pagos.
-                        </p>
-                    ) : (
+                    <h3 className={styles.seccionTitulo}>Si hay otro sorteo abierto</h3>
                     <p className={styles.ayuda}>
-                        Sin marcar, la publicación espera a que el sorteo actual del grupo cierre (también puedes cerrarlo o desactivarlo desde «Administrar»). Marcado, a la hora de publicar el sorteo actual se cierra solo en ese grupo, sin mensaje de cierre y sin perder sus reservas ni pagos.
+                        Una tabla = un sorteo. Al publicar, este sorteo reemplaza al que siga activo en la misma tabla (en todos sus grupos) y al que siga abierto en estos grupos. El anterior se cierra sin mensaje de cierre y sus reservas y pagos se conservan. La vista previa te dirá cuál se reemplazará.
                     </p>
-                    )}
                 </section>
 
                 <section className={styles.seccion}>
                     <h3 className={styles.seccionTitulo}>Publicación</h3>
-                    <Textarea label="Mensaje de publicación" optional rows={8} value={form.mensajePublicacion} onChange={e => cambiar("mensajePublicacion", e.target.value)} error={errorDe("mensajes")}
-                        hint="Vacío = plantilla por defecto. Variables: {{nombre}} {{hora}} {{hora_cierre}} {{valor}} {{premios}} {{cuentas}} {{cantidad}} {{fecha}}" />
+                    <SelectorMensaje
+                        valor={valorMensaje}
+                        onChange={cambiarMensaje}
+                        error={errorDe("mensajes")}
+                        sorteoNuevo={!edicion}
+                        semilla={semillaMensaje}
+                        datos={{
+                            nombre: form.nombre,
+                            hora_fin: form.horaFin,
+                            hora_cierre: form.horaCierre || null,
+                            valor: Number(form.valor) || 0,
+                            premios: form.premios.filter(p => p.nombre.trim()).map(p => ({ nombre: p.nombre, premio: Number(p.premio) || null, tipo: p.tipo })),
+                            fecha_sorteo: fechaSorteo || null,
+                            cuentas: form.cuentas
+                        }}
+                    />
                     <Textarea label="Aviso al cerrar" optional rows={3} value={form.avisoCierre} onChange={e => cambiar("avisoCierre", e.target.value)} hint="Se envía una vez cuando el sorteo se cierra. Vacío = no se envía." />
                 </section>
 

@@ -5,12 +5,11 @@
 //
 // Separado a propósito de consultarDisponibilidad.js (lo que se le dice al
 // cliente): esa lectura muestra la cuadrícula completa, también los números
-// ocupados por OTROS sorteos. Aquí se decide si ESTE sorteo terminó, y una
-// tabla llena solo por otro sorteo no lo termina (sería reemplazar un sorteo
-// vigente). Es exactamente el criterio de antes de la regla de veracidad:
+// ocupados. Aquí se decide si ESTE sorteo terminó. UNA TABLA = UN SORTEO
+// (31/10/2026): todo número de la cuadrícula del cliente es de su sorteo,
+// sin mirar identidad, evento ni grupo de la fila:
 //   lleno = ningún número libre en la cuadrícula del cliente y al menos uno
-//           ocupado por este sorteo (o por una fila sin identidad, dato
-//           previo a la migración 015).
+//           ocupado.
 //
 // -> true (lleno) | false | null (no se pudo leer: no se afirma nada).
 // ==========================================================================
@@ -25,7 +24,7 @@ async function sorteoSinNumerosLibres(evento) {
     const { data, error } = await soloDelCliente(
         supabase
             .from(evento.tabla)
-            .select("numero, estado, identidad_evento_real"),
+            .select("numero, estado"),
         evento
     );
 
@@ -38,10 +37,7 @@ async function sorteoSinNumerosLibres(evento) {
 
     if (filas.some(f => f.estado === "libre")) return false;
 
-    const identidad = evento.identidad_evento_real;
-
-    return filas.some(f => f.estado !== "libre" &&
-        (!identidad || !f.identidad_evento_real || f.identidad_evento_real === identidad));
+    return filas.some(f => f.estado !== "libre");
 
 }
 

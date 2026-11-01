@@ -13,9 +13,16 @@
 //
 // "Tabla real del sorteo" = filas de evento.tabla del tenant
 // (usuario_id = evento.usuario_id) — la cuadrícula que el panel crea por
-// usuario, ver frontend/services/tablas/reiniciarTabla.ts — restringidas a
-// la identidad del sorteo cuando se habla de reservas/pagos. Un número que
-// otro sorteo tiene ocupado no es "pagado" de este.
+// usuario, ver frontend/services/tablas/reiniciarTabla.ts.
+//
+// UNA TABLA = UN SORTEO (31/10/2026): todo número de la cuadrícula del
+// tenant pertenece al sorteo de esa tabla, se reservara desde el panel,
+// desde WhatsApp, desde otro grupo, «sin sorteo» o en un ciclo anterior
+// conservado. identidad_evento_real, evento_id y grupo_id de la fila son
+// historia/auditoría: nunca separan números de la misma tabla. Antes se
+// comparaba la identidad y un número reservado a mano «sin sorteo» o
+// conservado de otro ciclo quedaba como «ocupado por otro sorteo»: no
+// contaba en reservados/pagados ni dejaba cerrar el sorteo por pagos.
 // ==========================================================================
 
 const supabase = require("../../../lib/supabase");
@@ -86,27 +93,16 @@ async function leerTablaDelSorteo(evento) {
 
 }
 
-// ¿Esta fila pertenece a este sorteo? Por identidad; sin identidad en el
-// evento (dato previo a 015) o sin la columna, por evento_id como antes.
-function filaDelSorteo(fila, evento, sinIdentidad = false) {
-
-    return evento.identidad_evento_real && !sinIdentidad
-        ? fila.identidad_evento_real === evento.identidad_evento_real
-        : fila.evento_id === evento.id;
-
-}
-
-// Clasifica cada número ÚNICO del sorteo.
-//   pagado      -> tiene fila 'pagado' de ESTE sorteo y ninguna fila de este
-//                  sorteo en otro estado (duplicados inconsistentes nunca
-//                  cuentan como pagados).
-//   reservado   -> alguna fila de este sorteo en 'reservado'.
+// Clasifica cada número ÚNICO de la tabla del sorteo (todas sus filas son
+// del sorteo, ver arriba).
+//   pagado      -> todas sus filas 'pagado' (duplicados inconsistentes
+//                  nunca cuentan como pagados).
+//   reservado   -> alguna fila en 'reservado'.
 //   en_proceso / bloqueado -> estado físico de la cuadrícula del tenant.
-//   ocupado_otro_sorteo -> reservado/pagado por OTRA identidad.
 //   sin_registro -> el número no tiene fila en la cuadrícula: no se puede
 //                  reservar, así que nunca se cuenta como libre.
 //   libre       -> el resto.
-function clasificarNumeros(evento, filas, sinIdentidad = false) {
+function clasificarNumeros(evento, filas) {
 
     const esperados = numerosEsperados(evento);
     const porNumero = new Map(esperados.map(n => [n, []]));
@@ -120,18 +116,15 @@ function clasificarNumeros(evento, filas, sinIdentidad = false) {
 
     for (const [numero, filasNumero] of porNumero) {
 
-        const propias = filasNumero.filter(f => filaDelSorteo(f, evento, sinIdentidad));
-        const estadosPropios = new Set(propias.map(f => f.estado));
-        const estadosFisicos = new Set(filasNumero.map(f => f.estado));
+        const estados = new Set(filasNumero.map(f => f.estado));
 
         let clase;
 
         if (filasNumero.length === 0) clase = "sin_registro";
-        else if (estadosPropios.size === 1 && estadosPropios.has("pagado")) clase = "pagado";
-        else if (estadosPropios.has("reservado")) clase = "reservado";
-        else if (estadosFisicos.has("en_proceso")) clase = "en_proceso";
-        else if (estadosFisicos.has("bloqueado")) clase = "bloqueado";
-        else if (filasNumero.some(f => !filaDelSorteo(f, evento, sinIdentidad) && (f.estado === "reservado" || f.estado === "pagado"))) clase = "ocupado_otro_sorteo";
+        else if (estados.size === 1 && estados.has("pagado")) clase = "pagado";
+        else if (estados.has("reservado")) clase = "reservado";
+        else if (estados.has("en_proceso")) clase = "en_proceso";
+        else if (estados.has("bloqueado")) clase = "bloqueado";
         else clase = "libre";
 
         clasificacion.set(numero, clase);
@@ -144,7 +137,7 @@ function clasificarNumeros(evento, filas, sinIdentidad = false) {
 
 function resumir(evento, clasificacion) {
 
-    const conteo = { pagado: 0, reservado: 0, en_proceso: 0, bloqueado: 0, ocupado_otro_sorteo: 0, sin_registro: 0, libre: 0 };
+    const conteo = { pagado: 0, reservado: 0, en_proceso: 0, bloqueado: 0, sin_registro: 0, libre: 0 };
 
     for (const clase of clasificacion.values()) conteo[clase] = (conteo[clase] || 0) + 1;
 
@@ -156,7 +149,6 @@ function resumir(evento, clasificacion) {
         reservados: conteo.reservado,
         enProceso: conteo.en_proceso,
         bloqueados: conteo.bloqueado,
-        ocupadosOtroSorteo: conteo.ocupado_otro_sorteo,
         sinRegistro: conteo.sin_registro,
         libres: conteo.libre,
         // Completo SOLO con todos los números únicos pagados (y al menos uno).
@@ -173,7 +165,7 @@ async function estadoDelSorteo(evento) {
 
     if (!lectura.ok) return { ok: false, error: lectura.error, completo: false };
 
-    const clasificacion = clasificarNumeros(evento, lectura.filas, lectura.sinIdentidad);
+    const clasificacion = clasificarNumeros(evento, lectura.filas);
 
     return { ok: true, ...resumir(evento, clasificacion), clasificacion };
 

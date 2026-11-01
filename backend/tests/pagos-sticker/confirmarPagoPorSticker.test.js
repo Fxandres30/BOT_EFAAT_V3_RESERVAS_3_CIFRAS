@@ -525,28 +525,27 @@ async function ejecutarPruebas() {
     });
 
     // ======================================================================
-    // CASO 10 — cliente con reservas en OTRO evento
+    // CASO 10 — UNA TABLA = UN SORTEO (31/10/2026): reservas del cliente en
+    // la MISMA tabla con otro evento, sin evento (manual «sin sorteo») o con
+    // otra identidad se pagan juntas; otra tabla u otro tenant, nunca.
     // ======================================================================
 
-    await test("CASO 10: cliente tiene reservas en otro evento -> no se tocan", async () => {
+    await test("CASO 10: reservas del cliente en la misma tabla con otro evento/sin evento se pagan; otra tabla u otro tenant no", async () => {
 
         const { fake, envios, confirmarPagoPorSticker } = cargarModulos();
         sembrarEscenario(fake);
 
-        // Reserva del MISMO cliente pero en un evento_id distinto (misma
-        // tabla física, reutilizada entre ciclos — mismo criterio que
-        // reservarNumeros.js: evento_id es lo que distingue el ciclo).
-        fake.tabla("reservas_test_precio5").push({
-
-            numero: "88",
-            estado: "reservado",
-            usuario_global_id: "cliente-1",
-            usuario_id: USUARIO_ID_TENANT,
-            evento_id: "evento-VIEJO",
-            comprador: "Cliente Uno",
-            contacto: "3000000002"
-
+        const reserva = (numero, extra) => ({
+            numero, estado: "reservado", usuario_global_id: "cliente-1", usuario_id: USUARIO_ID_TENANT,
+            comprador: "Cliente Uno", contacto: "3000000002", ...extra
         });
+
+        fake.tabla("reservas_test_precio5").push(
+            reserva("88", { evento_id: "evento-VIEJO", identidad_evento_real: "hash-viejo" }),  // otro ciclo
+            reserva("89", { evento_id: null, identidad_evento_real: null, grupo_id: null }),      // manual «sin sorteo»
+            reserva("90", { usuario_id: "otro-tenant" })                                          // otra cuadrícula
+        );
+        fake.tabla("reservas_otra_tabla").push(reserva("27", { evento_id: "evento-otra-tabla" }));
 
         const sock = crearFakeSock();
         const msg = crearMensajeSticker({ remitenteJid: JID_ADMIN, quotedParticipant: JID_CLIENTE_1 });
@@ -556,15 +555,16 @@ async function ejecutarPruebas() {
 
         const filas = filasDe(fake, "reservas_test_precio5");
 
-        // La del evento ACTIVO sí se paga...
-        assert.strictEqual(filas.find(f => f.numero === "27").estado, "pagado");
-
-        // ...la del evento VIEJO se queda exactamente como estaba.
-        assert.strictEqual(filas.find(f => f.numero === "88").estado, "reservado");
+        for (const n of ["27", "88", "89"]) {
+            assert.strictEqual(filas.find(f => f.numero === n && f.usuario_id === USUARIO_ID_TENANT).estado, "pagado", n);
+        }
+        assert.strictEqual(filas.find(f => f.numero === "90").estado, "reservado", "otro tenant: intacto");
+        assert.strictEqual(filasDe(fake, "reservas_otra_tabla")[0].estado, "reservado", "otra tabla: intacta");
+        // El origen se conserva para auditoría.
+        assert.strictEqual(filas.find(f => f.numero === "88").evento_id, "evento-VIEJO");
 
         const actividad = filasDe(fake, "reservas_actividad");
-        assert.strictEqual(actividad.length, 1);
-        assert.strictEqual(actividad[0].numero, "27");
+        assert.deepStrictEqual(actividad.map(a => a.numero).sort(), ["27", "88", "89"]);
 
     });
 

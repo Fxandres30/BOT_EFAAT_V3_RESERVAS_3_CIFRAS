@@ -8,8 +8,12 @@ const { reconciliarAperturaGrupo } = require("../grupos/reconciliarApertura");
 // (solo tras confirmar apertura), aplicado aquí a la ruta de reconciliación.
 const { escanearGrupo } = require("../../usuarios/escanerIdentidadesLifecycle");
 const { verificarHoraCierre } = require("../lifecycle/verificarHoraCierre");
+const { finDelEvento } = require("../../../../shared/eventos/estadosGestion");
 
-async function workerEventos(sock) {
+// ahora: reloj inyectable (pruebas); en producción, el momento del tick.
+async function workerEventos(sock, { ahora } = {}) {
+
+    const momento = () => ahora || new Date();
 
     try {
 
@@ -62,8 +66,11 @@ async function workerEventos(sock) {
 
         }
 
-        // Resguardo por si la consulta devolviera algo ajeno.
-        const delTenant = (eventos || []).filter(e => e.usuario_id === tenant && autorizados.has(e.grupo_id));
+        // Resguardo por si la consulta devolviera algo ajeno. Una fila ya
+        // terminada (cierre_estado "cerrado", cancelada, desactivada...) que
+        // un reintento antiguo dejó con activo=true no es un sorteo en curso:
+        // ni se reabre su grupo ni se vuelve a cerrar.
+        const delTenant = (eventos || []).filter(e => e.usuario_id === tenant && autorizados.has(e.grupo_id) && !finDelEvento(e));
 
         // ============================================================
         // RECONCILIACIÓN DE APERTURA
@@ -82,7 +89,7 @@ async function workerEventos(sock) {
 
         for (const evento of delTenant) {
 
-            if (evento.abierto === false && !verificarHoraCierre(evento)) {
+            if (evento.abierto === false && !verificarHoraCierre(evento, momento())) {
 
                 if (!pendientesPorGrupo.has(evento.grupo_id)) pendientesPorGrupo.set(evento.grupo_id, []);
                 pendientesPorGrupo.get(evento.grupo_id).push(evento);
@@ -108,7 +115,7 @@ async function workerEventos(sock) {
                     // de cierre. Si ya se cruzó, NO marcar abierto=true:
                     // el bucle de cierre de abajo (sin cambios) lo va a
                     // cerrar de inmediato de todas formas.
-                    if (verificarHoraCierre(evento)) {
+                    if (verificarHoraCierre(evento, momento())) {
 
                         console.log(`⏭️ Evento ${evento.id}: el grupo está abierto en WhatsApp pero el evento ya venció mientras esperaba turno en la cola — lo procesa el cierre normal.`);
                         continue;
@@ -173,7 +180,9 @@ async function workerEventos(sock) {
 
                 await procesarSorteo({
                     sock,
-                    filas
+                    filas,
+                    todas: delTenant,
+                    ahora: momento().getTime()
                 });
 
             } catch (error) {

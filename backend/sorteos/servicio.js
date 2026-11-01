@@ -14,12 +14,17 @@
 
 const repo = require("./repo");
 const loterias = require("./loterias");
-const { validarSorteo, validarPlantilla, fechaSorteoDe, instanteBogota, identidadDelSorteo } = require("./validar");
+const { validarSorteo, validarPlantilla, fechaSorteoDe, instanteBogota, identidadDelSorteo, normalizarPremios, texto: textoLimpio, LIMITES } = require("./validar");
 const { normalizarConfigDiseno } = require("./disenoTabla");
 const reinicioTabla = require("./reinicioTabla");
 const reservasAnticipadas = require("./reservasAnticipadas");
 const tablaEvento = require("../automation/repo/tablaEvento");
-const { mensajePublicacion, mensajeRecordatorio, mensajeAvisoCierre, VARIABLES } = require("./mensajes");
+const { mensajePublicacion, mensajeRecordatorio, mensajeAvisoCierre, VARIABLES, LIMITE_MENSAJE, consolidarMensajes, generar, variablesDesconocidas } = require("./mensajes");
+const { ESTILOS, esEstilo, plantillaDe } = require("./estilosMensaje");
+const preferenciasMensaje = require("./preferenciasMensaje");
+const { calcularCierre } = require("../bot/funciones/eventos/extractor/calcularCierre");
+const supabase = require("../lib/supabase");
+const { sorteosQueOcupanLaTabla } = require("../shared/eventos/unSorteoPorTabla");
 const { revisarTabla, revisarGrupo, cierresDeIdentidades, legible } = require("./disponibilidad");
 
 // ¿El reinicio que HOY no es posible lo será al publicar? Solo si lo único
@@ -82,8 +87,9 @@ async function resolverDiseno(usuarioId, eleccion, precio) {
 }
 
 // Valida todo lo que depende de datos del cliente: grupos autorizados,
-// cuentas activas propias y plantilla propia.
-async function prepararSorteo(usuarioId, entrada) {
+// cuentas activas propias y plantilla propia. `anterior`: el sorteo que se
+// edita (su mensaje guardado se conserva si el panel no lo cambia).
+async function prepararSorteo(usuarioId, entrada, anterior = null) {
 
     const v = validarSorteo(entrada, { ahora: reloj.ahora() });
     const errores = [...v.errores];
@@ -126,14 +132,30 @@ async function prepararSorteo(usuarioId, entrada) {
     if (!diseno.ok) return diseno;
     if (diseno.error) errores.push(diseno.error);
 
-    if (errores.length) return falla("validacion", { errores });
+    // Mensaje de publicación: SIEMPRE se guarda el texto (vacío = plantilla
+    // del estilo; un sorteo nuevo sin estilo usa el predeterminado de la
+    // cuenta). Al editar se conserva el guardado y su revisión.
+    const sinEstilo = !v.config.mensajes.publicacion_meta?.estilo && !anterior;
+    const mensajes = consolidarMensajes(v.config.mensajes, anterior?.config?.mensajes || null, {
+        ahora: reloj.ahora(),
+        estiloPorDefecto: sinEstilo ? await preferenciasMensaje.estiloPredeterminado(usuarioId) : null
+    });
 
     // Las cuentas se COPIAN: editarlas después no altera este sorteo.
     const cuentasSnapshot = v.config.cuentas
         .map(id => cuentas.data.find(c => c.id === id))
+        .filter(Boolean)
         .map(({ id, nombre, tipo, titular, numero, instrucciones }) => ({ id, nombre, tipo, titular, numero, instrucciones }));
 
-    const config = { ...v.config, diseno: diseno.diseno, cantidad_numeros: tablaCliente.cantidad };
+    // El límite vale para el mensaje YA GENERADO con los datos reales.
+    const generado = generar(mensajes.publicacion, { ...v.config, cantidad_numeros: tablaCliente?.cantidad }, cuentasSnapshot, { fecha: v.config.fecha_sorteo });
+    if (generado.excede) {
+        errores.push({ campo: "mensajes", mensaje: `Con los datos del sorteo el mensaje ocupa ${generado.longitud} caracteres y el máximo es ${LIMITE_MENSAJE}. Acórtalo o usa un diseño más compacto.` });
+    }
+
+    if (errores.length) return falla("validacion", { errores });
+
+    const config = { ...v.config, mensajes, diseno: diseno.diseno, cantidad_numeros: tablaCliente.cantidad };
 
     return {
         ok: true,
@@ -197,6 +219,8 @@ async function vistaPrevia(usuarioId, id) {
         ...(avisoCierre?.desconocidas || [])
     ]);
     if (desconocidas.size) avisos.push(`Variables desconocidas que se enviarán tal cual: ${[...desconocidas].map(v => `{{${v}}}`).join(", ")}.`);
+    if (!publicacion.activo) avisos.push("El mensaje de publicación está DESACTIVADO: se publicará solo la imagen de la tabla, sin texto. Su contenido sigue guardado; actívalo editando el sorteo.");
+    if (publicacion.excede) avisos.push(`El mensaje ocupa ${publicacion.longitud} caracteres (máximo ${LIMITE_MENSAJE}): se recortará al publicar. Edita el sorteo y acórtalo.`);
 
     // Sin cuenta de pago los clientes no saben dónde pagar: no se programa.
     if (!sorteo.cuentas_snapshot?.length) bloqueos.push("Selecciona al menos una cuenta de pago (puedes crearla desde el formulario del sorteo).");
@@ -264,13 +288,12 @@ async function vistaPrevia(usuarioId, id) {
         const r = await revisarGrupo({
             usuarioId, grupoId: g.grupo_id, identidad: sorteo.identidad_evento_real, autorizados: setAutorizados,
             publicarEn, ahora: reloj.ahora(), sorteoId: sorteo.id, cierreNuevo,
-            sustituir: sorteo.config.sustituir_activo === true
+            // Publicar otro sorteo SIEMPRE reemplaza al anterior (31/10).
+            sustituir: true
         });
-        // Instantáneo con «Sustituir»: el sorteo abierto del grupo se cierra
-        // AL PUBLICAR (publicador), no hay que esperar a nada: se puede
-        // publicar ya, avisando de la sustitución.
-        const sustituyeAhora = sorteo.config.publicacion_inmediata === true && sorteo.config.sustituir_activo === true
-            && !r.bloqueo && !!r.espera && (r.conflictos || []).length > 0;
+        // El sorteo propio abierto del grupo se cierra AL PUBLICAR
+        // (publicador): no hay que esperar a nada, se avisa del reemplazo.
+        const sustituyeAhora = !r.bloqueo && !!r.espera && (r.conflictos || []).length > 0;
         grupos.push({
             grupo_id: g.grupo_id,
             nombre: g.grupo_nombre,
@@ -285,6 +308,22 @@ async function vistaPrevia(usuarioId, id) {
         });
         if (r.bloqueo) bloqueos.push(`${g.grupo_nombre || g.grupo_id}: ${r.bloqueo}`);
         if (sustituyeAhora) avisos.push(`${g.grupo_nombre || g.grupo_id}: ${r.espera}`);
+    }
+
+    // UNA TABLA = UN SORTEO: el sorteo que hoy ocupa esta tabla (en
+    // cualquier grupo) se reemplazará al publicar en TODOS sus grupos.
+    const ocupan = await sorteosQueOcupanLaTabla(supabase, { usuarioId, tabla: sorteo.tabla, identidad: sorteo.identidad_evento_real });
+    if (ocupan.ok && ocupan.filas.length) {
+        const porSorteo = new Map();
+        for (const f of ocupan.filas) {
+            const k = f.identidad_evento_real || `evento:${f.id}`;
+            if (!porSorteo.has(k)) porSorteo.set(k, []);
+            porSorteo.get(k).push(f);
+        }
+        for (const filas of porSorteo.values()) {
+            const nombre = `${filas[0].nombre_evento || "sin nombre"} ${filas[0].hora_fin ? String(filas[0].hora_fin).slice(0, 5) : ""}`.trim();
+            avisos.push(`Esta tabla tiene activo «${nombre}» en ${filas.length} grupo(s). Al publicar, si sigue activo, se reemplazará en todos ellos: se cierra sin mensaje de cierre y sus reservas y pagos se conservan (al ser la misma tabla, cuentan en este sorteo).`);
+        }
     }
 
     const estadoPublicacion = bloqueos.length
@@ -315,6 +354,9 @@ async function vistaPrevia(usuarioId, id) {
                 reiniciado_en: sorteo.config.tabla?.reiniciado_en || null
             },
             publicacion: publicacion.texto,
+            // Inactivo: el texto se conserva pero se publica solo la imagen.
+            publicacion_activa: publicacion.activo,
+            publicacion_estilo: publicacion.estilo,
             recordatorios: recordatorios.map(r => ({ minutos_antes_cierre: r.minutos_antes_cierre, texto: r.texto })),
             aviso_cierre: avisoCierre?.texto || null,
             tabla: tabla.resumen,
@@ -593,7 +635,7 @@ async function editar(usuarioId, id, entrada = {}) {
     if (actual.data.grupos.some(g => !["pendiente", "cancelado"].includes(g.estado))) return falla("ya_publicado");
     if (Number(entrada.version) !== actual.data.version) return falla("version_cambiada", { version_actual: actual.data.version });
 
-    const p = await prepararSorteo(usuarioId, entrada);
+    const p = await prepararSorteo(usuarioId, entrada, actual.data);
     if (!p.ok) return p;
 
     // Con reservas anticipadas, nada que cambie a qué sorteo o tabla
@@ -692,6 +734,122 @@ async function actualizarPlantilla(usuarioId, id, entrada) {
     return repo.actualizarPlantilla(usuarioId, id, { nombre: v.nombre, config: v.config });
 }
 
+// ------------------------------------------- mensajes de publicación ---
+
+// Datos de muestra para las miniaturas de la galería de estilos.
+const DATOS_EJEMPLO = {
+    config: {
+        nombre: "Lotería de Medellín",
+        hora_fin: "22:30",
+        hora_cierre: "22:00",
+        valor: 5000,
+        cantidad_numeros: 100,
+        premios: [
+            { nombre: "Premio mayor", premio: 1000000 },
+            { nombre: "Dos últimas cifras", premio: 200000 },
+            { nombre: "Bono sorpresa", premio: null }
+        ]
+    },
+    cuentas: [
+        { nombre: "Nequi", numero: "300 123 4567", titular: "Ana Pérez" },
+        { nombre: "Daviplata", numero: "310 765 4321" }
+    ],
+    fecha: "2026-10-30"
+};
+
+// Catálogo de estilos + el predeterminado DE ESTA cuenta.
+async function estilosMensaje(usuarioId) {
+    const pref = await preferenciasMensaje.obtener(usuarioId);
+    return {
+        ok: true,
+        data: {
+            estilos: ESTILOS.map(e => ({
+                id: e.id,
+                nombre: e.nombre,
+                descripcion: e.descripcion,
+                plantilla: e.plantilla,
+                ejemplo: generar(e.plantilla, DATOS_EJEMPLO.config, DATOS_EJEMPLO.cuentas, { fecha: DATOS_EJEMPLO.fecha }).texto
+            })),
+            variables: VARIABLES,
+            predeterminado: pref.data.estilo,
+            // false = falta la migración 042: no se puede guardar la preferencia.
+            preferencias_disponibles: pref.data.disponible,
+            limite: LIMITE_MENSAJE
+        }
+    };
+}
+
+const guardarEstiloPredeterminado = (usuarioId, entrada = {}) => preferenciasMensaje.guardar(usuarioId, entrada.estilo);
+
+// Cuentas para generar un mensaje: ids de cuentas PROPIAS (activas o no:
+// un sorteo en curso puede usar una que ya se desactivó) o, para la copia
+// guardada en un sorteo, sus datos.
+async function cuentasParaMensaje(usuarioId, lista) {
+    const entrada = Array.isArray(lista) ? lista.slice(0, LIMITES.cuentas) : [];
+    const ids = entrada.filter(c => typeof c === "string");
+    let propias = [];
+    if (ids.length) {
+        const r = await repo.listarCuentas(usuarioId);
+        if (!r.ok) return r;
+        propias = r.data;
+    }
+    const cuentas = entrada.map(c => typeof c === "string"
+        ? propias.find(p => p.id === c)
+        : c && typeof c === "object"
+            ? { nombre: textoLimpio(c.nombre, 80), numero: textoLimpio(c.numero, 60), titular: textoLimpio(c.titular, 120) || null, instrucciones: textoLimpio(c.instrucciones, 500) || null }
+            : null
+    ).filter(c => c?.nombre);
+    return { ok: true, data: cuentas };
+}
+
+// Vista previa del formulario: el MISMO generador que el publicador, con
+// los datos que el administrador está editando.
+// entrada: { estilo?, texto?, datos: { nombre, hora_fin, hora_cierre, valor, premios, fecha_sorteo, cuentas, cantidad_numeros? } }
+async function generarMensaje(usuarioId, entrada = {}) {
+
+    const estilo = esEstilo(entrada.estilo) ? entrada.estilo : null;
+    const escrito = textoLimpio(entrada.texto, LIMITES.mensaje);
+    const plantilla = escrito || plantillaDe(estilo);
+    const d = entrada.datos && typeof entrada.datos === "object" ? entrada.datos : {};
+
+    const cuentas = await cuentasParaMensaje(usuarioId, d.cuentas);
+    if (!cuentas.ok) return cuentas;
+
+    const valor = Number(String(d.valor ?? "").replace(/[^\d]/g, "")) || 0;
+    let cantidad = Number(d.cantidad_numeros) || null;
+    if (!cantidad && valor) {
+        try { cantidad = (await tablasCliente.obtenerConfiguracionCliente(usuarioId, valor))?.cantidad || null; } catch { /* sin rango */ }
+    }
+
+    const horaFin = textoLimpio(d.hora_fin, 8);
+    const horaCierre = textoLimpio(d.hora_cierre, 8) || (/^\d{2}:\d{2}/.test(horaFin) ? calcularCierre(horaFin.slice(0, 5)) : "");
+    const config = {
+        nombre: textoLimpio(d.nombre, LIMITES.nombre),
+        hora_fin: horaFin,
+        hora_cierre: horaCierre,
+        valor,
+        premios: normalizarPremios(d.premios),
+        cantidad_numeros: cantidad
+    };
+    const fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(d.fecha_sorteo || "")) ? d.fecha_sorteo : "";
+
+    const r = generar(plantilla, config, cuentas.data, { fecha });
+
+    return {
+        ok: true,
+        data: {
+            estilo,
+            plantilla,
+            texto: r.texto,
+            desconocidas: variablesDesconocidas(plantilla),
+            longitud: r.longitud,
+            excede: r.excede,
+            limite: LIMITE_MENSAJE
+        }
+    };
+
+}
+
 // ------------------------------------------------------ cuentas de pago ---
 
 const TIPOS_CUENTA = new Set(["nequi", "daviplata", "bancolombia", "llave", "otro"]);
@@ -787,5 +945,8 @@ module.exports = {
     crearCuenta,
     actualizarCuenta,
     perfilCapturaValido,
+    estilosMensaje,
+    guardarEstiloPredeterminado,
+    generarMensaje,
     _reloj: reloj
 };

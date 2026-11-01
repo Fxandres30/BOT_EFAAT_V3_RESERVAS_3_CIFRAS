@@ -394,10 +394,10 @@ prueba("F2-13. integración con el cierre (Fase 1): sorteo manual en 3 grupos, 1
     fake.tablas[TABLA].filter(f => f.usuario_id === A).forEach((f, i) => Object.assign(f, {
         estado: i === 0 ? "reservado" : "pagado", identidad_evento_real: s.identidad_evento_real, evento_id: fake.tablas.eventos_bot[i % 3].id
     }));
-    await workerEventos(sock);
+    await workerEventos(sock, { ahora: EN_PUBLICACION });
     assert.ok(fake.tablas.eventos_bot.every(e => e.activo), "99/100: no cierra");
     fake.tablas[TABLA].find(f => f.usuario_id === A && f.numero === "00").estado = "pagado";
-    await workerEventos(sock);
+    await workerEventos(sock, { ahora: EN_PUBLICACION });
     assert.ok(fake.tablas.eventos_bot.every(e => !e.activo && e.estado === "cerrado"), "100/100: cierra los 3 grupos");
     assert.strictEqual(ajustes.filter(a => a.ajuste === "announcement").length, 3);
 });

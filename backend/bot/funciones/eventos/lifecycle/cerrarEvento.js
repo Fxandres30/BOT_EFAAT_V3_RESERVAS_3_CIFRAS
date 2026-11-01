@@ -64,7 +64,9 @@ async function registrarFalloCierre(fila, error) {
 // este cambio, sin ninguna diferencia de comportamiento para un evento sin
 // hermanos (el caso de siempre).
 // ==========================================================================
-async function cerrarFilaDeEvento({ sock, fila, motivo }) {
+// cerrarGrupo=false: solo se marca la fila (su grupo de WhatsApp ya es de
+// otro sorteo vigente, ver procesarSorteo.js).
+async function cerrarFilaDeEvento({ sock, fila, motivo, cerrarGrupo = true }) {
 
     if (!fila) return false;
 
@@ -83,21 +85,25 @@ async function cerrarFilaDeEvento({ sock, fila, motivo }) {
     // Sigue con activo=true y el worker lo reintenta en el próximo ciclo
     // (cerrarGrupo/groupSettingUpdate es idempotente).
 
-    let resultado = { ok: false, error: null };
+    let resultado = cerrarGrupo ? { ok: false, error: null } : { ok: true };
 
-    try {
+    if (cerrarGrupo) {
 
-        resultado = await cerrarGrupoDetallado({
-            sock,
-            grupoId: fila.grupo_id
-        });
+        try {
 
-    } catch (error) {
+            resultado = await cerrarGrupoDetallado({
+                sock,
+                grupoId: fila.grupo_id
+            });
 
-        console.log("❌ Error cerrando grupo");
-        console.dir(error, { depth: null });
+        } catch (error) {
 
-        resultado = { ok: false, error: error?.message || String(error) };
+            console.log("❌ Error cerrando grupo");
+            console.dir(error, { depth: null });
+
+            resultado = { ok: false, error: error?.message || String(error) };
+
+        }
 
     }
 
@@ -124,7 +130,10 @@ async function cerrarFilaDeEvento({ sock, fila, motivo }) {
 
     };
 
-    let { error } = await supabase
+    // Condicionado a activo=true: si entretanto otro proceso ya la cerró o la
+    // administración la canceló/desactivó, NO se reescribe (nunca se cierra
+    // dos veces ni un «cancelado» pasa a «cerrado»).
+    let { data, error } = await supabase
         .from("eventos_bot")
         .update({
             ...cierreBase,
@@ -134,11 +143,13 @@ async function cerrarFilaDeEvento({ sock, fila, motivo }) {
             cierre_ultimo_intento_en: new Date().toISOString(),
             cerrado_en: new Date().toISOString()
         })
-        .eq("id", fila.id);
+        .eq("id", fila.id)
+        .eq("activo", true)
+        .select("id");
 
     // Sin la migración 023: se guarda exactamente lo de siempre.
     if (error?.code === COLUMNA_INEXISTENTE) {
-        ({ error } = await supabase.from("eventos_bot").update(cierreBase).eq("id", fila.id));
+        ({ data, error } = await supabase.from("eventos_bot").update(cierreBase).eq("id", fila.id).eq("activo", true).select("id"));
     }
 
     if (error) {
@@ -147,6 +158,16 @@ async function cerrarFilaDeEvento({ sock, fila, motivo }) {
         console.dir(error, { depth: null });
 
         return false;
+
+    }
+
+    fila.activo = false;
+
+    if (!data?.length) {
+
+        console.log(`ℹ️ Evento ${fila.id}: ya estaba cerrado o gestionado por otro proceso — no se reescribe.`);
+
+        return true;
 
     }
 

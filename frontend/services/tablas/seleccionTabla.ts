@@ -15,21 +15,20 @@ export function numerosLibres(numeros: Numero[]): string[] {
 }
 
 /**
- * ¿El número está ocupado (reservado/pagado) por un sorteo que NO es el
- * activo de la tabla? Se compara la identidad del sorteo, como el backend
- * (un sorteo en varios grupos tiene un evento por grupo y una identidad).
- * Sin sorteo activo, o sin datos para saberlo, se trata como de otro
- * sorteo: en un lote solo entra si el administrador lo incluye.
+ * ¿El número ocupado (reservado/pagado) queda fuera del sorteo activo de
+ * este precio? UNA TABLA = UN SORTEO: con un sorteo activo del precio,
+ * todos los números de la tabla son suyos, se reservaran desde el panel,
+ * WhatsApp, cualquier grupo o «sin sorteo» (identidad y evento de la fila
+ * son solo historia). Solo sin sorteo activo del precio (null) queda fuera:
+ * en un lote entra si el administrador lo incluye. Misma regla que el
+ * backend (reservaManual.deOtroSorteo).
  */
 export function esDeOtroSorteo(
-    numero: { estado: string; identidad_evento_real?: string | null; evento_id?: string | null },
-    activo: { id: string; identidad_evento_real?: string | null } | null
+    numero: { estado: string },
+    activo: { id: string } | null
 ): boolean {
     if (numero.estado !== "reservado" && numero.estado !== "pagado") return false;
-    if (!activo) return true;
-    if (numero.identidad_evento_real && activo.identidad_evento_real) return numero.identidad_evento_real !== activo.identidad_evento_real;
-    if (numero.evento_id) return numero.evento_id !== activo.id;
-    return true;
+    return !activo;
 }
 
 /** Une la selección actual con `nuevos` sin repetir (orden de la tabla). */
