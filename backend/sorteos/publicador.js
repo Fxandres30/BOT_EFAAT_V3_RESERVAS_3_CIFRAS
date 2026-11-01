@@ -40,7 +40,7 @@ const { partesBogota, instanteBogota, fechaSorteoDe, identidadDelSorteo } = requ
 const { decidirRecordatoriosSegunEstado } = require("../automation/eventRules");
 const { leerEstadoParaRecordatorios } = require("../automation/repo/estadoSorteo");
 const { cierreSilencioso, finDelEvento } = require("../shared/eventos/estadosGestion");
-const { sorteosQueOcupanLaTabla, filasPorId, reemplazarAnteriores, revertirReemplazo } = require("../shared/eventos/unSorteoPorTabla");
+const { sorteosActivosDelPrecio, filasPorId, reemplazarAnteriores, revertirReemplazo } = require("../shared/eventos/unSorteoPorPrecio");
 
 // ¿Otra cuenta tiene un sorteo activo en el grupo? (lo que revisarGrupo
 // comprueba después de los sorteos propios).
@@ -228,14 +228,15 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
     if (finDelEvento(releido.data)) return eventoTerminado(finDelEvento(releido.data));
     const eventoAnterior = releido.data;
 
-    // UNA TABLA = UN SORTEO: el sorteo anterior de esta tabla se reemplaza en
-    // TODOS sus grupos, y el sorteo propio de otra tabla que seguía abierto en
-    // ESTE grupo, aquí. Antes de guardar el nuevo (la 043 rechaza dos activos);
-    // si el nuevo no se guarda, se deshace.
+    // UN SORTEO POR PRECIO (01/11): el sorteo anterior del MISMO precio se
+    // reemplaza en TODOS sus grupos; el sorteo propio de otro precio que
+    // seguía abierto en ESTE grupo, solo aquí (un sorteo vigente por grupo).
+    // Antes de guardar el nuevo (la 043 rechaza dos activos del mismo
+    // precio); si el nuevo no se guarda, se deshace.
     const motivoReemplazo = `sustituido por el sorteo ${config.nombre || ""} ${config.hora_fin || ""}`.trim();
-    const ocupan = await sorteosQueOcupanLaTabla(deps.supabase, { usuarioId, tabla: sorteo.tabla, identidad: sorteo.identidad_evento_real, excepto: eventoAnterior?.id ? [eventoAnterior.id] : [] });
+    const ocupan = await sorteosActivosDelPrecio(deps.supabase, { usuarioId, valor: config.valor, identidad: sorteo.identidad_evento_real, excepto: eventoAnterior?.id ? [eventoAnterior.id] : [] });
     const delGrupoCompletas = await filasPorId(deps.supabase, usuarioId, delGrupo.map(f => f.id).filter(id => !(ocupan.filas || []).some(o => o.id === id)));
-    if (!ocupan.ok || !delGrupoCompletas.ok) return { estado: "fallido", ultimo_error: "No se pudo revisar el sorteo anterior de la tabla; no se publicó. Se reintentará." };
+    if (!ocupan.ok || !delGrupoCompletas.ok) return { estado: "fallido", ultimo_error: "No se pudo revisar el sorteo anterior de este precio; no se publicó. Se reintentará." };
     const reemplazo = await reemplazarAnteriores(deps.supabase, { usuarioId, filas: [...ocupan.filas, ...delGrupoCompletas.filas], motivo: motivoReemplazo, ahora });
     if (!reemplazo.ok) return { estado: "fallido", ultimo_error: `No se pudo reemplazar el sorteo anterior (${reemplazo.error?.message || "error"}); no se publicó. Se reintentará.` };
 

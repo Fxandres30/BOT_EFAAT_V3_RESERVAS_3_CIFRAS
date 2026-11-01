@@ -168,8 +168,10 @@ prueba("1. clasificación: solo los reservados se envían a pagar; libre, pagado
     sembrar();
     const { incluidos, excluidos } = clasificarOperacion(estadoActual(), ["06", "01", "00", "07", "03", "01", "99"], "pagar", { incluirOtroSorteo: true });
     assert.deepStrictEqual(incluidos.map(n => n.numero), ["01", "03"]);
-    // Sin marcarlo expresamente, el 03 (anticipada de otro sorteo) queda fuera.
-    assert.deepStrictEqual(clasificarOperacion(estadoActual(), ["01", "03"], "pagar").incluidos.map(n => n.numero), ["01"]);
+    // Pagar no depende del sorteo (regla 1/11/2026): el 03 (anticipada de
+    // otro sorteo) entra sin marcarlo; solo liberar pide incluirlo.
+    assert.deepStrictEqual(clasificarOperacion(estadoActual(), ["01", "03"], "pagar").incluidos.map(n => n.numero), ["01", "03"]);
+    assert.deepStrictEqual(clasificarOperacion(estadoActual(), ["01", "03"], "liberar").incluidos.map(n => n.numero), ["01"]);
     assert.deepStrictEqual(excluidos.map(x => x.numero), ["00", "06", "07", "99"]);
     assert.match(excluidos.find(x => x.numero === "00").motivo, /libre/);
     assert.match(excluidos.find(x => x.numero === "06").motivo, /pagado/);
@@ -195,7 +197,7 @@ prueba("2. lote mixto: bot, manual sin teléfono, anticipada sin evento y sin no
     assert.strictEqual(JSON.stringify(fake.tablas[T].filter(f => f.usuario_id === B)), deB, "el otro cliente no cambia");
     assert.strictEqual(llamadas.length, 1, "UNA solicitud para los 4 números");
     assert.deepStrictEqual([llamadas[0].numeros, llamadas[0].solicitudId], [["01", "02", "03", "04"], "lote-1"]);
-    assert.deepStrictEqual(llamadas[0].otrosSorteoAutorizados, ["03"], "la anticipada va autorizada expresamente");
+    assert.ok(!("otrosSorteoAutorizados" in llamadas[0]), "pagar ya no necesita autorizar la anticipada");
     const actividad = fake.tablas.reservas_actividad.filter(a => a.tipo === "pagado").map(a => a.numero).sort();
     assert.deepStrictEqual(actividad, ["01", "02", "03", "04"], "una actividad de pago por número");
     const metodos = fake.tablas.reservas_auditoria.filter(a => a.accion === "pagar" && a.resultado === "ok").map(a => a.metodo_pago);

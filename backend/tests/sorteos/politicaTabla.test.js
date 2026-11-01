@@ -248,8 +248,12 @@ await prueba("2 + 5. Conservar con RESERVAS de otro sorteo (cerrado): publicaci�
     assert.strictEqual(rpc.llamadas.length, 0, "con conservar nunca se llama al reinicio");
 });
 
-await prueba("3 + 6. Conservar con PAGADOS de otro sorteo ACTIVO (otro grupo): publicación programada; el otro sigue activo e intacto", async () => {
+// Un sorteo por PRECIO (01/11): el otro sorteo activo es de OTRO precio
+// ($10.000, misma tabla física que $5.000), así que sigue activo. Si fuera
+// del mismo precio se reemplazaría (ver tests/sorteos/unSorteoActivoPorPrecio).
+await prueba("3 + 6. Conservar con PAGADOS de otro sorteo ACTIVO de OTRO precio (otro grupo, misma tabla física): publicación programada; el otro sigue activo e intacto", async () => {
     escenario({ reservados: 0, pagados: 27, otroActivo: true });
+    fake.tablas.eventos_bot.find(e => e.id === "ev-otro").valor = "10000";
     const antes = filasDelOtro();
     const s = await crear();
     const v = await vista(s);

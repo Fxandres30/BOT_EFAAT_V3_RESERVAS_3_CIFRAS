@@ -1,16 +1,22 @@
 // ==========================================================================
-// unSorteoPorTabla.js — UNA TABLA = UN SORTEO ACTIVO (decisión del 31/10).
+// unSorteoPorPrecio.js — UN SORTEO ACTIVO POR PRECIO Y CLIENTE (decisión
+// definitiva del 01/11).
 //
-// Publicar otro sorteo (desde el panel o con un anuncio en WhatsApp) en una
-// tabla física que ya tiene uno activo REEMPLAZA al anterior en TODOS sus
-// grupos: sus filas de eventos_bot se cierran como «sustituido» (sin mensaje
-// de cierre; sus reservas y pagos se conservan con su identidad y, al ser la
-// misma tabla, cuentan en el sorteo nuevo). Nunca se toca la cuenta de otro
-// cliente ni el grupo de WhatsApp.
+// Cada precio es una configuración independiente: un sorteo de $10.000 y uno
+// de $3.000 pueden estar activos a la vez, aunque hoy compartan la tabla
+// física (configEvento.js). Un sorteo nuevo del MISMO precio y el mismo
+// cliente REEMPLAZA al anterior en TODOS sus grupos: sus filas de eventos_bot
+// se cierran como «sustituido» (sin mensaje de cierre; sus reservas y pagos se
+// conservan con su identidad). Nunca se toca la cuenta de otro cliente ni el
+// grupo de WhatsApp.
+//
+// (Que en un MISMO grupo solo haya un sorteo vigente, de cualquier precio, es
+// otra regla: el bot atiende un sorteo por grupo. La aplican el publicador y
+// el detector cerrando el anterior solo en ese grupo.)
 //
 // El cierre va ANTES de activar el nuevo (la migración 043 rechaza dos
-// sorteos activos en la misma tabla) y se deshace si el nuevo no se pudo
-// guardar, para que la tabla nunca quede sin sorteo por un fallo.
+// sorteos activos del mismo precio) y se deshace si el nuevo no se pudo
+// guardar, para que el precio nunca quede sin sorteo por un fallo.
 //
 // Recibe el cliente de Supabase (el publicador inyecta el suyo).
 // ==========================================================================
@@ -19,20 +25,29 @@ const { finDelEvento } = require("./estadosGestion");
 
 const COLUMNAS_SIN_CIERRE = new Set(["42703", "PGRST204"]);
 
-// Filas ACTIVAS de OTROS sorteos del cliente en esa tabla física, en
-// cualquier grupo. `excepto`: ids que no cuentan (la fila que se guarda).
-async function sorteosQueOcupanLaTabla(supabase, { usuarioId, tabla, identidad, excepto = [] }) {
+// Precio normalizado (solo dígitos), igual que la 043 y que digitos() del
+// panel: "3000", 3000 y "$3.000" son el mismo precio.
+function precioDe(valor) {
+    const n = Number(String(valor ?? "").replace(/[^0-9]/g, ""));
+    return n > 0 ? n : null;
+}
 
-    if (!usuarioId || !tabla) return { ok: true, filas: [] };
+// Filas ACTIVAS de OTROS sorteos del cliente con ese precio, en cualquier
+// grupo. `excepto`: ids que no cuentan (la fila que se guarda).
+async function sorteosActivosDelPrecio(supabase, { usuarioId, valor, identidad, excepto = [] }) {
+
+    const precio = precioDe(valor);
+    if (!usuarioId || !precio) return { ok: true, filas: [] };
 
     const { data, error } = await supabase.from("eventos_bot").select("*")
-        .eq("usuario_id", usuarioId).eq("tabla", tabla).eq("activo", true);
+        .eq("usuario_id", usuarioId).eq("activo", true);
 
     if (error) return { ok: false, error };
 
     return {
         ok: true,
-        filas: (data || []).filter(f => !finDelEvento(f) && f.identidad_evento_real !== identidad && !excepto.includes(f.id))
+        filas: (data || []).filter(f =>
+            !finDelEvento(f) && precioDe(f.valor) === precio && f.identidad_evento_real !== identidad && !excepto.includes(f.id))
     };
 
 }
@@ -78,7 +93,7 @@ async function reemplazarAnteriores(supabase, { usuarioId, filas, motivo, ahora 
     }
 
     if (cerradas.length) {
-        console.log(`🔁 [UNA TABLA = UN SORTEO] ${cerradas.length} fila(s) del sorteo anterior cerradas como sustituidas (${motivo}); reservas y pagos intactos.`);
+        console.log(`🔁 [UN SORTEO POR PRECIO] ${cerradas.length} fila(s) del sorteo anterior cerradas como sustituidas (${motivo}); reservas y pagos intactos.`);
     }
 
     return { ok: true, cerradas };
@@ -98,14 +113,14 @@ async function revertirReemplazo(supabase, { usuarioId, cerradas, motivo }) {
         };
         const { error } = await supabase.from("eventos_bot").update(restaurar)
             .eq("usuario_id", usuarioId).eq("id", f.id).eq("cierre_motivo", motivo);
-        if (error) console.error(`❌ [UNA TABLA = UN SORTEO] no se pudo deshacer el cierre de ${f.id}:`, error.message);
+        if (error) console.error(`❌ [UN SORTEO POR PRECIO] no se pudo deshacer el cierre de ${f.id}:`, error.message);
     }
 
-    if (cerradas.length) console.log(`↩️ [UNA TABLA = UN SORTEO] el sorteo nuevo no se guardó: ${cerradas.length} fila(s) del anterior vuelven a estar activas.`);
+    if (cerradas.length) console.log(`↩️ [UN SORTEO POR PRECIO] el sorteo nuevo no se guardó: ${cerradas.length} fila(s) del anterior vuelven a estar activas.`);
 
 }
 
-// La base rechazó la escritura por la 043 (otro sorteo activo en la tabla).
-const esTablaOcupada = (error) => error?.code === "23P01" && /un_sorteo_activo_por_tabla/.test(String(error?.message || ""));
+// La base rechazó la escritura por la 043 (otro sorteo activo de ese precio).
+const esPrecioOcupado = (error) => error?.code === "23P01" && /un_sorteo_activo_por_precio/.test(String(error?.message || ""));
 
-module.exports = { sorteosQueOcupanLaTabla, filasPorId, reemplazarAnteriores, revertirReemplazo, esTablaOcupada };
+module.exports = { precioDe, sorteosActivosDelPrecio, filasPorId, reemplazarAnteriores, revertirReemplazo, esPrecioOcupado };

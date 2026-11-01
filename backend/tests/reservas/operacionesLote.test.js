@@ -294,18 +294,22 @@ prueba("UNA TABLA = UN SORTEO: con sorteo activo, se pagan juntos los de WhatsAp
     assert.strictEqual(fake.tablas.eventos_bot.find(x => x.id === EV).pagados, 3, "contadores al día tras liberar");
 });
 
-prueba("sin sorteo activo del precio: pagar y liberar no tocan números ocupados salvo autorización expresa", async () => {
+// Regla 1/11/2026: pagar una reserva válida nunca depende del sorteo (como
+// el pago de un número); liberar, que borra la reserva, sí pide incluirlo.
+prueba("sin sorteo activo del precio: pagar paga la reserva válida; liberar no toca números ocupados salvo autorización expresa", async () => {
     sembrar();
     fake.tablas.eventos_bot.filter(e => e.usuario_id === A).forEach(e => { e.activo = false; });
     ocupar(A, "01", { evento_id: null, identidad_evento_real: null });
+    ocupar(A, "02", { evento_id: null, identidad_evento_real: null });
     const antes = foto(A, ["01"]);
-    const p = await pedir({ accion: "pagar", numeros: ["01"], solicitudId: "p3b" });
-    assert.strictEqual(p.json.resultados[0].codigo, "otro_sorteo");
     const l = await pedir({ accion: "liberar", confirmar: true, numeros: [{ numero: "01", estado: "reservado" }], solicitudId: "l3b" });
     assert.strictEqual(estados(l)["01"], "omitido");
     assert.strictEqual(foto(A, ["01"]), antes, "intacto");
-    const a = await pedir({ accion: "pagar", numeros: ["01"], otrosSorteoAutorizados: ["01"], solicitudId: "p4" });
-    assert.strictEqual(estados(a)["01"], "hecho", "el administrador decide");
+    const p = await pedir({ accion: "pagar", numeros: ["01"], solicitudId: "p3b" });
+    assert.strictEqual(estados(p)["01"], "hecho", JSON.stringify(p.json.resultados));
+    assert.deepStrictEqual([fila(A, "01").estado, fila(A, "01").evento_id, fila(A, "01").identidad_evento_real], ["pagado", null, null], "pagado, sin inventar sorteo");
+    const a = await pedir({ accion: "pagar", numeros: ["02"], otrosSorteoAutorizados: ["02"], solicitudId: "p4" });
+    assert.strictEqual(estados(a)["02"], "hecho", "un panel anterior que aún envía la autorización sigue funcionando");
 });
 
 prueba("un sorteo en varios grupos es UN sorteo: un número reservado en otro grupo no cuenta como ajeno", async () => {

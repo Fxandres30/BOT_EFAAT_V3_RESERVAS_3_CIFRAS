@@ -59,9 +59,14 @@ await prueba("seleccionar un número y varios de distintos estados: cada operaci
     assert.ok(reservar.excluidos.find(x => x.numero === "08").motivo.includes("en proceso"));
 });
 
-await prueba("números de otro sorteo: fuera del lote salvo que el administrador los incluya", () => {
+// Regla 1/11/2026: pagar una reserva válida nunca depende del sorteo; solo
+// liberar (borra la reserva) pide incluirlos expresamente.
+await prueba("números de otro sorteo: al pagar entran siempre; al liberar, solo si el administrador los incluye", () => {
     const sel = ["04", "06"];
-    const porDefecto = L.clasificarOperacion(tabla, sel, "pagar");
+    const pagar = L.clasificarOperacion(tabla, sel, "pagar");
+    assert.deepStrictEqual(pagar.incluidos.map(n => n.numero), ["04", "06"]);
+    assert.deepStrictEqual(pagar.excluidos, []);
+    const porDefecto = L.clasificarOperacion(tabla, sel, "liberar");
     assert.deepStrictEqual(porDefecto.incluidos.map(n => n.numero), ["04"]);
     assert.deepStrictEqual(porDefecto.excluidos, [{ numero: "06", motivo: porDefecto.excluidos[0].motivo, otroSorteo: true }]);
     const incluidos = L.clasificarOperacion(tabla, sel, "liberar", { incluirOtroSorteo: true }).incluidos.map(n => n.numero);
@@ -99,9 +104,10 @@ await prueba("reservar varios: UNA sola solicitud con todos los números, el con
     assert.ok(r.resultados[1].mensaje.includes("No se tocó"));
 });
 
-await prueba("los números de otro sorteo solo viajan autorizados si el administrador los incluyó", () => {
-    const sin = L.cuerpoDelLote("pagar", [{ numero: "04", estado: "reservado" }], {}, "s");
-    assert.deepStrictEqual(sin.otrosSorteoAutorizados, []);
+await prueba("los números de otro sorteo solo viajan autorizados al liberar, si el administrador los incluyó", () => {
+    const pagar = L.cuerpoDelLote("pagar", [{ numero: "04", estado: "reservado" }, { numero: "06", estado: "reservado", otroSorteo: true }], {}, "s");
+    assert.ok(!("otrosSorteoAutorizados" in pagar), "pagar no necesita autorización");
+    assert.deepStrictEqual(pagar.numeros, ["04", "06"]);
     const con = L.cuerpoDelLote("liberar", [{ numero: "04", estado: "reservado" }, { numero: "06", estado: "reservado", otroSorteo: true }], {}, "s");
     assert.deepStrictEqual(con.otrosSorteoAutorizados, ["06"]);
     assert.ok(!("usuarioId" in con) && !("usuario_id" in con), "el cliente sale del token, nunca del cuerpo");

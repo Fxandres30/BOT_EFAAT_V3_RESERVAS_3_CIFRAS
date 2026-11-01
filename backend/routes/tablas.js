@@ -543,7 +543,9 @@ router.post("/:precio/numeros/:numero/liberar", exigirUsuario, manejar("liberar 
 // POST /tablas/:precio/lote — varios números en UNA operación.
 // { accion: "reservar" | "pagar" | "liberar", numeros, ...campos de la acción }.
 // numeros: lista; en liberar, [{ numero, estado }] con el estado confirmado.
-// otrosSorteoAutorizados: números de otro sorteo que el administrador incluyó.
+// otrosSorteoAutorizados: al LIBERAR, números de otro sorteo que el
+// administrador incluyó (pagar no lo necesita: una reserva válida se paga
+// venga de donde venga).
 router.post("/:precio/lote", exigirUsuario, manejar("operación por lote", (req) => {
     const b = req.body || {};
     return reservaManual.operarLote({

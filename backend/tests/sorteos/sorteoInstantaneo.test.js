@@ -283,21 +283,16 @@ prueba("6. Reintento y doble clic: una sola publicación y un solo mensaje", asy
     assert.strictEqual(enviados.length, 1);
 });
 
-prueba("7. Grupo con un sorteo activo: sin «Sustituir» no se publica (y lo dice); con «Sustituir» se publica y el anterior conserva reservas y pagos", async () => {
+// Publicar otro sorteo REEMPLAZA al anterior del grupo (31/10, confirmado el
+// 01/11), ya no depende de «Sustituir el sorteo activo».
+prueba("7. Grupo con un sorteo activo: se publica y el anterior se reemplaza (sin mensaje de cierre), conservando reservas y pagos", async () => {
     escenario({ anteriorActivo: true });
     usarDeps();
     const antes = reservasYPagos();
     const s = await crear();
     const res = await publicar(s);
-    assert.strictEqual(res.ok, false);
-    assert.ok(["bloqueado", "no_inmediato"].includes(res.motivo), JSON.stringify(res));
-    assert.strictEqual(enviados.length, 0);
-    assert.strictEqual(sorteoDb(s.id).estado, "borrador", "no se confirmó: se puede corregir");
-    assert.strictEqual(fake.tablas.eventos_bot.find(e => e.id === "ev-anterior-g1").activo, true, "el sorteo actual no se toca");
-
-    const s2 = await crear(entrada({ sustituir_activo: true, nombre: "Sinuano Noche" }));
-    const res2 = await publicar(s2);
-    assert.ok(res2.ok && res2.data.publicados === 1, JSON.stringify(res2));
+    assert.ok(res.ok && res.data.publicados === 1, JSON.stringify(res));
+    assert.strictEqual(enviados.length, 1, "solo el anuncio del sorteo nuevo");
     const anterior = fake.tablas.eventos_bot.find(e => e.id === "ev-anterior-g1");
     assert.strictEqual(anterior.activo, false);
     assert.ok(/^sustituido/.test(anterior.cierre_motivo || ""), anterior.cierre_motivo);

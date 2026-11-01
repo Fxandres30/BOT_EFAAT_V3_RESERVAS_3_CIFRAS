@@ -280,15 +280,17 @@ prueba("F2-7. cancelar antes de publicar: nunca se publica", async () => {
     assert.ok(c.data.grupos.every(g => g.estado === "cancelado"));
 });
 
-prueba("F2-8. grupo con OTRO sorteo activo: no bloquea la programación ni se reemplaza solo; se explica la espera y cómo resolverla", async () => {
+// Regla del 31/10 (UN_SORTEO_ACTIVO_POR_PRECIO.md): un sorteo PROPIO activo en
+// el grupo no hace esperar; al publicar se SUSTITUYE en ese grupo.
+prueba("F2-8. grupo con OTRO sorteo activo: no bloquea la programación ni lo toca al programar; avisa que lo sustituirá al publicar", async () => {
     escenario();
     fake.tablas.eventos_bot.push({ id: "ev-otro", grupo_id: "g2@g.us", usuario_id: A, activo: true, identidad_evento_real: "otro", nombre_evento: "Boyacá", hora_fin: "22:40" });
     const c = await servicio.crearSorteo(A, entrada());
     const vp = await servicio.vistaPrevia(A, c.data.id);
     assert.deepStrictEqual(vp.data.bloqueos, []);
     const g2 = vp.data.grupos.find(g => g.grupo_id === "g2@g.us");
-    assert.strictEqual(g2.estado_previo, "programado");
-    assert.ok(/Boyacá/.test(g2.motivo) && /esperará a que cierre/.test(g2.motivo), g2.motivo);
+    assert.strictEqual(g2.estado_previo, "listo");
+    assert.ok(/Boyacá/.test(g2.motivo) && /SUSTITUIRÁ en este grupo/.test(g2.motivo), g2.motivo);
     assert.strictEqual(vp.data.puede_confirmar, true);
     assert.ok((await servicio.confirmar(A, c.data.id, { version: 1, confirmacion: true })).ok);
     assert.strictEqual(fake.tablas.eventos_bot.find(e => e.id === "ev-otro").activo, true, "el sorteo activo no se toca al programar");
@@ -357,10 +359,19 @@ prueba("F2-12. coexistencia: un anuncio detectado NO reemplaza un sorteo program
     assert.strictEqual(espias.guardar, 0, "no lo reemplaza");
     assert.strictEqual(espias.abrir, 0);
 
-    // En un grupo SIN sorteo programado, la detección sigue igual que siempre.
-    const otro = await detectarEvento({ sock, chat: { remoteJid: "g3@g.us" }, textoOriginal: "anuncio" });
-    assert.ok(otro);
-    assert.strictEqual(espias.guardar, 1, "detección normal intacta");
+    // Otro grupo SIN sorteo, misma tabla física (regla del 31/10): un anuncio
+    // que no publica un administrador ni la cuenta del bot no se apodera de
+    // la tabla; el de la cuenta del bot reemplaza el sorteo en TODOS sus
+    // grupos («sustituido», sin borrar reservas) y se guarda.
+    const ajeno = await detectarEvento({ sock, chat: { remoteJid: "g3@g.us" }, message: { key: { participant: "573111111111@s.whatsapp.net" } }, textoOriginal: "anuncio" });
+    assert.strictEqual(ajeno, null, "sin sorteo propio en g3: nada que devolver");
+    assert.strictEqual(espias.guardar, 0, "no se aplica");
+    assert.strictEqual(fake.tablas.eventos_bot.find(e => e.id === evento.id).activo, true, "el sorteo de g1 sigue activo");
+    const delBot = await detectarEvento({ sock, chat: { remoteJid: "g3@g.us" }, message: { key: { fromMe: true } }, textoOriginal: "anuncio" });
+    assert.ok(delBot);
+    assert.strictEqual(espias.guardar, 1, "detección aplicada");
+    const g1 = fake.tablas.eventos_bot.find(e => e.id === evento.id);
+    assert.ok(!g1.activo && /^sustituido por el anuncio/.test(g1.cierre_motivo), JSON.stringify(g1));
     for (const rel of ["extraerEvento", "guardarEvento", "grupos/abrirGrupo", "detectarEvento"]) delete require.cache[r(`bot/funciones/eventos/${rel}.js`)];
 });
 

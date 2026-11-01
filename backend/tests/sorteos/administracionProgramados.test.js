@@ -364,8 +364,9 @@ prueba("9. publicación parcial: detalle por grupo, intervención manual, abiert
 
 prueba("10. parcial con un grupo EN ESPERA: cancelar cancela ese grupo, el publicado sigue y el estado final es 'publicado'", async () => {
     escenario();
-    // g2 tiene otro sorteo abierto: el publicador lo deja en espera.
-    fake.tablas.eventos_bot.push({ id: "ev-otro", grupo_id: "g2@g.us", usuario_id: A, activo: true, estado: "abierto", identidad_evento_real: "otro", nombre_evento: "Boyacá", fecha_evento: "2026-10-15", hora_fin: "23:00", hora_cierre: "22:55", tabla: "otra_tabla" });
+    // g2 tiene abierto un sorteo de OTRA cuenta: el publicador lo deja en
+    // espera (un sorteo propio ya no hace esperar: se reemplaza, 31/10-01/11).
+    fake.tablas.eventos_bot.push({ id: "ev-otro", grupo_id: "g2@g.us", usuario_id: B, activo: true, estado: "abierto", identidad_evento_real: "otro", nombre_evento: "Boyacá", fecha_evento: "2026-10-15", hora_fin: "23:00", hora_cierre: "22:55", tabla: "otra_tabla" });
     const c0 = await servicio.crearSorteo(A, entrada({ grupos: ["g1@g.us", "g2@g.us"] }));
     // El conflicto aparece después de programar (la vista previa lo bloquearía).
     fake.tablas.eventos_bot[0].activo = false;

@@ -443,20 +443,25 @@ prueba("10. bot y pagos resuelven el evento correcto: activo; sin activo, el má
     assert.strictEqual((await consultarEvento("g1@g.us", A)).id, "ev-bogota-g1");
 });
 
-prueba("11. con varias filas en el grupo, un sorteo ACTIVO detrás de una cerrada sigue bloqueando la publicación", async () => {
+// Publicar otro sorteo REEMPLAZA al anterior del grupo (31/10, confirmado el
+// 01/11): lo que se prueba es que el activo «escondido» detrás de una fila
+// cerrada SE DETECTA; antes eso hacía esperar, ahora se reemplaza en el grupo.
+prueba("11. con varias filas en el grupo, un sorteo ACTIVO detrás de una cerrada se detecta y se reemplaza en ese grupo", async () => {
     escenario();
     const s = await programar(entrada({ grupos: ["g1@g.us"] }));
     // Después de programar, el grupo abre otro sorteo (fila nueva); la de
     // Bogotá (cerrada) sigue primero en la tabla.
     fake.tablas.eventos_bot.push({ id: "ev-boyaca", grupo_id: "g1@g.us", usuario_id: A, activo: true, abierto: true, estado: "abierto", identidad_evento_real: "boyaca", nombre_evento: "Boyacá", tabla: T1K, valor: "2000", fecha_evento: "2026-10-22", hora_fin: "22:30", hora_cierre: "22:26", creado_en: new Date("2026-10-22T12:00:00Z") });
-    const eventosAntes = JSON.stringify(fake.tablas.eventos_bot);
+    const bogota = JSON.stringify(fake.tablas.eventos_bot.find(e => e.id === "ev-bogota-g1"));
     const d = deps();
     await tick(EN_PUBLICACION, d.d);
     const g = grupoDe(s.id, "g1@g.us");
-    assert.strictEqual(d.enviados.length, 0);
-    assert.strictEqual(g.estado, "pendiente");
-    assert.ok(/^En espera: .*Boyacá/.test(g.ultimo_error), g.ultimo_error);
-    assert.strictEqual(JSON.stringify(fake.tablas.eventos_bot), eventosAntes, "no reemplaza ni crea nada");
+    assert.strictEqual(g.estado, "publicado", g.ultimo_error);
+    assert.strictEqual(d.enviados.length, 1);
+    const boyaca = fake.tablas.eventos_bot.find(e => e.id === "ev-boyaca");
+    assert.strictEqual(boyaca.activo, false, "el activo escondido se detectó y se reemplazó en el grupo");
+    assert.ok(/^sustituido/.test(boyaca.cierre_motivo || ""), boyaca.cierre_motivo);
+    assert.strictEqual(JSON.stringify(fake.tablas.eventos_bot.find(e => e.id === "ev-bogota-g1")), bogota, "la fila cerrada de Bogotá no se toca");
 });
 
 // ---------------------------------------------------------------- runner ---

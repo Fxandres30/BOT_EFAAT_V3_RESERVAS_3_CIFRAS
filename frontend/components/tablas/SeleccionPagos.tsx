@@ -416,9 +416,9 @@ export function DialogoReservaLote({ precio, numeros, seleccion, onProcesar, onT
  * Confirmación + ejecución de una operación sobre uno o varios números.
  * La tabla se congela al abrir (lo que se confirma es lo que se envía); los
  * datos del número no cambian en pantalla hasta que el servidor confirma y
- * la tabla se recarga. Los de otro sorteo quedan fuera salvo que el
- * administrador los incluya expresamente (`incluirOtroSorteoInicial`: una
- * acción rápida sobre UN número ya es esa decisión).
+ * la tabla se recarga. Al liberar, los de otro sorteo quedan fuera salvo que
+ * el administrador los incluya expresamente (`incluirOtroSorteoInicial`: una
+ * acción rápida sobre UN número ya es esa decisión); al pagar entran siempre.
  */
 export function DialogoOperacion({ operacion, numeros, seleccion, onProcesar, onTerminado, onClose, incluirOtroSorteoInicial = false }: {
     operacion: Exclude<OperacionLote, "reservar">;
@@ -436,8 +436,9 @@ export function DialogoOperacion({ operacion, numeros, seleccion, onProcesar, on
         () => clasificarOperacion(foto, seleccion, operacion, { incluirOtroSorteo: incluirOtro }),
         [foto, seleccion, operacion, incluirOtro]
     );
+    // Solo al liberar hay que decidir sobre ellos: al pagar ya van incluidos.
     const otrosSorteo = useMemo(
-        () => clasificarOperacion(foto, seleccion, operacion, { incluirOtroSorteo: true }).incluidos.filter(n => n.otroSorteo),
+        () => operacion === "pagar" ? [] : clasificarOperacion(foto, seleccion, operacion, { incluirOtroSorteo: true }).incluidos.filter(n => n.otroSorteo),
         [foto, seleccion, operacion]
     );
     // Una solicitud por lote: reintentar ESTE lote no duplica operaciones.

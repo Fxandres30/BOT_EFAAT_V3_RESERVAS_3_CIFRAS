@@ -81,9 +81,10 @@ export interface Clasificacion {
 }
 
 /** Números seleccionados que admite `operacion` y los que no, con el porqué.
- *  Los de OTRO sorteo quedan fuera salvo `incluirOtroSorteo` (decisión
- *  expresa del administrador); reservar solo toma libres, que no son de
- *  ningún sorteo. */
+ *  Al LIBERAR, los de OTRO sorteo quedan fuera salvo `incluirOtroSorteo`
+ *  (decisión expresa del administrador); al PAGAR entran siempre (una
+ *  reserva válida se paga venga de donde venga); reservar solo toma libres,
+ *  que no son de ningún sorteo. */
 export function clasificarOperacion(numeros: NumeroSeleccionable[], seleccion: Iterable<string>, operacion: OperacionLote, { incluirOtroSorteo = false }: { incluirOtroSorteo?: boolean } = {}): Clasificacion {
 
     const porNumero = new Map(numeros.map(n => [n.numero, n]));
@@ -96,7 +97,9 @@ export function clasificarOperacion(numeros: NumeroSeleccionable[], seleccion: I
 
         if (!n) excluidos.push({ numero, motivo: "Ya no está en la tabla." });
         else if (!ESTADOS_OPERACION[operacion].includes(n.estado)) excluidos.push({ numero, motivo: MOTIVO_EXCLUSION[operacion][n.estado] || "No admite esta operación." });
-        else if (n.otroSorteo && !incluirOtroSorteo) excluidos.push({ numero, motivo: MOTIVO_OTRO_SORTEO, otroSorteo: true });
+        // Pagar nunca depende del sorteo de origen (regla 1/11/2026): solo
+        // liberar, que borra la reserva, exige incluirlos expresamente.
+        else if (n.otroSorteo && !incluirOtroSorteo && operacion !== "pagar") excluidos.push({ numero, motivo: MOTIVO_OTRO_SORTEO, otroSorteo: true });
         else incluidos.push({ numero, estado: n.estado, ...(n.otroSorteo ? { otroSorteo: true } : {}) });
 
     }
@@ -171,7 +174,7 @@ export function cuerpoDelLote(operacion: OperacionLote, incluidos: NumeroSelecci
     }
 
     if (operacion === "pagar") {
-        return { ...comunes, accion: "pagar", numeros: incluidos.map(n => n.numero), metodoPago: datos.metodoPago, otrosSorteoAutorizados };
+        return { ...comunes, accion: "pagar", numeros: incluidos.map(n => n.numero), metodoPago: datos.metodoPago };
     }
 
     return { ...comunes, accion: "liberar", confirmar: true, numeros: incluidos.map(({ numero, estado }) => ({ numero, estado })), otrosSorteoAutorizados };

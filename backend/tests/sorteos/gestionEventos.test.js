@@ -201,7 +201,11 @@ prueba("7. Reabrir el sorteo ANTERIOR del grupo: con otro activo se rechaza; con
     assert.strictEqual(ev(EV_VIEJO).activo, true);
     assert.strictEqual(ev(EV_G1).activo, false);
     assert.ok(/^sustituido/.test(ev(EV_G1).cierre_motivo));
-    assert.strictEqual(ev(EV_G2).activo, true, "el sorteo sustituido sigue en sus otros grupos");
+    // Un sorteo por PRECIO (01/11): es del mismo precio, así que se reemplaza
+    // también en sus otros grupos (con otro precio seguiría; ver
+    // tests/sorteos/unSorteoActivoPorPrecio 11b).
+    assert.strictEqual(ev(EV_G2).activo, false, "mismo precio: el sustituido se reemplaza también en sus otros grupos");
+    assert.ok(/^sustituido/.test(ev(EV_G2).cierre_motivo));
     assert.strictEqual(ev(EV_B).activo, true, "el sorteo de otro cliente nunca se sustituye");
     assert.strictEqual((await consultarEvento("g1@g.us", A)).id, EV_VIEJO, "cambia el evento vigente del grupo");
     assert.strictEqual(numeros(), antes);

@@ -2,7 +2,7 @@ const supabase = require("../../../lib/supabase");
 const { groupMetadata } = require("../../../services/baileys/groupQueue");
 const { crearIdentidadEventoReal, fechaEventoHoy } = require("./identidadEventoReal");
 const { finDelEvento } = require("../../../shared/eventos/estadosGestion");
-const { esTablaOcupada } = require("../../../shared/eventos/unSorteoPorTabla");
+const { esPrecioOcupado } = require("../../../shared/eventos/unSorteoPorPrecio");
 
 // Datos del sorteo: los únicos que una detección o una publicación
 // sincronizan sobre una fila existente, y solo si cambiaron. El ciclo de
@@ -238,7 +238,7 @@ async function guardarEvento({
             console.log("❌ Error actualizando evento");
             console.dir(error, { depth: null });
 
-            if (esTablaOcupada(error)) console.log("⛔ La base rechazó el cambio: la tabla ya tiene otro sorteo activo de este cliente (043). Hay que reemplazar el anterior antes.");
+            if (esPrecioOcupado(error)) console.log("⛔ La base rechazó el cambio: este precio ya tiene otro sorteo activo de este cliente (043). Hay que reemplazar el anterior antes.");
 
             return null;
 
@@ -336,7 +336,7 @@ async function guardarEvento({
         console.log("❌ ERROR INSERTANDO EVENTO");
         console.dir(resultado.error, { depth: null });
 
-        if (esTablaOcupada(resultado.error)) console.log("⛔ La base rechazó el evento: la tabla ya tiene otro sorteo activo de este cliente (043). Hay que reemplazar el anterior antes.");
+        if (esPrecioOcupado(resultado.error)) console.log("⛔ La base rechazó el evento: este precio ya tiene otro sorteo activo de este cliente (043). Hay que reemplazar el anterior antes.");
 
         return null;
 

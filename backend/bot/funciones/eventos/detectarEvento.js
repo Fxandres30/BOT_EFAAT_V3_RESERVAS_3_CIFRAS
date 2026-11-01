@@ -6,7 +6,7 @@ const { obtenerConfiguracionCliente } = require("./tablasCliente");
 const { abrirGrupo } = require("./grupos/abrirGrupo");
 const { esMismoSorteo, fechaSorteoAnunciado, buscarSorteoVigente, crearIdentidadEventoReal } = require("./identidadEventoReal");
 const { finDelEvento } = require("../../../shared/eventos/estadosGestion");
-const { sorteosQueOcupanLaTabla, reemplazarAnteriores, revertirReemplazo } = require("../../../shared/eventos/unSorteoPorTabla");
+const { sorteosActivosDelPrecio, reemplazarAnteriores, revertirReemplazo } = require("../../../shared/eventos/unSorteoPorPrecio");
 const { sorteoSinNumerosLibres } = require("./lifecycle/sorteoSinNumerosLibres");
 
 // Sorteos creados y programados desde el panel (backend/sorteos). Solo se
@@ -418,27 +418,29 @@ async function detectarEvento(ctx) {
         }
 
         // ===============================
-        // UNA TABLA = UN SORTEO (31/10)
+        // UN SORTEO POR PRECIO (01/11)
         // ===============================
-        // Otro sorteo activo en esta MISMA tabla (en este u otros grupos) se
+        // Otro sorteo activo del MISMO precio (en este u otros grupos) se
         // reemplaza en todos ellos, antes de guardar el nuevo (la 043 rechaza
-        // dos activos) y deshaciéndolo si el nuevo no se guarda. Cerrarlo en
+        // dos activos del mismo precio) y deshaciéndolo si el nuevo no se
+        // guarda. Los de otros precios no se tocan, salvo el de este grupo
+        // (más abajo, `sustituir`: un sorteo vigente por grupo). Cerrarlo en
         // OTROS grupos exige que el anuncio lo publique la cuenta del bot o un
         // administrador: un cliente que reenvía un anuncio viejo nunca se
-        // apodera de la tabla.
+        // apodera de ese precio.
         const motivoReemplazo = `sustituido por el anuncio de ${eventoCompleto.nombre || "otro sorteo"} ${eventoCompleto.hora || ""}`.trim();
-        const ocupan = await sorteosQueOcupanLaTabla(supabase, { usuarioId: duenoSesion, tabla: config.tabla, identidad: identidadAnunciada, excepto: filaAGuardar?.id ? [filaAGuardar.id] : [] });
+        const ocupan = await sorteosActivosDelPrecio(supabase, { usuarioId: duenoSesion, valor: eventoCompleto.valor, identidad: identidadAnunciada, excepto: filaAGuardar?.id ? [filaAGuardar.id] : [] });
 
         if (!ocupan.ok) {
 
-            console.error("❌ No se pudo revisar si la tabla tiene otro sorteo activo; no se guarda el anuncio:", ocupan.error?.message);
+            console.error("❌ No se pudo revisar si el precio tiene otro sorteo activo; no se guarda el anuncio:", ocupan.error?.message);
             return null;
 
         }
 
         if (ocupan.filas.some(f => f.grupo_id !== grupoId) && !(await remitenteAutorizado(ctx, grupoId))) {
 
-            console.log(`⏭️ La tabla ${config.tabla} tiene activo otro sorteo en otros grupos y este anuncio no lo publicó un administrador — no se reemplaza.`);
+            console.log(`⏭️ El precio $${eventoCompleto.valor} tiene activo otro sorteo en otros grupos y este anuncio no lo publicó un administrador — no se reemplaza.`);
             return eventoAnterior;
 
         }
@@ -476,8 +478,8 @@ async function detectarEvento(ctx) {
         }
 
         // Solo después de guardar el nuevo: si guardar falla, el grupo sigue
-        // con su sorteo de siempre. (Si era de esta misma tabla, ya se
-        // reemplazó arriba; aquí queda el de otra tabla del mismo grupo.)
+        // con su sorteo de siempre. (Si era del mismo precio, ya se
+        // reemplazó arriba; aquí queda el de otro precio del mismo grupo.)
         if (sustituir && !reemplazo.cerradas.some(f => f.id === sustituir.id)) {
             await sustituirEnGrupo(sustituir, `sustituido por el anuncio de ${eventoCompleto.nombre || "otro sorteo"} ${eventoCompleto.hora || ""}`.trim());
         }

@@ -36,7 +36,7 @@ const supabase = require("../lib/supabase");
 const repo = require("./repo");
 const { instanteBogota, HORA } = require("./validar");
 const { motivoGestion, eliminado } = require("../shared/eventos/estadosGestion");
-const { sorteosQueOcupanLaTabla } = require("../shared/eventos/unSorteoPorTabla");
+const { sorteosActivosDelPrecio } = require("../shared/eventos/unSorteoPorPrecio");
 
 const ACCIONES = new Set(["cerrar", "reabrir", "desactivar", "cancelar", "eliminar"]);
 const SIN_COLUMNA = new Set(["42703", "PGRST204"]);
@@ -355,16 +355,17 @@ async function aplicar(usuarioId, eventoId, entrada = {}, { ahora = new Date(), 
             conflictos.push(...otros.data.filter(o => o.id !== f.id));
         }
 
-        // UNA TABLA = UN SORTEO (31/10): también el sorteo que ocupa la MISMA
-        // tabla en otros grupos. Sustituirlo (con la misma confirmación) lo
-        // cierra en todos ellos; la 043 no admitiría dos activos.
-        const enTabla = await sorteosQueOcupanLaTabla(supabase, { usuarioId, tabla: evento.tabla, identidad });
-        if (!enTabla.ok) return falla("error_supabase", { error: enTabla.error?.message });
-        conflictos.push(...enTabla.filas.filter(o => !conflictos.some(c => c.id === o.id) && !objetivo.some(f => f.id === o.id)));
+        // UN SORTEO POR PRECIO (01/11): también el sorteo activo del MISMO
+        // precio en otros grupos. Sustituirlo (con la misma confirmación) lo
+        // cierra en todos ellos; la 043 no admitiría dos activos del precio.
+        // Los de otros precios en otros grupos no se tocan.
+        const delPrecio = await sorteosActivosDelPrecio(supabase, { usuarioId, valor: evento.valor, identidad });
+        if (!delPrecio.ok) return falla("error_supabase", { error: delPrecio.error?.message });
+        conflictos.push(...delPrecio.filas.filter(o => !conflictos.some(c => c.id === o.id) && !objetivo.some(f => f.id === o.id)));
 
         if (conflictos.length && entrada.sustituir !== true) {
             return falla("conflicto", {
-                mensaje: `El grupo o la tabla ya tienen otro sorteo activo (${[...new Set(conflictos.map(nombreDe))].join(", ")}). Ciérralo o desactívalo, o confirma que este lo sustituye (se cerrará en todos sus grupos).`,
+                mensaje: `El grupo o el precio ya tienen otro sorteo activo (${[...new Set(conflictos.map(nombreDe))].join(", ")}). Ciérralo o desactívalo, o confirma que este lo sustituye (si es del mismo precio, se cerrará en todos sus grupos).`,
                 conflictos: conflictos.map(c => ({ evento_id: c.id, grupo_id: c.grupo_id, nombre: nombreDe(c) }))
             });
         }

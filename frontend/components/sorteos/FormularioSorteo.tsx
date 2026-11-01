@@ -670,7 +670,7 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
                 <section className={styles.seccion}>
                     <h3 className={styles.seccionTitulo}>Si hay otro sorteo abierto</h3>
                     <p className={styles.ayuda}>
-                        Una tabla = un sorteo. Al publicar, este sorteo reemplaza al que siga activo en la misma tabla (en todos sus grupos) y al que siga abierto en estos grupos. El anterior se cierra sin mensaje de cierre y sus reservas y pagos se conservan. La vista previa te dirá cuál se reemplazará.
+                        Un sorteo por precio. Al publicar, este sorteo reemplaza al que siga activo con el mismo precio (en todos sus grupos) y, en estos grupos, al que siga abierto de otro precio. Los sorteos de otros precios en otros grupos no se tocan. El anterior se cierra sin mensaje de cierre y sus reservas y pagos se conservan. La vista previa te dirá cuál se reemplazará.
                     </p>
                 </section>
 

@@ -49,7 +49,7 @@ const tablasCliente = require("../bot/funciones/eventos/tablasCliente");
 const { normalizarPremios, normalizarMetaPublicacion, instanteBogota, partesBogota, HORA, texto, LIMITES } = require("./validar");
 const { metaPublicacion, textoPublicacion, consolidarMensajes, generar, variablesDesconocidas, LIMITE_MENSAJE } = require("./mensajes");
 const { esEstilo, ESTILO_PREDETERMINADO } = require("./estilosMensaje");
-const { sorteosQueOcupanLaTabla } = require("../shared/eventos/unSorteoPorTabla");
+const { sorteosActivosDelPrecio } = require("../shared/eventos/unSorteoPorPrecio");
 const { crearIdentidadEventoReal } = require("../bot/funciones/eventos/identidadEventoReal");
 
 // Columna inexistente (migración 036 sin aplicar), en Postgres o PostgREST.
@@ -501,13 +501,16 @@ async function corregirIdentidad(usuarioId, filas, actual, nuevo, programado) {
             }
             tabla = conf.tabla;
             extraTabla = { tabla: conf.tabla, cifras: conf.cifras, cantidad_numeros: conf.cantidad };
-            // UNA TABLA = UN SORTEO: corregir no es publicar, así que no
-            // reemplaza al sorteo que ya ocupa la otra tabla; se rechaza.
-            const ocupan = await sorteosQueOcupanLaTabla(supabase, { usuarioId, tabla, identidad: identidadAnterior, excepto: filas.map(f => f.id) });
+        }
+        // UN SORTEO POR PRECIO: corregir no es publicar, así que no reemplaza
+        // al sorteo activo del nuevo precio; se rechaza (aunque la tabla
+        // física sea la misma, p. ej. de $3.000 a $10.000).
+        if (digitos(nuevo.valor) !== digitos(base.valor)) {
+            const ocupan = await sorteosActivosDelPrecio(supabase, { usuarioId, valor: nuevo.valor, identidad: identidadAnterior, excepto: filas.map(f => f.id) });
             if (!ocupan.ok) return falla("error_supabase", { error: ocupan.error?.message });
             if (ocupan.filas.length) {
                 const f = ocupan.filas[0];
-                return falla("conflicto", { mensaje: `La tabla de $${nuevo.valor} ya tiene activo el sorteo «${f.nombre_evento || "sin nombre"} ${f.hora_fin ? String(f.hora_fin).slice(0, 5) : ""}». Ciérralo antes o publica este como sorteo nuevo. No se cambió nada.` });
+                return falla("conflicto", { mensaje: `El precio $${digitos(nuevo.valor).toLocaleString("es-CO")} ya tiene activo el sorteo «${f.nombre_evento || "sin nombre"} ${f.hora_fin ? String(f.hora_fin).slice(0, 5) : ""}». Ciérralo antes o publica este como sorteo nuevo. No se cambió nada.` });
             }
         }
     }

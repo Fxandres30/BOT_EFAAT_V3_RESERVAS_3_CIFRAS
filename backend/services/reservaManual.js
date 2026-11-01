@@ -1168,7 +1168,16 @@ async function reservarLote({ usuarioId, operador, precio, numeros, contactoId, 
 
 }
 
-async function pagarLote({ usuarioId, operador, precio, numeros, metodoPago, observaciones, motivo, solicitudId, otrosSorteoAutorizados }) {
+// Pagar NUNCA depende del origen ni del contexto del sorteo (regla 1/11/2026):
+// una reserva válida (estado 'reservado' en la cuadrícula del cliente) se
+// paga venga de WhatsApp, del panel, de cualquier grupo, «sin sorteo» o de un
+// ciclo anterior, haya o no sorteo activo del precio — igual que el pago de
+// UN número (pagarManual). Antes, sin sorteo activo del precio, el lote la
+// omitía como «otro sorteo» salvo autorización expresa. Pagar no borra nada
+// ni cambia la identidad histórica (solo estado/fecha/hora de pago), así que
+// no necesita esa confirmación; liberar (destructivo) la conserva.
+// otrosSorteoAutorizados se acepta y se ignora (paneles anteriores lo envían).
+async function pagarLote({ usuarioId, operador, precio, numeros, metodoPago, observaciones, motivo, solicitudId }) {
 
     const lote = numerosDelLote(numeros);
     if (!lote.ok) return lote;
@@ -1190,14 +1199,10 @@ async function pagarLote({ usuarioId, operador, precio, numeros, metodoPago, obs
         solicitud_id: texto(solicitudId, 80)
     };
 
-    const [lectura, sorteo] = await Promise.all([
-        leerFilas(usuarioId, config.tabla, lote.lista),
-        sorteoDelPrecio(usuarioId, config.tabla, config.precio)
-    ]);
+    const lectura = await leerFilas(usuarioId, config.tabla, lote.lista);
 
-    if (!lectura.ok || !sorteo.ok) return rechazo("error_lectura", "No se pudieron leer los números.");
+    if (!lectura.ok) return rechazo("error_lectura", "No se pudieron leer los números.");
 
-    const autorizados = new Set((otrosSorteoAutorizados || []).map(String));
     const resultados = [];
     const auditoria = [];
     const candidatos = [];
@@ -1207,13 +1212,9 @@ async function pagarLote({ usuarioId, operador, precio, numeros, metodoPago, obs
         if (fila === undefined) { resultados.push(noExiste(numero)); continue; }
         if (fila === null) { resultados.push(repetido(numero)); continue; }
         if (fila.estado === "pagado") { resultados.push({ numero, estado: "sin_cambio", mensaje: "Ya estaba pagado." }); continue; }
-        const ctx = contextoFila(fila);
         if (fila.estado !== "reservado") {
             resultados.push({ numero, estado: "omitido", codigo: "no_reservado", estadoActual: estadoDeFila(fila), mensaje: `Cambió de estado (ahora está ${ESTADO_LEGIBLE[estadoDeFila(fila)] || fila.estado}). No se tocó.` });
-            auditoria.push({ ...base, ...ctx, numero, resultado: "rechazado", codigo: "no_reservado" });
-        } else if (deOtroSorteo(fila, sorteo.filas) && !autorizados.has(numero)) {
-            resultados.push(ajeno(numero));
-            auditoria.push({ ...base, ...ctx, numero, resultado: "rechazado", codigo: "otro_sorteo" });
+            auditoria.push({ ...base, ...contextoFila(fila), numero, resultado: "rechazado", codigo: "no_reservado" });
         } else candidatos.push(numero);
     }
 

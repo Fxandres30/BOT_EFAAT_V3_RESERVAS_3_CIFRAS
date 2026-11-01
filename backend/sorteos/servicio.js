@@ -24,7 +24,7 @@ const { ESTILOS, esEstilo, plantillaDe } = require("./estilosMensaje");
 const preferenciasMensaje = require("./preferenciasMensaje");
 const { calcularCierre } = require("../bot/funciones/eventos/extractor/calcularCierre");
 const supabase = require("../lib/supabase");
-const { sorteosQueOcupanLaTabla } = require("../shared/eventos/unSorteoPorTabla");
+const { sorteosActivosDelPrecio } = require("../shared/eventos/unSorteoPorPrecio");
 const { revisarTabla, revisarGrupo, cierresDeIdentidades, legible } = require("./disponibilidad");
 
 // ¿El reinicio que HOY no es posible lo será al publicar? Solo si lo único
@@ -310,9 +310,10 @@ async function vistaPrevia(usuarioId, id) {
         if (sustituyeAhora) avisos.push(`${g.grupo_nombre || g.grupo_id}: ${r.espera}`);
     }
 
-    // UNA TABLA = UN SORTEO: el sorteo que hoy ocupa esta tabla (en
-    // cualquier grupo) se reemplazará al publicar en TODOS sus grupos.
-    const ocupan = await sorteosQueOcupanLaTabla(supabase, { usuarioId, tabla: sorteo.tabla, identidad: sorteo.identidad_evento_real });
+    // UN SORTEO POR PRECIO: el sorteo activo de ESTE precio (en cualquier
+    // grupo) se reemplazará al publicar en TODOS sus grupos. Los de otros
+    // precios no se tocan (salvo en los grupos de este sorteo: aviso de arriba).
+    const ocupan = await sorteosActivosDelPrecio(supabase, { usuarioId, valor: sorteo.config.valor, identidad: sorteo.identidad_evento_real });
     if (ocupan.ok && ocupan.filas.length) {
         const porSorteo = new Map();
         for (const f of ocupan.filas) {
@@ -322,7 +323,7 @@ async function vistaPrevia(usuarioId, id) {
         }
         for (const filas of porSorteo.values()) {
             const nombre = `${filas[0].nombre_evento || "sin nombre"} ${filas[0].hora_fin ? String(filas[0].hora_fin).slice(0, 5) : ""}`.trim();
-            avisos.push(`Esta tabla tiene activo «${nombre}» en ${filas.length} grupo(s). Al publicar, si sigue activo, se reemplazará en todos ellos: se cierra sin mensaje de cierre y sus reservas y pagos se conservan (al ser la misma tabla, cuentan en este sorteo).`);
+            avisos.push(`El precio $${Number(sorteo.config.valor || 0).toLocaleString("es-CO")} tiene activo «${nombre}» en ${filas.length} grupo(s). Al publicar, si sigue activo, se reemplazará en todos ellos: se cierra sin mensaje de cierre y sus reservas y pagos se conservan.`);
         }
     }
 
