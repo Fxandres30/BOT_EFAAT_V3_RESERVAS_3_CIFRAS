@@ -557,7 +557,7 @@ async function publicarAhora(usuarioId, id, { version, confirmacion, reinicio, i
         };
     }
     try {
-        await publicador.tick(sock, { ahora, deps });
+        await publicador.tick(sock, { ahora, deps, sorteoId: id });
     } catch (err) {
         console.error("❌ [SORTEO INSTANTÁNEO] error en la publicación:", err?.message);
     }
@@ -692,6 +692,8 @@ async function reintentarGrupo(usuarioId, id, grupoId) {
     if (actual.data.estado === "cancelado") return falla("estado_invalido", { estado: "cancelado" });
     if (actual.data.archivado_en) return falla("estado_invalido", { estado: "archivado" });
 
+    if (actual.data.config?.publicacion_inmediata === true) return reintentarDestinoInstantaneo(usuarioId, actual.data, g);
+
     // Ya pedido y todavía sin tomar por el publicador (doble clic): nada más.
     if (g.estado === "fallido" && g.ultimo_error === REINTENTO_MANUAL) {
         return { ok: true, data: actual.data, aviso: "El reintento ya estaba pedido; se publicará en el próximo ciclo." };
@@ -715,6 +717,68 @@ async function reintentarGrupo(usuarioId, id, grupoId) {
     }
 
     return repo.obtenerSorteo(usuarioId, id);
+
+}
+
+// Reintento de UN destino de un sorteo instantáneo: se publica EN ESTE
+// MOMENTO (no se deja para un ciclo automático) y solo en ese destino. Los
+// destinos publicados no se tocan: el publicador solo reclama grupos
+// 'pendiente'/'fallido' y cada envío lleva su clave del ExecutionGuard.
+// Sin el WhatsApp del cliente no se marca nada: el destino sigue en error.
+async function reintentarDestinoInstantaneo(usuarioId, sorteo, g) {
+
+    const sock = instantaneo._socketDe(usuarioId);
+    if (!sock) return falla("sin_sesion_activa");
+    const puedeActuar = instantaneo._deps?.puedeActuar || require("../services/baileys/propiedadSesion").puedeActuar;
+    if (!puedeActuar(sock)) return falla("sesion_no_disponible");
+
+    // Un reintento pedido y nunca ejecutado (lo dejaba así la versión
+    // anterior, a la espera de un ciclo) se ejecuta ahora con la MISMA clave
+    // de envío: sin sumar otro reintento manual.
+    const pendiente = g.estado === "fallido" && g.ultimo_error === REINTENTO_MANUAL;
+
+    if (!pendiente) {
+        // Condicionado al estado leído: con un doble clic solo uno lo marca;
+        // el otro recibe el estado real sin publicar otra vez.
+        const marcado = await repo.marcarGrupoSi(usuarioId, g.id, [g.estado], {
+            estado: "fallido",
+            ultimo_error: REINTENTO_MANUAL,
+            intentos: 0,
+            reintentos_manuales: (Number(g.reintentos_manuales) || 0) + 1
+        });
+        if (!marcado.ok) return marcado;
+        if (!marcado.data) {
+            const ya = await repo.obtenerSorteo(usuarioId, sorteo.id);
+            return ya.ok ? { ok: true, data: ya.data, aviso: "Este destino ya se estaba reintentando; se muestra su estado actual." } : ya;
+        }
+    }
+
+    await repo.registrarHistorial(usuarioId, sorteo.id, "reintentar", "pedido", { grupo_id: g.grupo_id, grupo_nombre: g.grupo_nombre || null, estado_previo: g.estado, instantaneo: true });
+
+    if (["publicado", "publicado_parcial", "fallido"].includes(sorteo.estado)) {
+        await repo.actualizarSorteoSi(usuarioId, sorteo.id, { estados: ["publicado", "publicado_parcial", "fallido"] }, { estado: "publicando" });
+    }
+
+    const publicador = require("./publicador");
+    try {
+        await publicador.tick(sock, { ahora: reloj.ahora(), deps: instantaneo._deps, sorteoId: sorteo.id });
+    } catch (err) {
+        console.error("❌ [SORTEO INSTANTÁNEO] error al reintentar un destino:", err?.message);
+    }
+
+    const final = await repo.obtenerSorteo(usuarioId, sorteo.id);
+    if (!final.ok) return final;
+
+    const destino = final.data.grupos.find(x => x.id === g.id);
+    await repo.registrarHistorial(usuarioId, sorteo.id, "reintentar", destino?.estado === "publicado" ? "ok" : "error", { grupo_id: g.grupo_id, grupo_nombre: g.grupo_nombre || null, estado: destino?.estado || null, error: destino?.ultimo_error || null, instantaneo: true });
+
+    return {
+        ok: true,
+        data: final.data,
+        aviso: destino?.estado === "publicado"
+            ? `Publicado en ${g.grupo_nombre || g.grupo_id}.`
+            : `No se pudo publicar en ${g.grupo_nombre || g.grupo_id}: ${destino?.ultimo_error || "motivo desconocido"}`
+    };
 
 }
 

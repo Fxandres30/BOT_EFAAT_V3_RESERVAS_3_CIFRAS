@@ -43,9 +43,10 @@ registrarUsuario(TOKEN_USUARIO, A, "e2e@prueba.local");
 
 t.grupos_autorizados = [
     { usuario_id: A, grupo_id: "g1@g.us", activo: true },
-    { usuario_id: A, grupo_id: "g2@g.us", activo: true }
+    { usuario_id: A, grupo_id: "g2@g.us", activo: true },
+    { usuario_id: A, grupo_id: "g3@g.us", activo: true }
 ];
-t.grupos = [{ jid: "g1@g.us", nombre: "Grupo Prueba Uno" }, { jid: "g2@g.us", nombre: "Grupo Prueba Dos" }];
+t.grupos = [{ jid: "g1@g.us", nombre: "Grupo Prueba Uno" }, { jid: "g2@g.us", nombre: "Grupo Prueba Dos" }, { jid: "g3@g.us", nombre: "Grupo Prueba Tres" }];
 t.cuentas_pago = [{ id: "cuenta-e2e", usuario_id: A, nombre: "Nequi Prueba", tipo: "nequi", numero: "3000000001", titular: "Prueba", activa: true }];
 t.eventos_bot = [];
 // $5.000 (la del sorteo) libre; en $2.000, pagos de otro sorteo que no se tocan.
@@ -60,12 +61,15 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 // WhatsApp simulado: registra cada envío y cada cambio de grupo.
 const enviados = [];
 const operaciones = [];
+// Destino que WhatsApp rechaza (paso 7).
+let jidQueFalla = null;
 const sock = {
     context: { usuarioId: A, sessionId: "ses-e2e", telefono: "573000000000" },
     user: { id: "573000000000:1@s.whatsapp.net" },
     groupMetadata: async (jid) => ({ subject: `Nombre ${jid}`, participants: [{}, {}] }),
     groupSettingUpdate: async (jid, ajuste) => { operaciones.push({ jid, ajuste }); },
     sendMessage: async (jid, contenido) => {
+        if (jid === jidQueFalla) throw new Error("not-authorized (simulado)");
         enviados.push({ jid, tipo: contenido.image ? "imagen" : "texto", image: contenido.image, texto: contenido.caption ?? contenido.text });
         return { key: { id: `msg-${enviados.length}` } };
     }
@@ -178,6 +182,41 @@ async function main() {
         assert.ok(desborde <= 1, `desborde horizontal de ${desborde}px`);
         await captura(page, "instantaneo_movil");
         paso("móvil (390 px): sin desborde horizontal");
+
+        // 7. Tres destinos, uno falla: cada destino con su estado; el fallido
+        //    en «Error» (no «Reintentando»), sin «Cancelar programación», y
+        //    «Reintentar ahora» publica SOLO ese destino, en el momento.
+        await page.setViewport({ width: 1366, height: 900 });
+        jidQueFalla = "g3@g.us";
+        const base = t.sorteos_programados[0];
+        const creado = await servicio.crearSorteo(A, {
+            ...base.config, nombre: "Lotería E2E Tres Destinos", grupos: ["g1@g.us", "g2@g.us", "g3@g.us"], publicacion_inmediata: true
+        });
+        assert.ok(creado.ok, JSON.stringify(creado));
+        const pub = await servicio.publicarAhora(A, creado.data.id, { version: creado.data.version, confirmacion: true, imagen: `data:image/png;base64,${PNG.toString("base64")}` });
+        assert.ok(pub.ok && pub.data.publicados === 2 && pub.data.en_revision === 1, JSON.stringify(pub));
+        const aGrupo = (jid) => enviados.filter(e => e.jid === jid).length;
+        const antes = [aGrupo("g1@g.us"), aGrupo("g2@g.us"), aGrupo("g3@g.us")];
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await esperarTexto(page, "Lotería E2E Tres Destinos");
+        await esperarTexto(page, "Reintentar ahora");
+        const tarjeta = await page.evaluate(() => {
+            const h = [...document.querySelectorAll("h3")].find(x => x.textContent.includes("Lotería E2E Tres Destinos"));
+            let c = h; while (c && !c.querySelector("ul")) c = c.parentElement;
+            return c ? c.innerText : "";
+        });
+        assert.ok(/Publicado en parte/.test(tarjeta), tarjeta);
+        assert.ok(/Error\s*Grupo Prueba Tres/.test(tarjeta), tarjeta);
+        assert.ok(!/Reintentando|Falló el intento|Cancelar programación/.test(tarjeta), tarjeta);
+        await captura(page, "instantaneo_destino_error");
+        jidQueFalla = null;
+        await pulsar(page, "Reintentar ahora");
+        await esperarTexto(page, "Publicado en Grupo Prueba Tres.");
+        assert.deepStrictEqual([aGrupo("g1@g.us"), aGrupo("g2@g.us"), aGrupo("g3@g.us")], [antes[0], antes[1], antes[2] + 1], "solo el destino fallido recibe la publicación");
+        const final = t.sorteos_programados.find(x => x.id === creado.data.id);
+        assert.strictEqual(final.estado, "publicado");
+        await captura(page, "instantaneo_destino_reintentado");
+        paso("tres destinos con uno en «Error» (sin «Reintentando» ni «Cancelar programación»); «Reintentar ahora» publica solo ese destino y no repite los demás");
 
         assert.ok(peticionesSupabase.every(p => !/sorteos_programados|eventos_bot/.test(p)), "el panel no escribe en la base directamente");
         assert.deepStrictEqual(erroresConsola, [], "sin errores de JavaScript en la página");

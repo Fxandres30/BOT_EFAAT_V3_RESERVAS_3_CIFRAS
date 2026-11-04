@@ -259,8 +259,11 @@ prueba("5. Imagen ausente al publicar: no se envía NADA (ni texto), el grupo qu
     const s = await crear();
     const res = await publicar(s);
     assert.ok(res.ok, JSON.stringify(res));
-    assert.deepStrictEqual([res.data.publicados, res.data.fallidos], [0, 1]);
+    // Instantáneo (03/11): sin reintentos automáticos, el destino queda en
+    // error reintentable a mano (requiere_revision), no «fallido».
+    assert.deepStrictEqual([res.data.publicados, res.data.fallidos, res.data.en_revision], [0, 0, 1]);
     assert.ok(/imagen/.test(res.data.grupos[0].error) && /ERR_CONNECTION_REFUSED/.test(res.data.grupos[0].error), res.data.grupos[0].error);
+    assert.ok(!/se reintentará/.test(res.data.grupos[0].error), "no promete un reintento automático");
     assert.strictEqual(enviados.length, 0, "sin imagen no sale ni el texto");
     assert.ok(!operaciones.some(o => o.ajuste === "not_announcement"), "el grupo no se abre");
 });

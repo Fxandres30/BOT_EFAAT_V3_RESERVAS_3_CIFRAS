@@ -42,7 +42,10 @@ const repo = require("./repo");
 const reservasAnticipadas = require("./reservasAnticipadas");
 const { fechaSorteoDe, instanteBogota } = require("./validar");
 const { legible } = require("./disponibilidad");
-const { MAX_INTENTOS_AUTOMATICOS, sinPromesaDeReintento, ERROR_IMAGEN } = require("./publicador");
+const { MAX_INTENTOS_AUTOMATICOS, sinPromesaDeReintento, ERROR_IMAGEN, esInstantaneo } = require("./publicador");
+
+// Marca de servicio.reintentarGrupo para un reintento pedido y aún sin ejecutar.
+const REINTENTO_MANUAL = "reintento manual solicitado";
 
 const ESTADOS_EDITABLES = ["borrador", "programado"];
 // Estados de una programación que nunca pasó a publicarse.
@@ -212,11 +215,19 @@ function explicarGrupo(g, sorteo, eventosPorId, enviosSorteo) {
     const intentos = Number(g.intentos) || 0;
     const manuales = Number(g.reintentos_manuales) || 0;
     const enEspera = g.estado === "pendiente" && String(g.ultimo_error || "").startsWith(EN_ESPERA);
+    // Un instantáneo no tiene reintentos automáticos ni programación: un
+    // destino sin publicar es un error que se reintenta a mano, aquí.
+    const instantaneo = esInstantaneo(sorteo);
 
     let explicacion;
     let intervencion = null;
 
-    switch (g.estado) {
+    switch (instantaneo && g.estado === "fallido" ? "fallido_instantaneo" : g.estado) {
+        case "fallido_instantaneo":
+            explicacion = g.ultimo_error === REINTENTO_MANUAL || !g.ultimo_error
+                ? "Se pidió un reintento que no llegó a ejecutarse: no se publicó. Pulsa «Reintentar» para publicarlo ahora."
+                : `No se publicó: ${sinPromesaDeReintento(g.ultimo_error)}`;
+            break;
         case "pendiente":
             explicacion = enEspera ? g.ultimo_error : g.ultimo_error || "Esperando la hora de publicación.";
             break;
@@ -233,7 +244,9 @@ function explicarGrupo(g, sorteo, eventosPorId, enviosSorteo) {
             explicacion = g.ultimo_error ? sinPromesaDeReintento(g.ultimo_error) : "Requiere revisión.";
             intervencion = !enviosGrupo || enviosGrupo.length
                 ? "Revisa el grupo en WhatsApp: el anuncio pudo haber llegado. Si no llegó, reintenta; si llegó, no hagas nada (el sorteo sigue ahí)."
-                : "No se publicó (ver el motivo). Reintenta cuando se resuelva o cancela la programación.";
+                : instantaneo
+                    ? "No se publicó (ver el motivo). Reintenta este destino cuando se resuelva; los demás no se tocan."
+                    : "No se publicó (ver el motivo). Reintenta cuando se resuelva o cancela la programación.";
             break;
         case "cancelado":
             explicacion = `Cancelado: no se publicará.${g.ultimo_error ? ` Último motivo antes de cancelar: ${g.ultimo_error}` : ""}`;
@@ -263,7 +276,7 @@ function explicarGrupo(g, sorteo, eventosPorId, enviosSorteo) {
         ...etapaPublicacion(g, enviosGrupo),
         explicacion,
         intervencion,
-        puede_reintentar: g.estado === "requiere_revision" && sorteo.estado !== "cancelado" && !sorteo.archivado_en
+        puede_reintentar: (g.estado === "requiere_revision" || (instantaneo && g.estado === "fallido")) && sorteo.estado !== "cancelado" && !sorteo.archivado_en
     };
 
 }
@@ -356,16 +369,23 @@ function evaluarEliminacion(sorteo, impacto) {
 function accionesPermitidas(sorteo, grupos, operativo, eliminacion) {
 
     const archivado = !!sorteo.archivado_en;
+    const instantaneo = esInstantaneo(sorteo);
     const editable = ESTADOS_EDITABLES.includes(sorteo.estado);
     const sinPublicar = grupos.every(g => g.estado === "pendiente" || g.estado === "cancelado");
-    const algoEnMarcha = grupos.some(g => ["pendiente", "publicando", "fallido"].includes(g.estado));
+    // En un instantáneo un destino «fallido» no está en marcha: es un error
+    // que espera al administrador (no hay ciclo automático que lo reintente).
+    const algoEnMarcha = grupos.some(g => ["pendiente", "publicando"].includes(g.estado) || (g.estado === "fallido" && !instantaneo));
     const revisionSinDecidir = operativo.estado === "sin_publicar" && grupos.some(g => g.estado === "requiere_revision");
 
     return {
         vista_previa: true,
-        confirmar: !archivado && sorteo.estado === "borrador",
+        // Programado: «Revisar y confirmar». Instantáneo: «Publicar ahora».
+        confirmar: !archivado && sorteo.estado === "borrador" && !instantaneo,
+        publicar_ahora: !archivado && sorteo.estado === "borrador" && instantaneo,
         editar: !archivado && editable && sinPublicar,
-        cancelar: !archivado && sorteo.estado !== "cancelado" && (editable || grupos.some(grupoCancelable)),
+        // Un instantáneo no tiene programación que cancelar: un borrador se
+        // elimina y un destino fallido se reintenta o se deja.
+        cancelar: !archivado && !instantaneo && sorteo.estado !== "cancelado" && (editable || grupos.some(grupoCancelable)),
         eliminar: !archivado && eliminacion.posible,
         archivar: !archivado && !editable && sorteo.estado !== "publicando" && !algoEnMarcha && !revisionSinDecidir
             && ["terminado", "cancelado", "sin_publicar"].includes(operativo.estado),
@@ -465,7 +485,12 @@ function textoHistorial(h) {
         case "cancelar": return `Cancelada por el administrador: ${d.cancelados ?? 0} grupo(s) cancelado(s)${d.en_curso ? `, ${d.en_curso} se estaban publicando` : ""}${d.en_revision ? `, ${d.en_revision} en revisión sin cancelar` : ""}.`;
         case "archivar": return "Archivada.";
         case "restaurar": return "Restaurada del archivo.";
-        case "reintentar": return `Reintento manual pedido para ${d.grupo_nombre || d.grupo_id || "un grupo"}.`;
+        case "reintentar": {
+            const grupo = d.grupo_nombre || d.grupo_id || "un grupo";
+            if (h.resultado === "ok") return `Reintento en ${grupo}: publicado.`;
+            if (h.resultado === "error") return `Reintento en ${grupo}: no se publicó${d.error ? ` (${d.error})` : ""}.`;
+            return `Reintento manual pedido para ${grupo}.`;
+        }
         case "eliminar": return h.resultado === "rechazado" ? `Eliminación rechazada: ${(d.bloqueos || []).join(" ")}` : "Eliminada.";
         default: return `${h.accion}: ${h.resultado}`;
     }
@@ -529,6 +554,9 @@ async function cancelar(usuarioId, id, { ahora = new Date() } = {}) {
     const s = actual.data;
 
     if (s.archivado_en) return falla("estado_invalido", { estado: "archivado", mensaje: "La programación está archivada." });
+    if (esInstantaneo(s)) {
+        return falla("estado_invalido", { estado: "instantaneo", mensaje: "Un sorteo instantáneo no tiene programación que cancelar: reintenta el destino que falló o elimina el borrador. Para cerrar el sorteo en un grupo, usa Eventos." });
+    }
     // Doble clic o dos pestañas: la segunda no hace nada.
     if (s.estado === "cancelado") return { ok: true, data: s, aviso: "La programación ya estaba cancelada; no se hizo nada más." };
 

@@ -187,7 +187,10 @@ export interface GrupoGestion {
 
 export interface AccionesSorteo {
     vista_previa: boolean;
+    /** Programado en borrador: «Revisar y confirmar». */
     confirmar: boolean;
+    /** Instantáneo en borrador: «Publicar ahora». Opcional: un backend anterior no lo envía. */
+    publicar_ahora?: boolean;
     editar: boolean;
     cancelar: boolean;
     eliminar: boolean;

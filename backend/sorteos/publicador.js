@@ -82,6 +82,27 @@ const COMO_TERMINO = {
 // Sin reintento automático pendiente, el mensaje no puede prometerlo.
 const sinPromesaDeReintento = (texto) => String(texto || "").replace(/[.;]?\s*se reintentará\.?/gi, ".");
 
+// SORTEO INSTANTÁNEO (config.publicacion_inmediata): no hereda el flujo de
+// los programados. Se publica solo cuando el administrador lo pide
+// («Publicar ahora» o «Reintentar» de UN destino: publicarPendientes con su
+// sorteoId); el ciclo automático no lo toma. Por eso un destino que falla o
+// tendría que esperar nunca queda «fallido»/«pendiente» a la espera de un
+// ciclo: queda en error (requiere_revision) con el motivo real, y se
+// reintenta solo ese destino, a mano.
+const esInstantaneo = (sorteo) => sorteo?.config?.publicacion_inmediata === true;
+
+function resultadoInstantaneo(cambios) {
+    if (cambios.estado === "fallido") {
+        return { ...cambios, estado: "requiere_revision", ultimo_error: sinPromesaDeReintento(cambios.ultimo_error) };
+    }
+    if (cambios.estado === "pendiente") {
+        const { intentos: _intentos, ...resto } = cambios;
+        const motivo = String(cambios.ultimo_error || "").replace(EN_ESPERA, "").split(" Debe resolverse antes")[0];
+        return { ...resto, estado: "requiere_revision", ultimo_error: `No se publicó en este momento: ${motivo} Cuando se resuelva, pulsa «Reintentar» en este destino.` };
+    }
+    return cambios;
+}
+
 // Una programación nunca revierte lo que decidió el administrador: el grupo
 // se detiene y lo dice. Nada se escribe en el evento.
 function eventoTerminado(fin) {
@@ -139,7 +160,9 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
     // Nunca se publica fuera de su día de publicación ni después del cierre.
     // Excepción: un grupo que estaba EN ESPERA por un conflicto real puede
     // publicarse después de su día, siempre antes del cierre de reservas.
-    if (actual.fecha !== programado.fecha && !enEspera(grupo)) {
+    // Un instantáneo no tiene «día programado»: publicar_en es solo cuándo
+    // se pulsó «Publicar ahora»; un reintento manual vale hasta el cierre.
+    if (actual.fecha !== programado.fecha && !enEspera(grupo) && !esInstantaneo(sorteo)) {
         return { estado: "requiere_revision", ultimo_error: `La fecha programada (${programado.fecha}) ya pasó; no se publicó.` };
     }
     if (cierre && ahora.getTime() >= cierre.getTime()) {
@@ -452,13 +475,18 @@ async function prepararPublicacion({ usuarioId, sorteo, ahora, deps, estados = [
 
 }
 
-async function publicarPendientes({ sock, deps, ahora }) {
+// sorteoId: publicar SOLO ese sorteo, a petición del administrador
+// («Publicar ahora» o «Reintentar» de un destino de un instantáneo). Sin él
+// (ciclo automático) los instantáneos no se tocan.
+async function publicarPendientes({ sock, deps, ahora, sorteoId = null }) {
 
     const usuarioId = sock.context.usuarioId;
     // Incluye los que se publican dentro del próximo minuto: su reinicio de
     // tabla (si lo eligieron) se hace antes del anuncio.
     const pendientes = await repo.sorteosParaPublicar(usuarioId, new Date(ahora.getTime() + ANTICIPO_REINICIO_MS));
     if (!pendientes.ok) return { ok: false, motivo: pendientes.motivo };
+
+    pendientes.data = pendientes.data.filter(s => (sorteoId ? s.id === sorteoId : !esInstantaneo(s)));
 
     const autorizadosRes = await repo.gruposAutorizados(usuarioId);
     const autorizados = new Set((autorizadosRes.data || []).map(g => g.grupo_id));
@@ -502,16 +530,20 @@ async function publicarPendientes({ sock, deps, ahora }) {
             // Nada se publica ni se reinicia en este ciclo. En espera: los
             // grupos siguen pendientes con la explicación. Abortado: quedan
             // en revisión (el administrador decide).
+            // Un instantáneo no espera a un ciclo: queda en error, reintentable.
             const cambios = preparado.abortar
                 ? { estado: "requiere_revision", ultimo_error: preparado.abortar }
-                : { ultimo_error: preparado.espera };
+                : esInstantaneo(sorteo)
+                    ? resultadoInstantaneo({ estado: "pendiente", ultimo_error: preparado.espera })
+                    : { ultimo_error: preparado.espera };
+            const terminaAqui = cambios.estado === "requiere_revision";
             // Condicionado: un grupo cancelado entretanto sigue cancelado.
             for (const g of grupos.data) {
                 if (g.estado === "pendiente" || g.estado === "fallido") await repo.marcarGrupoSi(usuarioId, g.id, [g.estado], cambios);
             }
             await repo.actualizarSorteoSi(usuarioId, sorteo.id, { estados: ["publicando"] }, { ultimo_error: cambios.ultimo_error });
-            informe.push({ sorteo: sorteo.id, estado: preparado.abortar ? "requiere_revision" : "en_espera", error: cambios.ultimo_error });
-            if (preparado.abortar) await finalizarSorteo(usuarioId, sorteo.id);
+            informe.push({ sorteo: sorteo.id, estado: terminaAqui ? "requiere_revision" : "en_espera", error: cambios.ultimo_error });
+            if (terminaAqui) await finalizarSorteo(usuarioId, sorteo.id);
             continue;
         }
 
@@ -533,6 +565,9 @@ async function publicarPendientes({ sock, deps, ahora }) {
             } catch (err) {
                 cambios = { estado: "fallido", ultimo_error: `Error inesperado antes de enviar: ${err?.message}` };
             }
+
+            // Instantáneo: sin reintentos automáticos (ver resultadoInstantaneo).
+            if (esInstantaneo(sorteo)) cambios = resultadoInstantaneo(cambios);
 
             // Tras agotar los reintentos automáticos, revisión manual.
             if (cambios.estado === "fallido" && (Number(reclamado.data.intentos) || 0) >= MAX_INTENTOS_AUTOMATICOS) {
@@ -730,13 +765,14 @@ async function liberarVencidas({ sock, deps, ahora }) {
 
 // ----------------------------------------------------------------- tick ---
 
-async function tick(sock, { ahora = new Date(), deps = null } = {}) {
+// sorteoId: ver publicarPendientes (publicación pedida por el administrador).
+async function tick(sock, { ahora = new Date(), deps = null, sorteoId = null } = {}) {
 
     if (!sock?.context?.usuarioId) return { ok: false, motivo: "sin_tenant" };
 
     const d = deps || dependenciasReales();
 
-    const publicacion = await publicarPendientes({ sock, deps: d, ahora });
+    const publicacion = await publicarPendientes({ sock, deps: d, ahora, sorteoId });
     const mensajes = await procesarPublicados({ sock, deps: d, ahora });
     const vencimientos = await liberarVencidas({ sock, deps: d, ahora });
 
@@ -806,6 +842,7 @@ module.exports = {
     detenerPublicadorSorteos,
     instanteBogota,
     sinPromesaDeReintento,
+    esInstantaneo,
     ERROR_IMAGEN,
     MAX_INTENTOS_AUTOMATICOS,
     ANTICIPO_REINICIO_MS

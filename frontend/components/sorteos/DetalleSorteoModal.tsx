@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 
 import { Badge, Button, Modal } from "@/components/ui";
 import { apiSorteos, describirError, type DetalleSorteo } from "@/services/sorteos/apiSorteos";
-import { ESTADO_PROGRAMACION, etiquetaGrupo, etiquetaOperativo, textoReservas } from "@/services/sorteos/estadosSorteo";
+import { etiquetaGrupo, etiquetaOperativo, etiquetaPublicacion, textoReservas } from "@/services/sorteos/estadosSorteo";
 import { mostrarFecha } from "./fechas";
+import { esInstantaneo } from "./filtrosSorteos";
 import styles from "./Sorteos.module.css";
 
 interface Props {
@@ -38,6 +39,7 @@ export default function DetalleSorteoModal({ sorteoId, onClose }: Props) {
     }, [sorteoId]);
 
     const d = detalle;
+    const instantaneo = esInstantaneo(d);
 
     return (
         <Modal open onClose={onClose} title={d ? d.config.nombre : "Detalles de la programación"} size="lg"
@@ -52,7 +54,7 @@ export default function DetalleSorteoModal({ sorteoId, onClose }: Props) {
                         <section className={styles.seccion} aria-label="Estados">
                             <h3 className={styles.seccionTitulo}>Estados</h3>
                             <div className={styles.insignias}>
-                                <Badge tone={ESTADO_PROGRAMACION[d.estado].tono} dot>Programación: {ESTADO_PROGRAMACION[d.estado].texto}</Badge>
+                                <Badge tone={etiquetaPublicacion(d).tono} dot>{instantaneo ? "Publicación" : "Programación"}: {etiquetaPublicacion(d).texto}</Badge>
                                 <Badge tone={etiquetaOperativo(d).tono}>{etiquetaOperativo(d).texto}</Badge>
                                 {d.gestion.necesita_intervencion && <Badge tone="error">Requiere tu intervención</Badge>}
                                 {d.gestion.archivado_en && <Badge tone="neutral">Archivada el {mostrarFecha(d.gestion.archivado_en)}</Badge>}
@@ -79,7 +81,7 @@ export default function DetalleSorteoModal({ sorteoId, onClose }: Props) {
                             <h3 className={styles.seccionTitulo}>Grupos</h3>
                             <ul className={styles.grupos}>
                                 {d.gestion.grupos.map(g => {
-                                    const etiqueta = etiquetaGrupo(g);
+                                    const etiqueta = etiquetaGrupo(g, instantaneo);
                                     return (
                                         <li key={g.id} className={styles.grupoDetalle}>
                                             <div className={styles.grupo}>

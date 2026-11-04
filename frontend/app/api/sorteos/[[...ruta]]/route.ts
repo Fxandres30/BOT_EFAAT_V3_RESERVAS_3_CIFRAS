@@ -125,7 +125,8 @@ async function reenviar(metodo: Metodo, req: Request, params: Promise<{ ruta?: s
             cache: "no-store",
             // Publicar ya (imagen + envío a cada grupo) e imagen de prueba
             // (Chromium en el servidor) tardan más que el resto.
-            signal: AbortSignal.timeout(camino.endsWith("/publicar-ahora") ? 120000 : camino.endsWith("/imagen-prueba") ? 60000 : 20000)
+            // El reintento de un destino de un instantáneo también publica ya.
+            signal: AbortSignal.timeout(camino.endsWith("/publicar-ahora") || camino.endsWith("/grupos/reintentar") ? 120000 : camino.endsWith("/imagen-prueba") ? 60000 : 20000)
         });
 
         const datos = await res.json().catch(() => ({ ok: false, motivo: "respuesta_invalida" }));

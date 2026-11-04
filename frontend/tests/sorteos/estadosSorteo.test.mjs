@@ -72,6 +72,22 @@ prueba("2. todos los estados tienen texto y tono (programación, grupo y operati
     assert.strictEqual(E.etiquetaGrupo(grupo({ en_espera: true })).texto, "En espera");
 });
 
+prueba("2b. sorteo instantáneo: destinos Pendiente/Publicando/Publicado/Error (nunca «Reintentando»); el programado conserva sus textos", () => {
+    const textos = ["pendiente", "publicando", "publicado", "fallido", "requiere_revision"].map(e => E.etiquetaGrupo(grupo({ estado: e }), true).texto);
+    assert.deepStrictEqual(textos, ["Pendiente", "Publicando", "Publicado", "Error", "Error"]);
+    assert.strictEqual(E.etiquetaGrupo(grupo({ estado: "fallido" }), true).tono, "error");
+    assert.strictEqual(E.etiquetaGrupo(grupo({ estado: "fallido" })).texto, "Reintentando", "programado sin cambios");
+    assert.strictEqual(E.etiquetaGrupo(grupo({ estado: "pendiente", en_espera: true }), true).texto, "Pendiente");
+    const inst = { estado: "borrador", config: { publicacion_inmediata: true } };
+    assert.strictEqual(E.etiquetaPublicacion(inst).texto, "Sin publicar");
+    assert.strictEqual(E.etiquetaPublicacion({ ...inst, estado: "publicando" }).texto, "Publicando");
+    assert.strictEqual(E.etiquetaPublicacion({ estado: "borrador", config: {} }).texto, "Borrador (sin confirmar)");
+    for (const e of ["borrador", "programado", "publicando", "publicado", "publicado_parcial", "fallido", "cancelado"]) assert.ok(E.ESTADO_INSTANTANEO[e]?.texto, e);
+    const s = sorteo({ grupos: [grupo({ estado: "fallido" })] });
+    s.config.publicacion_inmediata = true;
+    assert.deepStrictEqual(E.resumenEliminacion(s).grupos.map(g => g.estado), ["Error"]);
+});
+
 prueba("3b. eliminar con actividad: avisos, qué se borra y qué se conserva; un backend anterior no rompe el resumen", () => {
     const r = E.resumenEliminacion(sorteo({ eliminacion: {
         posible: true, bloqueos: [], alternativa: null, con_actividad: true,

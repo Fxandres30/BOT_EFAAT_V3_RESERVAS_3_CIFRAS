@@ -38,8 +38,41 @@ export const ESTADO_OPERATIVO: Record<EstadoOperativo, Etiqueta> = {
     desconocido: { texto: "Estado no disponible", tono: "warning" }
 };
 
-export function etiquetaGrupo(g: Pick<GrupoGestion, "estado" | "en_espera">): Etiqueta {
+/**
+ * Estado de la publicación en un DESTINO de un sorteo INSTANTÁNEO: no tiene
+ * reintentos automáticos ni espera a ningún ciclo, así que solo hay
+ * Pendiente, Publicando, Publicado o Error (que se reintenta a mano).
+ */
+export const ESTADO_DESTINO_INSTANTANEO: Record<EstadoGrupo, Etiqueta> = {
+    pendiente: { texto: "Pendiente", tono: "neutral" },
+    publicando: { texto: "Publicando", tono: "warning" },
+    publicado: { texto: "Publicado", tono: "success" },
+    fallido: { texto: "Error", tono: "error" },
+    requiere_revision: { texto: "Error", tono: "error" },
+    cancelado: { texto: "Cancelado", tono: "neutral" }
+};
+
+/** Estado del sorteo instantáneo en su conjunto (no es una programación). */
+export const ESTADO_INSTANTANEO: Record<EstadoSorteo, Etiqueta> = {
+    borrador: { texto: "Sin publicar", tono: "neutral" },
+    programado: { texto: "Publicando", tono: "warning" },
+    publicando: { texto: "Publicando", tono: "warning" },
+    publicado: { texto: "Publicado", tono: "success" },
+    publicado_parcial: { texto: "Publicado en parte", tono: "warning" },
+    fallido: { texto: "Error al publicar", tono: "error" },
+    cancelado: { texto: "Cancelado", tono: "neutral" }
+};
+
+const instantaneo = (s: { config?: { publicacion_inmediata?: boolean } | null }) => s.config?.publicacion_inmediata === true;
+
+export function etiquetaGrupo(g: Pick<GrupoGestion, "estado" | "en_espera">, esInstantaneo = false): Etiqueta {
+    if (esInstantaneo) return ESTADO_DESTINO_INSTANTANEO[g.estado];
     return g.en_espera ? { texto: "En espera", tono: "warning" } : ESTADO_GRUPO[g.estado];
+}
+
+/** Etiqueta del estado general: de la programación, o del instantáneo. */
+export function etiquetaPublicacion(s: { estado: EstadoSorteo; config?: { publicacion_inmediata?: boolean } | null }): Etiqueta {
+    return (instantaneo(s) ? ESTADO_INSTANTANEO : ESTADO_PROGRAMACION)[s.estado];
 }
 
 export function etiquetaOperativo(s: SorteoGestionado): Etiqueta {
@@ -70,7 +103,7 @@ export function resumenEliminacion(s: SorteoGestionado) {
 
     return {
         nombre: s.config.nombre,
-        grupos: g.grupos.map(x => ({ nombre: x.nombre || x.grupo_id, estado: etiquetaGrupo(x).texto, publicado_en: x.publicado_en })),
+        grupos: g.grupos.map(x => ({ nombre: x.nombre || x.grupo_id, estado: etiquetaGrupo(x, instantaneo(s)).texto, publicado_en: x.publicado_en })),
         publicaciones: publicados.length,
         reservas: textoReservas(s),
         posible: g.acciones.eliminar,

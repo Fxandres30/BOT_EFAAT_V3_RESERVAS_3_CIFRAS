@@ -5,8 +5,9 @@ import { CalendarClock } from "lucide-react";
 
 import { Badge, Button, Card, EmptyState } from "@/components/ui";
 import { apiSorteos, describirError, type Sorteo, type SorteoGestionado } from "@/services/sorteos/apiSorteos";
-import { ESTADO_PROGRAMACION, etiquetaGrupo, etiquetaOperativo, textoCancelacion, textoReservas } from "@/services/sorteos/estadosSorteo";
+import { etiquetaGrupo, etiquetaOperativo, etiquetaPublicacion, textoCancelacion, textoReservas } from "@/services/sorteos/estadosSorteo";
 import { mostrarFecha } from "./fechas";
+import { esInstantaneo } from "./filtrosSorteos";
 import styles from "./Sorteos.module.css";
 
 // Un sorteo se puede editar mientras no se haya publicado en ningún grupo.
@@ -65,7 +66,11 @@ export default function ListaSorteos({ sorteos, onVistaPrevia, onEditar, onDetal
             {sorteos.map(s => {
 
                 const g = s.gestion;
-                const programacion = ESTADO_PROGRAMACION[s.estado];
+                // Un instantáneo no es una programación: sin «Cancelar
+                // programación», con «Publicar ahora» y estados por destino
+                // Pendiente / Publicando / Publicado / Error.
+                const instantaneo = esInstantaneo(s);
+                const programacion = etiquetaPublicacion(s);
                 const operativo = etiquetaOperativo(s);
                 const reservas = textoReservas(s);
                 const ocupada = ocupado?.startsWith(s.id) ?? false;
@@ -76,7 +81,7 @@ export default function ListaSorteos({ sorteos, onVistaPrevia, onEditar, onDetal
                         <div className={styles.tarjetaCabecera}>
                             <h3 className={styles.tarjetaTitulo}>{s.config.nombre}</h3>
                             <div className={styles.insignias}>
-                                <Badge tone={programacion.tono} dot title="Estado de la programación">{programacion.texto}</Badge>
+                                <Badge tone={programacion.tono} dot title={instantaneo ? "Estado de la publicación" : "Estado de la programación"}>{programacion.texto}</Badge>
                                 <Badge tone={operativo.tono} title="Estado del sorteo en los grupos">{operativo.texto}</Badge>
                                 {g.necesita_intervencion && <Badge tone="error">Requiere tu intervención</Badge>}
                                 {g.archivado_en && <Badge tone="neutral">Archivada</Badge>}
@@ -87,7 +92,7 @@ export default function ListaSorteos({ sorteos, onVistaPrevia, onEditar, onDetal
                             <span>Publicación: {mostrarFecha(s.publicar_en)}</span>
                             <span>Sorteo: {fechaLegible(s.config.fecha_sorteo) ? `${fechaLegible(s.config.fecha_sorteo)} ` : ""}{s.config.hora_fin} · cierre {s.config.hora_cierre || "—"}</span>
                             <span>${Number(s.config.valor).toLocaleString("es-CO")} por número · {s.cantidad_numeros} números</span>
-                            <span>Versión {s.version}{s.confirmado_version === s.version ? " (confirmada)" : s.estado === "borrador" ? " (sin confirmar)" : ""}</span>
+                            {!instantaneo && <span>Versión {s.version}{s.confirmado_version === s.version ? " (confirmada)" : s.estado === "borrador" ? " (sin confirmar)" : ""}</span>}
                             {g.ultima_actualizacion && <span>Actualizado: {mostrarFecha(g.ultima_actualizacion)}</span>}
                         </div>
 
@@ -97,7 +102,7 @@ export default function ListaSorteos({ sorteos, onVistaPrevia, onEditar, onDetal
 
                         <ul className={styles.grupos}>
                             {g.grupos.map(gr => {
-                                const etiqueta = etiquetaGrupo(gr);
+                                const etiqueta = etiquetaGrupo(gr, instantaneo);
                                 return (
                                     <li key={gr.id} className={styles.grupo}>
                                         <Badge tone={etiqueta.tono} size="sm">{etiqueta.texto}</Badge>
@@ -110,11 +115,14 @@ export default function ListaSorteos({ sorteos, onVistaPrevia, onEditar, onDetal
                                         {gr.puede_reintentar && (
                                             <Button size="sm" variant="secondary" loading={ocupado === `${s.id}:${gr.grupo_id}`} disabled={!!ocupado}
                                                 onClick={() => {
-                                                    if (window.confirm("Revisa primero el grupo en WhatsApp: si el anuncio ya llegó, reintentar lo publicaría de nuevo. ¿Reintentar?")) {
+                                                    const aviso = instantaneo
+                                                        ? `Se publicará ahora solo en «${gr.nombre || gr.grupo_id}»; los destinos ya publicados no se tocan. Si el anuncio ya llegó a ese grupo, reintentar lo publicaría de nuevo. ¿Publicar ahora en este destino?`
+                                                        : "Revisa primero el grupo en WhatsApp: si el anuncio ya llegó, reintentar lo publicaría de nuevo. ¿Reintentar?";
+                                                    if (window.confirm(aviso)) {
                                                         ejecutar(`${s.id}:${gr.grupo_id}`, () => apiSorteos.reintentarGrupo(s.id, gr.grupo_id));
                                                     }
                                                 }}>
-                                                Reintentar
+                                                {instantaneo ? "Reintentar ahora" : "Reintentar"}
                                             </Button>
                                         )}
                                     </li>
@@ -124,11 +132,13 @@ export default function ListaSorteos({ sorteos, onVistaPrevia, onEditar, onDetal
 
                         <div className={styles.acciones}>
                             <Button size="sm" variant="secondary" onClick={() => onDetalle(s.id)}>Detalles e historial</Button>
-                            {g.acciones.confirmar
+                            {g.acciones.confirmar && !instantaneo
                                 ? <Button size="sm" variant="primary" onClick={() => onVistaPrevia(s.id)}>Revisar y confirmar</Button>
-                                : <Button size="sm" variant="ghost" onClick={() => onVistaPrevia(s.id)}>Vista previa</Button>}
+                                : instantaneo && (g.acciones.publicar_ahora ?? s.estado === "borrador")
+                                    ? <Button size="sm" variant="primary" onClick={() => onVistaPrevia(s.id)}>Revisar y publicar ahora</Button>
+                                    : <Button size="sm" variant="ghost" onClick={() => onVistaPrevia(s.id)}>Vista previa</Button>}
                             {g.acciones.editar && <Button size="sm" variant="secondary" onClick={() => onEditar(s)}>Editar</Button>}
-                            {g.acciones.cancelar && (
+                            {g.acciones.cancelar && !instantaneo && (
                                 <Button size="sm" variant="danger" loading={ocupado === `${s.id}:cancelar`} disabled={!!ocupado && !ocupada}
                                     onClick={() => {
                                         if (window.confirm(textoCancelacion(s))) ejecutar(`${s.id}:cancelar`, () => apiSorteos.cancelar(s.id));
