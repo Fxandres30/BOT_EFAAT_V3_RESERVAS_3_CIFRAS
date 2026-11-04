@@ -204,7 +204,13 @@ export default function CalendarioLoteriasPage() {
 
             <PageHeader
                 title="Calendario de loterías"
-                description="Catálogo de loterías con su horario habitual en hora de Colombia. Lo usan todos tus sorteos: al crear uno, eliges la lotería y se sugiere la hora del día. Nada se programa solo."
+                description={
+                    <>
+                        Catálogo de loterías con su horario habitual en hora de Colombia. Lo usan todos tus sorteos: al crear uno, eliges la lotería y se sugiere la hora del día. Nada se programa solo.
+                        <strong className={styles.descripcionRecomendacion}>Te recomendamos verificar siempre el horario oficial de cada lotería antes de crear tu sorteo.</strong>
+                        <strong className={styles.descripcionAvisoFestivos}>⚠️ IMPORTANTE: En días festivos, los horarios de los sorteos pueden cambiar. ¡Verifica siempre antes de publicar!</strong>
+                    </>
+                }
                 actions={
                     <>
                         <Button variant="secondary" leftIcon={<RotateCcw size={16} />} loading={restaurando === "todo"} onClick={restaurarTodo}>Restaurar configuración inicial</Button>

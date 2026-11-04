@@ -200,3 +200,16 @@
     flex-wrap: wrap;
     gap: 8px;
 }
+
+/* Avisos bajo la descripción de la página (dentro del <p> de PageHeader). */
+.descripcionRecomendacion,
+.descripcionAvisoFestivos {
+    display: block;
+    margin-top: 8px;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.descripcionAvisoFestivos {
+    color: var(--efaat-error, #dc2626);
+}
