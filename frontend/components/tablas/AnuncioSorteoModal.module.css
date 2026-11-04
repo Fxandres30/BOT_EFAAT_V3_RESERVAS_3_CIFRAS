@@ -1,0 +1,192 @@
+/* Ventana «Sin sorteo activo» y elección de modalidad (Tablas → Editar). */
+
+.cuerpo {
+    display: flex;
+    flex-direction: column;
+    gap: var(--efaat-space-4);
+    min-width: 0;
+}
+
+/* Estado neutro e informativo: NO es un error. */
+.estado {
+    display: flex;
+    gap: var(--efaat-space-3);
+    align-items: flex-start;
+    padding: var(--efaat-space-4);
+    border: 1px solid var(--efaat-border);
+    border-radius: var(--efaat-radius-card);
+    background: var(--efaat-surface-muted);
+}
+
+.estadoIcono {
+    flex: none;
+    display: inline-flex;
+    color: var(--efaat-text-muted);
+    margin-top: 2px;
+}
+
+.estadoTitulo {
+    margin: 0 0 var(--efaat-space-1);
+    font-weight: 600;
+    font-size: var(--efaat-text-md);
+    color: var(--efaat-text);
+}
+
+.estadoTexto {
+    margin: 0;
+    font-size: var(--efaat-text-sm);
+    color: var(--efaat-text-secondary);
+    line-height: 1.5;
+}
+
+.acciones,
+.modalidades {
+    display: flex;
+    flex-direction: column;
+    gap: var(--efaat-space-3);
+}
+
+/* Acción = tarjeta pulsable completa (icono + título + descripción). */
+.accion,
+.modalidad {
+    display: flex;
+    align-items: center;
+    gap: var(--efaat-space-3);
+    width: 100%;
+    min-height: 64px;
+    padding: var(--efaat-space-3) var(--efaat-space-4);
+    border: 1px solid var(--efaat-border);
+    border-radius: var(--efaat-radius-card);
+    background: var(--efaat-surface);
+    color: var(--efaat-text);
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+    transition: border-color var(--efaat-dur-fast) var(--efaat-ease), background var(--efaat-dur-fast) var(--efaat-ease), box-shadow var(--efaat-dur-fast) var(--efaat-ease);
+}
+
+.accion:hover,
+.modalidad:hover {
+    border-color: var(--efaat-primary-border);
+    box-shadow: var(--efaat-shadow-xs);
+}
+
+.accion:focus-visible,
+.modalidad:focus-within {
+    outline: none;
+    box-shadow: var(--efaat-focus-ring);
+}
+
+.accionPrincipal {
+    border-color: var(--efaat-primary-border);
+    background: var(--efaat-primary-soft);
+}
+
+.accionIcono {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--efaat-radius-control);
+    background: var(--efaat-surface-sunken);
+    color: var(--efaat-primary);
+}
+
+.accionPrincipal .accionIcono,
+.modalidadMarcada .accionIcono {
+    background: var(--efaat-primary);
+    color: var(--efaat-text-on-primary);
+}
+
+.accionTexto {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.accionTitulo {
+    font-weight: 600;
+    font-size: var(--efaat-text-base);
+}
+
+.accionDescripcion {
+    font-size: var(--efaat-text-sm);
+    color: var(--efaat-text-secondary);
+    line-height: 1.45;
+}
+
+.accionFlecha {
+    flex: none;
+    color: var(--efaat-text-muted);
+}
+
+.modalidad {
+    align-items: flex-start;
+}
+
+.modalidadMarcada {
+    border-color: var(--efaat-primary);
+    background: var(--efaat-primary-soft);
+}
+
+.modalidadResumen {
+    font-size: var(--efaat-text-sm);
+    font-weight: 500;
+    color: var(--efaat-text);
+}
+
+/* Radio nativo: accesible por teclado y lector, sin ocupar sitio. */
+.radio {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    pointer-events: none;
+}
+
+.modalidad {
+    position: relative;
+}
+
+.nota {
+    margin: 0;
+    font-size: var(--efaat-text-sm);
+    color: var(--efaat-text-muted);
+}
+
+.error {
+    margin: 0;
+    color: var(--efaat-error-strong);
+}
+
+.pie {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--efaat-space-2);
+    width: 100%;
+}
+
+@media (max-width: 520px) {
+    .pie {
+        flex-direction: column-reverse;
+    }
+
+    .pie > * {
+        width: 100%;
+    }
+
+    .accion,
+    .modalidad {
+        padding: var(--efaat-space-3);
+    }
+
+    .accionIcono {
+        width: 36px;
+        height: 36px;
+    }
+}

@@ -6,6 +6,8 @@ import { reenviarAlBot, leerCuerpo } from "@/lib/botApi";
 // podría haber ocurrido igual: la misma solicitudId nunca reenvía a un
 // grupo ya hecho).
 export async function POST(req: Request) {
-    const { precio, usuarioId, solicitudId, grupos, texto, guardar_destinos, imagen } = await leerCuerpo(req);
-    return reenviarAlBot(req, "/tablas/compartir", { metodo: "POST", cuerpo: { precio, usuarioId, solicitudId, grupos, texto, guardar_destinos, imagen }, timeoutMs: 120000 });
+    const { precio, usuarioId, solicitudId, grupos, texto, guardar_destinos, imagen, asincrono } = await leerCuerpo(req);
+    // asincrono: el backend responde al aceptar el envío (202 + operación) y
+    // el panel sigue el progreso en /api/tablas/compartir/operaciones.
+    return reenviarAlBot(req, "/tablas/compartir", { metodo: "POST", cuerpo: { precio, usuarioId, solicitudId, grupos, texto, guardar_destinos, imagen, asincrono }, timeoutMs: 120000 });
 }

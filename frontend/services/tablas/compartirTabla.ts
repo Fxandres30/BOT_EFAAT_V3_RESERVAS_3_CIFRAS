@@ -18,6 +18,44 @@ export interface ResultadoCompartir {
     fallidos?: number;
     resultados?: ResultadoGrupo[];
     invalidos?: string[];
+    /** Envío aceptado (asincrono) o en curso (409 envio_en_curso). */
+    operacion?: OperacionCompartir;
+    /** Misma solicitud repetida: es la operación que ya existía. */
+    repetida?: boolean;
+    mensaje?: string | null;
+}
+
+// ------------------------------------------------ operaciones (04/11) ---
+// Progreso REAL de un envío (backend/services/operacionesCompartir.js): cada
+// estado viene de lo que de verdad pasó con WhatsApp en el servidor.
+
+export type EstadoGrupoOperacion = "en_cola" | "preparando" | "enviando" | "enviado" | "error" | "cancelado";
+export type EstadoOperacion = "en_curso" | "cancelando" | "completada" | "con_errores" | "cancelada" | "fallida";
+
+export interface GrupoOperacion {
+    grupo_id: string;
+    nombre: string | null;
+    /** activar = grupo nuevo del sorteo (se activa ahí y recibe el anuncio). */
+    tipo: "compartir" | "activar";
+    estado: EstadoGrupoOperacion;
+    error: string | null;
+    detalle?: string | null;
+}
+
+export interface OperacionCompartir {
+    id: string;
+    precio: number;
+    estado: EstadoOperacion;
+    /** Qué está haciendo ahora el servidor. */
+    etapa: string;
+    terminada: boolean;
+    cancelacion_solicitada: boolean;
+    aviso: string | null;
+    mensaje_error: string | null;
+    /** Instantánea del mensaje aprobado para ESTE envío. */
+    mensaje: { texto: string; activo: boolean; revision: number | null; origen: string | null } | null;
+    totales: { total: number; enviados: number; fallidos: number; cancelados: number; en_curso: number; pendientes: number; porcentaje: number };
+    grupos: GrupoOperacion[];
 }
 
 // Texto y grupos para «Compartir». La imagen NO viene de aquí: es la captura
@@ -27,6 +65,8 @@ export interface VistaPreviaCompartir {
     evento: { id: string; nombre: string | null; hora_fin: string | null; hora_cierre: string | null };
     texto: string;
     origen_texto: "sorteo" | "habitual";
+    /** false: el mensaje del sorteo está desactivado (se envía solo la imagen). */
+    texto_activo?: boolean;
     grupos: { grupo_id: string; nombre: string | null }[];
     seleccion: string[];
     invalidos: string[];
@@ -36,6 +76,10 @@ export interface VistaPreviaCompartir {
     sorteo_programado_id?: string | null;
     /** Estado del sorteo en cada grupo disponible (backend 04/11). */
     estado_grupos?: Record<string, "activo" | "pendiente" | "error" | "sin_sorteo">;
+    /** Mensaje guardado (con {{variables}}) del que sale `texto`: la fuente única. */
+    mensaje?: { plantilla: string | null; revision: number | null; fuente: "panel" | "detectado" | "habitual" | null; editable: boolean };
+    /** Envío de esta tabla que sigue en curso (p. ej. tras cerrar la ventana). */
+    operacion_activa?: OperacionCompartir | null;
 }
 
 /** Qué cambió al guardar los grupos de un sorteo del panel (no publica). */
@@ -55,7 +99,8 @@ export interface EnvioCompartir {
     imagen: string;
     /** Sin grupos: los guardados para esta tabla. */
     grupos?: string[];
-    /** Texto editado para este envío; sin él, el configurado. */
+    /** SOLO panel anterior: texto editado para un envío. El panel actual no
+     *  lo manda: el texto es siempre el mensaje guardado del sorteo. */
     texto?: string;
     guardarDestinos?: boolean;
 }
@@ -81,7 +126,9 @@ export async function compartirTabla(precio: number, envio: EnvioCompartir): Pro
             imagen: envio.imagen,
             ...(envio.grupos ? { grupos: envio.grupos } : {}),
             ...(envio.texto !== undefined ? { texto: envio.texto } : {}),
-            ...(envio.guardarDestinos ? { guardar_destinos: true } : {})
+            ...(envio.guardarDestinos ? { guardar_destinos: true } : {}),
+            // Responde al aceptar (202 + operación); el progreso se consulta aparte.
+            asincrono: true
         })
     });
 
@@ -104,6 +151,44 @@ export async function guardarDestinosCompartir(precio: number, grupos: string[])
     return json(res);
 }
 
+export async function consultarOperacion(id: string): Promise<{ ok: true; data: OperacionCompartir } | { ok: false; motivo?: string }> {
+    const res = await fetchConSesion(`/api/tablas/compartir/operaciones?id=${encodeURIComponent(id)}`);
+    return json(res);
+}
+
+export async function operacionesDeTabla(precio: number): Promise<{ ok: true; data: { activa: OperacionCompartir | null; recientes: OperacionCompartir[] } } | { ok: false; motivo?: string }> {
+    const res = await fetchConSesion(`/api/tablas/compartir/operaciones?precio=${precio}`);
+    return json(res);
+}
+
+/** Idempotente: repetirla no cambia nada. Nunca retira lo ya publicado. */
+export async function cancelarOperacion(id: string): Promise<{ ok: true; data: OperacionCompartir; ya_solicitada?: boolean; ya_terminada?: boolean } | { ok: false; motivo?: string }> {
+    const res = await fetchConSesion("/api/tablas/compartir/operaciones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id })
+    });
+    return json(res);
+}
+
+export interface MensajeGuardado {
+    texto: string;
+    origen_texto: "sorteo" | "habitual";
+    texto_activo: boolean;
+    mensaje: NonNullable<VistaPreviaCompartir["mensaje"]>;
+    aviso?: string | null;
+}
+
+/** Cambia EL mensaje de publicación del sorteo (el mismo de «Editar»). No envía nada. */
+export async function guardarMensajeCompartir(precio: number, plantilla: string, basePlantilla: string): Promise<{ ok: true; data: MensajeGuardado } | { ok: false; motivo?: string; mensaje?: string | null; errores?: { campo: string; mensaje: string }[] | null }> {
+    const res = await fetchConSesion("/api/tablas/compartir/mensaje", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ precio, plantilla, base_plantilla: basePlantilla })
+    });
+    return json(res);
+}
+
 // Motivo del backend -> texto para el administrador.
 export const MENSAJES_COMPARTIR: Record<string, string> = {
     sin_evento_activo: "No hay ningún sorteo activo en esta tabla para compartir.",
@@ -118,7 +203,10 @@ export const MENSAJES_COMPARTIR: Record<string, string> = {
     tiempo_agotado: "El envío tardó demasiado en responder. Puede que se haya enviado: revisa los grupos antes de reintentar.",
     sin_respuesta: "No llegó la respuesta del servidor (conexión interrumpida). Puede que se haya publicado en algún grupo: «Reintentar» repite la MISMA solicitud y no vuelve a enviar a los grupos ya hechos.",
     vista_previa_sin_respuesta: "No se pudo cargar la vista previa (sin conexión con el servidor). No se envió nada.",
-    migracion_pendiente: "Guardar la selección de grupos todavía no está disponible."
+    migracion_pendiente: "Guardar la selección de grupos todavía no está disponible.",
+    texto_no_disponible: "No se pudo leer el mensaje del sorteo. No se envió nada: inténtalo de nuevo en unos segundos.",
+    version_cambiada: "El mensaje del sorteo cambió desde que abriste esta ventana. Ciérrala y vuelve a abrirla para ver el actual.",
+    no_encontrada: "No se encontró el envío: el servidor pudo reiniciarse. Lo ya enviado quedó registrado; «Reintentar» repite la MISMA solicitud y no duplica."
 };
 
 export function mensajeCompartir(motivo?: string): string {

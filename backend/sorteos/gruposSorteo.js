@@ -212,7 +212,13 @@ function resumen(sorteo) {
 
 // imagen: captura PNG (Buffer) que el panel hizo de la tabla, opcional; sin
 // ella el publicador la captura en el servidor como siempre.
-async function publicarGruposNuevos(usuarioId, sorteoId, { imagen = null } = {}) {
+// Opcionales (operaciones de «Compartir», 04/11 — no cambian qué se publica
+// ni cuándo):
+//   - anuncio: { texto, activo } instantánea del mensaje aprobado para ESTA
+//     operación (sale de la misma fuente, destinosCompartir.textoParaCompartir);
+//     así una edición posterior no cambia una publicación ya en curso.
+//   - observar: { alPreparar(grupoId), alEnviar(grupoId) } progreso real.
+async function publicarGruposNuevos(usuarioId, sorteoId, { imagen = null, anuncio = null, observar = null } = {}) {
 
     const actual = await repo.obtenerSorteo(usuarioId, sorteoId);
     if (!actual.ok) return actual;
@@ -241,6 +247,18 @@ async function publicarGruposNuevos(usuarioId, sorteoId, { imagen = null } = {})
     if (imagen) {
         const base = d || publicador.dependenciasReales();
         d = { ...base, capturarImagen: (precio, uid, eventoId, contexto) => (contexto?.sorteoId === sorteoId ? imagen : base.capturarImagen(precio, uid, eventoId, contexto)) };
+    }
+    if (anuncio || observar) {
+        const base = d || publicador.dependenciasReales();
+        const avisar = (fn, grupoId) => { try { fn?.(grupoId); } catch { /* solo progreso */ } };
+        d = {
+            ...base,
+            ...(anuncio ? { textoParaCompartir: async () => ({ ok: true, origen: "sorteo", texto: anuncio.activo === false ? "" : anuncio.texto, activo: anuncio.activo !== false }) } : {}),
+            ...(observar ? {
+                guardarEvento: async (args) => { avisar(observar.alPreparar, args?.grupoId); return base.guardarEvento(args); },
+                compartirEnGrupos: async (args) => { avisar(observar.alEnviar, args?.grupos?.[0]?.grupo_id); return base.compartirEnGrupos(args); }
+            } : {})
+        };
     }
 
     try {

@@ -107,6 +107,72 @@ async function main() {
         assert.deepStrictEqual([pijaoA.hora, pijaoA.horas_por_dia], ["14:00", { 6: "21:00", 7: "22:00" }]);
         paso("Restaurar: Pijao de Oro editado vuelve a 14:00 / sábado 21:00 / domingo 22:00 solo en el calendario de A");
 
+        // Secciones desplegables: «Chances» y «Sorteos tradicionales».
+        const seccion = (titulo) => a.evaluate((titulo) => {
+            const s = document.querySelector(`section[aria-label="${titulo}"]`);
+            const boton = s.querySelector("h2 button");
+            return {
+                abierta: boton.getAttribute("aria-expanded") === "true",
+                flecha: boton.querySelector("svg").getAttribute("class") || "",
+                contador: boton.querySelector("[aria-label$='loterías']")?.textContent.trim(),
+                tarjetasVisibles: [...s.querySelectorAll("h3")].filter(h => h.offsetParent !== null).length
+            };
+        }, titulo);
+        const pulsarSeccion = (titulo) => a.evaluate((titulo) => document.querySelector(`section[aria-label="${titulo}"] h2 button`).click(), titulo);
+        const escribirBusqueda = (texto) => a.evaluate((texto) => {
+            const el = document.querySelector('[aria-label="Buscar lotería"]');
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, texto);
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+        }, texto);
+
+        let ch = await seccion("Chances");
+        let tr = await seccion("Sorteos tradicionales");
+        assert.deepStrictEqual([ch.abierta, ch.contador, ch.tarjetasVisibles, tr.abierta, tr.contador, tr.tarjetasVisibles], [true, "27", 27, true, "15", 15], "ambas empiezan desplegadas");
+        assert.ok(/chevron-down/.test(ch.flecha), `flecha abajo al estar desplegada: ${ch.flecha}`);
+
+        await pulsarSeccion("Chances");
+        await a.waitForFunction(() => document.querySelector('section[aria-label="Chances"] h2 button').getAttribute("aria-expanded") === "false");
+        ch = await seccion("Chances");
+        tr = await seccion("Sorteos tradicionales");
+        assert.deepStrictEqual([ch.abierta, ch.contador, ch.tarjetasVisibles], [false, "27", 0], "Chances plegada: sin tarjetas, contador visible");
+        assert.ok(/chevron-right/.test(ch.flecha), `flecha a la derecha al estar plegada: ${ch.flecha}`);
+        assert.deepStrictEqual([tr.abierta, tr.tarjetasVisibles], [true, 15], "Sorteos tradicionales no se ve afectada");
+
+        await pulsarSeccion("Sorteos tradicionales");
+        await a.waitForFunction(() => document.querySelector('section[aria-label="Sorteos tradicionales"] h2 button').getAttribute("aria-expanded") === "false");
+        await pulsarSeccion("Chances");
+        await a.waitForFunction(() => document.querySelector('section[aria-label="Chances"] h2 button').getAttribute("aria-expanded") === "true");
+        ch = await seccion("Chances");
+        tr = await seccion("Sorteos tradicionales");
+        assert.deepStrictEqual([ch.abierta, ch.tarjetasVisibles, tr.abierta, tr.contador, tr.tarjetasVisibles], [true, 27, false, "15", 0], "desplegar Chances no despliega Tradicionales");
+        await captura(a, "calendario_secciones_plegadas");
+        paso("Secciones: Chances y Sorteos tradicionales se pliegan y despliegan por separado (flecha abajo/derecha, contador siempre visible)");
+
+        // Se recuerda al recargar dentro de la pestaña.
+        await a.reload({ waitUntil: "domcontentloaded" });
+        await esperarTexto(a, "Sorteos tradicionales");
+        await a.waitForFunction(() => document.querySelector('section[aria-label="Chances"] h3'));
+        tr = await seccion("Sorteos tradicionales");
+        assert.deepStrictEqual([tr.abierta, tr.tarjetasVisibles, tr.contador], [false, 0, "15"], "sigue plegada tras recargar");
+
+        // Buscar algo que está en la sección plegada: se despliega sola.
+        await pulsarSeccion("Chances");
+        await a.waitForFunction(() => document.querySelector('section[aria-label="Chances"] h2 button').getAttribute("aria-expanded") === "false");
+        await escribirBusqueda("medellín");
+        await a.waitForFunction(() => document.querySelector('section[aria-label="Sorteos tradicionales"] h2 button').getAttribute("aria-expanded") === "true");
+        tr = await seccion("Sorteos tradicionales");
+        ch = await seccion("Chances");
+        assert.deepStrictEqual([tr.abierta, tr.contador, tr.tarjetasVisibles], [true, "1", 1], "Lotería de Medellín visible");
+        assert.deepStrictEqual([ch.abierta, ch.contador], [false, "0"], "Chances sin resultados sigue plegada");
+        await escribirBusqueda("sinu");
+        await a.waitForFunction(() => document.querySelector('section[aria-label="Chances"] h2 button').getAttribute("aria-expanded") === "true");
+        ch = await seccion("Chances");
+        assert.deepStrictEqual([ch.abierta, ch.contador, ch.tarjetasVisibles], [true, "2", 2], "Sinuano Día y Noche visibles");
+        await escribirBusqueda("");
+        await a.waitForFunction(() => document.body.innerText.includes("Antioqueñita Día"));
+        assert.deepStrictEqual([(await seccion("Chances")).tarjetasVisibles, (await seccion("Sorteos tradicionales")).tarjetasVisibles], [27, 15]);
+        paso("Búsqueda: un resultado dentro de una sección plegada la despliega (Medellín, Sinuano); las secciones sin resultados no cambian");
+
         await a.evaluate(() => {
             const el = document.querySelector('[aria-label="Buscar lotería"]');
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, "sinu");

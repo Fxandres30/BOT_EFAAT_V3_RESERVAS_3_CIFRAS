@@ -344,6 +344,50 @@ prueba("Re-agregar un grupo quitado no lo reactiva en silencio; un sorteo detect
     assert.ok(ed.errores.some(e => e.campo === "grupos"));
 });
 
+prueba("Compartir la tabla NO desactiva, duplica ni modifica el sorteo asociado a sus grupos (un clic, misma selección guardada, repetido, y solo un grupo)", async () => {
+    const s = await publicadoEnDos();
+    await reservar("g1@g.us", "05");
+    await reservar("g2@g.us", "06");
+    Object.assign(tablas()[T5K].find(f => f.numero === "07"), { estado: "pagado", identidad_evento_real: s.identidad_evento_real, grupo_id: "g1@g.us", comprador: "Luis" });
+    // Lo que define al sorteo en sus grupos (sin marcas de tiempo de lectura).
+    const foto = () => JSON.stringify({
+        sorteo: tablas().sorteos_programados.map(x => [x.id, x.estado, x.version, x.identidad_evento_real, x.tabla, JSON.stringify(x.config)]),
+        grupos: tablas().sorteos_programados_grupos.map(g => [g.grupo_id, g.estado, g.evento_bot_id, g.publicado_en, g.intentos, g.reintentos_manuales]),
+        eventos: tablas().eventos_bot.map(e => [e.id, e.grupo_id, e.activo, e.abierto, e.estado, e.identidad_evento_real, e.tabla, e.hora_cierre, JSON.stringify(e.premios)]),
+        numeros: tablas()[T5K].filter(f => f.estado !== "libre").map(f => [f.numero, f.estado, f.identidad_evento_real, f.grupo_id])
+    });
+    const antes = foto();
+    const imgs = () => ["g1@g.us", "g2@g.us", "g3@g.us"].map(imagenesA);
+
+    // 1. Un clic (grupos del sorteo).
+    const sol1 = sol();
+    const c1 = await silencio(() => api("POST", "/tablas/compartir", { precio: 3000, solicitudId: sol1, imagen: PNG_URL }));
+    assert.strictEqual(c1.status, 200, JSON.stringify(c1.json));
+    assert.deepStrictEqual(c1.json.resultados.map(x => x.grupo_id).sort(), ["g1@g.us", "g2@g.us"]);
+    assert.deepStrictEqual(imgs(), [2, 2, 0], "anuncio inicial + la tabla compartida");
+    assert.strictEqual(foto(), antes, "compartir (un clic) no cambia el sorteo, sus grupos, eventos ni números");
+
+    // 2. La MISMA solicitud otra vez (reintento del panel): no duplica.
+    await silencio(() => api("POST", "/tablas/compartir", { precio: 3000, solicitudId: sol1, imagen: PNG_URL }));
+    assert.deepStrictEqual(imgs(), [2, 2, 0], "reintento de la misma solicitud: sin duplicados");
+
+    // 3. Confirmar la misma selección con «guardar»: nada que cambiar.
+    const c3 = await silencio(() => api("POST", "/tablas/compartir", { precio: 3000, solicitudId: sol(), imagen: PNG_URL, grupos: ["g1@g.us", "g2@g.us"], guardar_destinos: true }));
+    assert.strictEqual(c3.status, 200, JSON.stringify(c3.json));
+    assert.strictEqual(foto(), antes, "guardar la misma selección no modifica nada");
+
+    // 4. Compartir SOLO en un grupo (sin guardar): el otro NO se desactiva.
+    const c4 = await silencio(() => api("POST", "/tablas/compartir", { precio: 3000, solicitudId: sol(), imagen: PNG_URL, grupos: ["g1@g.us"] }));
+    assert.strictEqual(c4.status, 200, JSON.stringify(c4.json));
+    assert.deepStrictEqual(imgs(), [4, 3, 0]);
+    assert.strictEqual(foto(), antes, "compartir en un solo grupo no quita ni desactiva el otro");
+    assert.ok(eventoEn(s, "g2@g.us").activo, "el Grupo 2 sigue con su sorteo");
+    assert.strictEqual(tablas().sorteos_programados.length, 1);
+    assert.strictEqual(eventosDe(s).length, 2, "sin eventos nuevos");
+    // Solo la publicación inicial abrió grupos; compartir no.
+    assert.strictEqual(operaciones.filter(o => o.ajuste === "not_announcement").length, 2);
+});
+
 prueba("I. Persistencia tras reiniciar: un proceso NUEVO lee la misma asociación y el sorteo sigue operativo en el grupo nuevo, sin reenviar nada", async () => {
     const s = await publicadoEnDos();
     await silencio(() => api("PUT", "/tablas/compartir/destinos", { precio: 3000, grupos: ["g1@g.us", "g3@g.us"] }));

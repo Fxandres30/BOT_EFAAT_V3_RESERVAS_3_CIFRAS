@@ -149,12 +149,21 @@ async function contarNumeros(usuarioId, tabla, identidad) {
 
 const SIN_CONTEO = "No pudimos revisar los números de la tabla en este momento. No se cambió nada; inténtalo de nuevo en unos minutos.";
 
+// MENSAJE ÚNICO (04/11): la programación de un sorteo activo se elige con el
+// MISMO criterio que sus grupos (gruposSorteo.programacionDeIdentidad):
+// la más reciente que no esté cancelada ni archivada. Antes aquí valía
+// cualquiera (también una cancelada) y un error de lectura se tragaba: el
+// sorteo parecía «detectado» y «Compartir» cambiaba en silencio el mensaje
+// del sorteo por el texto habitual. Ahora un error de lectura LANZA.
 async function sorteoProgramadoDe(usuarioId, identidad) {
     if (!identidad) return null;
-    const { data } = await supabase.from("sorteos_programados").select("*")
-        .eq("usuario_id", usuarioId).eq("identidad_evento_real", identidad)
+    // select("*"): archivado_en solo existe con la 038.
+    const { data, error } = await supabase.from("sorteos_programados").select("*")
+        .eq("usuario_id", usuarioId).eq("identidad_evento_real", identidad).neq("estado", "cancelado")
         .order("creado_en", { ascending: false }).limit(1);
-    return data?.[0] || null;
+    if (error) throw new Error(`No se pudo leer la programación del sorteo: ${error.message}`);
+    const p = data?.[0] || null;
+    return p && !p.archivado_en ? p : null;
 }
 
 // Vista unificada de un sorteo activo para el panel.
@@ -270,7 +279,12 @@ async function filasDelEvento(usuarioId, id) {
 async function obtener(usuarioId, id) {
     const r = await filasDelEvento(usuarioId, id);
     if (!r.ok) return r;
-    return { ok: true, data: await vista(usuarioId, r.data) };
+    try {
+        return { ok: true, data: await vista(usuarioId, r.data) };
+    } catch (err) {
+        // No se pudo leer la programación: nunca se presenta como «detectado».
+        return falla("error_supabase", { error: err?.message || String(err) });
+    }
 }
 
 const igual = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);

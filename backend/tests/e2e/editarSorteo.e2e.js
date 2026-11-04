@@ -220,7 +220,8 @@ async function main() {
         await esperarTexto(page, "no tiene ningún sorteo activo ni programado");
         const tablasTexto = await textoPagina(page);
         assert.ok(!tablasTexto.includes("Hora del sorteo"), "no abre un formulario vacío por su cuenta");
-        assert.strictEqual(await botonHabilitado(page, "Crear sorteo nuevo"), true);
+        // La acción es una tarjeta (título + descripción): se busca por su título.
+        assert.strictEqual(await page.evaluate(() => [...document.querySelectorAll('[role="dialog"] button')].some(b => b.textContent.trim().startsWith("Crear sorteo nuevo") && !b.disabled)), true);
         paso("Tablas → «Editar» sin sorteo activo ni programado: lo explica y solo crea uno nuevo si se pide");
 
         // 6. Tablas → «Editar» en el precio del sorteo: edición del MISMO sorteo.

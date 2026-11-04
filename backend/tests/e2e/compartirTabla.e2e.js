@@ -119,7 +119,9 @@ async function main() {
         await page.waitForSelector('[aria-label="Vista previa del mensaje"] img', { timeout: 120000 });
         const src = await page.$eval('[aria-label="Vista previa del mensaje"] img', i => i.getAttribute("src"));
         assert.ok(src.startsWith("data:image/png;base64,") && Buffer.from(src.split(",")[1], "base64").toString("hex").startsWith(PNG), "PNG real");
-        const caption = await page.$eval('[aria-label="Vista previa del mensaje"] textarea', e => e.value);
+        // Mensaje único (04/11): vista previa de solo lectura con el texto
+        // EXACTO que recibe WhatsApp (ya no hay un texto editable por envío).
+        const caption = await page.$eval('[aria-label="Vista previa del mensaje"] [data-mensaje-whatsapp]', e => e.textContent);
         assert.ok(caption.includes("Chontico Noche"), caption);
         const texto = await textoPagina(page);
         assert.ok(texto.includes("Rifa uno") && texto.includes("Rifa dos") && !texto.includes("Grupo de B"), "solo los grupos de A");

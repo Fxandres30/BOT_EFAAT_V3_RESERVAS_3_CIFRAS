@@ -20,6 +20,7 @@ const { obtenerConfiguracionCliente, listarConfiguracionesCliente, inicializarCl
 const { compartirTabla, compartirEnGrupos, capturarImagenTabla, verificarTokenImprimirDetalle } = require("../services/compartirTabla");
 const { datosTablaImprimir } = require("../services/datosTablaImprimir");
 const destinos = require("../services/destinosCompartir");
+const operaciones = require("../services/operacionesCompartir");
 const compartirManual = require("../services/compartirManual");
 const gruposSorteo = require("../sorteos/gruposSorteo");
 const repoSorteos = require("../sorteos/repo");
@@ -150,6 +151,9 @@ router.get("/compartir/vista-previa", exigirUsuario, async (req, res) => {
         const programacion = await gruposDeLaProgramacion(usuarioId, t.evento);
         const { validos, invalidos } = destinos.clasificar(programacion ? programacion.grupos.map(g => g.grupo_id) : (guardados.data || []), disponibles.data);
         const texto = await destinos.textoParaCompartir(usuarioId, t.evento);
+        // Sin el mensaje del sorteo no hay vista previa: nunca se muestra
+        // (ni se envía) otro texto en su lugar.
+        if (!texto.ok) return res.status(503).json({ ok: false, motivo: "texto_no_disponible", mensaje: texto.mensaje || null });
         const activos = await gruposConElSorteoActivo(usuarioId, t.evento);
 
         let imagenAntigua = {};
@@ -172,6 +176,17 @@ router.get("/compartir/vista-previa", exigirUsuario, async (req, res) => {
                 origen_texto: texto.origen,
                 // false: el mensaje del sorteo está desactivado (solo imagen).
                 texto_activo: texto.activo !== false,
+                // Fuente única: el mensaje guardado (con {{variables}}) del que
+                // sale `texto`. Editarlo aquí cambia ESE mensaje (PUT
+                // /tablas/compartir/mensaje), no una copia para un envío.
+                mensaje: {
+                    plantilla: texto.plantilla,
+                    revision: texto.revision,
+                    fuente: texto.fuente,
+                    editable: texto.fuente === "panel" || texto.fuente === "detectado" || texto.fuente === "habitual"
+                },
+                // Envío en curso de esta tabla (p. ej. tras cerrar la ventana).
+                operacion_activa: operaciones.activaDe(usuarioId, precio),
                 grupos: disponibles.data,
                 seleccion: validos.map(g => g.grupo_id),
                 invalidos,
@@ -192,6 +207,55 @@ router.get("/compartir/vista-previa", exigirUsuario, async (req, res) => {
     } catch (err) {
 
         console.error("❌ [TABLAS] error en /compartir/vista-previa:", err.message);
+        res.status(500).json({ ok: false, motivo: "error_interno" });
+
+    }
+
+});
+
+// PUT /tablas/compartir/mensaje — { precio, plantilla, base_plantilla } —
+// cambia EL mensaje de publicación del sorteo activo de la tabla (el mismo
+// que «Editar sorteo activo», con sorteosActivos.editar: misma validación
+// de variables y límite). `base_plantilla` = lo que el panel mostró: si el
+// mensaje cambió entretanto, 409 y no se pisa. No envía nada. Devuelve la
+// nueva vista previa (texto ya generado) para que lo visto = lo enviado.
+router.put("/compartir/mensaje", exigirUsuario, async (req, res) => {
+
+    try {
+
+        const usuarioId = req.usuarioId;
+        const { precio, plantilla, base_plantilla: basePlantilla } = req.body || {};
+        if (typeof plantilla !== "string" || typeof basePlantilla !== "string") return res.status(400).json({ ok: false, motivo: "faltan_parametros" });
+        const t = await tablaYEvento(usuarioId, precio);
+        if (!t.evento) return res.status(t.status).json(t.cuerpo);
+
+        const sorteosActivos = require("../sorteos/sorteosActivos");
+        const actual = await sorteosActivos.obtener(usuarioId, t.evento.id);
+        if (!actual.ok) return res.status(actual.motivo === "no_encontrado" ? 404 : actual.motivo === "estado_invalido" ? 409 : 500).json({ ok: false, motivo: actual.motivo, mensaje: actual.mensaje || null });
+
+        // Lo que el panel mostró como mensaje guardado. En un sorteo del
+        // panel sin texto propio es la plantilla de su estilo.
+        const vigente = actual.data.origen === "panel" ? actual.data.publicacion_texto : actual.data.publicacion;
+        if ((basePlantilla || "") !== (vigente || "")) {
+            return res.status(409).json({ ok: false, motivo: "version_cambiada", mensaje: "El mensaje del sorteo cambió desde que abriste esta ventana (otra pestaña o «Editar»). Vuelve a abrirla para ver el mensaje actual." });
+        }
+
+        const r = await sorteosActivos.editar(usuarioId, t.evento.id, {
+            publicacion: plantilla,
+            base: { premios: actual.data.premios, hora_cierre: actual.data.hora_cierre, publicacion: actual.data.publicacion }
+        });
+        if (!r.ok) {
+            const status = r.motivo === "validacion" ? 400 : r.motivo === "version_cambiada" ? 409 : r.motivo === "migracion_pendiente" ? 503 : 500;
+            return res.status(status).json({ ok: false, motivo: r.motivo, mensaje: r.mensaje || null, errores: r.errores || null, migracion: r.migracion || null });
+        }
+
+        const texto = await destinos.textoParaCompartir(usuarioId, t.evento);
+        if (!texto.ok) return res.status(503).json({ ok: false, motivo: "texto_no_disponible", mensaje: texto.mensaje || null });
+        res.json({ ok: true, data: { texto: texto.texto, origen_texto: texto.origen, texto_activo: texto.activo !== false, mensaje: { plantilla: texto.plantilla, revision: texto.revision, fuente: texto.fuente, editable: true }, aviso: r.aviso || null } });
+
+    } catch (err) {
+
+        console.error("❌ [TABLAS] error en /compartir/mensaje:", err.message);
         res.status(500).json({ ok: false, motivo: "error_interno" });
 
     }
@@ -286,19 +350,38 @@ router.post("/compartir-manual/analizar", exigirUsuario, async (req, res) => {
 });
 
 // POST /tablas/compartir con solicitudId — { precio, solicitudId, imagen,
-// grupos?, texto?, guardar_destinos?, evento_id? }. `evento_id` (lo manda
+// grupos?, texto?, guardar_destinos?, evento_id?, asincrono? }. `evento_id` (lo manda
 // «Compartir sorteo manual»): el sorteo revisado en el panel; si el activo
 // de la tabla ya es otro, no se envía (409 sorteo_cambio). `imagen`: captura PNG (data URL) del
 // `div` de la tabla visible en el panel. Sin `grupos`: los guardados.
 // COMPATIBILIDAD TEMPORAL: si `imagen` NO viene (panel publicado antes de la
 // captura en el navegador), se genera con Puppeteer como antes, con las
 // mismas validaciones. Si viene y no es un PNG válido: 400, nunca Puppeteer.
+//
+// OPERACIONES (04/11, services/operacionesCompartir.js): cada envío es una
+// operación con id = solicitudId, progreso real por grupo y cancelación.
+//   - asincrono: true (panel actual): tras validar responde 202 con la
+//     operación y el envío sigue en segundo plano; el panel consulta
+//     GET /tablas/compartir/operaciones/:id y puede cancelarla. Cerrar la
+//     ventana no la cancela. La misma solicitud repetida devuelve la MISMA
+//     operación (no envía otra vez).
+//   - sin asincrono (panel anterior): igual que siempre, responde al final.
+// MENSAJE: se toma UNA instantánea del mensaje del sorteo al empezar
+// (destinosCompartir.textoParaCompartir, la fuente única) y todos los
+// grupos de la operación reciben ese texto. `texto` solo lo manda el panel
+// anterior (texto editado para ese envío): se respeta por compatibilidad en
+// los grupos que ya tienen el sorteo.
 async function compartirConDestinos(req, res) {
 
     const usuarioId = req.usuarioId;
     const { precio, solicitudId, grupos, texto, guardar_destinos: guardar } = req.body || {};
+    const asincrono = req.body?.asincrono === true;
 
     if (!SOLICITUD.test(String(solicitudId))) return res.status(400).json({ ok: false, enviado: false, motivo: "faltan_parametros" });
+
+    // Reintento de la MISMA solicitud: su operación, sin enviar nada más.
+    const previa = operaciones.obtener(usuarioId, String(solicitudId));
+    if (previa && asincrono) return res.status(200).json({ ok: true, operacion: previa, repetida: true });
 
     const imagenDelPanel = req.body && "imagen" in req.body;
     let imagen = imagenDelPanel ? destinos.imagenPng(req.body.imagen) : null;
@@ -350,81 +433,211 @@ async function compartirConDestinos(req, res) {
     if (!sock) return res.status(409).json({ ok: false, enviado: false, motivo: "sin_sesion_activa", ...(aviso ? { aviso } : {}) });
 
     const clave = `${usuarioId}:${Number(precio)}`;
-    if (enviosEnCurso.has(clave)) return res.status(409).json({ ok: false, enviado: false, motivo: "envio_en_curso" });
+    if (enviosEnCurso.has(clave)) {
+        const enCurso = operaciones.activaDe(usuarioId, precio);
+        return res.status(409).json({ ok: false, enviado: false, motivo: "envio_en_curso", ...(enCurso ? { operacion: enCurso } : {}) });
+    }
     enviosEnCurso.add(clave);
 
+    // Instantánea del mensaje aprobado para ESTA operación (fuente única).
+    let anuncio;
     try {
-
-        if (!imagen) {
-            try {
-                imagen = await capturarImagenTabla(Number(precio), usuarioId, t.evento.id ?? null);
-            } catch (err) {
-                console.error("❌ [COMPARTIR TABLA] no se pudo generar la imagen (panel anterior):", err?.message);
-                return res.status(502).json({ ok: false, enviado: false, motivo: "error_imagen", ...(aviso ? { aviso } : {}) });
-            }
-        }
-
-        // Sorteo del panel: la selección guardada ES la de sus grupos. Los
-        // grupos donde el sorteo todavía no está activo lo RECIBEN con el
-        // publicador (evento del grupo con la misma identidad y tabla, grupo
-        // abierto y anuncio una vez); a los demás se les comparte la tabla.
-        let programacion = await gruposDeLaProgramacion(usuarioId, t.evento);
-        const avisos = aviso ? [aviso] : [];
-        const resultadosNuevos = [];
-        let paraCompartir = elegidos;
-
-        if (programacion) {
-            if (grupos !== undefined && guardar === true) {
-                const c = await gruposSorteo.cambiarGrupos(usuarioId, programacion.id, elegidos.map(g => g.grupo_id), { origen: "tablas" });
-                if (!c.ok) return res.status(409).json({ ok: false, enviado: false, motivo: c.motivo, mensaje: c.mensaje || null });
-                avisos.push(...c.data.avisos);
-                programacion = await gruposDeLaProgramacion(usuarioId, t.evento);
-            }
-            const activos = await gruposConElSorteoActivo(usuarioId, t.evento);
-            if (!activos || !programacion) return res.status(500).json({ ok: false, enviado: false, motivo: "error_grupos" });
-            const sinSorteo = elegidos.filter(g => !activos.has(g.grupo_id));
-            paraCompartir = elegidos.filter(g => activos.has(g.grupo_id));
-
-            if (sinSorteo.length) {
-                const pendientes = sinSorteo.filter(g => programacion.grupos.some(x => x.grupo_id === g.grupo_id && x.estado === "pendiente"));
-                const otros = sinSorteo.filter(g => !pendientes.includes(g));
-                if (pendientes.length) {
-                    const pub = await gruposSorteo.publicarGruposNuevos(usuarioId, programacion.id, { imagen });
-                    const filas = pub.ok ? pub.data.grupos : [];
-                    resultadosNuevos.push(...pendientes.map(g => {
-                        const f = filas.find(x => x.grupo_id === g.grupo_id);
-                        return f?.estado === "publicado"
-                            ? { ...g, estado: "enviado", activado: true }
-                            : { ...g, estado: "fallido", activado: false, error: pub.ok ? (f?.error || "No se publicó el sorteo en el grupo.") : (pub.mensaje || pub.motivo) };
-                    }));
-                }
-                resultadosNuevos.push(...otros.map(g => ({ ...g, estado: "fallido", activado: false, error: "El sorteo no está activo en este grupo y su publicación quedó con error: reinténtala desde Sorteos (Programados o Publicar ahora)." })));
-            }
-        } else {
-            // Sorteo detectado en WhatsApp: sin programación no se puede
-            // activar en otro grupo desde aquí. Se comparte como siempre y se
-            // avisa de los grupos donde no se registrarán reservas.
-            const activos = await gruposConElSorteoActivo(usuarioId, t.evento);
-            const fuera = activos ? elegidos.filter(g => !activos.has(g.grupo_id)) : [];
-            if (fuera.length) avisos.push(`El sorteo no está activo en ${fuera.map(g => g.nombre || g.grupo_id).join(", ")}: se envía la imagen, pero ahí no se registrarán reservas. Este sorteo se detectó en WhatsApp: para activarlo en otro grupo usa «Editar» → «Gestionar desde el panel» y luego agrega el grupo.`);
-        }
-
-        let resultados = [...resultadosNuevos];
-        if (paraCompartir.length) {
-            const caption = destinos.textoEditado(texto) ?? (await destinos.textoParaCompartir(usuarioId, t.evento)).texto;
-            const r = await compartirEnGrupos({ evento: t.evento, sock, grupos: paraCompartir, caption, solicitudId, imagen });
-            if (!r.ok && !resultadosNuevos.length) return res.status(502).json({ ok: false, enviado: false, motivo: r.motivo, ...(avisos.length ? { aviso: avisos.join(" ") } : {}) });
-            if (r.ok) resultados = [...r.resultados, ...resultados];
-        }
-
-        const hechos = resultados.filter(x => x.estado === "enviado" || x.estado === "ya_enviado").length;
-        res.json({ ok: true, enviado: hechos > 0, enviados: hechos, fallidos: resultados.length - hechos, resultados, ...(avisos.length ? { aviso: avisos.join(" ") } : {}) });
-
-    } finally {
+        anuncio = await destinos.textoParaCompartir(usuarioId, t.evento);
+    } catch (err) {
+        anuncio = { ok: false, mensaje: err?.message };
+    }
+    if (!anuncio.ok) {
         enviosEnCurso.delete(clave);
+        return res.status(503).json({ ok: false, enviado: false, motivo: "texto_no_disponible", mensaje: anuncio.mensaje || null });
     }
 
+    const op = operaciones.crear({
+        id: String(solicitudId),
+        usuarioId,
+        precio,
+        grupos: elegidos,
+        anuncio: { texto: anuncio.activo === false ? "" : anuncio.texto, activo: anuncio.activo !== false, revision: anuncio.revision, origen: anuncio.origen }
+    });
+
+    const trabajo = ejecutarCompartir({ usuarioId, precio, t, sock, elegidos, grupos, guardar, texto, solicitudId: String(solicitudId), imagen, aviso, anuncio, op })
+        .catch((err) => {
+            console.error("❌ [COMPARTIR TABLA] error en la operación:", err?.message);
+            operaciones.terminar(op, { motivo: "error_interno", mensaje: "Error interno durante el envío." });
+            return { status: 500, cuerpo: { ok: false, enviado: false, motivo: "error_interno" } };
+        })
+        .finally(() => enviosEnCurso.delete(clave));
+
+    if (asincrono) return res.status(202).json({ ok: true, operacion: operaciones.vista(op) });
+
+    const r = await trabajo;
+    return res.status(r.status).json(r.cuerpo);
+
 }
+
+// Trabajo de una operación: el reparto de siempre (grupos sin el sorteo ->
+// publicador; grupos con el sorteo -> compartirEnGrupos), con progreso y
+// cancelación. Devuelve la respuesta del formato anterior { status, cuerpo }
+// y deja la operación terminada.
+async function ejecutarCompartir({ usuarioId, precio, t, sock, elegidos, grupos, guardar, texto, solicitudId, imagen, aviso, anuncio, op }) {
+
+    const fallo = (status, cuerpo, mensaje) => {
+        operaciones.terminar(op, { motivo: cuerpo.motivo, mensaje: mensaje || cuerpo.mensaje || null, aviso: cuerpo.aviso || null });
+        return { status, cuerpo };
+    };
+
+    if (!imagen) {
+        operaciones.etapa(op, "Preparando la imagen de la tabla…");
+        for (const g of elegidos) operaciones.marcarGrupo(op, g.grupo_id, "preparando");
+        try {
+            imagen = await capturarImagenTabla(Number(precio), usuarioId, t.evento.id ?? null);
+        } catch (err) {
+            console.error("❌ [COMPARTIR TABLA] no se pudo generar la imagen (panel anterior):", err?.message);
+            return fallo(502, { ok: false, enviado: false, motivo: "error_imagen", ...(aviso ? { aviso } : {}) }, "No se pudo generar la imagen de la tabla. No se envió nada.");
+        }
+        for (const g of elegidos) {
+            const fila = op.grupos.find(x => x.grupo_id === g.grupo_id);
+            if (fila) fila.estado = "en_cola";
+        }
+    }
+
+    // Sorteo del panel: la selección guardada ES la de sus grupos. Los
+    // grupos donde el sorteo todavía no está activo lo RECIBEN con el
+    // publicador (evento del grupo con la misma identidad y tabla, grupo
+    // abierto y anuncio una vez); a los demás se les comparte la tabla.
+    let programacion = await gruposDeLaProgramacion(usuarioId, t.evento);
+    const avisos = aviso ? [aviso] : [];
+    const resultadosNuevos = [];
+    let paraCompartir = elegidos;
+
+    if (programacion) {
+        if (grupos !== undefined && guardar === true) {
+            const c = await gruposSorteo.cambiarGrupos(usuarioId, programacion.id, elegidos.map(g => g.grupo_id), { origen: "tablas" });
+            if (!c.ok) return fallo(409, { ok: false, enviado: false, motivo: c.motivo, mensaje: c.mensaje || null });
+            avisos.push(...c.data.avisos);
+            programacion = await gruposDeLaProgramacion(usuarioId, t.evento);
+        }
+        const activos = await gruposConElSorteoActivo(usuarioId, t.evento);
+        if (!activos || !programacion) return fallo(500, { ok: false, enviado: false, motivo: "error_grupos" }, "No se pudieron leer los grupos del sorteo. No se envió nada.");
+        const sinSorteo = elegidos.filter(g => !activos.has(g.grupo_id));
+        paraCompartir = elegidos.filter(g => activos.has(g.grupo_id));
+        for (const g of sinSorteo) { const f = op.grupos.find(x => x.grupo_id === g.grupo_id); if (f) f.tipo = "activar"; }
+
+        if (sinSorteo.length) {
+            const pendientes = sinSorteo.filter(g => programacion.grupos.some(x => x.grupo_id === g.grupo_id && x.estado === "pendiente"));
+            const otros = sinSorteo.filter(g => !pendientes.includes(g));
+            if (pendientes.length) {
+                // Activar el sorteo en grupos nuevos es UN paso del publicador:
+                // la cancelación se mira antes de empezarlo; una vez empezado
+                // termina (nunca deja un grupo con el evento activo y sin anuncio).
+                if (operaciones.cancelada(op)) {
+                    for (const g of pendientes) operaciones.marcarGrupo(op, g.grupo_id, "cancelado", { detalle: "El grupo sigue agregado al sorteo, pendiente de publicar: no recibió nada." });
+                    resultadosNuevos.push(...pendientes.map(g => ({ ...g, estado: "cancelado", activado: false })));
+                } else {
+                    operaciones.etapa(op, `Activando el sorteo en ${pendientes.length} grupo(s) nuevo(s)…`);
+                    const pub = await gruposSorteo.publicarGruposNuevos(usuarioId, programacion.id, {
+                        imagen,
+                        anuncio: { texto: op.anuncio.texto, activo: op.anuncio.activo },
+                        observar: {
+                            alPreparar: (gid) => operaciones.marcarGrupo(op, gid, "preparando"),
+                            alEnviar: (gid) => operaciones.marcarGrupo(op, gid, "enviando")
+                        }
+                    });
+                    const filas = pub.ok ? pub.data.grupos : [];
+                    for (const g of pendientes) {
+                        const f = filas.find(x => x.grupo_id === g.grupo_id);
+                        const r = f?.estado === "publicado"
+                            ? { ...g, estado: "enviado", activado: true }
+                            : { ...g, estado: "fallido", activado: false, error: pub.ok ? (f?.error || f?.ultimo_error || "No se publicó el sorteo en el grupo.") : (pub.mensaje || pub.motivo) };
+                        resultadosNuevos.push(r);
+                        operaciones.marcarGrupo(op, g.grupo_id, r.estado === "enviado" ? "enviado" : "error", { error: r.error || null, detalle: r.activado ? "Sorteo activado en el grupo y anuncio enviado." : null });
+                    }
+                }
+            }
+            for (const g of otros) {
+                const r = { ...g, estado: "fallido", activado: false, error: "El sorteo no está activo en este grupo y su publicación quedó con error: reinténtala desde Sorteos (Programados o Publicar ahora)." };
+                resultadosNuevos.push(r);
+                operaciones.marcarGrupo(op, g.grupo_id, "error", { error: r.error });
+            }
+        }
+    } else {
+        // Sorteo detectado en WhatsApp: sin programación no se puede
+        // activar en otro grupo desde aquí. Se comparte como siempre y se
+        // avisa de los grupos donde no se registrarán reservas.
+        const activos = await gruposConElSorteoActivo(usuarioId, t.evento);
+        const fuera = activos ? elegidos.filter(g => !activos.has(g.grupo_id)) : [];
+        if (fuera.length) avisos.push(`El sorteo no está activo en ${fuera.map(g => g.nombre || g.grupo_id).join(", ")}: se envía la imagen, pero ahí no se registrarán reservas. Este sorteo se detectó en WhatsApp: para activarlo en otro grupo usa «Editar» → «Gestionar desde el panel» y luego agrega el grupo.`);
+    }
+
+    let resultados = [...resultadosNuevos];
+    if (paraCompartir.length) {
+        // Panel anterior con texto editado para este envío; si no, la
+        // instantánea del mensaje del sorteo (la misma de la vista previa).
+        const caption = destinos.textoEditado(texto) ?? op.anuncio.texto;
+        if (destinos.textoEditado(texto)) op.anuncio = { ...op.anuncio, texto: caption, origen: "editado_en_envio" };
+        operaciones.etapa(op, `Enviando la tabla a ${paraCompartir.length} grupo(s)…`);
+        const r = await compartirEnGrupos({
+            evento: t.evento, sock, grupos: paraCompartir, caption, solicitudId, imagen,
+            control: {
+                cancelado: () => operaciones.cancelada(op),
+                alIniciar: (g) => operaciones.marcarGrupo(op, g.grupo_id, "enviando"),
+                alTerminar: (x) => operaciones.marcarGrupo(op, x.grupo_id,
+                    x.estado === "enviado" || x.estado === "ya_enviado" ? "enviado" : x.estado === "cancelado" ? "cancelado" : "error",
+                    {
+                        error: x.estado === "en_curso" ? "Este grupo ya se estaba enviando en un intento anterior de esta misma solicitud: revisa el grupo antes de reintentar." : (x.error || null),
+                        detalle: x.estado === "ya_enviado" ? "Ya se había enviado en esta misma solicitud: no se duplicó." : null
+                    })
+            }
+        });
+        if (!r.ok && !resultadosNuevos.length) return fallo(502, { ok: false, enviado: false, motivo: r.motivo, ...(avisos.length ? { aviso: avisos.join(" ") } : {}) }, mensajeFallo(r.motivo));
+        if (r.ok) resultados = [...r.resultados, ...resultados];
+    }
+
+    const hechos = resultados.filter(x => x.estado === "enviado" || x.estado === "ya_enviado").length;
+    const cancelados = resultados.filter(x => x.estado === "cancelado").length;
+    operaciones.terminar(op, { aviso: avisos.length ? avisos.join(" ") : null });
+    return {
+        status: 200,
+        cuerpo: {
+            ok: true, enviado: hechos > 0, enviados: hechos, fallidos: resultados.length - hechos - cancelados, cancelados, resultados,
+            operacion_id: op.id,
+            ...(avisos.length ? { aviso: avisos.join(" ") } : {})
+        }
+    };
+
+}
+
+function mensajeFallo(motivo) {
+    if (motivo === "sin_sesion_activa") return "Tu WhatsApp se desconectó. No se envió nada.";
+    if (motivo === "imagen_invalida") return "La imagen de la tabla no es válida. No se envió nada.";
+    return "No se pudo enviar. No se envió nada.";
+}
+
+// GET /tablas/compartir/operaciones?precio= — operaciones recientes del
+// cliente (la en curso primero): el panel la recupera al volver a abrir.
+router.get("/compartir/operaciones", exigirUsuario, (req, res) => {
+    const precio = req.query.precio;
+    if (precio !== undefined && !precioValido(precio)) return res.status(400).json({ ok: false, motivo: "faltan_parametros" });
+    const lista = operaciones.listar(req.usuarioId, { precio: precio ?? null });
+    res.json({ ok: true, data: { activa: lista.find(o => !o.terminada) || null, recientes: lista.slice(0, 10) } });
+});
+
+// GET /tablas/compartir/operaciones/:id — progreso real de una operación.
+router.get("/compartir/operaciones/:id", exigirUsuario, (req, res) => {
+    if (!SOLICITUD.test(req.params.id)) return res.status(404).json({ ok: false, motivo: "no_encontrada" });
+    const op = operaciones.obtener(req.usuarioId, req.params.id);
+    if (!op) return res.status(404).json({ ok: false, motivo: "no_encontrada" });
+    res.json({ ok: true, data: op });
+});
+
+// POST /tablas/compartir/operaciones/:id/cancelar — idempotente. Detiene
+// los grupos que no han empezado; el que ya está en WhatsApp termina y se
+// informa. Nunca retira lo ya publicado.
+router.post("/compartir/operaciones/:id/cancelar", exigirUsuario, (req, res) => {
+    if (!SOLICITUD.test(req.params.id)) return res.status(404).json({ ok: false, motivo: "no_encontrada" });
+    const r = operaciones.cancelar(req.usuarioId, req.params.id);
+    if (!r.ok) return res.status(404).json(r);
+    res.json({ ok: true, data: r.data, ya_solicitada: Boolean(r.ya_solicitada), ya_terminada: Boolean(r.ya_terminada) });
+});
 
 // POST /tablas/compartir — botón manual del panel. Con `solicitudId`: el
 // flujo con destinos elegidos (arriba). Sin él (panel anterior, mientras se

@@ -11,17 +11,71 @@
 }
 
 .seccionTitulo {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 8px 0 0;
-    font-size: var(--efaat-text-lg);
+    margin: 12px 0 0;
+    font-size: var(--efaat-text-xl);
+    font-weight: var(--efaat-weight-bold);
     color: var(--efaat-text);
 }
 
+/* Encabezado desplegable: todo el bloque es el botón (flecha incluida). */
+.seccionBoton {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--efaat-border);
+    border-left: 4px solid var(--efaat-primary);
+    border-radius: var(--efaat-radius-control);
+    background: var(--efaat-surface-muted);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--efaat-dur-fast) var(--efaat-ease);
+}
+
+.seccionBoton:hover {
+    background: var(--efaat-primary-soft);
+}
+
+.seccionBoton:focus-visible {
+    outline: none;
+    box-shadow: var(--efaat-focus-ring);
+}
+
+.seccionIcono {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--efaat-radius-sm);
+    background: var(--efaat-primary-soft);
+    color: var(--efaat-primary);
+    flex-shrink: 0;
+}
+
+.seccionIconoTradicional {
+    background: var(--efaat-warning-soft);
+    color: var(--efaat-warning-strong);
+}
+
+.seccionNombre {
+    flex: 1;
+    min-width: 0;
+}
+
 .contador {
+    min-width: 28px;
+    padding: 2px 10px;
+    border-radius: var(--efaat-radius-pill);
+    background: var(--efaat-surface);
+    border: 1px solid var(--efaat-border);
     font-size: var(--efaat-text-sm);
+    font-weight: var(--efaat-weight-semibold);
     color: var(--efaat-text-secondary);
+    text-align: center;
 }
 
 .lista {

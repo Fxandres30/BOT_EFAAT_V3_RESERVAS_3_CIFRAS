@@ -268,14 +268,46 @@ async function compartirTabla({ evento, sock, idempotencia = null }) {
         return { enviado: false, motivo: "evento_sin_propietario" };
     }
 
+    // Tabla inicial ya registrada (lo normal en cada ciclo después de la
+    // primera vez): el ExecutionGuard la descartará, así que no se lee el
+    // mensaje (ahorra las lecturas del sorteo en cada ciclo del Scheduler).
+    if (idempotencia) {
+        let previa = null;
+        try { previa = await executionGuard.obtenerPorClave(idempotencia.claveIdempotencia); } catch { /* se decide abajo */ }
+        if (previa) {
+            const r = await executionGuard.ejecutarUnaVez({
+                claveIdempotencia: idempotencia.claveIdempotencia,
+                eventSessionId: idempotencia.eventSessionId,
+                grupoId: evento.grupo_id,
+                usuarioId: evento.usuario_id,
+                tipoAccion: idempotencia.tipoAccion || "INITIAL_TABLE",
+                ejecutar: async () => { throw new Error("tabla inicial ya registrada: no se envía de nuevo"); }
+            }).catch(err => ({ ejecutada: false, motivo: "error_envio", error: err }));
+            return r.ejecutada ? { enviado: true } : { enviado: false, motivo: r.motivo };
+        }
+    }
+
+    // MENSAJE ÚNICO (04/11): el texto sale de la MISMA fuente que la
+    // publicación y «Compartir» (destinosCompartir.textoParaCompartir): un
+    // sorteo con mensaje guardado lleva ese mensaje, no la plantilla
+    // habitual. Se resuelve ANTES del ExecutionGuard: si no se puede leer,
+    // no se envía nada ni se registra un intento (el siguiente ciclo lo
+    // vuelve a intentar).
+    let texto;
+    try {
+        const t = await require("./destinosCompartir").textoParaCompartir(evento.usuario_id, evento);
+        if (!t.ok) return { enviado: false, motivo: "texto_no_disponible" };
+        texto = t.activo === false ? "" : t.texto;
+    } catch (err) {
+        console.error("❌ [COMPARTIR TABLA] no se pudo preparar el texto:", err?.message);
+        return { enviado: false, motivo: "texto_no_disponible" };
+    }
+
     const ejecutar = async () => {
 
         const precio = Number(evento.valor);
 
-        const [imagen, texto] = await Promise.all([
-            capturarImagenTabla(precio, evento.usuario_id, evento.id ?? null),
-            Promise.resolve(construirTextoCompartir(evento))
-        ]);
+        const imagen = await capturarImagenTabla(precio, evento.usuario_id, evento.id ?? null);
 
         await sendImage({ sock, jid: evento.grupo_id, image: imagen, caption: texto });
 
@@ -327,16 +359,38 @@ async function compartirTabla({ evento, sock, idempotencia = null }) {
 // programados (sorteos/publicador.js), con una solicitud fija por sorteo y
 // grupo: `motivo` (el del ExecutionGuard, o "excepcion") le dice si el
 // anuncio seguro NO salió o si su estado es incierto.
-// -> { ok, motivo?, resultados: [{ grupo_id, nombre, estado: enviado|ya_enviado|en_curso|fallido, motivo, error? }] }
-async function compartirEnGrupos({ evento, sock, grupos, caption, solicitudId, imagen }) {
+// -> { ok, motivo?, resultados: [{ grupo_id, nombre, estado: enviado|ya_enviado|en_curso|fallido|cancelado, motivo, error? }] }
+//
+// `control` (opcional; operaciones de «Compartir», services/operacionesCompartir.js):
+//   - cancelado(): true = no se empieza ningún grupo más. Se consulta justo
+//     antes de cada envío, en el MISMO turno en que el grupo se marca como
+//     «enviando» (alIniciar): una cancelación aceptada después de esa marca
+//     encuentra ese grupo ya en curso y lo deja terminar; una aceptada antes
+//     impide su envío. Los grupos no empezados quedan «cancelado».
+//   - alIniciar(g) / alTerminar(resultado): progreso real, grupo a grupo.
+// Sin `control` el comportamiento es el de siempre.
+const ENVIO_CANCELADO = Object.freeze(Object.assign(new Error("Envío cancelado antes de llegar a WhatsApp."), { cancelado: true }));
+
+async function compartirEnGrupos({ evento, sock, grupos, caption, solicitudId, imagen, control = null }) {
 
     if (!evento?.valor || !evento.usuario_id) return { ok: false, motivo: "evento_invalido", resultados: [] };
     if (!sock) return { ok: false, motivo: "sin_sesion_activa", resultados: [] };
     if (!Buffer.isBuffer(imagen) || !imagen.length) return { ok: false, motivo: "imagen_invalida", resultados: [] };
 
     const resultados = [];
+    const anotar = (r) => {
+        resultados.push(r);
+        try { control?.alTerminar?.(r); } catch { /* el progreso nunca corta el envío */ }
+    };
 
     for (const g of grupos) {
+
+        // Comprobación y marca SIN await entre ellas (un solo turno).
+        if (control?.cancelado?.()) {
+            anotar({ ...g, estado: "cancelado", motivo: "cancelado" });
+            continue;
+        }
+        try { control?.alIniciar?.(g); } catch { /* ídem */ }
 
         try {
 
@@ -345,20 +399,26 @@ async function compartirEnGrupos({ evento, sock, grupos, caption, solicitudId, i
                 grupoId: g.grupo_id,
                 usuarioId: evento.usuario_id,
                 tipoAccion: "TABLA_COMPARTIR",
-                ejecutar: () => sendImage({ sock, jid: g.grupo_id, image: imagen, caption })
+                // Última comprobación, en el mismo turno que la llamada a
+                // WhatsApp: tras ella el envío ya no se interrumpe.
+                ejecutar: () => {
+                    if (control?.cancelado?.()) throw ENVIO_CANCELADO;
+                    return sendImage({ sock, jid: g.grupo_id, image: imagen, caption });
+                }
             });
 
             const motivo = r.ejecutada ? "ejecutada" : r.motivo;
 
-            if (r.ejecutada) resultados.push({ ...g, estado: "enviado", motivo });
-            else if (r.motivo === "ya_ok") resultados.push({ ...g, estado: "ya_enviado", motivo });
-            else if (r.motivo === "ya_en_progreso") resultados.push({ ...g, estado: "en_curso", motivo });
-            else if (r.motivo === "ya_error") resultados.push({ ...g, estado: "fallido", motivo, error: "Este envío ya falló antes; pulsa «Compartir» otra vez para reintentarlo." });
-            else if (r.motivo === "fallo_ejecucion") resultados.push({ ...g, estado: "fallido", motivo, error: r.error?.message || "WhatsApp rechazó el envío." });
-            else resultados.push({ ...g, estado: "fallido", motivo, error: r.motivo === "error_insert" ? "No se pudo registrar el envío: no se envió." : `No se envió (${r.motivo}).` });
+            if (!r.ejecutada && r.error === ENVIO_CANCELADO) anotar({ ...g, estado: "cancelado", motivo: "cancelado" });
+            else if (r.ejecutada) anotar({ ...g, estado: "enviado", motivo });
+            else if (r.motivo === "ya_ok") anotar({ ...g, estado: "ya_enviado", motivo });
+            else if (r.motivo === "ya_en_progreso") anotar({ ...g, estado: "en_curso", motivo });
+            else if (r.motivo === "ya_error") anotar({ ...g, estado: "fallido", motivo, error: "Este envío ya falló antes; pulsa «Compartir» otra vez para reintentarlo." });
+            else if (r.motivo === "fallo_ejecucion") anotar({ ...g, estado: "fallido", motivo, error: r.error?.message || "WhatsApp rechazó el envío." });
+            else anotar({ ...g, estado: "fallido", motivo, error: r.motivo === "error_insert" ? "No se pudo registrar el envío: no se envió." : `No se envió (${r.motivo}).` });
 
         } catch (err) {
-            resultados.push({ ...g, estado: "fallido", motivo: "excepcion", error: err?.message || "Error desconocido." });
+            anotar({ ...g, estado: "fallido", motivo: "excepcion", error: err?.message || "Error desconocido." });
         }
 
     }

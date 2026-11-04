@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, Plus, RotateCcw, Search } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronRight, Clover, Landmark, Plus, RotateCcw, Search } from "lucide-react";
 
 import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Textarea } from "@/components/ui";
 import {
@@ -13,6 +13,15 @@ import {
     type LoteriaEntrada,
     type ReglaFestivo
 } from "@/services/sorteos/apiSorteos";
+import {
+    SECCIONES_INICIALES,
+    alternarSeccion,
+    desplegarConResultados,
+    guardarSecciones,
+    leerSecciones,
+    type CategoriaSeccion,
+    type EstadoSecciones
+} from "@/services/loterias/seccionesCalendario";
 
 import styles from "./CalendarioLoterias.module.css";
 
@@ -34,9 +43,14 @@ const REGLAS: Record<ReglaFestivo, string> = {
 };
 
 const SECCIONES = [
-    { categoria: "chance" as const, titulo: "Chances" },
-    { categoria: "tradicional" as const, titulo: "Sorteos tradicionales" }
+    { categoria: "chance" as const, titulo: "Chances", Icono: Clover },
+    { categoria: "tradicional" as const, titulo: "Sorteos tradicionales", Icono: Landmark }
 ];
+
+// sessionStorage solo existe en el navegador (y puede estar bloqueado).
+function almacenSesion() {
+    try { return typeof window === "undefined" ? null : window.sessionStorage; } catch { return null; }
+}
 
 const VACIA: LoteriaEntrada = {
     nombre: "",
@@ -88,6 +102,12 @@ function textoProximo(l: Loteria) {
 
 const normalizar = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
+// Misma regla para filtrar y para saber qué sección tiene resultados.
+const coincide = (l: Loteria, busqueda: string) => {
+    const q = normalizar(busqueda.trim());
+    return !q || normalizar(`${l.etiqueta} ${l.notas || ""}`).includes(q);
+};
+
 export default function CalendarioLoteriasPage() {
 
     const [loterias, setLoterias] = useState<Loteria[]>([]);
@@ -100,6 +120,30 @@ export default function CalendarioLoteriasPage() {
     const [restaurando, setRestaurando] = useState<string | null>(null);
     const [errorAccion, setErrorAccion] = useState<string | null>(null);
     const [aviso, setAviso] = useState<string | null>(null);
+
+    // Secciones plegadas/desplegadas: independientes, recordadas en la pestaña.
+    // (Las secciones solo se pintan tras cargar, nunca en el render del
+    // servidor, así que leer el almacenamiento aquí no descuadra la hidratación.)
+    const [secciones, setSecciones] = useState<EstadoSecciones>(() => {
+        const almacen = almacenSesion();
+        return almacen ? leerSecciones(almacen) : SECCIONES_INICIALES;
+    });
+
+    const fijarSecciones = (siguiente: EstadoSecciones) => {
+        setSecciones(siguiente);
+        guardarSecciones(almacenSesion(), siguiente);
+    };
+
+    const alternar = (categoria: CategoriaSeccion) => fijarSecciones(alternarSeccion(secciones, categoria));
+
+    // Al buscar, una sección plegada con resultados se despliega sola.
+    function buscar(texto: string) {
+        setBusqueda(texto);
+        const resultados = { chance: 0, tradicional: 0 };
+        for (const l of loterias) if (coincide(l, texto)) resultados[l.categoria]++;
+        const siguiente = desplegarConResultados(secciones, texto, resultados);
+        if (siguiente !== secciones) fijarSecciones(siguiente);
+    }
 
     // Vuelve UNA lotería de SU calendario a la configuración inicial.
     async function restaurar(l: Loteria) {
@@ -151,10 +195,7 @@ export default function CalendarioLoteriasPage() {
         inicio();
     }, [cargar]);
 
-    const filtradas = useMemo(() => {
-        const q = normalizar(busqueda.trim());
-        return q ? loterias.filter(l => normalizar(`${l.etiqueta} ${l.notas || ""}`).includes(q)) : loterias;
-    }, [loterias, busqueda]);
+    const filtradas = useMemo(() => loterias.filter(l => coincide(l, busqueda)), [loterias, busqueda]);
 
     const pendientes = loterias.filter(sinHorario).length;
 
@@ -187,16 +228,33 @@ export default function CalendarioLoteriasPage() {
                 placeholder="Buscar por nombre…"
                 leftIcon={<Search size={16} />}
                 value={busqueda}
-                onChange={e => setBusqueda(e.target.value)}
+                onChange={e => buscar(e.target.value)}
             />
 
             {cargando && <p className={styles.ayuda}>Cargando calendario…</p>}
 
-            {!cargando && !error && SECCIONES.map(({ categoria, titulo }) => {
+            {!cargando && !error && SECCIONES.map(({ categoria, titulo, Icono }) => {
                 const lista = filtradas.filter(l => l.categoria === categoria);
+                const abierta = secciones[categoria];
                 return (
                     <section key={categoria} className={styles.seccion} aria-label={titulo}>
-                        <h2 className={styles.seccionTitulo}>{titulo} <span className={styles.contador}>{lista.length}</span></h2>
+                        <h2 className={styles.seccionTitulo}>
+                            <button
+                                type="button"
+                                className={styles.seccionBoton}
+                                aria-expanded={abierta}
+                                aria-controls={`loterias-${categoria}`}
+                                onClick={() => alternar(categoria)}
+                            >
+                                {abierta ? <ChevronDown size={20} aria-hidden /> : <ChevronRight size={20} aria-hidden />}
+                                <span className={`${styles.seccionIcono} ${categoria === "tradicional" ? styles.seccionIconoTradicional : ""}`} aria-hidden>
+                                    <Icono size={18} />
+                                </span>
+                                <span className={styles.seccionNombre}>{titulo}</span>
+                                <span className={styles.contador} aria-label={`${lista.length} loterías`}>{lista.length}</span>
+                            </button>
+                        </h2>
+                        <div id={`loterias-${categoria}`} hidden={!abierta}>
                         {lista.length === 0
                             ? <EmptyState icon={<CalendarDays size={24} />} title={busqueda ? "Sin resultados" : "Sin loterías"} description={busqueda ? "Prueba con otro nombre." : "Agrégalas con «Nueva lotería»."} />
                             : <div className={styles.lista}>{lista.map(l => (
@@ -226,6 +284,7 @@ export default function CalendarioLoteriasPage() {
                                     </div>
                                 </Card>
                             ))}</div>}
+                        </div>
                     </section>
                 );
             })}

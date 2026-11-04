@@ -22,7 +22,7 @@
 const supabase = require("../lib/supabase");
 const repoSorteos = require("../sorteos/repo");
 const sorteosActivos = require("../sorteos/sorteosActivos");
-const { mensajePublicacion, anuncioDelEvento } = require("../sorteos/mensajes");
+const { anuncioDelEvento } = require("../sorteos/mensajes");
 const { construirTextoCompartir } = require("./compartirTabla");
 
 const TABLA = "destinos_compartir_tabla";
@@ -116,28 +116,66 @@ function textoEditado(valor) {
     return t || null;
 }
 
-// Texto que acompaña a la imagen. { texto, origen: "sorteo" | "habitual", activo }.
+// ---------------------------------------------------------------------------
+// FUENTE ÚNICA DEL ANUNCIO (04/11). Texto que acompaña a la imagen en la
+// publicación automática (publicador), en «Compartir» (vista previa y envío),
+// en la tabla inicial del scheduler y en el «Compartir» del panel anterior.
+//
+//   - Sorteo del panel: SU mensaje guardado (config.mensajes.publicacion,
+//     con {{variables}}), generado con sorteos/mensajes.js con los datos
+//     reales del evento. Vacío = la plantilla de su estilo (como siempre).
+//   - Sorteo detectado con mensaje escrito en el panel (publicacion_panel):
+//     ese mensaje, con el MISMO generador que su vista previa en «Editar».
+//   - Sorteo detectado sin mensaje: el texto habitual de «Compartir» (es el
+//     único que ha tenido siempre; no sustituye a nada).
+//
+// Si no se puede leer el sorteo (error de Supabase, sorteo cerrado entre
+// tanto...) devuelve ok=false y origen "error": NUNCA cae al texto habitual
+// en silencio. Quien llama no envía nada en ese caso.
+//
+// -> { ok, texto, origen: "sorteo" | "habitual" | "error", activo,
+//      plantilla, revision, fuente: "panel" | "detectado" | "habitual",
+//      motivo?, mensaje? }
 // activo=false: el sorteo tiene su mensaje desactivado; se publica solo la
 // imagen (texto ""), pero su contenido sigue guardado en el sorteo.
 async function textoParaCompartir(usuarioId, evento) {
 
-    const activo = evento?.id ? await sorteosActivos.obtener(usuarioId, evento.id) : null;
-    const s = activo?.ok ? activo.data : null;
+    const noDisponible = (motivo, detalle) => ({
+        ok: false, texto: "", origen: "error", activo: false, plantilla: null, revision: null, fuente: null, motivo,
+        mensaje: "No se pudo leer el mensaje del sorteo. No se envió nada: inténtalo de nuevo en unos segundos.",
+        ...(detalle ? { error: detalle } : {})
+    });
 
-    if (s?.origen === "panel") {
-        const m = anuncioDelEvento(evento, { publicacion: s.publicacion, cuentas: s.cuentas, meta: s.mensajes?.publicacion_meta || null });
-        return { texto: m.activo ? m.texto.slice(0, MAX_TEXTO) : "", origen: "sorteo", activo: m.activo };
+    if (!evento?.id) return noDisponible("sin_evento");
+
+    let leido;
+    try {
+        leido = await sorteosActivos.obtener(usuarioId, evento.id);
+    } catch (err) {
+        return noDisponible("error_lectura", err?.message);
     }
+    if (!leido?.ok) return noDisponible(leido?.motivo === "estado_invalido" ? "sorteo_cerrado" : "error_lectura", leido?.error || leido?.motivo);
+    const s = leido.data;
 
-    if (s?.publicacion) {
-        const config = {
-            nombre: s.nombre, hora_fin: s.hora_fin, hora_cierre: s.hora_cierre, valor: s.valor,
-            premios: s.premios, cantidad_numeros: s.cantidad_numeros, mensajes: { publicacion: s.publicacion }
+    if (s.origen === "panel") {
+        const meta = s.mensajes?.publicacion_meta || null;
+        const m = anuncioDelEvento(evento, { publicacion: s.publicacion, cuentas: s.cuentas, meta });
+        return {
+            ok: true, texto: m.activo ? m.texto.slice(0, MAX_TEXTO) : "", origen: "sorteo", activo: m.activo,
+            plantilla: s.publicacion_texto, revision: s.publicacion_meta?.revision ?? null, fuente: "panel"
         };
-        return { texto: mensajePublicacion(config, s.cuentas || [], { fecha: s.fecha_evento || "" }).texto, origen: "sorteo" };
     }
 
-    return { texto: construirTextoCompartir(evento), origen: "habitual" };
+    if (s.publicacion) {
+        // Mismo generador (y mismos marcos) que la vista previa de «Editar».
+        const m = anuncioDelEvento(evento, { publicacion: s.publicacion, cuentas: [], meta: { estilo: s.publicacion_meta?.estilo, activo: true } });
+        return {
+            ok: true, texto: m.texto.slice(0, MAX_TEXTO), origen: "sorteo", activo: true,
+            plantilla: s.publicacion, revision: s.publicacion_meta?.revision ?? null, fuente: "detectado"
+        };
+    }
+
+    return { ok: true, texto: construirTextoCompartir(evento), origen: "habitual", activo: true, plantilla: null, revision: null, fuente: "habitual" };
 
 }
 

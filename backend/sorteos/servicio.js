@@ -636,7 +636,9 @@ async function editar(usuarioId, id, entrada = {}) {
     if (actual.data.grupos.some(g => !["pendiente", "cancelado"].includes(g.estado))) return falla("ya_publicado");
     if (Number(entrada.version) !== actual.data.version) return falla("version_cambiada", { version_actual: actual.data.version });
 
-    const p = await prepararSorteo(usuarioId, entrada, actual.data);
+    // La modalidad (instantáneo / programado) es la GUARDADA: editar nunca la
+    // cambia, la envíe o no el panel (ni por un valor por defecto).
+    const p = await prepararSorteo(usuarioId, { ...entrada, publicacion_inmediata: actual.data.config?.publicacion_inmediata === true }, actual.data);
     if (!p.ok) return p;
 
     // Con reservas anticipadas, nada que cambie a qué sorteo o tabla

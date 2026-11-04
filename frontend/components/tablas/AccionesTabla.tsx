@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { RotateCcw, Pencil, Share2, Users, RefreshCw, type LucideIcon } from "lucide-react";
 
 import { Spinner } from "@/components/ui/Spinner";
@@ -11,7 +11,7 @@ import ReinicioTablaModal from "./ReinicioTablaModal";
 import AnuncioSorteoModal from "./AnuncioSorteoModal";
 import styles from "./AccionesTabla.module.css";
 import CompartirTablaModal, { enviarCompartir, nuevaSolicitud, panelResultado, type PanelCompartir } from "./CompartirTablaModal";
-import { mensajeCompartir } from "@/services/tablas/compartirTabla";
+import { mensajeCompartir, operacionesDeTabla, consultarOperacion, type OperacionCompartir } from "@/services/tablas/compartirTabla";
 import type { ConfirmacionReinicio, ResultadoReinicio, RevisionReinicio } from "@/services/tablas/reiniciarTabla";
 
 interface Props {
@@ -55,6 +55,42 @@ export default function AccionesTabla({
     // Bloqueo síncrono: dos clics seguidos no lanzan dos envíos.
     const compartiendoRef = useRef(false);
     const [editandoAnuncio, setEditandoAnuncio] = useState(false);
+    // Envío de esta tabla en curso en el servidor (también con la ventana
+    // cerrada): «Compartir» vuelve a su progreso en lugar de iniciar otro.
+    const [operacion, setOperacion] = useState<OperacionCompartir | null>(null);
+    const operacionEnCurso = operacion && !operacion.terminada ? operacion : null;
+    const viendoProgreso = panelCompartir?.tipo === "progreso";
+
+    // Al entrar: ¿quedó un envío en curso (ventana cerrada, otra pestaña)?
+    useEffect(() => {
+        if (!usuarioId) return;
+        let vigente = true;
+        operacionesDeTabla(precio).then(r => { if (vigente && r.ok && r.data.activa) setOperacion(r.data.activa); }).catch(() => {});
+        return () => { vigente = false; };
+    }, [precio, usuarioId]);
+
+    // Ventana cerrada con un envío en curso: se sigue su estado real (cada
+    // 3 s) hasta que termina, y entonces se avisa del resultado.
+    useEffect(() => {
+        if (!operacionEnCurso || viendoProgreso) return;
+        let vigente = true;
+        const t = setTimeout(async () => {
+            try {
+                const r = await consultarOperacion(operacionEnCurso.id);
+                if (!vigente) return;
+                if (!r.ok) { if (r.motivo === "no_encontrada") setOperacion(null); return; }
+                setOperacion(r.data);
+                if (r.data.terminada) {
+                    const { enviados, total, fallidos } = r.data.totales;
+                    const tabla = `Tabla de $${precio.toLocaleString("es-CO")}`;
+                    if (r.data.estado === "completada") avisar.ok(`${tabla} publicada en ${enviados} grupo(s).`);
+                    else if (r.data.estado === "cancelada") avisar.error(`${tabla}: envío cancelado; se publicó en ${enviados} de ${total} grupo(s).`);
+                    else avisar.error(`${tabla}: publicada en ${enviados} de ${total} grupo(s); ${fallidos} con error.`);
+                }
+            } catch { /* se vuelve a intentar */ }
+        }, 3000);
+        return () => { vigente = false; clearTimeout(t); };
+    }, [operacionEnCurso, viendoProgreso, precio]);
 
     // Un clic: captura de la tabla visible + texto configurado a los grupos
     // GUARDADOS de esta tabla. Sin grupos guardados (o si ya no están
@@ -64,6 +100,12 @@ export default function AccionesTabla({
 
         if (!usuarioId) {
             avisar.error("Debes iniciar sesión para compartir la tabla.");
+            return;
+        }
+
+        // Ya hay un envío en curso: se muestra su progreso; nunca otro envío.
+        if (operacionEnCurso) {
+            setPanelCompartir({ tipo: "progreso", operacion: operacionEnCurso });
             return;
         }
 
@@ -135,7 +177,8 @@ export default function AccionesTabla({
 
                     <BotonIcono
                         icon={Share2}
-                        label={compartiendo ? "Compartiendo…" : "Compartir"}
+                        label={compartiendo ? "Compartiendo…" : operacionEnCurso ? "Ver envío" : "Compartir"}
+                        subtitulo={operacionEnCurso ? `Enviando ${operacionEnCurso.totales.total - operacionEnCurso.totales.pendientes}/${operacionEnCurso.totales.total}` : undefined}
                         color="text-blue-700 hover:bg-blue-50 hover:border-blue-200"
                         destacado
                         cargando={compartiendo}
@@ -188,6 +231,7 @@ export default function AccionesTabla({
                     capturarTabla={capturarTabla}
                     panel={panelCompartir}
                     onCambiar={setPanelCompartir}
+                    onOperacion={setOperacion}
                     onClose={() => setPanelCompartir(null)}
                 />
             )}

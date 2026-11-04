@@ -201,8 +201,11 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
     const [intentoCarga, setIntentoCarga] = useState(0);
     const sorteo = carga.tipo === "ok" ? carga.sorteo : null;
     const [form, setForm] = useState<Form>(() => ({ ...VACIO, valor: valorInicial ? String(valorInicial) : "" }));
-    // Un sorteo instantáneo sigue siéndolo al editarlo.
-    const inmediato = instantaneo || sorteo?.config.publicacion_inmediata === true;
+    // Modalidad: en un sorteo NUEVO la decide quien abre el formulario; al
+    // EDITAR manda la guardada (un instantáneo sigue siéndolo y un programado
+    // nunca se vuelve instantáneo por abrirse desde otra pantalla). El
+    // backend (servicio.editar) aplica la misma regla.
+    const inmediato = edicion ? sorteo?.config.publicacion_inmediata === true : instantaneo;
 
     useEffect(() => {
 

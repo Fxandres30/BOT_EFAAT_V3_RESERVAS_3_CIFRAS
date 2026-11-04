@@ -539,7 +539,9 @@ prueba("W2. Mensaje INACTIVO: se publica la imagen sin texto y el sorteo queda p
     // «Compartir» de ese sorteo: también solo la imagen.
     const ev = fake.tablas.eventos_bot.find(e => e.identidad_evento_real === sorteoDb(s.id).identidad_evento_real);
     const t = await destinos.textoParaCompartir(A, ev);
-    assert.deepStrictEqual(t, { texto: "", origen: "sorteo", activo: false });
+    // (04/11: la fuente única devuelve además ok, plantilla, revision y fuente.)
+    assert.deepStrictEqual({ texto: t.texto, origen: t.origen, activo: t.activo }, { texto: "", origen: "sorteo", activo: false });
+    assert.strictEqual(t.plantilla, "No debe salir {{nombre}}", "el mensaje guardado sigue siendo la fuente");
 });
 
 prueba("W3. Sorteo antiguo sin texto publicado: WhatsApp recibe lo mismo que con el código anterior", async () => {
