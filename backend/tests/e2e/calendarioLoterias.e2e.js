@@ -375,4 +375,4 @@ async function main() {
 
 }
 
-te
+terminar(main());
