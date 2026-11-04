@@ -10,6 +10,12 @@ const { escanearGrupo } = require("../../usuarios/escanerIdentidadesLifecycle");
 const { verificarHoraCierre } = require("../lifecycle/verificarHoraCierre");
 const { finDelEvento } = require("../../../../shared/eventos/estadosGestion");
 
+// Motor central (04/11): un evento guardado sin poder abrir su grupo dejó su
+// ciclo de automatización «pendiente»; al abrirse aquí se reanuda (apertura
+// una vez), igual que si el grupo se hubiera abierto al publicarlo. Se carga
+// al usarlo: el worker no arrastra el envío de mensajes al importarse.
+const motorEventos = () => require("../../../../automation/motorEventos");
+
 // ahora: reloj inyectable (pruebas); en producción, el momento del tick.
 async function workerEventos(sock, { ahora } = {}) {
 
@@ -138,6 +144,10 @@ async function workerEventos(sock, { ahora } = {}) {
                     sincronizadas++;
 
                     console.log(`🔓 Reconciliado: grupo del evento ${evento.id} abierto en WhatsApp`);
+
+                    // No bloqueante; solo reanuda un ciclo PENDIENTE de este evento.
+                    const motor = motorEventos();
+                    motor.enSegundoPlano(motor.reanudarApertura({ evento, sock }));
 
                 }
 

@@ -113,9 +113,12 @@ prueba("horario: festivo según la regla (sin regla avisa; no se juega; habitual
     const festivo = "2026-10-12";   // Día de la Raza (lunes)
     const sinRegla = calendario.horarioPara({ ...base, regla_festivo: "sin_regla" }, festivo).data;
     assert.strictEqual(sinRegla.festivo, "Día de la Raza");
-    assert.strictEqual(sinRegla.hora, null);
+    // Regla no definida: se conserva la hora habitual, marcada para confirmar.
+    assert.strictEqual(sinRegla.hora, "14:30");
+    assert.strictEqual(sinRegla.origen, "festivo_sin_regla");
+    assert.strictEqual(sinRegla.confirmar, true);
     assert.strictEqual(sinRegla.hora_del_dia, "14:30");
-    assert.ok(sinRegla.avisos.some(a => /no tiene una regla para festivos/.test(a)));
+    assert.ok(sinRegla.avisos.some(a => /no tiene una regla para festivos definida/.test(a)));
     assert.strictEqual(calendario.horarioPara({ ...base, regla_festivo: "no_se_juega" }, festivo).data.juega, false);
     assert.strictEqual(calendario.horarioPara({ ...base, regla_festivo: "hora_habitual" }, festivo).data.hora, "14:30");
     assert.strictEqual(calendario.horarioPara({ ...base, regla_festivo: "hora_especial", hora_festivo: "21:00" }, festivo).data.hora, "21:00");
@@ -382,8 +385,9 @@ prueba("horarios del listado: día habitual, sábado/domingo distintos y festivo
     assert.strictEqual((await h("Antioqueñita Tarde", "2026-11-02")).hora, "16:00", "festivo a la hora habitual");
     assert.strictEqual((await h("La Culona Día", "2026-11-02")).hora, "14:30", "incluso feriados");
     const doradoFestivo = await h("Dorado Mañana", "2026-11-02");
-    assert.strictEqual(doradoFestivo.hora, null, "el listado no dice nada de festivos: no se inventa");
-    assert.ok(doradoFestivo.avisos.some(a => /no tiene una regla para festivos/.test(a)));
+    assert.strictEqual(doradoFestivo.hora, "10:58", "el listado no dice nada de festivos: hora habitual, sin inventar otra");
+    assert.strictEqual(doradoFestivo.confirmar, true);
+    assert.ok(doradoFestivo.avisos.some(a => /no tiene una regla para festivos definida/.test(a)));
     assert.strictEqual((await h("Dorado Mañana", "2026-10-18")).juega, false, "domingo no se juega");
     assert.strictEqual((await h("Lotería Cruz Roja", "2026-10-20")).hora, "22:30");
     assert.strictEqual((await h("Lotería Cruz Roja", "2026-10-21")).juega, false);

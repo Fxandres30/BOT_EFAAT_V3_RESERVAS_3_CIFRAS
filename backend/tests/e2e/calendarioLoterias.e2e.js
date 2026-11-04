@@ -42,11 +42,18 @@ t.loterias_catalogo_global = require("../sorteos/catalogo026").catalogoGlobalDe0
 
 t["5k_15k_reservas_2_cifras"] = Array.from({ length: 100 }, (_, i) => ({ numero: String(i).padStart(2, "0"), estado: "libre", usuario_id: A }));
 
-// Fechas fijas futuras (2026): jueves, viernes, domingo y festivo.
-const JUEVES = "2026-10-29";
-const VIERNES = "2026-10-30";
-const DOMINGO = "2026-11-01";
-const FESTIVO = "2026-11-02";   // Todos los Santos (lunes trasladado)
+// Fechas SIEMPRE futuras (las fijas caducaban y la publicación se rechazaba):
+// el primer lunes festivo a 5 días o más de hoy y el jueves, viernes y
+// domingo anteriores a él.
+const { festivosColombia } = require("../../sorteos/calendario");
+const isoMas = (fecha, dias) => new Date(Date.parse(`${fecha}T12:00:00Z`) + dias * 86400000).toISOString().slice(0, 10);
+const HOY = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
+const [FESTIVO, NOMBRE_FESTIVO] = [Number(HOY.slice(0, 4)), Number(HOY.slice(0, 4)) + 1]
+    .flatMap(anio => [...festivosColombia(anio).entries()])
+    .find(([f]) => f >= isoMas(HOY, 5) && new Date(`${f}T12:00:00Z`).getUTCDay() === 1);
+const JUEVES = isoMas(FESTIVO, -4);
+const VIERNES = isoMas(FESTIVO, -3);
+const DOMINGO = isoMas(FESTIVO, -1);
 
 const { paso, terminar } = crearPasos();
 
@@ -81,9 +88,24 @@ async function main() {
         assert.strictEqual(t.loterias_catalogo.filter(f => f.usuario_id === A).length, 42);
         assert.ok(!textoCal.includes("Horario pendiente"), "todas con horario del listado");
         const tarjetaPijao = await a.evaluate(() => [...document.querySelectorAll("h3")].find(h => h.textContent.trim() === "Pijao de Oro").closest("div").parentElement.innerText);
-        for (const dato of ["Hora habitual: 14:00", "Sábado: 21:00", "Domingo: 22:00", "(20:00)"]) assert.ok(tarjetaPijao.includes(dato), `Pijao de Oro: falta «${dato}»\n${tarjetaPijao}`);
+        for (const dato of ["Chance", "Juega: Todos los días", "Hora habitual: 14:00", "Sábado: 21:00", "Domingos: 22:00", "Festivos: 20:00", "Próximo sorteo:", "Restaurar"]) assert.ok(tarjetaPijao.includes(dato), `Pijao de Oro: falta «${dato}»\n${tarjetaPijao}`);
+        const tarjetaExtra = await a.evaluate(() => [...document.querySelectorAll("h3")].find(h => h.textContent.trim() === "Extra de Colombia Mensual").closest("div").parentElement.innerText);
+        for (const dato of ["Tradicional", "Mensual", "Juega: Sáb", "Hora habitual: 23:00", "Domingos: sin sorteo", "Próximo sorteo: Sorteo mensual"]) assert.ok(tarjetaExtra.includes(dato), `Extra: falta «${dato}»\n${tarjetaExtra}`);
         await captura(a, "calendario_catalogo");
         paso("Calendario: 27 chances + 15 tradicionales con los horarios del listado (p. ej. Pijao de Oro: 14:00, sábado 21:00, domingo 22:00, festivos 20:00)");
+
+        // Restaurar una lotería editada (cambio hecho por fuera del panel).
+        Object.assign(t.loterias_catalogo.find(f => f.usuario_id === A && f.nombre === "Pijao de Oro"), { hora: "03:00", horas_por_dia: {} });
+        await a.reload({ waitUntil: "domcontentloaded" });
+        await esperarTexto(a, "Hora habitual: 03:00");
+        await a.evaluate(() => {
+            const card = [...document.querySelectorAll("h3")].find(h => h.textContent.trim() === "Pijao de Oro").closest("div").parentElement;
+            [...card.querySelectorAll("button")].find(b => b.textContent.trim() === "Restaurar").click();
+        });
+        await esperarTexto(a, "volvió a su configuración inicial");
+        const pijaoA = t.loterias_catalogo.find(f => f.usuario_id === A && f.nombre === "Pijao de Oro");
+        assert.deepStrictEqual([pijaoA.hora, pijaoA.horas_por_dia], ["14:00", { 6: "21:00", 7: "22:00" }]);
+        paso("Restaurar: Pijao de Oro editado vuelve a 14:00 / sábado 21:00 / domingo 22:00 solo en el calendario de A");
 
         await a.evaluate(() => {
             const el = document.querySelector('[aria-label="Buscar lotería"]');
@@ -152,10 +174,10 @@ async function main() {
         await rellenar(a, "Fecha y hora de publicación", `${DOMINGO}T08:00`);
         await a.waitForFunction(() => /no se juega los domingo/.test(document.querySelector('[aria-label="Horario de la lotería"]')?.innerText || ""));
         await rellenar(a, "Fecha y hora de publicación", `${FESTIVO}T08:00`);
-        await a.waitForFunction(() => /festivo \(Todos los Santos\)/.test(document.querySelector('[aria-label="Horario de la lotería"]')?.innerText || ""));
+        await a.waitForFunction((nombre) => (document.querySelector('[aria-label="Horario de la lotería"]')?.innerText || "").includes(`festivo (${nombre})`), {}, NOMBRE_FESTIVO);
         assert.ok(/no tiene una regla para festivos/.test(await cajaHorario(a)));
         await captura(a, "formulario_festivo");
-        paso("Domingo: avisa que no se juega; festivo (Todos los Santos) sin regla: advierte y no inventa hora");
+        paso("Domingo: avisa que no se juega; festivo sin regla: sugiere la hora habitual y pide confirmarla");
 
         await rellenar(a, "Fecha y hora de publicación", `${JUEVES}T08:00`);
         await a.waitForFunction(() => /jueves/.test(document.querySelector('[aria-label="Horario de la lotería"]')?.innerText || ""));
@@ -192,9 +214,18 @@ async function main() {
         await pulsar(a, "Cerrar");
         await a.reload({ waitUntil: "domcontentloaded" });
         await esperarTexto(a, "Sinuano Día");
+        // Si una espera vence, dice cuál fue y qué había en pantalla.
+        const esperar = async (que, fn) => {
+            try { await fn(); } catch (e) {
+                const botones = await a.evaluate(() => [...document.querySelectorAll("button")].map(b => b.textContent.trim()).filter(Boolean).join(" | "));
+                const texto = (await textoPagina(a)).slice(0, 1500);
+                throw new Error(`Espera vencida: ${que}\nBotones: ${botones}\nPantalla: ${texto}\n${e.message}`);
+            }
+        };
         await pulsar(a, "Editar");
-        await esperarTexto(a, "Editar sorteo programado");
-        await a.waitForFunction(() => [...document.querySelectorAll("label")].some(l => l.textContent.trim() === "Grupo Tres A" && l.querySelector("input")));
+        // Título actual del formulario (antes «Editar sorteo programado»).
+        await esperar("título «Editar sorteo»", () => a.waitForFunction(() => [...document.querySelectorAll("h2")].some(e => e.textContent.trim() === "Editar sorteo"), { timeout: 60000 }));
+        await esperar("grupos cargados en el formulario", () => a.waitForFunction(() => [...document.querySelectorAll("label")].some(l => l.textContent.trim() === "Grupo Tres A" && l.querySelector("input")), { timeout: 60000 }));
         assert.strictEqual(await valorDe(a, "Lotería o nombre del sorteo"), "Sinuano Día");
         await esperarTexto(a, "Del calendario de loterías.");
         assert.strictEqual(await valorDe(a, "Hora del sorteo"), "15:00");
@@ -203,8 +234,9 @@ async function main() {
         paso("Recargar y editar: conserva lotería, fecha, hora manual y los 3 grupos marcados");
 
         await marcar(a, "Grupo Tres A");
-        await pulsar(a, "Guardar y ver vista previa");
-        await esperarTexto(a, "Anuncio que se publicará");
+        // En edición el botón es «Guardar cambios» (desde 33bc0996).
+        await esperar("botón «Guardar cambios»", () => pulsar(a, "Guardar cambios"));
+        await esperar("vista previa tras editar", () => esperarTexto(a, "Anuncio que se publicará"));
         assert.strictEqual(t.sorteos_programados.length, 1, "editar no duplica el sorteo");
         assert.strictEqual(t.sorteos_programados[0].version, 2);
         assert.deepStrictEqual(t.sorteos_programados_grupos.filter(g => g.sorteo_id === s.id && g.estado !== "cancelado").map(g => g.grupo_id).sort(), ["g1@g.us", "g2@g.us"]);
@@ -251,14 +283,15 @@ async function main() {
         await c.goto(`${PANEL}/sorteos`, { waitUntil: "domcontentloaded" });
         await pulsar(c, "Programar sorteo");
         await esperarTexto(c, "Todavía no hay grupos de WhatsApp habilitados para");
-        await esperarTexto(c, "Todavía no tienes cuentas de pago. Crea una en");
-        assert.ok(await c.evaluate(() => [...document.querySelectorAll("a")].some(a => a.getAttribute("href") === "/sorteos" && a.closest("section"))), "enlace para crear la cuenta");
+        // Texto y acción actuales: la cuenta se crea dentro del mismo formulario.
+        await esperarTexto(c, "Todavía no tienes cuentas de pago. Agrega al menos una");
+        assert.ok(await c.evaluate(() => [...document.querySelectorAll("section button")].some(b => b.textContent.trim() === "Agregar cuenta de pago" && !b.disabled)), "botón para crear la cuenta");
         await sinTextoTecnico(c, "formulario sin grupos ni cuentas");
         texto = await textoPagina(c);
         assert.ok(texto.includes("sin-grupos@prueba.local"), "dice con qué cuenta se inició sesión");
         assert.ok(!texto.includes("Grupo Uno A") && !texto.includes("Grupo Ajeno B"));
         await captura(c, "grupos_usuario_sin_grupos");
-        paso("Usuario sin grupos ni cuentas: explicación sencilla con enlaces (grupos y cuenta de pago), sin texto técnico");
+        paso("Usuario sin grupos ni cuentas: explicación sencilla (enlace a grupos y botón «Agregar cuenta de pago»), sin texto técnico");
 
         const d = await entorno.nuevaPagina("tok-d");
         paginas.push(d);
@@ -342,4 +375,4 @@ async function main() {
 
 }
 
-terminar(main());
+te

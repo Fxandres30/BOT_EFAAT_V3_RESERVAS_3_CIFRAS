@@ -53,6 +53,11 @@ const { resolverTexto } = require("../shared/variables/resolverVariables");
 const { sendMessage } = require("../services/baileys/send");
 const executionGuard = require("./executionGuard");
 
+// Prioridad sorteo > grupo (04/11): recordatorios y cierre específicos de un
+// sorteo del panel los envía el publicador; aquí solo los generales cuando
+// el sorteo no los configuró. Ver prioridadComunicaciones.js.
+const prioridad = require("./prioridadComunicaciones");
+
 // Recordatorios y actualizaciones según el estado REAL del sorteo (libres,
 // reservados pendientes, pagados, grupo cerrado) — ver
 // eventRules.decidirRecordatoriosSegunEstado.
@@ -163,11 +168,15 @@ async function tick(sock, opciones = {}) {
 
     const abiertas = await eventSessionsRepo.obtenerAbiertasPorSesion(sessionId);
 
+    // Sorteo del panel de cada evento, leído como mucho una vez por tick y
+    // solo cuando hace falta decidir (ver procesarEventSession).
+    const opcionesTick = { ...opciones, cacheSorteos: new Map() };
+
     for (const eventSession of abiertas) {
 
         try {
 
-            await procesarEventSession(eventSession, sock, opciones);
+            await procesarEventSession(eventSession, sock, opcionesTick);
 
         } catch (error) {
 
@@ -178,6 +187,11 @@ async function tick(sock, opciones = {}) {
         }
 
     }
+
+    // Recuperación tras una caída (04/11): aperturas que no llegaron a
+    // registrarse y ciclos que quedaron pendientes con el grupo ya abierto.
+    // Idempotente y sin anunciar tarde (automation/motorEventos.js).
+    await require("./motorEventos").recuperarCiclos({ sock, ahora: opciones.ahora || new Date(), abiertas });
 
     // Inicio del día (Master Spec §15) — independiente por completo del
     // ciclo de Event Session (no depende de "abiertas" de arriba, nunca
@@ -318,10 +332,24 @@ async function procesarEventSession(eventSession, sock, opciones = {}) {
 
     }
 
+    // ¿Recordatorios y cierre son del sorteo (publicador) o del grupo (aquí)?
+    // Se consulta SOLO cuando hay que decidir (un recordatorio que vence o el
+    // cierre), una vez por sorteo y tick. Sin poder saberlo no se envía
+    // ninguno de los dos en este tick.
+    const origenDelEvento = async () => {
+        const cache = opciones.cacheSorteos || new Map();
+        const clave = `${evento.usuario_id}|${evento.identidad_evento_real || evento.id}`;
+        if (!cache.has(clave)) cache.set(clave, prioridad.fuentesDelEvento(evento));
+        const origen = await cache.get(clave);
+        if (!origen.ok) console.error(`⚠️ [AUTOMATION] no se pudo leer el sorteo del evento ${evento.id}: sin recordatorios ni cierre en este ciclo (se reintenta).`, origen.error?.message);
+        return origen;
+    };
+
     // 1. ¿El sistema de cierre EXISTENTE ya cerró de verdad este sorteo?
     if (evento.activo === false) {
 
-        await ejecutarCierre(evento, eventSession, sock);
+        const origen = await origenDelEvento();
+        if (origen.ok) await ejecutarCierre(evento, eventSession, sock, origen);
         return; // un evento ya cerrado no evalúa recordatorios/updates
 
     }
@@ -330,8 +358,15 @@ async function procesarEventSession(eventSession, sock, opciones = {}) {
     //    OPEN_MESSAGE, ver automation/tablaInicial.js.
     await evaluarPublicacionInicialTabla(evento, eventSession, sock, opciones);
 
-    // 3. Recordatorios (antes del cierre real).
-    await evaluarRecordatorios(evento, eventSession, sock, opciones);
+    // 3. Recordatorios (antes del cierre real): los generales del grupo solo
+    //    si el sorteo no tiene los suyos.
+    await evaluarRecordatorios(evento, eventSession, sock, {
+        ...opciones,
+        recordatoriosDelGrupo: async () => {
+            const origen = await origenDelEvento();
+            return origen.ok && origen.fuentes.recordatorios === prioridad.GRUPO;
+        }
+    });
 
     // 4. Actualizaciones por movimiento de reservas.
     await evaluarActualizacion(evento, eventSession, sock, opciones);
@@ -460,6 +495,10 @@ async function evaluarRecordatorios(evento, eventSession, sock, opciones = {}) {
             continue;
         }
 
+        // Vence un recordatorio general: solo si el sorteo no tiene los
+        // suyos (prioridad sorteo > grupo). Si no, ni se envía ni se registra.
+        if (opciones.recordatoriosDelGrupo && !(await opciones.recordatoriosDelGrupo())) return;
+
         if (!decision) {
             decision = eventRules.decidirRecordatoriosSegunEstado(await leerEstadoParaRecordatorios(evento, evento.grupo_id));
         }
@@ -583,17 +622,42 @@ async function evaluarActualizacion(evento, eventSession, sock, opciones = {}) {
 // sistema de cierre EXISTENTE (cerrarEvento.js) ya confirmó el cierre real
 // en WhatsApp y lo persistió. Este Scheduler nunca reemplaza esa decisión,
 // solo reacciona a ella.
-async function ejecutarCierre(evento, eventSession, sock) {
+async function ejecutarCierre(evento, eventSession, sock, origen = { fuentes: { cierre: prioridad.GRUPO }, sorteo: null }) {
 
     // Desactivado, cancelado, eliminado o sustituido por otro sorteo desde la
     // administración: el ciclo termina sin anunciar un "cierre" que no hubo.
     const silencioso = cierreSilencioso(evento);
 
-    const config = silencioso ? null : await automationConfigRepo.obtenerConfiguracion(evento.usuario_id, evento.grupo_id);
+    // El sorteo tiene su propio aviso de cierre: lo envía el publicador.
+    const delSorteo = origen.fuentes.cierre === prioridad.SORTEO;
+
+    const config = silencioso || delSorteo ? null : await automationConfigRepo.obtenerConfiguracion(evento.usuario_id, evento.grupo_id);
 
     if (silencioso) console.log(`🤖 [AUTOMATION] ciclo ${eventSession.id} terminado sin mensaje de cierre (${motivoGestion(evento)}).`);
+    else if (delSorteo) console.log(`🤖 [AUTOMATION] ciclo ${eventSession.id}: el cierre lo anuncia el aviso propio del sorteo.`);
 
-    if (config && config.mensaje_cierre && config.mensaje_cierre.activo === true) {
+    let enviarCierre = Boolean(config && config.mensaje_cierre && config.mensaje_cierre.activo === true);
+
+    // Nunca dos avisos de cierre para el mismo evento y grupo: si el del
+    // sorteo (u otro ciclo de este evento) ya se gestionó, no se envía.
+    if (enviarCierre) {
+        try {
+            if (await prioridad.avisoCierreYaEnviado({ eventoId: evento.id, grupoId: evento.grupo_id, sorteoId: origen.sorteo?.id || null })) {
+                const propia = await executionGuard.obtenerPorClave(prioridad.claveCierreGrupo(eventSession.id));
+                if (!propia) {
+                    console.log(`🤖 [AUTOMATION] ciclo ${eventSession.id}: el cierre de este evento ya se anunció; no se envía otro.`);
+                    enviarCierre = false;
+                }
+            }
+        } catch (err) {
+            // Sin poder comprobarlo no se envía ni se cierra el ciclo: se
+            // vuelve a intentar en el próximo tick.
+            console.error(`⚠️ [AUTOMATION] no se pudo comprobar el cierre del evento ${evento.id}:`, err?.message);
+            return;
+        }
+    }
+
+    if (enviarCierre) {
 
         await engine.enviarMensajeProgramado({
 

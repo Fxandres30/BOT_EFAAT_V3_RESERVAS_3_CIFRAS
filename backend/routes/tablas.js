@@ -21,6 +21,8 @@ const { compartirTabla, compartirEnGrupos, capturarImagenTabla, verificarTokenIm
 const { datosTablaImprimir } = require("../services/datosTablaImprimir");
 const destinos = require("../services/destinosCompartir");
 const compartirManual = require("../services/compartirManual");
+const gruposSorteo = require("../sorteos/gruposSorteo");
+const repoSorteos = require("../sorteos/repo");
 
 // Mismo criterio real que frontend/services/tablas/obtenerEventoActivo.ts
 // (a lo sumo un evento "activo" por tabla+usuario) — reproducido aquí para
@@ -101,6 +103,28 @@ async function tablaYEvento(usuarioId, precio) {
 
 const socketDe = (usuarioId) => require("../services/baileys/manager").getSocketActivoDe(usuarioId);
 
+// GRUPOS DEL SORTEO (04/11): si el sorteo activo de la tabla nació en el
+// panel, sus grupos son los de su programación (sorteos/gruposSorteo.js),
+// la MISMA fuente que «Editar». «Cambiar grupos» los cambia ahí y un grupo
+// nuevo recibe ESTE sorteo con el publicador (evento del grupo + anuncio),
+// no solo la imagen. null = sorteo detectado en WhatsApp (sin programación).
+async function gruposDeLaProgramacion(usuarioId, evento) {
+    const p = await gruposSorteo.programacionDeIdentidad(usuarioId, evento?.identidad_evento_real);
+    if (!p) return null;
+    const g = await repoSorteos.gruposDelSorteo(usuarioId, p.id);
+    if (!g.ok) return null;
+    return { id: p.id, grupos: g.data.filter(x => x.estado !== "cancelado") };
+}
+
+// Grupos donde el sorteo (identidad) está ACTIVO de verdad (eventos_bot).
+async function gruposConElSorteoActivo(usuarioId, evento) {
+    if (!evento?.identidad_evento_real) return new Set(evento?.grupo_id ? [evento.grupo_id] : []);
+    const { data, error } = await supabase.from("eventos_bot").select("grupo_id")
+        .eq("usuario_id", usuarioId).eq("activo", true).eq("identidad_evento_real", evento.identidad_evento_real);
+    if (error) return null;
+    return new Set((data || []).map(f => f.grupo_id).filter(Boolean));
+}
+
 // GET /tablas/compartir/vista-previa?precio=[&sin_imagen=1] — texto y
 // grupos. El panel nuevo pide sin_imagen=1: la imagen es su captura del
 // `div` de la tabla visible.
@@ -123,8 +147,10 @@ router.get("/compartir/vista-previa", exigirUsuario, async (req, res) => {
         const guardados = await destinos.obtenerDestinos(usuarioId, precio);
         if (!guardados.ok) return res.status(500).json({ ok: false, motivo: "error_destinos" });
 
-        const { validos, invalidos } = destinos.clasificar(guardados.data || [], disponibles.data);
+        const programacion = await gruposDeLaProgramacion(usuarioId, t.evento);
+        const { validos, invalidos } = destinos.clasificar(programacion ? programacion.grupos.map(g => g.grupo_id) : (guardados.data || []), disponibles.data);
         const texto = await destinos.textoParaCompartir(usuarioId, t.evento);
+        const activos = await gruposConElSorteoActivo(usuarioId, t.evento);
 
         let imagenAntigua = {};
         if (req.query.sin_imagen !== "1") {
@@ -149,7 +175,15 @@ router.get("/compartir/vista-previa", exigirUsuario, async (req, res) => {
                 grupos: disponibles.data,
                 seleccion: validos.map(g => g.grupo_id),
                 invalidos,
-                persistencia: guardados.persistencia,
+                persistencia: programacion ? true : guardados.persistencia,
+                // Sorteo del panel: la selección ES la de sus grupos (también
+                // la de «Editar»). Estado del sorteo en cada grupo disponible.
+                sorteo_programado_id: programacion?.id || null,
+                estado_grupos: Object.fromEntries(disponibles.data.map(g => {
+                    const fila = programacion?.grupos.find(x => x.grupo_id === g.grupo_id);
+                    const activo = activos?.has(g.grupo_id) || false;
+                    return [g.grupo_id, activo ? "activo" : fila ? (fila.estado === "pendiente" ? "pendiente" : "error") : "sin_sorteo"];
+                })),
                 sesion_conectada: Boolean(socketDe(usuarioId)),
                 ...imagenAntigua
             }
@@ -181,6 +215,17 @@ router.put("/compartir/destinos", exigirUsuario, async (req, res) => {
 
         const { invalidos } = destinos.clasificar(ids, disponibles.data);
         if (invalidos.length) return res.status(409).json({ ok: false, motivo: "destinos_no_disponibles", invalidos });
+
+        // Sorteo del panel activo en la tabla: se cambian SUS grupos (misma
+        // operación que «Editar»; también copia los destinos). No publica.
+        const config = await obtenerConfiguracionCliente(usuarioId, Number(precio));
+        const evento = config ? await obtenerEventoActivoReal(config.tabla, usuarioId) : null;
+        const programacion = evento ? await gruposDeLaProgramacion(usuarioId, evento) : null;
+        if (programacion) {
+            const c = await gruposSorteo.cambiarGrupos(usuarioId, programacion.id, ids, { origen: "tablas" });
+            if (!c.ok) return res.status(409).json({ ok: false, motivo: c.motivo, mensaje: c.mensaje || null });
+            return res.json({ ok: true, data: { seleccion: ids, agregados: c.data.agregados, quitados: c.data.quitados, desactivados: c.data.desactivados, por_publicar: c.data.por_publicar, avisos: c.data.avisos } });
+        }
 
         const r = await destinos.guardarDestinos(usuarioId, precio, ids);
         if (!r.ok) return res.status(r.motivo === "migracion_pendiente" ? 503 : 500).json({ ok: false, motivo: r.motivo, ...(r.migracion ? { migracion: r.migracion } : {}) });
@@ -287,7 +332,11 @@ async function compartirConDestinos(req, res) {
 
     } else {
 
-        const guardados = await destinos.obtenerDestinos(usuarioId, precio);
+        // Sorteo del panel: sus grupos (la misma fuente que «Editar»).
+        const delSorteo = await gruposDeLaProgramacion(usuarioId, t.evento);
+        const guardados = delSorteo
+            ? { ok: true, data: delSorteo.grupos.length ? delSorteo.grupos.map(g => g.grupo_id) : null, persistencia: true }
+            : await destinos.obtenerDestinos(usuarioId, precio);
         if (!guardados.ok) return res.status(500).json({ ok: false, enviado: false, motivo: "error_destinos" });
         if (!guardados.data) return res.status(409).json({ ok: false, enviado: false, motivo: "sin_destinos", persistencia: guardados.persistencia });
 
@@ -315,13 +364,61 @@ async function compartirConDestinos(req, res) {
             }
         }
 
-        const caption = destinos.textoEditado(texto) ?? (await destinos.textoParaCompartir(usuarioId, t.evento)).texto;
-        const r = await compartirEnGrupos({ evento: t.evento, sock, grupos: elegidos, caption, solicitudId, imagen });
+        // Sorteo del panel: la selección guardada ES la de sus grupos. Los
+        // grupos donde el sorteo todavía no está activo lo RECIBEN con el
+        // publicador (evento del grupo con la misma identidad y tabla, grupo
+        // abierto y anuncio una vez); a los demás se les comparte la tabla.
+        let programacion = await gruposDeLaProgramacion(usuarioId, t.evento);
+        const avisos = aviso ? [aviso] : [];
+        const resultadosNuevos = [];
+        let paraCompartir = elegidos;
 
-        if (!r.ok) return res.status(502).json({ ok: false, enviado: false, motivo: r.motivo, ...(aviso ? { aviso } : {}) });
+        if (programacion) {
+            if (grupos !== undefined && guardar === true) {
+                const c = await gruposSorteo.cambiarGrupos(usuarioId, programacion.id, elegidos.map(g => g.grupo_id), { origen: "tablas" });
+                if (!c.ok) return res.status(409).json({ ok: false, enviado: false, motivo: c.motivo, mensaje: c.mensaje || null });
+                avisos.push(...c.data.avisos);
+                programacion = await gruposDeLaProgramacion(usuarioId, t.evento);
+            }
+            const activos = await gruposConElSorteoActivo(usuarioId, t.evento);
+            if (!activos || !programacion) return res.status(500).json({ ok: false, enviado: false, motivo: "error_grupos" });
+            const sinSorteo = elegidos.filter(g => !activos.has(g.grupo_id));
+            paraCompartir = elegidos.filter(g => activos.has(g.grupo_id));
 
-        const hechos = r.resultados.filter(x => x.estado === "enviado" || x.estado === "ya_enviado").length;
-        res.json({ ok: true, enviado: hechos > 0, enviados: hechos, fallidos: r.resultados.length - hechos, resultados: r.resultados, ...(aviso ? { aviso } : {}) });
+            if (sinSorteo.length) {
+                const pendientes = sinSorteo.filter(g => programacion.grupos.some(x => x.grupo_id === g.grupo_id && x.estado === "pendiente"));
+                const otros = sinSorteo.filter(g => !pendientes.includes(g));
+                if (pendientes.length) {
+                    const pub = await gruposSorteo.publicarGruposNuevos(usuarioId, programacion.id, { imagen });
+                    const filas = pub.ok ? pub.data.grupos : [];
+                    resultadosNuevos.push(...pendientes.map(g => {
+                        const f = filas.find(x => x.grupo_id === g.grupo_id);
+                        return f?.estado === "publicado"
+                            ? { ...g, estado: "enviado", activado: true }
+                            : { ...g, estado: "fallido", activado: false, error: pub.ok ? (f?.error || "No se publicó el sorteo en el grupo.") : (pub.mensaje || pub.motivo) };
+                    }));
+                }
+                resultadosNuevos.push(...otros.map(g => ({ ...g, estado: "fallido", activado: false, error: "El sorteo no está activo en este grupo y su publicación quedó con error: reinténtala desde Sorteos (Programados o Publicar ahora)." })));
+            }
+        } else {
+            // Sorteo detectado en WhatsApp: sin programación no se puede
+            // activar en otro grupo desde aquí. Se comparte como siempre y se
+            // avisa de los grupos donde no se registrarán reservas.
+            const activos = await gruposConElSorteoActivo(usuarioId, t.evento);
+            const fuera = activos ? elegidos.filter(g => !activos.has(g.grupo_id)) : [];
+            if (fuera.length) avisos.push(`El sorteo no está activo en ${fuera.map(g => g.nombre || g.grupo_id).join(", ")}: se envía la imagen, pero ahí no se registrarán reservas. Este sorteo se detectó en WhatsApp: para activarlo en otro grupo usa «Editar» → «Gestionar desde el panel» y luego agrega el grupo.`);
+        }
+
+        let resultados = [...resultadosNuevos];
+        if (paraCompartir.length) {
+            const caption = destinos.textoEditado(texto) ?? (await destinos.textoParaCompartir(usuarioId, t.evento)).texto;
+            const r = await compartirEnGrupos({ evento: t.evento, sock, grupos: paraCompartir, caption, solicitudId, imagen });
+            if (!r.ok && !resultadosNuevos.length) return res.status(502).json({ ok: false, enviado: false, motivo: r.motivo, ...(avisos.length ? { aviso: avisos.join(" ") } : {}) });
+            if (r.ok) resultados = [...r.resultados, ...resultados];
+        }
+
+        const hechos = resultados.filter(x => x.estado === "enviado" || x.estado === "ya_enviado").length;
+        res.json({ ok: true, enviado: hechos > 0, enviados: hechos, fallidos: resultados.length - hechos, resultados, ...(avisos.length ? { aviso: avisos.join(" ") } : {}) });
 
     } finally {
         enviosEnCurso.delete(clave);

@@ -277,7 +277,38 @@ export interface SorteoActivo {
     publicacion_texto?: string;
     publicacion_meta?: MetaPublicacion;
     recordatorios: Recordatorio[] | null;
+    /** Solo sorteos del panel: TODOS sus grupos (también los pendientes de
+     *  publicar) según su programación, la fuente de verdad de los grupos. */
+    destinos?: DestinoSorteo[] | null;
+    /** Solo tras guardar una edición que cambió grupos. */
+    cambios_grupos?: CambiosGrupos;
     campos: Record<"nombre" | "fecha_evento" | "hora_fin" | "valor" | "tabla" | "grupos" | "premios" | "hora_cierre" | "cuentas" | "diseno" | "publicacion" | "mensajes", CampoActivo>;
+}
+
+/** Un grupo del sorteo y el estado de su publicación. */
+export interface DestinoSorteo { grupo_id: string; grupo_nombre: string | null; estado: EstadoGrupo; error: string | null }
+
+/** Qué cambió al guardar los grupos (no publica nada). */
+export interface CambiosGrupos {
+    agregados: { grupo_id: string; nombre: string | null; estado: string }[];
+    quitados: { grupo_id: string; nombre: string | null; estaba: string }[];
+    desactivados: { grupo_id: string; nombre: string | null; evento_id: string }[];
+    /** Grupos nuevos de un sorteo ya publicado: se publican con publicarGruposNuevos. */
+    por_publicar: number;
+    avisos: string[];
+}
+
+/** Resultado de publicar en los grupos nuevos. */
+export interface ResultadoGruposNuevos {
+    sorteo_id: string;
+    estado: EstadoSorteo;
+    publicados: number;
+    pendientes: number;
+    fallidos: number;
+    en_revision: number;
+    grupos: { grupo_id: string; nombre: string | null; estado: EstadoGrupo; error: string | null }[];
+    publicados_ahora?: string[];
+    nada_que_publicar?: boolean;
 }
 
 /** Lo que se puede cambiar de un sorteo activo; `base` = lo que se vio al abrirlo. */
@@ -295,6 +326,8 @@ export interface EdicionActivo {
     diseno?: DisenoSorteo;
     publicacion?: string;
     publicacion_meta?: { estilo?: string; activo?: boolean };
+    /** Selección COMPLETA de grupos (solo sorteos del panel). Guardar no publica. */
+    grupos?: string[];
     base: { premios: Premio[]; hora_cierre: string | null; publicacion?: string };
 }
 
@@ -437,9 +470,30 @@ export interface Loteria {
     hora_festivo: string | null;
     notas: string | null;
     activo: boolean;
+    /** semanal | mensual (mensual: la fuente no dice qué día del mes). */
+    frecuencia: FrecuenciaLoteria;
+    /** Tiene configuración inicial a la que volver con «Restaurar». */
+    restaurable?: boolean;
+    /** Próximo sorteo en hora de Colombia, solo si se puede determinar. */
+    proximo?: ProximoSorteo | null;
+    /** Por qué no hay próximo sorteo (mensual, inactiva, sin horario…). */
+    proximo_nota?: string | null;
 }
 
-export type LoteriaEntrada = Omit<Loteria, "id" | "etiqueta">;
+export type FrecuenciaLoteria = "semanal" | "mensual";
+
+export interface ProximoSorteo {
+    fecha: string;
+    hora: string;
+    dia_nombre: string;
+    festivo: string | null;
+    /** La hora sale de una regla no definida en la fuente: confirmarla. */
+    confirmar: boolean;
+}
+
+export type LoteriaEntrada = Omit<Loteria, "id" | "etiqueta" | "restaurable" | "proximo" | "proximo_nota">;
+
+export interface ResultadoRestaurar { restauradas: number; agregadas: number; conservadas: number }
 
 export interface HorarioLoteria {
     loteria: string;
@@ -451,6 +505,9 @@ export interface HorarioLoteria {
     hora: string | null;
     hora_del_dia: string | null;
     origen: string | null;
+    frecuencia?: FrecuenciaLoteria;
+    /** La hora sugerida no sale de una regla explícita: confirmarla. */
+    confirmar?: boolean;
     avisos: string[];
 }
 
@@ -555,6 +612,8 @@ export const apiSorteos = {
     activos: (precio?: number) => llamar<SorteoActivo[]>("GET", `/activos${precio ? `?precio=${precio}` : ""}`),
     obtenerActivo: (id: string) => llamar<SorteoActivo>("GET", `/activos/${id}`),
     editarActivo: (id: string, cambios: EdicionActivo) => llamar<SorteoActivo>("PUT", `/activos/${id}`, cambios),
+    /** Sorteo detectado en WhatsApp → gestionarlo desde el panel (misma identidad, tabla y reservas; no envía nada). */
+    vincularDetectado: (id: string, cuentas: string[]) => llamar<{ sorteo_programado_id: string; ya_existia: boolean }>("POST", `/activos/${id}/vincular`, { cuentas }),
     /** Sorteos en los grupos (activos e inactivos recientes) para administrarlos. */
     eventos: () => llamar<SorteoEnGrupos[]>("GET", "/eventos"),
     accionEvento: (eventoId: string, cuerpo: { accion: AccionEvento; alcance?: "grupo" | "todos"; hora_cierre?: string; sustituir?: boolean; cerrar_grupo_whatsapp?: boolean }) =>
@@ -577,6 +636,10 @@ export const apiSorteos = {
     /** `version` = la que se vio al confirmar. `actividad`: el administrador aceptó los avisos de una programación con actividad. */
     eliminar: (id: string, version: number, actividad = false) => llamar<{ id: string; eliminado: true; nombre: string | null }>("POST", `/${id}/eliminar`, { version, confirmacion: true, ...(actividad ? { confirmacion_actividad: true } : {}) }),
     archivar: (id: string, archivar: boolean) => llamar<Sorteo>("POST", `/${id}/archivar`, { archivar }),
+    /** Grupos del sorteo: guarda la selección completa sin publicar. */
+    cambiarGrupos: (id: string, grupos: string[]) => llamar<CambiosGrupos>("PUT", `/${id}/grupos`, { grupos }),
+    /** Publica ahora SOLO en los grupos nuevos (pendientes) de un sorteo ya publicado. */
+    publicarGruposNuevos: (id: string) => llamar<ResultadoGruposNuevos>("POST", `/${id}/grupos/publicar`),
     reintentarGrupo: (id: string, grupoId: string) => llamar<Sorteo>("POST", `/${id}/grupos/reintentar`, { grupo_id: grupoId }),
     grupos: () => llamar<GrupoAutorizado[]>("GET", "/grupos"),
     plantillas: () => llamar<Plantilla[]>("GET", "/plantillas"),
@@ -589,6 +652,8 @@ export const apiSorteos = {
     crearLoteria: (loteria: LoteriaEntrada) => llamar<Loteria>("POST", "/loterias", loteria),
     actualizarLoteria: (id: string, cambios: Partial<LoteriaEntrada>) => llamar<Loteria>("PATCH", `/loterias/${id}`, cambios),
     eliminarLoteria: (id: string) => llamar<{ id: string }>("DELETE", `/loterias/${id}`),
+    restaurarLoteria: (id: string) => llamar<Loteria>("POST", `/loterias/${id}/restaurar`),
+    restaurarLoterias: () => llamar<ResultadoRestaurar>("POST", "/loterias/restaurar"),
     /** Catálogo de estilos del mensaje y el predeterminado de la cuenta. */
     estilosMensaje: () => llamar<CatalogoEstilos>("GET", "/estilos-mensaje"),
     guardarEstiloPredeterminado: (estilo: string) => llamar<{ estilo: string; disponible: boolean }>("PUT", "/estilos-mensaje/predeterminado", { estilo }),

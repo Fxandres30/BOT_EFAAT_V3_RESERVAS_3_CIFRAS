@@ -18,7 +18,11 @@ const { esEventoDeSorteoProgramado } = require("../../../sorteos/repo");
 // haciendo exclusivamente extraerEvento()/guardarEvento(), sin cambios.
 // Solo decide si, además de existir el evento, corresponde automatizar la
 // apertura ahora mismo. Ver docs/EFAAT_AUTOMATION_PHASE_3_IMPLEMENTATION.md.
-const automationEngine = require("../../../automation/engine");
+//
+// 04/11: el detector ya no llama al engine directamente sino al MOTOR CENTRAL
+// (automation/motorEventos.js), el mismo que usa el panel para instantáneos y
+// programados: un evento es un evento, venga de donde venga.
+const motorEventos = require("../../../automation/motorEventos");
 
 // Escaneo incremental de identidades: se dispara SOLO después de que
 // WhatsApp confirmó la apertura del grupo (ver más abajo). No bloqueante,
@@ -504,13 +508,15 @@ async function detectarEvento(ctx) {
 
         try {
 
-            const decision = await automationEngine.onEventoDetectado(eventoGuardado);
+            // Motor central: crea el ciclo o devuelve el que el evento ya
+            // tenía (re-anuncio, corrección de la misma fila).
+            const decision = await motorEventos.registrarEvento(eventoGuardado);
 
             eventSessionAutorizado = decision.eventSession || null;
 
             if (eventSessionAutorizado) {
 
-                console.log("🤖 [AUTOMATION] event_session creado — recordatorios/actualización/cierre/tabla/OPEN_MESSAGE habilitados:", decision.eventSession?.id);
+                console.log(`🤖 [AUTOMATION] event_session ${decision.nuevo ? "creado" : "existente"} — recordatorios/actualización/cierre/tabla/OPEN_MESSAGE habilitados:`, decision.eventSession?.id);
 
             } else {
 
@@ -623,17 +629,17 @@ if (!grupoAbierto) {
         // inicial/recordatorios/actualización/cierre) nunca lo procesaba,
         // aunque el grupo real ya estuviera abierto. No bloqueante, mismo
         // criterio que el resto de esta rama.
-        automationEngine.marcarEventSessionAbierta(eventSessionAutorizado).catch(err => {
+        //
+        // Motor central (04/11): abre el ciclo y envía el OPEN_MESSAGE UNA
+        // vez por ciclo (un ciclo ya abierto —re-anuncio, corrección— no la
+        // repite). En segundo plano, como antes: nunca retrasa la detección.
+        motorEventos.enSegundoPlano(motorEventos.confirmarApertura({
 
-            console.error(`❌ [AUTOMATION] error marcando event_session abierto para ${grupoId}:`, err?.message);
+            evento: eventoGuardado,
+            eventSession: eventSessionAutorizado,
+            sock
 
-        });
-
-        automationEngine.enviarMensajeApertura(eventoGuardado, eventSessionAutorizado, sock).catch(err => {
-
-            console.error(`❌ [AUTOMATION] error inesperado enviando OPEN_MESSAGE para ${grupoId}:`, err?.message);
-
-        });
+        }));
 
     }
 

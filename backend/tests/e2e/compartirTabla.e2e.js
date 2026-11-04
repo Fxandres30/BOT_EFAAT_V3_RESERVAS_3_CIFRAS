@@ -193,8 +193,14 @@ async function main() {
         // 4. Cambiar grupos: muestra la selección guardada.
         await pulsar(page, "Cambiar grupos");
         await page.waitForSelector('[aria-label="Grupos de destino"] input', { timeout: 120000 });
-        const marcados = await page.evaluate(() => [...document.querySelectorAll('[aria-label="Grupos de destino"] label')].filter(l => l.querySelector("input").checked).map(l => l.textContent.trim()));
-        assert.deepStrictEqual(marcados, ["Rifa uno", "Rifa dos"]);
+        // Nombre del grupo (primer texto de la etiqueta) y, aparte, el estado
+        // del sorteo en el grupo (04/11): este sorteo detectado solo está
+        // activo en «Rifa uno»; en «Rifa dos» se avisa de que no registra reservas.
+        const marcados = await page.evaluate(() => [...document.querySelectorAll('[aria-label="Grupos de destino"] label')].filter(l => l.querySelector("input").checked)
+            .map(l => [[...l.childNodes].find(n => n.nodeType === 3 && n.textContent.trim())?.textContent.trim(), l.querySelector("span")?.textContent.trim() || null]));
+        assert.deepStrictEqual(marcados, [["Rifa uno", "Sorteo activo"], ["Rifa dos", null]]);
+        const avisoDetectado = await textoPagina(page);
+        assert.ok(/Este sorteo se detectó en WhatsApp: en Rifa dos solo se enviará la imagen y ahí NO se registrarán reservas/.test(avisoDetectado), "aviso del grupo sin el sorteo");
         assert.strictEqual(envios.length, 4, "abrir «Cambiar grupos» no envía");
         assert.strictEqual(JSON.stringify(t[T5K]), reservasAntes, "reservas y pagos intactos");
         paso("«Cambiar grupos» abre la configuración con la selección guardada; nada se envía");

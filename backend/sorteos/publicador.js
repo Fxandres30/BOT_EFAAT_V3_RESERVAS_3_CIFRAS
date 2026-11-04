@@ -15,6 +15,10 @@
 //   2. Envía los RECORDATORIOS y el AVISO DE CIERRE configurados.
 //   3. Libera reservas vencidas SOLO si el sorteo lo activó explícitamente.
 //
+// Tras publicar en un grupo, el evento pasa por el MOTOR CENTRAL
+// (automation/motorEventos.js), el mismo del detector de WhatsApp: ciclo de
+// automatización del grupo y su mensaje de apertura, una vez.
+//
 // Garantías:
 //   - Nunca publica una versión no confirmada (confirmado_version = version).
 //   - Cada grupo se "reclama" con un UPDATE condicionado: dos ciclos o dos
@@ -41,6 +45,9 @@ const { decidirRecordatoriosSegunEstado } = require("../automation/eventRules");
 const { leerEstadoParaRecordatorios } = require("../automation/repo/estadoSorteo");
 const { cierreSilencioso, finDelEvento } = require("../shared/eventos/estadosGestion");
 const { sorteosActivosDelPrecio, filasPorId, reemplazarAnteriores, revertirReemplazo } = require("../shared/eventos/unSorteoPorPrecio");
+// Recordatorios y cierre: los del sorteo tienen prioridad sobre los generales
+// del grupo (automation/scheduler.js); la decisión es la misma en los dos.
+const prioridad = require("../automation/prioridadComunicaciones");
 
 // ¿Otra cuenta tiene un sorteo activo en el grupo? (lo que revisarGrupo
 // comprueba después de los sorteos propios).
@@ -134,6 +141,8 @@ function dependenciasReales() {
         capturarImagen: require("../services/compartirTabla").capturarImagenTabla,
         textoParaCompartir: require("../services/destinosCompartir").textoParaCompartir,
         compartirEnGrupos: require("../services/compartirTabla").compartirEnGrupos,
+        // Motor central de comunicaciones del evento publicado (04/11).
+        motorEventos: require("../automation/motorEventos"),
         ejecutarUnaVez: require("../automation/executionGuard").ejecutarUnaVez,
         actualizarEvento: require("../bot/funciones/reservas/actualizarEvento").actualizarEvento,
         puedeActuar: require("../services/baileys/propiedadSesion").puedeActuar,
@@ -144,7 +153,9 @@ function dependenciasReales() {
 
 // ------------------------------------------------------------ publicar ---
 
-async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }) {
+// solicitado: publicación pedida AHORA por el administrador («Publicar
+// ahora», «Reintentar» o «Publicar en los grupos nuevos»), no el ciclo.
+async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora, solicitado = false }) {
 
     const usuarioId = sorteo.usuario_id;
     const grupoId = grupo.grupo_id;
@@ -162,7 +173,9 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
     // publicarse después de su día, siempre antes del cierre de reservas.
     // Un instantáneo no tiene «día programado»: publicar_en es solo cuándo
     // se pulsó «Publicar ahora»; un reintento manual vale hasta el cierre.
-    if (actual.fecha !== programado.fecha && !enEspera(grupo) && !esInstantaneo(sorteo)) {
+    // Tampoco cuando el administrador lo pide ahora (p. ej. un grupo añadido
+    // después de publicar): vale hasta el cierre, que se comprueba abajo.
+    if (actual.fecha !== programado.fecha && !enEspera(grupo) && !esInstantaneo(sorteo) && !solicitado) {
         return { estado: "requiere_revision", ultimo_error: `La fecha programada (${programado.fecha}) ya pasó; no se publicó.` };
     }
     if (cierre && ahora.getTime() >= cierre.getTime()) {
@@ -329,6 +342,14 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora }
     const envio = r.resultados[0] || { estado: "fallido", motivo: "sin_resultado" };
 
     if (envio.estado === "enviado" || envio.estado === "ya_enviado") {
+        // Un evento es un evento: el MISMO motor que el detector de WhatsApp
+        // (ciclo de automatización, OPEN_MESSAGE, y luego tabla inicial,
+        // recordatorios, actualizaciones y cierre del Scheduler). Después del
+        // anuncio, como en WhatsApp. «ya_enviado» = un intento anterior se
+        // cortó tras enviar: el motor lo completa sin repetir nada. Nunca
+        // cambia el resultado de la publicación.
+        const motor = deps.motorEventos || require("../automation/motorEventos");
+        await motor.procesarEventoPublicado({ evento: guardado, sock, ahora, tablaPublicada: true });
         return { ...base, estado: "publicado", version_publicada: sorteo.version, publicado_en: ahora.toISOString(), ultimo_error: null };
     }
 
@@ -561,7 +582,7 @@ async function publicarPendientes({ sock, deps, ahora, sorteoId = null }) {
             let cambios;
 
             try {
-                cambios = await publicarEnGrupo({ sock, sorteo, grupo: reclamado.data, autorizados, deps, ahora });
+                cambios = await publicarEnGrupo({ sock, sorteo, grupo: reclamado.data, autorizados, deps, ahora, solicitado: Boolean(sorteoId) });
             } catch (err) {
                 cambios = { estado: "fallido", ultimo_error: `Error inesperado antes de enviar: ${err?.message}` };
             }
@@ -667,9 +688,24 @@ async function procesarPublicados({ sock, deps, ahora }) {
 
                 }
 
-            } else if (ev.estado === "cerrado" && !cierreSilencioso(ev) && sorteo.config.mensajes?.aviso_cierre) {
+            } else if (ev.estado === "cerrado" && !cierreSilencioso(ev) && prioridad.fuentesDeComunicacion(sorteo.config).cierre === prioridad.SORTEO) {
 
                 if (!deps.puedeActuar(sock)) return { ok: true, envios };
+
+                // Nunca dos avisos de cierre para el mismo evento y grupo: si
+                // la automatización del grupo ya lo anunció, no se envía otro.
+                // Sin poder comprobarlo, se reintenta en el próximo ciclo.
+                let yaAnunciado;
+                try {
+                    yaAnunciado = await prioridad.avisoCierreYaEnviado({ eventoId: ev.id, grupoId: g.grupo_id });
+                } catch {
+                    envios.push({ tipo: "aviso_cierre", grupo: g.grupo_id, ejecutada: false, motivo: "estado_no_disponible" });
+                    continue;
+                }
+                if (yaAnunciado) {
+                    envios.push({ tipo: "aviso_cierre", grupo: g.grupo_id, ejecutada: false, motivo: "ya_anunciado_por_el_grupo" });
+                    continue;
+                }
 
                 const { texto } = mensajeAvisoCierre(sorteo.config, sorteo.cuentas_snapshot, { fecha });
                 const r = await enviarUnaVez({ deps, sock, sorteo, grupoId: g.grupo_id, sufijo: "aviso_cierre", tipoAccion: "SORTEO_AVISO_CIERRE", texto });
@@ -763,6 +799,115 @@ async function liberarVencidas({ sock, deps, ahora }) {
 
 }
 
+// -------------------------------------------- recuperación tras caídas ---
+
+// Un grupo «publicando» más viejo que esto es de un proceso que murió (mismo
+// umbral que el panel, administracion.PUBLICANDO_ATASCADO_MS): una
+// publicación real (captura + envío) nunca dura tanto.
+const PUBLICANDO_ATASCADO_MS = 10 * 60 * 1000;
+
+const claveAnuncio = (sorteo, grupo) =>
+    `TABLA_COMPARTIR:${sorteo.usuario_id}:${Number(sorteo.config?.valor)}:sorteo-${sorteo.id}-publicacion-${Number(grupo.reintentos_manuales) || 0}:${grupo.grupo_id}`;
+
+const INCIERTO = "El servidor se reinició mientras se enviaba el anuncio a este grupo: no se sabe si llegó. No se reenvía solo para no duplicarlo. Revisa el grupo en WhatsApp: si el anuncio no está, pulsa «Reintentar».";
+
+// recuperarAtascados: decide qué pasó con cada grupo atascado leyendo el
+// registro del ExecutionGuard de SU anuncio, que se escribe ANTES de enviar
+// («en_progreso») y se marca «ok» o «error» después:
+//   ok           el anuncio llegó: el grupo queda publicado y el evento pasa
+//                por el motor central con la hora REAL del anuncio (reglas
+//                de horario y tolerancia de la apertura: nunca tarde). Nada
+//                se reenvía.
+//   en_progreso  la caída fue DURANTE el envío: WhatsApp pudo recibirlo.
+//                Nunca se reenvía solo: revisión manual.
+//   error        el envío falló: revisión manual (como siempre).
+//   sin registro nunca se envió nada: el programado vuelve a su reintento
+//                automático normal; el instantáneo queda para «Reintentar».
+// Cada cambio va condicionado a que el grupo siga «publicando» (nunca pisa
+// a otro proceso ni a una cancelación). Nunca lanza.
+async function recuperarAtascados({ sock, deps, ahora }) {
+
+    const usuarioId = sock.context.usuarioId;
+    const informe = [];
+
+    try {
+
+        const umbral = new Date(ahora.getTime() - PUBLICANDO_ATASCADO_MS).toISOString();
+        const { data: atascados, error } = await deps.supabase.from("sorteos_programados_grupos").select("*")
+            .eq("usuario_id", usuarioId).eq("estado", "publicando").lt("actualizado_en", umbral);
+        if (error || !atascados?.length) return { ok: !error, informe };
+
+        const obtenerPorClave = deps.obtenerPorClave || require("../automation/executionGuard").obtenerPorClave;
+        const buscarEvento = deps.consultarEventoDelSorteo || require("../bot/funciones/eventos/consultarEvento").consultarEventoDelSorteo;
+        const sorteosTocados = new Set();
+
+        for (const grupo of atascados) {
+
+            const s = await repo.obtenerSorteo(usuarioId, grupo.sorteo_id);
+            if (!s.ok) continue;
+            const sorteo = s.data;
+
+            let registro;
+            try { registro = await obtenerPorClave(claveAnuncio(sorteo, grupo)); } catch { continue; }
+
+            let cambios;
+            let evento = null;
+
+            if (registro?.estado === "ok") {
+                const ev = await buscarEvento(grupo.grupo_id, usuarioId, sorteo.identidad_evento_real);
+                if (!ev.ok) continue;
+                evento = ev.data;
+                cambios = {
+                    estado: "publicado",
+                    version_publicada: sorteo.version,
+                    publicado_en: registro.actualizado_en || registro.ejecutado_en || ahora.toISOString(),
+                    ultimo_error: null,
+                    ...(evento?.id ? { evento_bot_id: evento.id } : {})
+                };
+            } else if (registro) {
+                cambios = {
+                    estado: "requiere_revision",
+                    ultimo_error: registro.estado === "error"
+                        ? `El anuncio no se pudo enviar: ${registro.detalle?.mensaje || "error de WhatsApp"}`
+                        : INCIERTO
+                };
+            } else {
+                // Nada salió: es un intento fallido más, como cualquier otro.
+                cambios = { estado: "fallido", ultimo_error: "El servidor se reinició antes de enviar el anuncio; no se envió nada. Se reintentará." };
+                if (esInstantaneo(sorteo)) cambios = resultadoInstantaneo(cambios);
+                else if ((Number(grupo.intentos) || 0) >= MAX_INTENTOS_AUTOMATICOS) {
+                    cambios = { estado: "requiere_revision", ultimo_error: sinPromesaDeReintento(cambios.ultimo_error) };
+                }
+            }
+
+            const marcado = await repo.marcarGrupoSi(usuarioId, grupo.id, ["publicando"], cambios);
+            if (!marcado.ok || marcado.data === false) continue;
+            sorteosTocados.add(sorteo.id);
+            informe.push({ sorteo: sorteo.id, grupo: grupo.grupo_id, estado: cambios.estado, anuncio: registro?.estado || "sin_registro" });
+
+            // El anuncio llegó: el evento pasa por el motor central, con la
+            // hora real del anuncio. Solo si sigue activo (un evento cerrado
+            // o cancelado entretanto no abre ciclo).
+            if (evento?.activo === true && !finDelEvento(evento)) {
+                const motor = deps.motorEventos || require("../automation/motorEventos");
+                await motor.procesarEventoPublicado({ evento, sock, ahora, tablaPublicada: true, momento: cambios.publicado_en });
+            }
+
+        }
+
+        for (const id of sorteosTocados) await finalizarSorteo(usuarioId, id);
+
+        return { ok: true, informe };
+
+    } catch (err) {
+
+        console.error("❌ [SORTEOS] error recuperando publicaciones interrumpidas:", err?.message);
+        return { ok: false, informe };
+
+    }
+
+}
+
 // ----------------------------------------------------------------- tick ---
 
 // sorteoId: ver publicarPendientes (publicación pedida por el administrador).
@@ -772,11 +917,13 @@ async function tick(sock, { ahora = new Date(), deps = null, sorteoId = null } =
 
     const d = deps || dependenciasReales();
 
+    // Antes que nada: lo que una caída del proceso dejó «publicando».
+    const recuperacion = await recuperarAtascados({ sock, deps: d, ahora });
     const publicacion = await publicarPendientes({ sock, deps: d, ahora, sorteoId });
     const mensajes = await procesarPublicados({ sock, deps: d, ahora });
     const vencimientos = await liberarVencidas({ sock, deps: d, ahora });
 
-    return { ok: true, publicacion, mensajes, vencimientos };
+    return { ok: true, recuperacion, publicacion, mensajes, vencimientos };
 
 }
 

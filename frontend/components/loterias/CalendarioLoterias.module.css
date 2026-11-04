@@ -87,6 +87,17 @@
     color: var(--efaat-warning);
 }
 
+.alertaInfo {
+    background: var(--efaat-primary-soft);
+    color: var(--efaat-text);
+}
+
+.proximo {
+    margin-top: 4px;
+    font-weight: 600;
+    color: var(--efaat-text);
+}
+
 .formulario {
     display: flex;
     flex-direction: column;

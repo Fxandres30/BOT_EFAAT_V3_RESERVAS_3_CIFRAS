@@ -36,7 +36,10 @@ const RUTAS = {
     executionGuard: path.join(RAIZ, "automation/executionGuard.js"),
     eventSessionsRepo: path.join(RAIZ, "automation/repo/eventSessions.js"),
     automationConfigRepo: path.join(RAIZ, "automation/repo/automationConfig.js"),
-    engine: path.join(RAIZ, "automation/engine.js")
+    engine: path.join(RAIZ, "automation/engine.js"),
+    // Motor central (04/11): lo usa detectarEvento.js; se recarga con el
+    // engine para no quedarse con el Supabase fake de otra prueba.
+    motorEventos: path.join(RAIZ, "automation/motorEventos.js")
 };
 
 function inyectar(rutaAbs, exportsObj) {
@@ -53,7 +56,7 @@ function limpiarCacheModulosReales() {
         "groupQueue", "abrirGrupo", "consultarEvento", "guardarEvento",
         "configEvento", "extraerEvento", "detectarEvento",
         "eventRules", "executionGuard", "eventSessionsRepo",
-        "automationConfigRepo", "engine"
+        "automationConfigRepo", "engine", "motorEventos"
     ]) {
         delete require.cache[RUTAS[clave]];
     }

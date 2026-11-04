@@ -105,6 +105,7 @@ function horarioPara(loteria, fecha) {
     let juega = dias.length ? dias.includes(dia) : null;
     let hora = null;
     let origen = null;
+    let cruceDia = false;
 
     if (loteria.activo === false) avisos.push("Esta lotería está marcada como inactiva en el catálogo.");
 
@@ -120,13 +121,30 @@ function horarioPara(loteria, fecha) {
             origen = "festivo";
             juega = true;
             if (!hora) avisos.push(`${fecha} es festivo (${festivo}): la regla dice «hora especial» pero no tiene hora configurada.`);
+            // Festivo en un día con hora propia distinta (p. ej. Pijao: sábado
+            // 21:00, festivos 20:00). Manda la regla de festivos, pero la
+            // fuente no aclara ese cruce: se pide confirmar.
+            const horaPropia = horaValida(porDia[String(dia)]);
+            if (hora && horaPropia && horaPropia !== hora && dias.includes(dia)) {
+                cruceDia = true;
+                avisos.push(`${fecha} es festivo (${festivo}) y ${DIAS[dia]}: los ${DIAS[dia]} se juega a las ${horaPropia} y los festivos a las ${hora}. Se sugiere la hora de festivos; confírmala.`);
+            }
         } else if (regla === "hora_habitual") {
             hora = horaDelDia;
             origen = "festivo_hora_habitual";
             juega = true;
             if (!hora) avisos.push(`${fecha} es festivo (${festivo}) y esta lotería no tiene horario configurado.`);
+        } else if (juega === false) {
+            // Regla no definida en la fuente y ese día de la semana no se juega.
+            avisos.push(`${fecha} es festivo (${festivo}): esta lotería no tiene una regla para festivos definida y los ${DIAS[dia]} no se juega.`);
         } else {
-            avisos.push(`${fecha} es festivo (${festivo}) y esta lotería no tiene una regla para festivos. Confirma la hora antes de programar.`);
+            // Regla NO DEFINIDA en la fuente: no se inventa una hora especial;
+            // se conserva la hora habitual de ese día y se pide confirmarla.
+            hora = horaDelDia;
+            origen = "festivo_sin_regla";
+            avisos.push(hora
+                ? `${fecha} es festivo (${festivo}) y esta lotería no tiene una regla para festivos definida: se sugiere su hora habitual de los ${DIAS[dia]} (${hora}). Confírmala antes de programar.`
+                : `${fecha} es festivo (${festivo}) y esta lotería no tiene una regla para festivos ni horario configurado. Escribe la hora a mano.`);
         }
 
     } else if (juega === false) {
@@ -147,10 +165,62 @@ function horarioPara(loteria, fecha) {
 
     }
 
+    const frecuencia = loteria.frecuencia === "mensual" ? "mensual" : "semanal";
+    if (frecuencia === "mensual" && juega !== false) {
+        avisos.push(`Sorteo mensual: el calendario no indica qué ${DIAS[dia]} del mes se juega. Confirma que el ${fecha} hay sorteo.`);
+    }
+
+    // confirmar = la hora sugerida no sale de una regla explícita del catálogo.
+    const confirmar = juega === null || cruceDia || origen === "festivo_sin_regla" || (frecuencia === "mensual" && juega !== false);
+
     return {
         ok: true,
-        data: { fecha, dia_semana: dia, dia_nombre: DIAS[dia], festivo, juega, hora, hora_del_dia: horaDelDia, origen, avisos }
+        data: { fecha, dia_semana: dia, dia_nombre: DIAS[dia], festivo, juega, hora, hora_del_dia: horaDelDia, origen, frecuencia, confirmar, avisos }
     };
+
+}
+
+const PARTES = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+});
+
+// Fecha y hora actuales en Colombia: { fecha: "YYYY-MM-DD", hora: "HH:MM" }.
+function ahoraColombia(ahora = new Date()) {
+    const p = Object.fromEntries(PARTES.formatToParts(ahora).map(x => [x.type, x.value]));
+    return { fecha: `${p.year}-${p.month}-${p.day}`, hora: `${p.hour}:${p.minute}` };
+}
+
+const MOTIVOS_SIN_PROXIMO = {
+    inactiva: "Lotería inactiva.",
+    sin_dias: "Sin días de juego configurados.",
+    sin_horario: "Sin horario configurado.",
+    mensual: "Sorteo mensual: el calendario no indica qué día del mes se juega."
+};
+
+// Próximo sorteo SOLO cuando se puede determinar con el catálogo (busca en
+// los próximos 15 días, en hora de Colombia). Si no se puede, data = null y
+// motivo/nota explican por qué. Es informativo: no programa nada.
+//   -> { fecha, hora, dia_nombre, festivo, confirmar }
+function proximoSorteo(loteria, ahora = new Date()) {
+
+    const sin = (motivo) => ({ ok: true, data: null, motivo, nota: MOTIVOS_SIN_PROXIMO[motivo] });
+
+    if (loteria.activo === false) return sin("inactiva");
+    if (loteria.frecuencia === "mensual") return sin("mensual");
+    if (!Array.isArray(loteria.dias) || !loteria.dias.length) return sin("sin_dias");
+
+    const hoy = ahoraColombia(ahora);
+    const [a, m, d] = hoy.fecha.split("-").map(Number);
+
+    for (let i = 0; i < 15; i++) {
+        const fecha = iso(sumarDias(utc(a, m, d), i));
+        const h = horarioPara(loteria, fecha).data;
+        if (h.juega !== true || !h.hora) continue;
+        if (i === 0 && h.hora <= hoy.hora) continue;
+        return { ok: true, data: { fecha, hora: h.hora, dia_nombre: h.dia_nombre, festivo: h.festivo, confirmar: h.confirmar } };
+    }
+
+    return sin("sin_horario");
 
 }
 
@@ -159,5 +229,7 @@ module.exports = {
     festivoDe,
     diaSemana,
     horarioPara,
+    proximoSorteo,
+    ahoraColombia,
     DIAS
 };

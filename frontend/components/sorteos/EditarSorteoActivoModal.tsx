@@ -5,7 +5,7 @@ import { Lock, Plus, Trash2 } from "lucide-react";
 
 import { Modal, Button, Input, Select, IconButton, Badge } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
-import { apiSorteos, describirError, type CuentaPago, type ErrorCampo, type SorteoActivo, type SorteoEnGrupos } from "@/services/sorteos/apiSorteos";
+import { apiSorteos, describirError, type CambiosGrupos, type CuentaPago, type ErrorCampo, type GrupoAutorizado, type ResultadoGruposNuevos, type SorteoActivo, type SorteoEnGrupos } from "@/services/sorteos/apiSorteos";
 import { BotonesSorteo, ConfirmarAccionSorteo, type AccionPendiente } from "./AccionesSorteo";
 import { listarDisenos } from "@/services/tablas/disenos";
 import { TABLA_DISENO_PRESETS } from "@/services/tablas/disenoDefaults";
@@ -61,8 +61,39 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
     // Cerrar, desactivar, cancelar o eliminar desde aquí (AccionesSorteo).
     const [accion, setAccion] = useState<AccionPendiente | null>(null);
     const [accionHecha, setAccionHecha] = useState<string | null>(null);
+    // Grupos (solo sorteos del panel): la MISMA asociación que «Cambiar
+    // grupos» de Tablas. Guardar no publica; los nuevos se publican aparte.
+    const [gruposSel, setGruposSel] = useState<string[]>([]);
+    const [gruposDisponibles, setGruposDisponibles] = useState<GrupoAutorizado[]>([]);
+    const [cambiosGrupos, setCambiosGrupos] = useState<{ sorteo: SorteoActivo; cambios: CambiosGrupos } | null>(null);
+    const [publicandoNuevos, setPublicandoNuevos] = useState(false);
+    const [publicacionNuevos, setPublicacionNuevos] = useState<ResultadoGruposNuevos | null>(null);
+    // Sorteo detectado en WhatsApp: pasarlo a gestionarse desde el panel
+    // (misma identidad, tabla y reservas) para poder agregar grupos.
+    const [vincular, setVincular] = useState<{ cuentas: CuentaPago[]; sel: string[]; enviando: boolean; error: string | null } | null>(null);
 
     const sorteo = carga.tipo === "ok" ? carga.sorteo : null;
+
+    async function abrirVincular() {
+        setVincular({ cuentas: [], sel: [], enviando: false, error: null });
+        const c = await apiSorteos.cuentas();
+        const activas = c.ok ? c.data.filter(x => x.activa !== false) : [];
+        setVincular({ cuentas: activas, sel: activas.map(x => x.id), enviando: false, error: c.ok ? null : describirError(c) });
+    }
+
+    async function confirmarVincular() {
+        if (!sorteo || !vincular || vincular.enviando) return;
+        setVincular({ ...vincular, enviando: true, error: null });
+        const r = await apiSorteos.vincularDetectado(sorteo.id, vincular.sel);
+        if (!r.ok) {
+            setVincular({ ...vincular, enviando: false, error: r.mensaje || r.errores?.map(e => e.mensaje).join(" ") || describirError(r) });
+            return;
+        }
+        // Se vuelve a cargar: ahora es un sorteo del panel con grupos editables.
+        setVincular(null);
+        setCarga({ tipo: "cargando" });
+        setIntento(n => n + 1);
+    }
 
     // El sorteo activo con la forma que usan las acciones de estado: todos
     // sus grupos están en curso (si no, no sería un sorteo activo).
@@ -109,7 +140,12 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
             };
             setMensaje(inicial);
             setMensajeInicial(inicial);
+            setGruposSel((s.destinos || []).map(g => g.grupo_id));
             setCarga({ tipo: "ok", sorteo: s });
+            if (s.campos.grupos.editable) {
+                const g = await apiSorteos.grupos();
+                if (vigente && g.ok) setGruposDisponibles(g.data);
+            }
             if (s.campos.cuentas.editable) {
                 const c = await apiSorteos.cuentas();
                 if (vigente && c.ok) setCuentas(c.data.filter(x => x.activa !== false));
@@ -136,6 +172,12 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
     } : {};
     const cambiaIdentidad = Object.keys(identidadCambiada).length > 0;
 
+    const gruposEditables = Boolean(sorteo?.campos.grupos.editable && sorteo.destinos);
+    const gruposIniciales = (sorteo?.destinos || []).map(g => g.grupo_id);
+    const gruposCambiados = gruposEditables && [...gruposSel].sort().join(",") !== [...gruposIniciales].sort().join(",");
+    // Grupos donde el sorteo YA está activo y se van a quitar: se desactivará ahí.
+    const seDesactivan = (sorteo?.destinos || []).filter(g => g.estado === "publicado" && !gruposSel.includes(g.grupo_id));
+
     const mensajeCambiado = Boolean(mensajeInicial) && (mensaje.texto !== mensajeInicial!.texto || mensaje.estilo !== mensajeInicial!.estilo || mensaje.activo !== mensajeInicial!.activo);
 
     async function guardar() {
@@ -157,6 +199,7 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
                 publicacion: mensaje.texto,
                 publicacion_meta: { ...(mensaje.estilo ? { estilo: mensaje.estilo } : {}), ...(sorteo.origen === "panel" ? { activo: mensaje.activo } : {}) }
             } : {}),
+            ...(gruposCambiados ? { grupos: gruposSel } : {}),
             base: { premios: sorteo.premios, hora_cierre: sorteo.hora_cierre, ...(sorteo.campos.publicacion ? { publicacion: sorteo.publicacion } : {}) }
         });
 
@@ -169,9 +212,24 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
         }
 
         if (r.aviso) { setAviso(r.aviso); return; }
+        // Grupos cambiados: se muestra qué pasó y, si hay grupos nuevos de un
+        // sorteo ya publicado, «Publicar en los grupos nuevos».
+        if (r.data.cambios_grupos) { setCambiosGrupos({ sorteo: r.data, cambios: r.data.cambios_grupos }); return; }
         onGuardado?.(r.data);
 
     }
+
+    async function publicarNuevos() {
+        if (!cambiosGrupos || !sorteo?.sorteo_programado_id || publicandoNuevos) return;
+        setPublicandoNuevos(true);
+        setError(null);
+        const r = await apiSorteos.publicarGruposNuevos(sorteo.sorteo_programado_id);
+        setPublicandoNuevos(false);
+        if (!r.ok) { setError(r.mensaje || describirError(r)); return; }
+        setPublicacionNuevos(r.data);
+    }
+
+    const nombreGrupo = (id: string) => gruposDisponibles.find(g => g.grupo_id === id)?.nombre || sorteo?.destinos?.find(g => g.grupo_id === id)?.grupo_nombre || id;
 
     return (
         <Modal
@@ -184,7 +242,16 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
                 <>
                     <Button variant="secondary" onClick={onClose} disabled={guardando}>Cancelar</Button>
                     {carga.tipo === "error" && <Button variant="secondary" onClick={() => { setCarga({ tipo: "cargando" }); setIntento(n => n + 1); }}>Reintentar</Button>}
-                    <Button onClick={guardar} loading={guardando} disabled={!sorteo || Boolean(accionHecha)}>Guardar cambios</Button>
+                    {cambiosGrupos ? (
+                        <>
+                            {cambiosGrupos.cambios.por_publicar > 0 && !publicacionNuevos && (
+                                <Button onClick={publicarNuevos} loading={publicandoNuevos} loadingText="Publicando…">Publicar en los grupos nuevos</Button>
+                            )}
+                            <Button variant={cambiosGrupos.cambios.por_publicar > 0 && !publicacionNuevos ? "secondary" : "primary"} disabled={publicandoNuevos} onClick={() => onGuardado?.(cambiosGrupos.sorteo)}>Listo</Button>
+                        </>
+                    ) : (
+                        <Button onClick={guardar} loading={guardando} disabled={!sorteo || Boolean(accionHecha)}>Guardar cambios</Button>
+                    )}
                 </>
             }
         >
@@ -194,6 +261,8 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
                 <p className={`${styles.alerta} ${styles.alertaError}`} role="alert">No se pudo cargar el sorteo: {carga.mensaje}</p>
             ) : accionHecha ? (
                 <p className={`${styles.alerta} ${styles.alertaInfo}`} role="status">{accionHecha}</p>
+            ) : cambiosGrupos ? (
+                <ResumenGrupos cambios={cambiosGrupos.cambios} publicacion={publicacionNuevos} error={error} nombreGrupo={nombreGrupo} />
             ) : sorteo && (
                 <div className={styles.stack}>
 
@@ -249,8 +318,60 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
                             </>
                         )}
                         <Fijo etiqueta="Tabla de números" valor={`${sorteo.cantidad_numeros || "—"} números`} motivo={sorteo.campos.tabla.motivo} />
-                        <Fijo etiqueta="Grupos" valor={sorteo.grupos.map(g => g.grupo_nombre || g.grupo_id).join(" · ") || "—"} motivo={sorteo.campos.grupos.motivo} />
+                        {!gruposEditables && <Fijo etiqueta="Grupos" valor={sorteo.grupos.map(g => g.grupo_nombre || g.grupo_id).join(" · ") || "—"} motivo={sorteo.campos.grupos.motivo} />}
                     </section>
+
+                    {sorteo.origen === "detectado" && (
+                        <section className={styles.seccion} aria-label="Agregar a otros grupos">
+                            <h3 className={styles.seccionTitulo}>Agregar este sorteo a otros grupos</h3>
+                            <p className={styles.ayuda}>
+                                Este sorteo se detectó en WhatsApp. Para llevarlo a otros grupos, pásalo a gestionarse desde el panel: conserva su identidad, su tabla, sus reservas, sus pagos y su historial, y sus grupos actuales no reciben nada. En WhatsApp se sigue comportando igual.
+                            </p>
+                            {!vincular ? (
+                                <div><Button size="sm" variant="secondary" onClick={abrirVincular}>Gestionar desde el panel</Button></div>
+                            ) : (
+                                <div className={styles.stack}>
+                                    <p className={styles.ayuda}>Cuentas de pago que irán en el anuncio de los grupos nuevos:</p>
+                                    {vincular.cuentas.map(c => (
+                                        <label key={c.id} className={styles.grupo}>
+                                            <input type="checkbox" checked={vincular.sel.includes(c.id)} onChange={() => setVincular(v => v && ({ ...v, sel: v.sel.includes(c.id) ? v.sel.filter(x => x !== c.id) : [...v.sel, c.id] }))} />
+                                            {c.nombre}
+                                        </label>
+                                    ))}
+                                    {vincular.error && <p className={styles.error} role="alert">{vincular.error}</p>}
+                                    <div className={styles.acciones}>
+                                        <Button size="sm" variant="ghost" onClick={() => setVincular(null)} disabled={vincular.enviando}>Volver</Button>
+                                        <Button size="sm" onClick={confirmarVincular} loading={vincular.enviando} disabled={!vincular.sel.length}>Confirmar: gestionar desde el panel</Button>
+                                    </div>
+                                </div>
+                            )}
+                        </section>
+                    )}
+
+                    {gruposEditables && (
+                        <section className={styles.seccion} aria-label="Grupos del sorteo">
+                            <h3 className={styles.seccionTitulo}>Grupos</h3>
+                            <p className={styles.ayuda}>{sorteo.campos.grupos.motivo}</p>
+                            {(gruposDisponibles.length ? gruposDisponibles : (sorteo.destinos || []).map(g => ({ grupo_id: g.grupo_id, nombre: g.grupo_nombre }))).map(g => {
+                                const destino = sorteo.destinos?.find(x => x.grupo_id === g.grupo_id);
+                                const marcado = gruposSel.includes(g.grupo_id);
+                                return (
+                                    <label key={g.grupo_id} className={styles.grupo}>
+                                        <input type="checkbox" checked={marcado} onChange={() => setGruposSel(sel => sel.includes(g.grupo_id) ? sel.filter(x => x !== g.grupo_id) : [...sel, g.grupo_id])} />
+                                        {g.nombre || g.grupo_id}
+                                        {destino ? <Badge tone={ESTADO_DESTINO[destino.estado].tono} size="sm">{ESTADO_DESTINO[destino.estado].texto}</Badge>
+                                            : marcado ? <Badge tone="primary" size="sm">Nuevo: se publicará al confirmar</Badge> : null}
+                                    </label>
+                                );
+                            })}
+                            {errorDe("grupos") && <p className={styles.error} role="alert">{errorDe("grupos")}</p>}
+                            {seDesactivan.length > 0 && (
+                                <p className={`${styles.alerta} ${styles.alertaAviso}`} role="alert">
+                                    Al guardar, el sorteo se DESACTIVA en {seDesactivan.map(g => g.grupo_nombre || g.grupo_id).join(", ")}: ahí deja de recibir reservas y mensajes del sorteo. Sus reservas y pagos se conservan.
+                                </p>
+                            )}
+                        </section>
+                    )}
 
                     <Input
                         label="Cierre de reservas"
@@ -345,6 +466,42 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
         </Modal>
     );
 
+}
+
+const ESTADO_DESTINO: Record<string, { texto: string; tono: "neutral" | "primary" | "success" | "warning" | "error" }> = {
+    pendiente: { texto: "Por publicar", tono: "warning" },
+    publicando: { texto: "Publicando", tono: "warning" },
+    publicado: { texto: "Activo", tono: "success" },
+    fallido: { texto: "Error", tono: "error" },
+    requiere_revision: { texto: "Error", tono: "error" },
+    cancelado: { texto: "Quitado", tono: "neutral" }
+};
+
+// Qué cambió en los grupos al guardar y, si se publicó en los nuevos, cómo fue cada uno.
+function ResumenGrupos({ cambios, publicacion, error, nombreGrupo }: { cambios: CambiosGrupos; publicacion: ResultadoGruposNuevos | null; error: string | null; nombreGrupo: (id: string) => string }) {
+    return (
+        <div className={styles.stack} role="status">
+            <p className={`${styles.alerta} ${styles.alertaInfo}`}>Cambios guardados. Guardar no envió nada a WhatsApp.</p>
+            {cambios.agregados.length > 0 && <p>Grupos agregados: <b>{cambios.agregados.map(g => g.nombre || g.grupo_id).join(", ")}</b>.</p>}
+            {cambios.quitados.length > 0 && <p>Grupos quitados: <b>{cambios.quitados.map(g => g.nombre || g.grupo_id).join(", ")}</b>{cambios.desactivados.length ? ` (el sorteo se desactivó en ${cambios.desactivados.map(g => g.nombre || g.grupo_id).join(", ")}; reservas y pagos se conservan)` : ""}.</p>}
+            {cambios.avisos.map(a => <p key={a} className={`${styles.alerta} ${styles.alertaAviso}`}>{a}</p>)}
+            {cambios.por_publicar > 0 && !publicacion && (
+                <p>{cambios.por_publicar} grupo(s) nuevo(s) todavía no tienen el sorteo. Pulsa «Publicar en los grupos nuevos» para activarlo ahí con el anuncio (los grupos que ya lo tienen no reciben nada).</p>
+            )}
+            {publicacion && (
+                <ul className={styles.grupos} aria-label="Publicación en los grupos nuevos">
+                    {publicacion.grupos.filter(g => cambios.agregados.some(a => a.grupo_id === g.grupo_id)).map(g => (
+                        <li key={g.grupo_id} className={styles.grupo}>
+                            <Badge tone={g.estado === "publicado" ? "success" : "error"} size="sm">{g.estado === "publicado" ? "Activo" : "Error"}</Badge>
+                            {g.nombre || nombreGrupo(g.grupo_id)}
+                            {g.estado !== "publicado" && g.error && <span className={styles.error}>{g.error}</span>}
+                        </li>
+                    ))}
+                </ul>
+            )}
+            {error && <p className={`${styles.alerta} ${styles.alertaError}`} role="alert">{error}</p>}
+        </div>
+    );
 }
 
 function Fijo({ etiqueta, valor, motivo }: { etiqueta: string; valor: string; motivo?: string }) {

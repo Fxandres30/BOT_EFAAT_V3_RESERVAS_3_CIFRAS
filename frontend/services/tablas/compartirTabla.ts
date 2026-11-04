@@ -5,6 +5,8 @@ export interface ResultadoGrupo {
     nombre: string | null;
     estado: "enviado" | "ya_enviado" | "en_curso" | "fallido";
     error?: string;
+    /** Grupo nuevo de un sorteo del panel: true = el sorteo quedó ACTIVO ahí. */
+    activado?: boolean;
 }
 
 export interface ResultadoCompartir {
@@ -30,6 +32,20 @@ export interface VistaPreviaCompartir {
     invalidos: string[];
     persistencia: boolean;
     sesion_conectada: boolean;
+    /** Sorteo del panel: la selección es la de SUS grupos (la misma de «Editar»). */
+    sorteo_programado_id?: string | null;
+    /** Estado del sorteo en cada grupo disponible (backend 04/11). */
+    estado_grupos?: Record<string, "activo" | "pendiente" | "error" | "sin_sorteo">;
+}
+
+/** Qué cambió al guardar los grupos de un sorteo del panel (no publica). */
+export interface CambiosGruposTabla {
+    seleccion: string[];
+    agregados?: { grupo_id: string; nombre: string | null }[];
+    quitados?: { grupo_id: string; nombre: string | null }[];
+    desactivados?: { grupo_id: string; nombre: string | null }[];
+    por_publicar?: number;
+    avisos?: string[];
 }
 
 export interface EnvioCompartir {
@@ -79,7 +95,7 @@ export async function vistaPreviaCompartir(precio: number): Promise<{ ok: true; 
     return json(res);
 }
 
-export async function guardarDestinosCompartir(precio: number, grupos: string[]): Promise<{ ok: boolean; motivo?: string; invalidos?: string[] }> {
+export async function guardarDestinosCompartir(precio: number, grupos: string[]): Promise<{ ok: boolean; motivo?: string; mensaje?: string | null; invalidos?: string[]; data?: CambiosGruposTabla }> {
     const res = await fetchConSesion("/api/tablas/compartir/destinos", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

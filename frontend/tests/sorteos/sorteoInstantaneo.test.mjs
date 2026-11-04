@@ -104,9 +104,10 @@ prueba("el proxy deja pasar publicar-ahora (POST) e imagen-prueba (GET) con más
     const proxy = leer("app/api/sorteos/[[...ruta]]/route.ts");
     assert.match(proxy, /b === "publicar-ahora"\) return metodo === "POST"/);
     assert.match(proxy, /b === "imagen-prueba"\) return metodo === "GET"/);
-    assert.match(proxy, /publicar-ahora"\)( \|\| camino\.endsWith\("\/grupos\/reintentar"\))? \? 120000/);
-    // El reintento de un destino de un instantáneo publica en el momento: mismo margen.
-    assert.match(proxy, /grupos\/reintentar"\) \? 120000/);
+    // «Publicar ahora», el reintento de un destino y «Publicar en los grupos
+    // nuevos» publican en el momento: mismo margen de 120 s.
+    const margen = proxy.split("\n").find(l => l.includes("AbortSignal.timeout(")) || "";
+    for (const ruta of ["/publicar-ahora", "/grupos/reintentar", "/grupos/publicar"]) assert.ok(margen.includes(`"${ruta}"`) && /\? 120000/.test(margen), `${ruta}: ${margen}`);
     assert.match(proxy, /motivo: "tiempo_agotado"/);
 });
 

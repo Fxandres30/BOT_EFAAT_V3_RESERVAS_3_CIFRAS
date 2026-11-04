@@ -98,6 +98,14 @@ export default function CompartirTablaModal({ precio, capturarTabla, panel, onCa
 
 }
 
+// Estado del sorteo en cada grupo (vista previa del backend).
+const ESTADO_EN_GRUPO = {
+    activo: { texto: "Sorteo activo", clase: "bg-emerald-50 text-emerald-700" },
+    pendiente: { texto: "Por publicar", clase: "bg-amber-50 text-amber-800" },
+    error: { texto: "Error al publicar", clase: "bg-rose-50 text-rose-700" },
+    sin_sorteo: null
+} as const;
+
 const ETIQUETA = {
     enviado: "Enviado",
     ya_enviado: "Ya enviado en esta misma solicitud (no se duplicó)",
@@ -125,7 +133,7 @@ function Resultado({ resultado, onCambiarGrupos, onReintentar, onClose }: { resu
                                     : g.estado === "en_curso" ? <Clock size={16} className="text-amber-600 shrink-0 mt-0.5" />
                                         : <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />}
                                 <span>
-                                    <b>{g.nombre || g.grupo_id}</b> — {ETIQUETA[g.estado]}
+                                    <b>{g.nombre || g.grupo_id}</b> — {g.activado ? "Sorteo activado en el grupo y anuncio enviado" : ETIQUETA[g.estado]}
                                     {g.error && <span className="block text-gray-500">{g.error}</span>}
                                 </span>
                             </li>
@@ -166,6 +174,9 @@ function Configurar({ precio, aviso, imagenInicial, capturarTabla, onCambiar, on
     const [seleccion, setSeleccion] = useState<string[]>([]);
     const [texto, setTexto] = useState("");
     const [confirmando, setConfirmando] = useState(false);
+    // Grupos nuevos de un sorteo del panel: ¿compartir también la tabla a los
+    // que ya lo tienen? Por defecto no (no reciben nada repetido).
+    const [compartirActivos, setCompartirActivos] = useState(false);
     const [guardando, setGuardando] = useState(false);
     const [mensaje, setMensaje] = useState<{ tono: "ok" | "error"; texto: string } | null>(null);
     const enviandoRef = useRef(false);
@@ -196,6 +207,15 @@ function Configurar({ precio, aviso, imagenInicial, capturarTabla, onCambiar, on
 
     const vista = carga.vista;
     const nombreDe = (id: string) => vista.grupos.find(g => g.grupo_id === id)?.nombre || id;
+    // Sorteo del panel: los grupos elegidos SON los del sorteo. Un grupo sin
+    // el sorteo lo recibe (se activa con el anuncio); uno quitado donde
+    // estaba activo deja de tenerlo (se desactiva ahí, reservas intactas).
+    const delPanel = Boolean(vista.sorteo_programado_id);
+    const estadoDe = (id: string) => vista.estado_grupos?.[id] || "sin_sorteo";
+    const recibenSorteo = seleccion.filter(id => estadoDe(id) !== "activo");
+    const yaActivos = seleccion.filter(id => estadoDe(id) === "activo");
+    const seDesactivan = delPanel ? vista.grupos.filter(g => estadoDe(g.grupo_id) === "activo" && !seleccion.includes(g.grupo_id)).map(g => g.grupo_id) : [];
+    const sinSorteoDetectado = !delPanel && vista.estado_grupos ? seleccion.filter(id => estadoDe(id) !== "activo") : [];
     const cambiar = (id: string) => { setMensaje(null); setConfirmando(false); setSeleccion(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]); };
 
     async function guardarGrupos() {
@@ -203,7 +223,14 @@ function Configurar({ precio, aviso, imagenInicial, capturarTabla, onCambiar, on
         setGuardando(true);
         try {
             const r = await guardarDestinosCompartir(precio, seleccion);
-            setMensaje(r.ok ? { tono: "ok", texto: "Grupos guardados. El próximo «Compartir» publicará en ellos directamente." } : { tono: "error", texto: mensajeCompartir(r.motivo) });
+            if (!r.ok) { setMensaje({ tono: "error", texto: r.mensaje || mensajeCompartir(r.motivo) }); return; }
+            const d = r.data;
+            const partes = ["Grupos del sorteo guardados (no se envió nada)."];
+            if (d?.agregados?.length) partes.push(`Agregados: ${d.agregados.map(g => g.nombre || g.grupo_id).join(", ")}.`);
+            if (d?.desactivados?.length) partes.push(`El sorteo se desactivó en ${d.desactivados.map(g => g.nombre || g.grupo_id).join(", ")} (sus reservas y pagos se conservan).`);
+            if (d?.por_publicar) partes.push(`${d.por_publicar} grupo(s) nuevo(s) aún no tienen el sorteo: pulsa «Continuar» para activarlo ahí con el anuncio.`);
+            if (d?.avisos?.length) partes.push(...d.avisos);
+            setMensaje({ tono: "ok", texto: d?.agregados || d?.quitados ? partes.join(" ") : "Grupos guardados. El próximo «Compartir» publicará en ellos directamente." });
         } catch {
             setMensaje({ tono: "error", texto: "No se pudieron guardar los grupos (sin conexión con el servidor). Inténtalo de nuevo." });
         } finally {
@@ -214,12 +241,25 @@ function Configurar({ precio, aviso, imagenInicial, capturarTabla, onCambiar, on
     async function enviar() {
         if (enviandoRef.current || !imagen) return;
         enviandoRef.current = true;
-        const grupos = [...seleccion];
+        // Sorteo del panel con grupos nuevos: primero se GUARDA la asociación
+        // (los nuevos quedan pendientes; un grupo quitado se desactiva) y
+        // luego se publica solo en los nuevos (y en los activos si se marcó).
+        const soloNuevos = delPanel && recibenSorteo.length > 0;
+        if (soloNuevos) {
+            const g = await guardarDestinosCompartir(precio, seleccion).catch(() => ({ ok: false as const, motivo: "sin_respuesta", mensaje: null }));
+            if (!g.ok) {
+                enviandoRef.current = false;
+                setConfirmando(false);
+                setMensaje({ tono: "error", texto: g.mensaje || mensajeCompartir(g.motivo) });
+                return;
+            }
+        }
+        const grupos = soloNuevos ? [...recibenSorteo, ...(compartirActivos ? yaActivos : [])] : [...seleccion];
         const envio: EnvioCompartir = {
             solicitudId: nuevaSolicitud(),
             imagen,
             grupos,
-            guardarDestinos: true,
+            guardarDestinos: !soloNuevos,
             ...(texto.trim() !== vista.texto.trim() ? { texto } : {})
         };
         onCambiar({ tipo: "enviando", grupos });
@@ -260,12 +300,28 @@ function Configurar({ precio, aviso, imagenInicial, capturarTabla, onCambiar, on
                 <h3 className="text-sm font-semibold text-gray-900">Grupos de WhatsApp</h3>
                 {vista.grupos.length === 0 ? (
                     <p className="text-sm text-gray-600">No tienes grupos autorizados. Autoriza grupos en Automatización para poder compartir.</p>
-                ) : vista.grupos.map(g => (
-                    <label key={g.grupo_id} className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" checked={seleccion.includes(g.grupo_id)} onChange={() => cambiar(g.grupo_id)} />
-                        {g.nombre || g.grupo_id}
-                    </label>
-                ))}
+                ) : vista.grupos.map(g => {
+                    const estado = ESTADO_EN_GRUPO[estadoDe(g.grupo_id)];
+                    const marcado = seleccion.includes(g.grupo_id);
+                    return (
+                        <label key={g.grupo_id} className="flex flex-wrap items-center gap-2 text-sm">
+                            <input type="checkbox" checked={marcado} onChange={() => cambiar(g.grupo_id)} />
+                            {g.nombre || g.grupo_id}
+                            {estado && <span className={`rounded-full px-2 py-0.5 text-xs ${estado.clase}`}>{estado.texto}</span>}
+                            {!estado && marcado && delPanel && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700">Nuevo: recibirá este sorteo</span>}
+                        </label>
+                    );
+                })}
+                {seDesactivan.length > 0 && (
+                    <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800" role="alert">
+                        Al guardar, el sorteo se DESACTIVA en {seDesactivan.map(nombreDe).join(", ")}: ahí deja de recibir reservas y mensajes del sorteo. Sus reservas y pagos se conservan.
+                    </p>
+                )}
+                {sinSorteoDetectado.length > 0 && (
+                    <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800" role="alert">
+                        Este sorteo se detectó en WhatsApp: en {sinSorteoDetectado.map(nombreDe).join(", ")} solo se enviará la imagen y ahí NO se registrarán reservas. Para activarlo en otro grupo: «Editar» → «Gestionar desde el panel» y luego agrega el grupo (misma tabla y reservas).
+                    </p>
+                )}
                 {!vista.persistencia && <p className="text-xs text-gray-500">La selección todavía no se puede guardar: se pedirá en cada envío.</p>}
             </section>
 
@@ -273,10 +329,31 @@ function Configurar({ precio, aviso, imagenInicial, capturarTabla, onCambiar, on
 
             {confirmando ? (
                 <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm">
-                    <p className="font-medium text-indigo-900">Se publicará la imagen con este texto en:</p>
-                    <ul className="my-2 list-disc pl-5 text-indigo-900">
-                        {seleccion.map(id => <li key={id}>{nombreDe(id)}</li>)}
-                    </ul>
+                    {delPanel && recibenSorteo.length > 0 ? (
+                        <>
+                            <p className="font-medium text-indigo-900">Recibirán ESTE sorteo (se activa en el grupo, con su tabla, y se envía el anuncio):</p>
+                            <ul className="my-2 list-disc pl-5 text-indigo-900">
+                                {recibenSorteo.map(id => <li key={id}>{nombreDe(id)}</li>)}
+                            </ul>
+                            {yaActivos.length > 0 && (
+                                <label className="my-2 flex items-start gap-2 text-indigo-900">
+                                    <input type="checkbox" checked={compartirActivos} onChange={e => setCompartirActivos(e.target.checked)} />
+                                    <span>
+                                        Compartir también la tabla actualizada en los grupos que ya tienen el sorteo ({yaActivos.map(nombreDe).join(", ")}).
+                                        <span className="block text-indigo-700">Sin marcar, esos grupos no reciben nada.</span>
+                                    </span>
+                                </label>
+                            )}
+                        </>
+                    ) : (
+                        <>
+                            <p className="font-medium text-indigo-900">Se publicará la imagen con este texto en:</p>
+                            <ul className="my-2 list-disc pl-5 text-indigo-900">
+                                {seleccion.map(id => <li key={id}>{nombreDe(id)}</li>)}
+                            </ul>
+                        </>
+                    )}
+                    {seDesactivan.length > 0 && <p className="text-amber-800">El sorteo se desactivará en {seDesactivan.map(nombreDe).join(", ")}.</p>}
                     <p className="text-indigo-800">Estos grupos quedarán guardados para los próximos «Compartir».</p>
                     <div className="mt-3 flex flex-wrap justify-end gap-2">
                         <Button variant="secondary" onClick={() => setConfirmando(false)}>Volver</Button>

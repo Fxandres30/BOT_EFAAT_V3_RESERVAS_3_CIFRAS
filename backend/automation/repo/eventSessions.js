@@ -254,8 +254,50 @@ async function obtenerAbiertasPorSesion(sessionId) {
 
 }
 
+// Ciclo VIVO (pendiente, abierto o cerrando) de una fila de eventos_bot: el
+// más reciente. Una corrección del evento (otra hora o nombre en la MISMA
+// fila) cambia su identidad de ciclo, pero el evento sigue siendo el mismo:
+// el motor (motorEventos.js) lo usa para no abrir un segundo ciclo.
+async function buscarVivaPorEvento(eventoId) {
+
+    const { data, error } = await supabase
+        .from(TABLA)
+        .select("*")
+        .eq("evento_id", eventoId)
+        .in("estado", ["pendiente", "abierto", "cerrando"])
+        .order("creado_en", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (error) throw error;
+
+    return data;
+
+}
+
+// Ciclos PENDIENTES de una sesión creados en [desde, hasta): los que una caída
+// pudo dejar sin confirmar (motorEventos.recuperarCiclos).
+async function obtenerPendientesPorSesion(sessionId, { desde, hasta }) {
+
+    const { data, error } = await supabase
+        .from(TABLA)
+        .select("*")
+        .eq("session_id", sessionId)
+        .eq("estado", "pendiente")
+        .gte("creado_en", desde.toISOString())
+        .lt("creado_en", hasta.toISOString())
+        .order("creado_en", { ascending: true });
+
+    if (error) throw error;
+
+    return data || [];
+
+}
+
 module.exports = {
+    obtenerPendientesPorSesion,
     buscarPorIdentidadCiclo,
+    buscarVivaPorEvento,
     crear,
     obtenerActivaPorGrupo,
     marcarAbierto,

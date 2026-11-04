@@ -314,6 +314,24 @@ async function reemplazarGrupos(usuarioId, sorteoId, grupos) {
 
 }
 
+// Añade UN grupo a un sorteo (también ya publicado): fila 'pendiente'. La
+// UNIQUE (sorteo_id, grupo_id) impide duplicarlo.
+async function agregarGrupo(usuarioId, sorteoId, grupo) {
+    const { data, error } = await supabase.from("sorteos_programados_grupos")
+        .insert({ sorteo_id: sorteoId, usuario_id: usuarioId, grupo_id: grupo.grupo_id, grupo_nombre: grupo.nombre || null })
+        .select();
+    return resultado(data?.[0] || null, error);
+}
+
+// Registra grupos con su estado ya conocido (sorteo detectado que pasa a
+// gestionarse desde el panel: sus grupos ya tienen el sorteo publicado).
+async function insertarGrupos(usuarioId, sorteoId, filas) {
+    const { data, error } = await supabase.from("sorteos_programados_grupos")
+        .insert(filas.map(f => ({ ...f, sorteo_id: sorteoId, usuario_id: usuarioId })))
+        .select();
+    return resultado(data || [], error);
+}
+
 // ------------------------------------------------------------- worker ---
 
 async function sorteosParaPublicar(usuarioId, ahora = new Date()) {
@@ -383,21 +401,33 @@ async function esEventoDeSorteoProgramado(evento) {
     // responde "no", que es exactamente el comportamiento previo a esta fase.
     try {
 
+        // Un sorteo DETECTADO en WhatsApp que pasó a gestionarse desde el
+        // panel (gruposSorteo.vincularSorteoDetectado, config.origen
+        // "whatsapp") sigue siendo de WhatsApp para el detector: se re-anuncia
+        // y se corrige en el grupo como siempre. Solo cuentan las
+        // programaciones creadas en el panel.
+        const delPanel = async (ids) => {
+            if (!ids.length) return false;
+            const { data: progs, error: e } = await supabase.from("sorteos_programados").select("id, config").in("id", ids);
+            if (e) return false;
+            return (progs || []).some(p => p.config?.origen !== "whatsapp");
+        };
+
         const { data, error } = await supabase.from("sorteos_programados_grupos")
-            .select("id, estado").eq("evento_bot_id", eventoBotId).neq("estado", "cancelado").limit(1);
+            .select("id, estado, sorteo_id").eq("evento_bot_id", eventoBotId).neq("estado", "cancelado").limit(20);
 
         if (error) return false;
-        if ((data || []).length > 0) return true;
+        if (await delPanel([...new Set((data || []).map(g => g.sorteo_id).filter(Boolean))])) return true;
 
         if (typeof evento !== "object" || !evento?.usuario_id || !evento?.identidad_evento_real) return false;
 
         const porIdentidad = await supabase.from("sorteos_programados")
-            .select("id").eq("usuario_id", evento.usuario_id).eq("identidad_evento_real", evento.identidad_evento_real)
-            .in("estado", ESTADOS_CON_EVENTO).limit(1);
+            .select("id, config").eq("usuario_id", evento.usuario_id).eq("identidad_evento_real", evento.identidad_evento_real)
+            .in("estado", ESTADOS_CON_EVENTO).limit(20);
 
         if (porIdentidad.error) return false;
 
-        return (porIdentidad.data || []).length > 0;
+        return (porIdentidad.data || []).some(p => p.config?.origen !== "whatsapp");
 
     } catch (err) {
 
@@ -475,6 +505,8 @@ module.exports = {
     registrarHistorial,
     historialDelSorteo,
     reemplazarGrupos,
+    agregarGrupo,
+    insertarGrupos,
     sorteosParaPublicar,
     sorteosPublicados,
     reclamarGrupo,

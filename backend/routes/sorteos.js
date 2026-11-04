@@ -36,6 +36,18 @@ const ESTADO_HTTP = {
     confirmacion_reinicio_requerida: 400,
     error_imagen: 502,
     imagen_invalida: 400,
+    // Grupos de un sorteo (gruposSorteo.js).
+    grupos_invalidos: 400,
+    sin_grupos: 400,
+    destinos_no_disponibles: 409,
+    publicando: 409,
+    aun_no_publicado: 409,
+    error_desactivar: 409,
+    error_grupos: 500,
+    sin_identidad: 409,
+    tabla_distinta: 409,
+    // Restaurar una lotería creada por el cliente (no tiene configuración inicial).
+    sin_configuracion_inicial: 409,
     migracion_pendiente: 503
 };
 
@@ -81,6 +93,9 @@ router.get("/grupos", seguro(async (req, res) => responder(res, await servicio.g
 // Antes que "/:id": "loterias" no es un UUID, pero así queda explícito.
 router.get("/loterias", seguro(async (req, res) => responder(res, await servicio.loterias.listar(req.usuarioId))));
 router.post("/loterias", seguro(async (req, res) => responder(res, await servicio.loterias.crear(req.usuarioId, req.body || {}), 201)));
+// Volver a la configuración inicial: todo el calendario del cliente o una lotería.
+router.post("/loterias/restaurar", seguro(async (req, res) => responder(res, await servicio.loterias.restaurarTodo(req.usuarioId))));
+router.post("/loterias/:id/restaurar", conId(async (req, res) => responder(res, await servicio.loterias.restaurar(req.usuarioId, req.params.id))));
 router.patch("/loterias/:id", conId(async (req, res) => responder(res, await servicio.loterias.actualizar(req.usuarioId, req.params.id, req.body || {}))));
 router.delete("/loterias/:id", conId(async (req, res) => responder(res, await servicio.loterias.eliminar(req.usuarioId, req.params.id))));
 router.get("/loterias/:id/horario", conId(async (req, res) => responder(res, await servicio.loterias.horario(req.usuarioId, req.params.id, String(req.query.fecha || "")))));
@@ -118,6 +133,9 @@ router.get("/activos", seguro(async (req, res) => {
 }));
 router.get("/activos/:id", conId(async (req, res) => responder(res, await servicio.activos.obtener(req.usuarioId, req.params.id))));
 router.put("/activos/:id", conId(async (req, res) => responder(res, await servicio.activos.editar(req.usuarioId, req.params.id, req.body || {}))));
+// Sorteo DETECTADO en WhatsApp → gestionarlo desde el panel (misma identidad,
+// tabla y reservas) para poder agregarlo a otros grupos. { cuentas: [...] }.
+router.post("/activos/:id/vincular", conId(async (req, res) => responder(res, await require("../sorteos/gruposSorteo").vincularSorteoDetectado(req.usuarioId, req.params.id, { cuentas: req.body?.cuentas }))));
 
 // -------------------------------------------------------------- sorteos ---
 router.get("/", seguro(async (req, res) => responder(res, await servicio.listarSorteos(req.usuarioId))));
@@ -141,6 +159,11 @@ router.post("/:id/cancelar", conId(async (req, res) => responder(res, await serv
 router.post("/:id/eliminar", conId(async (req, res) => responder(res, await servicio.eliminar(req.usuarioId, req.params.id, req.body || {}))));
 // { archivar: true | false } (false = restaurar).
 router.post("/:id/archivar", conId(async (req, res) => responder(res, await servicio.archivar(req.usuarioId, req.params.id, { archivar: req.body?.archivar !== false }))));
+// Grupos de un sorteo (la misma operación que «Cambiar grupos» de Tablas).
+// PUT guarda la selección completa { grupos: [...] } SIN publicar; POST
+// /grupos/publicar publica ahora solo en los grupos nuevos (pendientes).
+router.put("/:id/grupos", conId(async (req, res) => responder(res, await require("../sorteos/gruposSorteo").cambiarGrupos(req.usuarioId, req.params.id, req.body?.grupos, { origen: "panel" }))));
+router.post("/:id/grupos/publicar", conId(async (req, res) => responder(res, await require("../sorteos/gruposSorteo").publicarGruposNuevos(req.usuarioId, req.params.id))));
 router.post("/:id/grupos/reintentar", conId(async (req, res) => responder(res, await servicio.reintentarGrupo(req.usuarioId, req.params.id, String(req.body?.grupo_id || "")))));
 
 module.exports = router;

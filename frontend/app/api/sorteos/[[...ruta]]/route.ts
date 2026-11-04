@@ -61,18 +61,31 @@ function destino(metodo: Metodo, ruta: string[]): string | null {
         if (a === "mensaje" && b === "generar") return metodo === "POST" ? "/mensaje/generar" : null;
         if (a === "activos" && UUID.test(b)) return metodo === "GET" || metodo === "PUT" ? `/activos/${b}` : null;
         if (a === "loterias" && UUID.test(b)) return metodo === "PATCH" || metodo === "DELETE" ? `/${a}/${b}` : null;
+        // Volver todo el calendario a la configuración inicial.
+        if (a === "loterias" && b === "restaurar") return metodo === "POST" ? "/loterias/restaurar" : null;
         if ((a === "plantillas" || a === "cuentas") && UUID.test(b)) return metodo === "PATCH" ? `/${a}/${b}` : null;
         if (UUID.test(a) && b === "vista-previa") return metodo === "GET" ? `/${a}/vista-previa` : null;
         if (UUID.test(a) && b === "detalle") return metodo === "GET" ? `/${a}/detalle` : null;
         // «Sorteo instantáneo»: publicar ya y la imagen de prueba del servidor.
         if (UUID.test(a) && b === "publicar-ahora") return metodo === "POST" ? `/${a}/publicar-ahora` : null;
         if (UUID.test(a) && b === "imagen-prueba") return metodo === "GET" ? `/${a}/imagen-prueba` : null;
+        // Grupos del sorteo (misma operación que «Cambiar grupos»): guardar sin publicar.
+        if (UUID.test(a) && b === "grupos") return metodo === "PUT" ? `/${a}/grupos` : null;
         if (UUID.test(a) && (b === "confirmar" || b === "cancelar" || b === "eliminar" || b === "archivar")) return metodo === "POST" ? `/${a}/${b}` : null;
         return null;
     }
 
     if (ruta.length === 3 && a === "loterias" && UUID.test(b) && c === "horario") {
         return metodo === "GET" ? `/loterias/${b}/horario` : null;
+    }
+
+    if (ruta.length === 3 && a === "loterias" && UUID.test(b) && c === "restaurar") {
+        return metodo === "POST" ? `/loterias/${b}/restaurar` : null;
+    }
+
+    // Sorteo detectado en WhatsApp → gestionarlo desde el panel (sin enviar nada).
+    if (ruta.length === 3 && a === "activos" && UUID.test(b) && c === "vincular") {
+        return metodo === "POST" ? `/activos/${b}/vincular` : null;
     }
 
     // Cerrar, reabrir, desactivar, cancelar o eliminar un sorteo en los grupos.
@@ -82,6 +95,11 @@ function destino(metodo: Metodo, ruta: string[]): string | null {
 
     if (ruta.length === 3 && UUID.test(a) && b === "grupos" && c === "reintentar") {
         return metodo === "POST" ? `/${a}/grupos/reintentar` : null;
+    }
+
+    // Publicar ahora el sorteo SOLO en sus grupos nuevos (pendientes).
+    if (ruta.length === 3 && UUID.test(a) && b === "grupos" && c === "publicar") {
+        return metodo === "POST" ? `/${a}/grupos/publicar` : null;
     }
 
     return null;
@@ -126,7 +144,7 @@ async function reenviar(metodo: Metodo, req: Request, params: Promise<{ ruta?: s
             // Publicar ya (imagen + envío a cada grupo) e imagen de prueba
             // (Chromium en el servidor) tardan más que el resto.
             // El reintento de un destino de un instantáneo también publica ya.
-            signal: AbortSignal.timeout(camino.endsWith("/publicar-ahora") || camino.endsWith("/grupos/reintentar") ? 120000 : camino.endsWith("/imagen-prueba") ? 60000 : 20000)
+            signal: AbortSignal.timeout(camino.endsWith("/publicar-ahora") || camino.endsWith("/grupos/reintentar") || camino.endsWith("/grupos/publicar") ? 120000 : camino.endsWith("/imagen-prueba") ? 60000 : 20000)
         });
 
         const datos = await res.json().catch(() => ({ ok: false, motivo: "respuesta_invalida" }));

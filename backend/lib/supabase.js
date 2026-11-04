@@ -12,6 +12,23 @@ const path = require("path");
 // otro directorio (la raíz del repo, por ejemplo).
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
+// SALVAGUARDA DE PRUEBAS (04/11): con EFAAT_PRUEBAS=1 este módulo NO crea el
+// cliente real ni hace la prueba de conexión. Las pruebas inyectan su
+// Supabase falso en require.cache ANTES de cargar nada; si algún módulo
+// llegara a cargar el real por accidente, cualquier uso falla en voz alta en
+// vez de conectar a producción. En producción la variable no existe.
+if (process.env.EFAAT_PRUEBAS === "1") {
+
+  const bloqueado = () => {
+    throw new Error("lib/supabase.js: cliente REAL bloqueado (EFAAT_PRUEBAS=1). La prueba debe inyectar su Supabase falso antes de cargar este módulo.");
+  };
+
+  module.exports = new Proxy({}, { get: (_t, prop) => (prop === "then" ? undefined : bloqueado()) });
+
+  return;
+
+}
+
 const { createClient } = require("@supabase/supabase-js");
 
 // Nunca se loguean SUPABASE_URL ni ningún fragmento de la service role key.

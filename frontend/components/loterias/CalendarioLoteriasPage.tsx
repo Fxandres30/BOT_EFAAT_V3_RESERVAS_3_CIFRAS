@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, Plus, Search } from "lucide-react";
+import { CalendarDays, Plus, RotateCcw, Search } from "lucide-react";
 
 import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Textarea } from "@/components/ui";
 import {
     apiSorteos,
     describirError,
     type ErrorCampo,
+    type FrecuenciaLoteria,
     type Loteria,
     type LoteriaEntrada,
     type ReglaFestivo
@@ -26,7 +27,7 @@ const DIAS: { n: number; corto: string; largo: string }[] = [
 ];
 
 const REGLAS: Record<ReglaFestivo, string> = {
-    sin_regla: "Sin regla (se avisa al programar)",
+    sin_regla: "No definida (se sugiere la hora habitual y se avisa)",
     no_se_juega: "No se juega en festivos",
     hora_habitual: "Se juega a la hora habitual del día",
     hora_especial: "Se juega a una hora especial"
@@ -47,7 +48,13 @@ const VACIA: LoteriaEntrada = {
     regla_festivo: "sin_regla",
     hora_festivo: null,
     notas: null,
-    activo: true
+    activo: true,
+    frecuencia: "semanal"
+};
+
+const FRECUENCIAS: Record<FrecuenciaLoteria, string> = {
+    semanal: "Semanal (cada semana, los días marcados)",
+    mensual: "Mensual (una vez al mes, en uno de los días marcados)"
 };
 
 const sinHorario = (l: Loteria) => !l.hora && !Object.keys(l.horas_por_dia).length;
@@ -56,6 +63,27 @@ function resumenDias(dias: number[]) {
     if (!dias.length) return "Días sin configurar";
     if (dias.length === 7) return "Todos los días";
     return DIAS.filter(d => dias.includes(d.n)).map(d => d.largo.slice(0, 3)).join(", ");
+}
+
+// Domingos: su hora propia, la habitual o «sin sorteo».
+function textoDomingo(l: Loteria) {
+    if (!l.dias.includes(7)) return "Domingos: sin sorteo";
+    return `Domingos: ${l.horas_por_dia["7"] || l.hora || "hora sin configurar"}`;
+}
+
+function textoFestivos(l: Loteria) {
+    if (l.regla_festivo === "hora_especial") return `Festivos: ${l.hora_festivo || "hora sin configurar"}`;
+    if (l.regla_festivo === "hora_habitual") return "Festivos: hora habitual del día";
+    if (l.regla_festivo === "no_se_juega") return "Festivos: no se juega";
+    return "Festivos: regla no definida en la fuente (se sugiere la hora habitual y se avisa)";
+}
+
+function textoProximo(l: Loteria) {
+    const p = l.proximo;
+    if (!p) return `Próximo sorteo: ${l.proximo_nota || "no se puede determinar"}`;
+    const fecha = p.fecha.split("-").reverse().slice(0, 2).join("/");
+    const festivo = p.festivo ? ` · festivo (${p.festivo})` : "";
+    return `Próximo sorteo: ${p.dia_nombre} ${fecha} · ${p.hora}${festivo}${p.confirmar ? " · confirmar hora" : ""}`;
 }
 
 const normalizar = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -69,7 +97,35 @@ export default function CalendarioLoteriasPage() {
     const [editando, setEditando] = useState<{ abierta: boolean; loteria: Loteria | null }>({ abierta: false, loteria: null });
 
     const [eliminando, setEliminando] = useState<string | null>(null);
+    const [restaurando, setRestaurando] = useState<string | null>(null);
     const [errorAccion, setErrorAccion] = useState<string | null>(null);
+    const [aviso, setAviso] = useState<string | null>(null);
+
+    // Vuelve UNA lotería de SU calendario a la configuración inicial.
+    async function restaurar(l: Loteria) {
+        if (!window.confirm(`¿Restaurar «${l.etiqueta}» a su configuración inicial? Se reemplazan sus días, horas, reglas y notas actuales.`)) return;
+        setRestaurando(l.id);
+        setErrorAccion(null);
+        setAviso(null);
+        const r = await apiSorteos.restaurarLoteria(l.id);
+        setRestaurando(null);
+        if (!r.ok) { setErrorAccion(`No pudimos restaurar «${l.etiqueta}». ${describirError(r)}`); return; }
+        setAviso(`«${l.etiqueta}» volvió a su configuración inicial.`);
+        cargar();
+    }
+
+    // Todo SU calendario: las loterías que creó el cliente se conservan.
+    async function restaurarTodo() {
+        if (!window.confirm("¿Restaurar todo tu calendario a la configuración inicial? Los 42 sorteos vuelven a sus días y horas originales (también los que eliminaste). Las loterías que creaste tú se conservan y los sorteos ya creados no cambian.")) return;
+        setRestaurando("todo");
+        setErrorAccion(null);
+        setAviso(null);
+        const r = await apiSorteos.restaurarLoterias();
+        setRestaurando(null);
+        if (!r.ok) { setErrorAccion(`No pudimos restaurar el calendario. ${describirError(r)}`); return; }
+        setAviso(`Calendario restaurado: ${r.data.restauradas} restaurada(s), ${r.data.agregadas} agregada(s) de nuevo, ${r.data.conservadas} propia(s) conservada(s).`);
+        cargar();
+    }
 
     // Solo borra la entrada de SU calendario; el catálogo base de EFAAT y
     // los calendarios de otros clientes no cambian.
@@ -108,11 +164,17 @@ export default function CalendarioLoteriasPage() {
             <PageHeader
                 title="Calendario de loterías"
                 description="Catálogo de loterías con su horario habitual en hora de Colombia. Lo usan todos tus sorteos: al crear uno, eliges la lotería y se sugiere la hora del día. Nada se programa solo."
-                actions={<Button leftIcon={<Plus size={16} />} onClick={() => setEditando({ abierta: true, loteria: null })}>Nueva lotería</Button>}
+                actions={
+                    <>
+                        <Button variant="secondary" leftIcon={<RotateCcw size={16} />} loading={restaurando === "todo"} onClick={restaurarTodo}>Restaurar configuración inicial</Button>
+                        <Button leftIcon={<Plus size={16} />} onClick={() => setEditando({ abierta: true, loteria: null })}>Nueva lotería</Button>
+                    </>
+                }
             />
 
             {error && <p className={`${styles.alerta} ${styles.alertaError}`}>{error}</p>}
             {errorAccion && <p className={`${styles.alerta} ${styles.alertaError}`} role="alert">{errorAccion}</p>}
+            {aviso && <p className={`${styles.alerta} ${styles.alertaInfo}`} role="status">{aviso}</p>}
 
             {pendientes > 0 && (
                 <p className={`${styles.alerta} ${styles.alertaAviso}`}>
@@ -141,20 +203,25 @@ export default function CalendarioLoteriasPage() {
                                 <Card key={l.id} padding="md" className={styles.tarjeta}>
                                     <div className={styles.cabecera}>
                                         <h3 className={styles.nombre}>{l.etiqueta}</h3>
+                                        <Badge tone="neutral" size="sm">{l.categoria === "tradicional" ? "Tradicional" : "Chance"}</Badge>
+                                        {l.frecuencia === "mensual" && <Badge tone="primary" size="sm">Mensual</Badge>}
                                         {!l.activo && <Badge tone="neutral" size="sm">Inactiva</Badge>}
                                         {sinHorario(l) && <Badge tone="warning" size="sm">Horario pendiente</Badge>}
                                     </div>
                                     <div className={styles.meta}>
-                                        <span>{resumenDias(l.dias)}</span>
+                                        <span>Juega: {resumenDias(l.dias)}</span>
                                         <span>Hora habitual: {l.hora || "—"}</span>
-                                        {Object.entries(l.horas_por_dia).map(([d, h]) => (
+                                        {Object.entries(l.horas_por_dia).filter(([d]) => d !== "7").map(([d, h]) => (
                                             <span key={d}>{DIAS[Number(d) - 1]?.largo}: {h}</span>
                                         ))}
-                                        <span>Festivos: {REGLAS[l.regla_festivo]}{l.regla_festivo === "hora_especial" && l.hora_festivo ? ` (${l.hora_festivo})` : ""}</span>
+                                        <span>{textoDomingo(l)}</span>
+                                        <span>{textoFestivos(l)}</span>
+                                        <span className={styles.proximo}>{textoProximo(l)}</span>
                                     </div>
                                     {l.notas && <p className={styles.notas}>{l.notas}</p>}
                                     <div className={styles.acciones}>
                                         <Button size="sm" variant="secondary" onClick={() => setEditando({ abierta: true, loteria: l })}>Editar</Button>
+                                        {l.restaurable && <Button size="sm" variant="ghost" loading={restaurando === l.id} onClick={() => restaurar(l)}>Restaurar</Button>}
                                         <Button size="sm" variant="ghost" loading={eliminando === l.id} onClick={() => eliminar(l)}>Eliminar</Button>
                                     </div>
                                 </Card>
@@ -187,9 +254,9 @@ function FormularioLoteria({ abierta, loteria, onClose, onGuardada }: PropsFormu
 
     const [datos, setDatos] = useState<LoteriaEntrada>(() => {
         if (!loteria) return VACIA;
-        const { id, etiqueta, ...resto } = loteria;
-        void id; void etiqueta;
-        return resto;
+        const { id, etiqueta, restaurable, proximo, proximo_nota, ...resto } = loteria;
+        void id; void etiqueta; void restaurable; void proximo; void proximo_nota;
+        return { ...resto, frecuencia: resto.frecuencia || "semanal" };
     });
     const [errores, setErrores] = useState<ErrorCampo[]>([]);
     const [error, setError] = useState<string | null>(null);
@@ -270,7 +337,7 @@ function FormularioLoteria({ abierta, loteria, onClose, onGuardada }: PropsFormu
 
                 {datos.dias.length > 0 && (
                     <fieldset className={styles.dias}>
-                        <legend>Hora distinta algún día (opcional)</legend>
+                        <legend>Hora distinta algún día, p. ej. sábado o domingo (opcional)</legend>
                         {datos.dias.map(n => (
                             <Input key={n} label={DIAS[n - 1].largo} optional type="time" value={datos.horas_por_dia[String(n)] || ""} onChange={e => horaDia(n, e.target.value)} />
                         ))}
@@ -285,6 +352,12 @@ function FormularioLoteria({ abierta, loteria, onClose, onGuardada }: PropsFormu
                     {datos.regla_festivo === "hora_especial" && (
                         <Input label="Hora en festivos" type="time" value={datos.hora_festivo || ""} onChange={e => cambiar("hora_festivo", e.target.value || null)} error={errorDe("hora_festivo")} />
                     )}
+                </div>
+
+                <div className={styles.fila}>
+                    <Select label="Frecuencia" value={datos.frecuencia} onChange={e => cambiar("frecuencia", e.target.value as FrecuenciaLoteria)} error={errorDe("frecuencia")}>
+                        {Object.entries(FRECUENCIAS).map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+                    </Select>
                 </div>
 
                 <Textarea label="Condiciones y notas" optional rows={3} value={datos.notas || ""} onChange={e => cambiar("notas", e.target.value)} maxLength={500} hint="Condiciones especiales tal como las conoces (domingos, festivos, cambios de horario)." />

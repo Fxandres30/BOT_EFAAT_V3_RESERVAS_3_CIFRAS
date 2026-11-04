@@ -26,7 +26,11 @@
 //     rechaza si chocaría con otro sorteo existente o si el valor cambia la
 //     tabla de números y ya hay números tomados.
 //   - tabla y cantidad de números: nunca con el sorteo en curso.
-//   - grupos: añadir o quitar publicaría o retiraría el sorteo: BLOQUEADO.
+//   - grupos (04/11): en un sorteo del panel se añaden y quitan con la
+//     MISMA función que «Cambiar grupos» de Tablas (gruposSorteo.js):
+//     guardar no publica; los nuevos quedan pendientes y se publican con
+//     «Publicar en los grupos nuevos»; un grupo quitado se desactiva solo
+//     ahí. En un sorteo detectado en WhatsApp siguen bloqueados.
 //   - premios y cierre de reservas: editables (validados).
 //   - cuentas de pago y estilo de la tabla: solo si el sorteo nació en el
 //     panel (los detectados no los guardan).
@@ -67,8 +71,10 @@ const CAMPOS_IDENTIDAD = {
 
 const CAMPOS_BLOQUEADOS = {
     tabla: "La tabla de números no cambia mientras el sorteo está en curso (la decide el valor).",
-    grupos: "Añadir o quitar grupos publicaría o retiraría el sorteo en WhatsApp; no se hace desde la edición. Para desactivarlo en un grupo usa «Desactivar en este grupo»."
+    grupos: "Este sorteo se detectó en WhatsApp. Para agregarlo a otros grupos, pulsa «Gestionar desde el panel» (conserva su identidad, tabla y reservas). Para quitarlo de un grupo usa «Desactivar en este grupo»."
 };
+
+const MOTIVO_GRUPOS_PANEL = "Guardar no publica nada. Los grupos nuevos reciben ESTE mismo sorteo (misma tabla y números) al pulsar «Publicar en los grupos nuevos»; los quitados dejan de recibir mensajes del sorteo y conservan sus reservas y pagos.";
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -159,6 +165,11 @@ async function vista(usuarioId, filas) {
     // Sorteo activo: sus números son los de su tabla, vengan de donde vengan.
     const numeros = await repo.contarNumerosTabla(usuarioId, base.tabla);
     const desdePanel = Boolean(programado);
+    // Grupos del sorteo según su programación (fuente de verdad, también los
+    // pendientes de publicar); los cancelados ya no son destino.
+    const destinos = desdePanel ? ((await repo.gruposDelSorteo(usuarioId, programado.id)).data || [])
+        .filter(g => g.estado !== "cancelado")
+        .map(g => ({ grupo_id: g.grupo_id, grupo_nombre: g.grupo_nombre || null, estado: g.estado, error: g.ultimo_error || null })) : null;
 
     return {
         id: base.id,
@@ -175,6 +186,9 @@ async function vista(usuarioId, filas) {
         cantidad_numeros: base.cantidad_numeros || null,
         estado: base.estado || null,
         grupos: filas.map(f => ({ evento_id: f.id, grupo_id: f.grupo_id, grupo_nombre: f.grupo_nombre || null, abierto: f.abierto !== false })),
+        // Solo del panel: todos sus grupos con su estado de publicación.
+        destinos,
+        estado_programacion: desdePanel ? programado.estado : null,
         reservados: numeros.reservados,
         pagados: numeros.pagados,
         // Solo los sorteos del panel guardan cuentas y estilo propios.
@@ -193,6 +207,7 @@ async function vista(usuarioId, filas) {
         campos: {
             ...Object.fromEntries(Object.entries(CAMPOS_IDENTIDAD).map(([c, motivo]) => [c, { editable: true, requiere_confirmacion: true, motivo }])),
             ...Object.fromEntries(Object.entries(CAMPOS_BLOQUEADOS).map(([c, motivo]) => [c, { editable: false, motivo }])),
+            ...(desdePanel ? { grupos: { editable: true, motivo: MOTIVO_GRUPOS_PANEL } } : {}),
             premios: { editable: true },
             hora_cierre: { editable: true, motivo: "Debe ser posterior a este momento y no después de la hora del sorteo." },
             cuentas: desdePanel
@@ -275,8 +290,15 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
     // Tabla o grupos: si llegan DISTINTOS, se rechaza explicando por qué
     // (nunca se ignoran en silencio).
     const comparables = { nombre: actual.nombre, fecha_evento: actual.fecha_evento, hora_fin: actual.hora_fin, valor: actual.valor, tabla: actual.tabla, grupos: actual.grupos.map(g => g.grupo_id).sort() };
+    // Grupos de un sorteo del panel: se comparan con los de su programación
+    // y, si cambian, se guardan al final con gruposSorteo.cambiarGrupos.
+    const gruposPanel = Boolean(actual.sorteo_programado_id);
+    const gruposPedidos = gruposPanel && Array.isArray(entrada.grupos) ? [...new Set(entrada.grupos.map(String))].sort() : null;
+    const cambiaGrupos = Boolean(gruposPedidos) && !igual(gruposPedidos, (actual.destinos || []).map(g => g.grupo_id).sort());
+    if (gruposPedidos && !gruposPedidos.length) errores.push({ campo: "grupos", mensaje: "Deja al menos un grupo. Para retirar el sorteo de todos, usa Eventos." });
     for (const [campo, motivo] of Object.entries(CAMPOS_BLOQUEADOS)) {
         if (entrada[campo] === undefined) continue;
+        if (campo === "grupos" && gruposPanel) continue;
         const enviado = campo === "grupos" ? [...(entrada.grupos || [])].sort() : entrada[campo];
         if (!igual(enviado, comparables[campo])) errores.push({ campo, mensaje: motivo });
     }
@@ -395,7 +417,7 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
 
     if (errores.length) return falla("validacion", { errores });
 
-    if (!Object.keys(cambiosEvento).length && !Object.keys(cambiosProgramado).length && !Object.keys(identidadNueva).length) {
+    if (!Object.keys(cambiosEvento).length && !Object.keys(cambiosProgramado).length && !Object.keys(identidadNueva).length && !cambiaGrupos) {
         return { ok: true, data: actual, aviso: "No había cambios que guardar." };
     }
 
@@ -445,6 +467,18 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
         // Solo puede deberse a reservas/pagos reales llegando a la vez (el
         // guardado no escribe en la tabla); se informa, no se revierte nada.
         console.warn("⚠️ [SORTEOS ACTIVOS] reservas/pagos cambiaron durante la edición (actividad simultánea del bot).");
+    }
+
+    // Grupos: la misma operación que «Cambiar grupos» (no publica nada).
+    if (cambiaGrupos) {
+        const gruposSorteo = require("./gruposSorteo");
+        const g = await gruposSorteo.cambiarGrupos(usuarioId, actual.sorteo_programado_id, gruposPedidos, { origen: "editar" });
+        if (!g.ok) return { ...g, errores: [{ campo: "grupos", mensaje: g.mensaje || "No se pudieron cambiar los grupos." }], guardado_parcial: Boolean(Object.keys(cambiosEvento).length || Object.keys(cambiosProgramado).length) };
+        // Si se quitó el grupo por el que se abrió, se sigue por otro activo.
+        const sigue = filas.find(f => !g.data.desactivados.some(d => d.evento_id === f.id));
+        const v = await obtener(usuarioId, sigue?.id || id);
+        const grupos = { agregados: g.data.agregados, quitados: g.data.quitados, desactivados: g.data.desactivados, por_publicar: g.data.por_publicar, avisos: g.data.avisos };
+        return v.ok ? { ok: true, data: { ...v.data, cambios_grupos: grupos } } : { ok: true, data: { ...actual, cambios_grupos: grupos, destinos: g.data.sorteo.grupos.filter(x => x.estado !== "cancelado").map(x => ({ grupo_id: x.grupo_id, grupo_nombre: x.grupo_nombre || null, estado: x.estado, error: x.ultimo_error || null })) }, grupos };
     }
 
     return obtener(usuarioId, id);
