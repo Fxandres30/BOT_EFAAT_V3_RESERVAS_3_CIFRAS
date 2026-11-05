@@ -213,3 +213,37 @@
 .descripcionAvisoFestivos {
     color: var(--efaat-error, #dc2626);
 }
+
+/* Filtro por día dentro de cada sección (independiente). */
+.filtroDias {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.chipDia {
+    padding: 4px 12px;
+    border: 1px solid var(--efaat-border);
+    border-radius: var(--efaat-radius-pill);
+    background: var(--efaat-surface);
+    color: var(--efaat-text-secondary);
+    font-size: var(--efaat-text-sm);
+    cursor: pointer;
+}
+
+.chipDia:hover {
+    background: var(--efaat-primary-soft);
+}
+
+.chipDia:focus-visible {
+    outline: none;
+    box-shadow: var(--efaat-focus-ring);
+}
+
+.chipDiaActivo,
+.chipDiaActivo:hover {
+    background: var(--efaat-primary);
+    border-color: var(--efaat-primary);
+    color: var(--efaat-text-on-primary);
+}

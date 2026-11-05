@@ -108,6 +108,19 @@ const coincide = (l: Loteria, busqueda: string) => {
     return !q || normalizar(`${l.etiqueta} ${l.notas || ""}`).includes(q);
 };
 
+// Orden semanal (solo visual): primer día de juego (o el día filtrado), luego
+// la hora de ese día y el nombre. Sin días definidos → al final.
+function ordenarPorDia(lista: Loteria[], dia: number) {
+    const clave = (l: Loteria) => {
+        const d = dia || (l.dias.length ? Math.min(...l.dias) : 8);
+        return { d, hora: l.horas_por_dia[String(d)] || l.hora || "99:99" };
+    };
+    return [...lista].sort((a, b) => {
+        const ka = clave(a), kb = clave(b);
+        return ka.d - kb.d || ka.hora.localeCompare(kb.hora) || a.etiqueta.localeCompare(b.etiqueta, "es");
+    });
+}
+
 export default function CalendarioLoteriasPage() {
 
     const [loterias, setLoterias] = useState<Loteria[]>([]);
@@ -120,6 +133,8 @@ export default function CalendarioLoteriasPage() {
     const [restaurando, setRestaurando] = useState<string | null>(null);
     const [errorAccion, setErrorAccion] = useState<string | null>(null);
     const [aviso, setAviso] = useState<string | null>(null);
+    // Filtro por día independiente en cada sección (0 = Todos).
+    const [filtroDia, setFiltroDia] = useState<Record<CategoriaSeccion, number>>({ chance: 0, tradicional: 0 });
 
     // Secciones plegadas/desplegadas: independientes, recordadas en la pestaña.
     // (Las secciones solo se pintan tras cargar, nunca en el render del
@@ -240,7 +255,8 @@ export default function CalendarioLoteriasPage() {
             {cargando && <p className={styles.ayuda}>Cargando calendario…</p>}
 
             {!cargando && !error && SECCIONES.map(({ categoria, titulo, Icono }) => {
-                const lista = filtradas.filter(l => l.categoria === categoria);
+                const dia = filtroDia[categoria];
+                const lista = ordenarPorDia(filtradas.filter(l => l.categoria === categoria && (!dia || l.dias.includes(dia))), dia);
                 const abierta = secciones[categoria];
                 return (
                     <section key={categoria} className={styles.seccion} aria-label={titulo}>
@@ -261,8 +277,21 @@ export default function CalendarioLoteriasPage() {
                             </button>
                         </h2>
                         <div id={`loterias-${categoria}`} hidden={!abierta}>
+                        <div className={styles.filtroDias} role="group" aria-label={`Filtrar ${titulo} por día`}>
+                            {[{ n: 0, largo: "Todos" }, ...DIAS].map(d => (
+                                <button
+                                    key={d.n}
+                                    type="button"
+                                    className={`${styles.chipDia} ${dia === d.n ? styles.chipDiaActivo : ""}`}
+                                    aria-pressed={dia === d.n}
+                                    onClick={() => setFiltroDia(prev => ({ ...prev, [categoria]: d.n }))}
+                                >
+                                    {d.largo}
+                                </button>
+                            ))}
+                        </div>
                         {lista.length === 0
-                            ? <EmptyState icon={<CalendarDays size={24} />} title={busqueda ? "Sin resultados" : "Sin loterías"} description={busqueda ? "Prueba con otro nombre." : "Agrégalas con «Nueva lotería»."} />
+                            ? <EmptyState icon={<CalendarDays size={24} />} title={busqueda || dia ? "Sin resultados" : "Sin loterías"} description={busqueda ? "Prueba con otro nombre." : dia ? `No hay loterías que jueguen el ${DIAS[dia - 1].largo.toLowerCase()}.` : "Agrégalas con «Nueva lotería»."} />
                             : <div className={styles.lista}>{lista.map(l => (
                                 <Card key={l.id} padding="md" className={styles.tarjeta}>
                                     <div className={styles.cabecera}>
