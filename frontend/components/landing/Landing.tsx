@@ -65,8 +65,12 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+// La duración de la prueba (DIAS_PRUEBA_GRATUITA / HORAS_PRUEBA_GRATUITA) y
+// el correo de solicitud (enlaceSolicitud) vienen SOLO de planes.ts.
 import {
     CORREO_COMERCIAL,
+    DIAS_PRUEBA_GRATUITA,
+    HORAS_PRUEBA_GRATUITA,
     PLANES,
     enlaceSolicitud,
     formatearCOP,
@@ -76,34 +80,6 @@ import type { PlanComercial } from "@/lib/comercial/planes";
 import DemoSorteo from "./demo/DemoSorteo";
 import VolverArriba from "./VolverArriba";
 import styles from "./landing.module.css";
-
-// Prueba gratuita que ANUNCIA la landing: 3 días (72 horas). Es solo texto
-// comercial; lib/comercial/planes.ts (DIAS_PRUEBA_GRATUITA) y la lógica
-// interna de activación de pruebas no se han cambiado todavía.
-const DIAS_PRUEBA = 3;
-const HORAS_PRUEBA = DIAS_PRUEBA * 24;
-
-// Enlace mailto para pedir la prueba desde la landing. Mismo destino y mismo
-// formulario que enlaceSolicitud() de planes.ts, pero con la duración de la
-// landing (enlaceSolicitud() sin plan todavía dice la duración antigua). Los
-// botones de cada plan siguen usando enlaceSolicitud(plan), que no menciona
-// la duración.
-function enlacePrueba(): string {
-    const asunto = `Solicitud de prueba gratuita de ${DIAS_PRUEBA} días de EFAAT`;
-    const cuerpo = [
-        "Hola, equipo de EFAAT:",
-        "",
-        `Quiero solicitar la prueba gratuita de ${DIAS_PRUEBA} días.`,
-        "",
-        "Nombre:",
-        "Ciudad:",
-        "¿Cuántos grupos de sorteos administro?:",
-        "¿Cómo gestiono hoy las reservas?:",
-        "",
-        "Gracias."
-    ].join("\n");
-    return `mailto:${CORREO_COMERCIAL}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
-}
 
 interface Funcion {
     icono: LucideIcon;
@@ -351,7 +327,7 @@ const PREGUNTAS_GENERALES = [
     },
     {
         p: "¿Cómo solicito una prueba gratuita?",
-        r: `Escríbenos a ${CORREO_COMERCIAL} o usa el botón «Solicitar prueba». La solicitud no activa nada de inmediato: queda pendiente hasta que la revisemos y coordinemos contigo el inicio. La prueba dura ${DIAS_PRUEBA} días (${HORAS_PRUEBA} horas) desde la fecha acordada y durante ese tiempo no se cobra nada.`
+        r: `Escríbenos a ${CORREO_COMERCIAL} o usa el botón «Solicitar prueba». La solicitud no activa nada de inmediato: queda pendiente hasta que la revisemos y coordinemos contigo el inicio. La prueba dura ${DIAS_PRUEBA_GRATUITA} días (${HORAS_PRUEBA_GRATUITA} horas) desde la fecha acordada y durante ese tiempo no se cobra nada.`
     },
     {
         p: "¿Puedo cambiar de plan?",
@@ -519,7 +495,7 @@ export default function Landing() {
                             </p>
                             <div className={styles.acciones}>
                                 <a href="#solicitar-prueba" className={`${styles.boton} ${styles.botonPrimario}`}>
-                                    Solicitar prueba gratis de {DIAS_PRUEBA} días <ArrowRight size={18} aria-hidden="true" />
+                                    Solicitar prueba gratis de {DIAS_PRUEBA_GRATUITA} días <ArrowRight size={18} aria-hidden="true" />
                                 </a>
                                 <a href="#planes" className={`${styles.boton} ${styles.botonContorno}`}>Ver planes</a>
                             </div>
@@ -621,7 +597,7 @@ export default function Landing() {
                             <h2 id="planes-titulo" className={styles.tituloSeccion}>Elige el plan según tus grupos</h2>
                             <p className={styles.introSeccion}>
                                 Valores mensuales en pesos colombianos (COP). Empieza con una prueba gratuita de{" "}
-                                {DIAS_PRUEBA} días y cambia de plan cuando lo necesites.
+                                {DIAS_PRUEBA_GRATUITA} días y cambia de plan cuando lo necesites.
                             </p>
                         </div>
                         <ul className={styles.planes}>
@@ -703,7 +679,7 @@ export default function Landing() {
                     <div className={styles.contenedor}>
                         <div className={styles.cabeceraSeccion}>
                             <p className={styles.antetitulo}>Cómo empezar</p>
-                            <h2 id="prueba-titulo" className={styles.tituloSeccion}>Solicita una prueba gratuita de {DIAS_PRUEBA} días</h2>
+                            <h2 id="prueba-titulo" className={styles.tituloSeccion}>Solicita una prueba gratuita de {DIAS_PRUEBA_GRATUITA} días</h2>
                             <p className={styles.introSeccion}>
                                 Mientras terminamos el registro en línea, coordinamos cada prueba de forma personal para
                                 acompañarte en la conexión de WhatsApp.
@@ -726,7 +702,7 @@ export default function Landing() {
                                     También puedes escribir directamente a <a href={`mailto:${CORREO_COMERCIAL}`}>{CORREO_COMERCIAL}</a>.
                                 </p>
                             </div>
-                            <a href={enlacePrueba()} className={`${styles.boton} ${styles.botonClaro}`} data-cta="solicitar-prueba">
+                            <a href={enlaceSolicitud()} className={`${styles.boton} ${styles.botonClaro}`} data-cta="solicitar-prueba">
                                 <Mail size={18} aria-hidden="true" /> Solicitar prueba gratis
                             </a>
                         </div>
@@ -810,12 +786,12 @@ export default function Landing() {
                         <Marca clase={styles.ctaMarca} />
                         <h2 id="cta-titulo">Empieza a automatizar tu próximo sorteo</h2>
                         <p>
-                            Solicita tu prueba de {DIAS_PRUEBA} días o escríbenos para elegir tu plan. Te
+                            Solicita tu prueba de {DIAS_PRUEBA_GRATUITA} días o escríbenos para elegir tu plan. Te
                             acompañamos a configurarlo.
                         </p>
                         <div className={`${styles.acciones} ${styles.accionesCentro}`}>
-                            <a href={enlacePrueba()} className={`${styles.boton} ${styles.botonClaro}`}>
-                                Solicitar prueba gratis de {DIAS_PRUEBA} días
+                            <a href={enlaceSolicitud()} className={`${styles.boton} ${styles.botonClaro}`}>
+                                Solicitar prueba gratis de {DIAS_PRUEBA_GRATUITA} días
                             </a>
                             <a href={`mailto:${CORREO_COMERCIAL}`} className={`${styles.boton} ${styles.botonContorno}`}>
                                 <Mail size={18} aria-hidden="true" /> Escribir al equipo

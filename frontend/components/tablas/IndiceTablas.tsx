@@ -1,14 +1,16 @@
 "use client";
 
-import { memo, useEffect, useState } from "react";
-import { AlertTriangle, CalendarClock, LayoutGrid, Radio, Ticket } from "lucide-react";
+import { memo, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CalendarClock, History, LayoutGrid, Radio, Ticket } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useDato } from "@/lib/cache/almacen";
 import { useCambiosUsuario } from "@/lib/cache/sesion";
 import { supabase } from "@/lib/supabase";
+import { usuarioSesionLocal } from "@/hooks/useSesion";
 import { getUser } from "@/services/auth/getUser";
+import { formatearMomento } from "@/services/automatizacion/estadoProgramacion";
 import { estadoSorteoPrecio, type EntradaEstadoSorteo } from "@/services/tablas/estadoSorteoPrecio";
 import {
     cargarIndiceSorteos,
@@ -16,6 +18,7 @@ import {
     ultimoUsuarioIndice,
     type FuentesIndice
 } from "@/services/tablas/indiceSorteos";
+import { guardarInstantanea, leerInstantanea } from "@/services/tablas/instantaneaIndice";
 import { crearRecargaAgrupada } from "@/services/tablas/recargaAgrupada";
 import { ordenarPorSorteoActivo } from "@/services/tablas/resumenTabla";
 import { obtenerTablasCliente, tablasClienteEnCache, type ConfiguracionTabla } from "@/services/tablas/tablasCliente";
@@ -36,13 +39,25 @@ const ESPERA_REALTIME_MS = 1_000;
 // no en el estado del componente: al abrir una tabla y volver, se pinta al
 // instante lo último leído y se revalida en segundo plano, sin volver a
 // «Consultando sorteo…».
+//
+// Tras recargar la página (F5) la caché en memoria está vacía: se pinta la
+// instantánea guardada del MISMO usuario (services/tablas/instantaneaIndice.ts,
+// máx. 24 h) con un aviso de que no está confirmada, hasta que responde el
+// servidor. Lo del servidor siempre la sustituye.
 export default function IndiceTablas() {
 
     const cambiosUsuario = useCambiosUsuario();
-    const [usuarioId, setUsuarioId] = useState<string | null>(() => ultimoUsuarioIndice());
-    const [tablas, setTablas] = useState<ConfiguracionTabla[] | null>(() => tablasClienteEnCache(ultimoUsuarioIndice()) ?? null);
+    // Usuario de la sesión ya leída en el navegador (DashboardLayout no monta
+    // nada antes): permite elegir la instantánea en el primer pintado.
+    const usuarioLocal = usuarioSesionLocal();
+    const [usuarioId, setUsuarioId] = useState<string | null>(() => usuarioLocal ?? ultimoUsuarioIndice());
+    const [tablas, setTablas] = useState<ConfiguracionTabla[] | null>(() => tablasClienteEnCache(usuarioLocal ?? ultimoUsuarioIndice()) ?? null);
     const fuentes = useDato<FuentesIndice>(usuarioId ? claveIndiceSorteos(usuarioId) : null) ?? null;
     const [ahora, setAhora] = useState(() => new Date());
+
+    // Solo la del usuario de la sesión (leerInstantanea lo exige); se vuelve
+    // a elegir si cambia la cuenta.
+    const instantanea = useMemo(() => leerInstantanea(usuarioLocal), [usuarioLocal, cambiosUsuario]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
 
@@ -106,9 +121,44 @@ export default function IndiceTablas() {
 
     }, [cambiosUsuario]);
 
-    const hayCuenta = Boolean(tablas && fuentes && tablas.some(t =>
-        estadoSorteoPrecio({ precio: t.precio, tabla: t.tabla, activos: fuentes.activos, programados: fuentes.programados, ahora })
-            .some(e => e.estado === "programado" && e.publicarEn && e.publicarEn > ahora)
+    // Datos del servidor útiles: al menos una fuente respondió (en memoria).
+    // Tienen prioridad absoluta sobre la instantánea.
+    const servidor = fuentes && (fuentes.activos !== null || fuentes.programados !== null) ? fuentes : null;
+    const guardada = !servidor && instantanea && instantanea.usuarioId === usuarioId ? instantanea : null;
+    const vistaTablas = tablas ?? guardada?.tablas ?? null;
+
+    // Estado de cada precio, calculado una vez para el resumen y las
+    // tarjetas (null = se está consultando). Las de sorteo activo, primero.
+    const estados = vistaTablas ? ordenarPorSorteoActivo(vistaTablas.map(({ precio, tabla }) => ({
+        precio,
+        entradas: fuentes && !guardada
+            ? estadoSorteoPrecio({ precio, tabla, activos: fuentes.activos, programados: fuentes.programados, ahora })
+            : guardada?.estados.find(e => e.precio === precio)?.entradas ?? null
+    }))) : null;
+
+    const disponibles = fuentes && !guardada
+        ? { activos: Boolean(fuentes.activos), programados: Boolean(fuentes.programados) }
+        : guardada?.disponibles ?? null;
+
+    // Tras cada lectura CORRECTA del servidor se guarda la instantánea (solo
+    // lo que muestran las tarjetas) del usuario de la sesión.
+    useEffect(() => {
+        if (!fuentes || fuentes.fallo || !tablas || !usuarioId || usuarioId !== usuarioSesionLocal()) return;
+        const leido = new Date(fuentes.leidoEn);
+        guardarInstantanea({
+            usuarioId,
+            leidoEn: fuentes.leidoEn,
+            tablas,
+            estados: tablas.map(({ precio, tabla }) => ({
+                precio,
+                entradas: estadoSorteoPrecio({ precio, tabla, activos: fuentes.activos, programados: fuentes.programados, ahora: leido })
+            })),
+            disponibles: { activos: Boolean(fuentes.activos), programados: Boolean(fuentes.programados) }
+        });
+    }, [fuentes, tablas, usuarioId]);
+
+    const hayCuenta = Boolean(estados?.some(({ entradas }) =>
+        entradas?.some(e => e.estado === "programado" && e.publicarEn && e.publicarEn > ahora)
     ));
 
     useEffect(() => {
@@ -117,7 +167,7 @@ export default function IndiceTablas() {
         return () => clearInterval(reloj);
     }, [hayCuenta]);
 
-    if (!tablas) {
+    if (!vistaTablas || !estados) {
         return (
             <div className={styles.rejilla} role="status" aria-label="Cargando tablas">
                 {[0, 1, 2, 3].map(i => (
@@ -132,7 +182,7 @@ export default function IndiceTablas() {
         );
     }
 
-    if (tablas.length === 0) {
+    if (vistaTablas.length === 0) {
         return (
             <EmptyState
                 icon={<Ticket size={22} />}
@@ -142,21 +192,22 @@ export default function IndiceTablas() {
         );
     }
 
-    // El estado de cada precio se calcula una vez y lo usan el resumen y
-    // las tarjetas (null mientras se consultan los sorteos). Las tarjetas con
-    // sorteo activo van primero; el orden se recalcula en cada refresco.
-    const estados = ordenarPorSorteoActivo(tablas.map(({ precio, tabla }) => ({
-        precio,
-        entradas: fuentes ? estadoSorteoPrecio({ precio, tabla, activos: fuentes.activos, programados: fuentes.programados, ahora }) : null
-    })));
-
     return (
 
         <div className={styles.indice}>
 
-            <Resumen estados={estados} fuentes={fuentes} />
+            <Resumen estados={estados} disponibles={disponibles} />
 
-            {fuentes?.fallo && (
+            {guardada && (
+                <p className={styles.avisoGuardada} role="status" data-instantanea="">
+                    <History size={14} aria-hidden="true" />
+                    {fuentes?.fallo
+                        ? `No se pudo validar con el servidor. Se muestra la última información guardada (actualizada ${formatearMomento(new Date(guardada.leidoEn), ahora)}), sin confirmar; se reintentará automáticamente.`
+                        : `Última información guardada (actualizada ${formatearMomento(new Date(guardada.leidoEn), ahora)}), sin confirmar. Validando con el servidor…`}
+                </p>
+            )}
+
+            {!guardada && fuentes?.fallo && (
                 <p className={styles.avisoFallo} role="status">
                     <AlertTriangle size={14} aria-hidden="true" />
                     No se pudo actualizar el estado de los sorteos. Se muestra la última información válida; se reintentará automáticamente.
@@ -192,7 +243,7 @@ function mismasEntradas(a: EntradaEstadoSorteo[] | null, b: EntradaEstadoSorteo[
 
 // Resumen de la pantalla con los mismos estados de las tarjetas. Si una
 // fuente falló, su cifra no se afirma («—»), igual que en las tarjetas.
-function Resumen({ estados, fuentes }: { estados: { entradas: EntradaEstadoSorteo[] | null }[]; fuentes: FuentesIndice | null }) {
+function Resumen({ estados, disponibles }: { estados: { entradas: EntradaEstadoSorteo[] | null }[]; disponibles: { activos: boolean; programados: boolean } | null }) {
 
     const contar = (estado: EntradaEstadoSorteo["estado"]) =>
         estados.reduce((n, { entradas }) => n + (entradas?.filter(e => e.estado === estado).length ?? 0), 0);
@@ -201,19 +252,19 @@ function Resumen({ estados, fuentes }: { estados: { entradas: EntradaEstadoSorte
 
     const cifras = [
         { etiqueta: "Tablas", valor: String(estados.length), icono: LayoutGrid, tono: styles.neutro },
-        { etiqueta: "Con sorteo activo", valor: fuentes?.activos ? String(conActivo) : "—", icono: Radio, tono: styles.exito },
-        { etiqueta: "Programados", valor: fuentes?.programados ? String(contar("programado")) : "—", icono: CalendarClock, tono: styles.marca },
-        { etiqueta: "Requieren revisión", valor: fuentes?.programados ? String(contar("revision")) : "—", icono: AlertTriangle, tono: styles.alerta }
+        { etiqueta: "Con sorteo activo", valor: disponibles?.activos ? String(conActivo) : "—", icono: Radio, tono: styles.exito },
+        { etiqueta: "Programados", valor: disponibles?.programados ? String(contar("programado")) : "—", icono: CalendarClock, tono: styles.marca },
+        { etiqueta: "Requieren revisión", valor: disponibles?.programados ? String(contar("revision")) : "—", icono: AlertTriangle, tono: styles.alerta }
     ];
 
     return (
-        <dl className={styles.resumen} aria-busy={!fuentes || undefined}>
+        <dl className={styles.resumen} aria-busy={!disponibles || undefined}>
             {cifras.map(({ etiqueta, valor, icono: Icono, tono }) => (
                 <div key={etiqueta} className={`${styles.cifra} ${tono}`}>
                     <span className={styles.cifraIcono} aria-hidden="true"><Icono size={15} /></span>
                     <div className={styles.cifraTexto}>
                         <dt>{etiqueta}</dt>
-                        <dd>{fuentes || etiqueta === "Tablas" ? valor : "…"}</dd>
+                        <dd>{disponibles || etiqueta === "Tablas" ? valor : "…"}</dd>
                     </div>
                 </div>
             ))}

@@ -24,7 +24,12 @@ export const PLANES: readonly PlanComercial[] = [
     { id: "empresarial", nombre: "Empresarial", precioMensualCOP: 499999, maxGrupos: 10 }
 ];
 
-export const DIAS_PRUEBA_GRATUITA = 7;
+// Duración COMERCIAL de la prueba gratuita: única fuente para la landing y
+// los correos de solicitud. Es solo texto: hoy ninguna parte de EFAAT
+// (backend, base de datos, autorización de grupos) activa, cuenta ni hace
+// vencer la prueba; se coordina manualmente por correo.
+export const DIAS_PRUEBA_GRATUITA = 3;
+export const HORAS_PRUEBA_GRATUITA = DIAS_PRUEBA_GRATUITA * 24;
 
 export const CORREO_COMERCIAL = "contacto@efaat.com";
 

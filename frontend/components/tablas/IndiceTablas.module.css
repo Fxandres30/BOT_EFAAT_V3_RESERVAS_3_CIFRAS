@@ -155,3 +155,17 @@
   border: 1px solid var(--efaat-warning-border);
   border-radius: 12px;
 }
+
+/* Instantánea guardada (tras recargar): aún sin confirmar por el servidor. */
+.avisoGuardada {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--efaat-text-muted);
+  background: var(--efaat-surface);
+  border: 1px dashed var(--efaat-border);
+  border-radius: 12px;
+}

@@ -91,7 +91,9 @@ prueba("al volver, los datos siguen en la caché (sin «Consultando sorteo…»)
     // «Salir» de Reservas no toca la caché; «volver» lee de forma síncrona.
     assert.strictEqual(indice.ultimoUsuarioIndice(), "A");
     const pintado = indice.leerIndiceSorteos(indice.ultimoUsuarioIndice());
-    assert.deepStrictEqual(pintado, { activos: [{ id: "e1" }], programados: [{ id: "s1" }], fallo: false });
+    assert.ok(typeof pintado.leidoEn === "number" && pintado.leidoEn <= Date.now());
+    const { leidoEn, ...resto } = pintado;
+    assert.deepStrictEqual(resto, { activos: [{ id: "e1" }], programados: [{ id: "s1" }], fallo: false });
 });
 
 prueba("dos montajes seguidos = UNA lectura; forzar (Realtime/60 s) siempre lee", async () => {

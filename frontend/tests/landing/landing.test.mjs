@@ -157,7 +157,8 @@ prueba("cuatro planes con los precios y grupos aprobados", () => {
         ["Empresarial", 499999, 10]
     ]);
     assert.deepStrictEqual(planes.PLANES.filter((p) => p.recomendado).map((p) => p.id), ["profesional"]);
-    assert.strictEqual(planes.DIAS_PRUEBA_GRATUITA, 7);
+    assert.strictEqual(planes.DIAS_PRUEBA_GRATUITA, 3);
+    assert.strictEqual(planes.HORAS_PRUEBA_GRATUITA, 72);
 });
 
 prueba("formato COP y texto de grupos", () => {
@@ -171,7 +172,10 @@ prueba("formato COP y texto de grupos", () => {
 prueba("los enlaces de solicitud son mailto a contacto@efaat.com", () => {
     const general = planes.enlaceSolicitud();
     assert.ok(general.startsWith("mailto:contacto@efaat.com?subject="));
-    assert.match(decodeURIComponent(general), /prueba gratuita de 7 días/);
+    const generalTexto = decodeURIComponent(general);
+    assert.match(generalTexto, /subject=Solicitud de prueba gratuita de 3 días de EFAAT&/);
+    assert.match(generalTexto, /Quiero solicitar la prueba gratuita de 3 días\./);
+    assert.ok(!/7 d[ií]as/.test(generalTexto), "el correo de prueba no debe citar 7 días");
     assert.match(decodeURIComponent(planes.enlaceSolicitud(planes.PLANES[1])), /plan Profesional/);
 });
 
@@ -212,17 +216,22 @@ prueba("prueba gratuita como solicitud pendiente, sin activación inmediata", ()
     assert.ok(!/(activación|acceso) inmediat/i.test(textoLanding));
 });
 
-prueba("la landing anuncia una prueba de 3 días (72 horas) y ya no menciona 7 días", () => {
+prueba("la duración de la prueba (3 días / 72 horas) se define solo en planes.ts", () => {
     const landing = fs.readFileSync(path.join(FRONT, "components/landing/Landing.tsx"), "utf8");
-    assert.match(landing, /const DIAS_PRUEBA = 3;/);
-    assert.match(landing, /const HORAS_PRUEBA = DIAS_PRUEBA \* 24;/);
+    // Sin constantes ni enlaces de prueba propios en la landing.
+    assert.ok(!/const\s+(DIAS|HORAS)_PRUEBA/.test(landing), "la landing no debe declarar su propia duración");
+    assert.ok(!/enlacePrueba/.test(landing), "la landing no debe tener su propio correo de prueba");
+    assert.match(landing, /import \{[^}]*\bDIAS_PRUEBA_GRATUITA\b[^}]*\} from "@\/lib\/comercial\/planes"/);
+    assert.match(landing, /import \{[^}]*\bHORAS_PRUEBA_GRATUITA\b[^}]*\} from "@\/lib\/comercial\/planes"/);
+    // Ninguna cifra de días escrita a mano en Landing.tsx (app/page.tsx es
+    // metadata estática y queda fuera de esta fase).
+    const landingSinComentarios = landing.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    assert.ok(!/\b\d+ d[ií]as|siete d[ií]as|tres d[ií]as|\b\d+ horas/i.test(landingSinComentarios), "duración escrita a mano");
     assert.ok(!/7 d[ií]as|siete d[ií]as/i.test(textoLanding), "queda una mención a 7 días");
-    assert.ok(!/DIAS_PRUEBA_GRATUITA/.test(textoLanding), "la landing no debe usar la duración de planes.ts");
-    // El enlace de prueba sin plan es el propio de la landing (3 días); los de
-    // cada plan siguen siendo enlaceSolicitud(plan), que no menciona duración.
-    assert.ok(!/enlaceSolicitud\(\)/.test(textoLanding));
-    assert.match(textoLanding, /Solicitar prueba gratis de \{DIAS_PRUEBA\} días/);
-    assert.match(textoLanding, /\(\$\{HORAS_PRUEBA\} horas\)/);
+    // Los botones de prueba usan el correo central (3 días).
+    assert.match(textoLanding, /href=\{enlaceSolicitud\(\)\}/);
+    assert.match(textoLanding, /Solicitar prueba gratis de \{DIAS_PRUEBA_GRATUITA\} días/);
+    assert.match(textoLanding, /\(\$\{HORAS_PRUEBA_GRATUITA\} horas\)/);
     for (const plan of planes.PLANES) {
         assert.ok(!/\d+ d[ií]as/.test(decodeURIComponent(planes.enlaceSolicitud(plan))), `${plan.id} no debe citar duración`);
     }

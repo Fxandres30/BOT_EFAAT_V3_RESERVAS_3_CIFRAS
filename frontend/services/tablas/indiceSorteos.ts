@@ -18,6 +18,8 @@ export interface FuentesIndice {
     programados: ProgramacionTarjeta[] | null;
     /** true: la última lectura de alguna fuente falló (se muestra la anterior). */
     fallo: boolean;
+    /** Momento en que respondió el servidor. */
+    leidoEn: number;
 }
 
 export const SUFIJO_INDICE_SORTEOS = "|indiceSorteos";
@@ -57,7 +59,8 @@ export function cargarIndiceSorteos(usuarioId: string, { forzar = false } = {}):
         const datos: FuentesIndice = {
             activos: activos.ok ? activos.data : previo?.activos ?? null,
             programados: programados.ok ? programados.data : previo?.programados ?? null,
-            fallo
+            fallo,
+            leidoEn: Date.now()
         };
 
         return datos;
