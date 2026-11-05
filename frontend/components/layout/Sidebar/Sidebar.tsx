@@ -168,8 +168,19 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   return (
     <aside className={open ? "sidebar sidebar--open" : "sidebar"}>
       <div className="sidebar__brand">
-        <span className="sidebar__logo" aria-hidden="true">E</span>
-        <span className="sidebar__brandText">EFAAT</span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          className="sidebar__logo"
+          src={encodeURI("/Sorteo Neón Azul con Bolas Numeradas.png")}
+          alt=""
+          aria-hidden="true"
+        />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          className="sidebar__brandText"
+          src={encodeURI("/Logo futurista EFAAT360 con órbita luminosa.png")}
+          alt="EFAAT360"
+        />
       </div>
 
       <nav className="sidebar__nav" aria-label="Navegación principal">
