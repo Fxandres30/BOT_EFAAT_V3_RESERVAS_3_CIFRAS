@@ -14,7 +14,9 @@ const http = require("http");
 const { spawn } = require("child_process");
 
 const RAIZ = path.resolve(__dirname, "../..");
-const FRONTEND = path.resolve(RAIZ, "../frontend");
+// E2E_FRONTEND: copia del panel cuando ya hay otro `next dev` en frontend/
+// (Next 16 no permite dos en la misma carpeta).
+const FRONTEND = process.env.E2E_FRONTEND || path.resolve(RAIZ, "../frontend");
 const r = (p) => path.join(RAIZ, p);
 
 const PUERTO_BACKEND = 4100;

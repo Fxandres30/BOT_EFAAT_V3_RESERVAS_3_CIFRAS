@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { cargar, invalidar } from "@/lib/cache/almacen";
+import { cargar, invalidar, leer as leerCache } from "@/lib/cache/almacen";
 import { TABLAS_CONFIG, type TablaConfig } from "@/lib/tablasConfig";
 
 // Qué precios ofrece EL CLIENTE de la sesión y en qué tabla física vive cada
@@ -48,6 +48,11 @@ export async function obtenerTablasCliente(usuarioId: string | null | undefined)
 
     return cargar(clave(usuarioId), () => leer(usuarioId).catch(() => BASE), { vigenciaMs: VIGENCIA_MS });
 
+}
+
+// Lo ya leído (sin consultar): para pintar al instante al volver a Reservas.
+export function tablasClienteEnCache(usuarioId: string | null | undefined): ConfiguracionTabla[] | undefined {
+    return usuarioId ? leerCache<ConfiguracionTabla[]>(clave(usuarioId)) : undefined;
 }
 
 export async function obtenerTablaConfigCliente(precio: number, usuarioId: string | null | undefined): Promise<TablaConfig | null> {

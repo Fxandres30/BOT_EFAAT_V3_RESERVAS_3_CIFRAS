@@ -1,0 +1,77 @@
+/* Botón flotante «Volver arriba» de la landing. Usa los tokens globales
+   (--efaat-*) de app/globals.css. Fijo: no ocupa espacio en el contenido. */
+
+.boton {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 60;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--efaat-radius-pill);
+  background: var(--efaat-primary);
+  color: var(--efaat-primary-contrast);
+  box-shadow: var(--efaat-shadow-primary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(12px) scale(0.92);
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease,
+    visibility 0s linear 0.22s,
+    background-color 0.15s ease;
+}
+
+.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease,
+    visibility 0s,
+    background-color 0.15s ease;
+}
+
+@media (hover: hover) {
+  .visible:hover {
+    background: var(--efaat-primary-hover);
+    transform: translateY(-2px);
+  }
+}
+
+.boton:active {
+  background: var(--efaat-primary-active);
+}
+
+.boton:focus-visible {
+  outline: 2px solid var(--efaat-primary);
+  outline-offset: 3px;
+}
+
+@media (min-width: 640px) {
+  .boton {
+    right: 24px;
+    bottom: 24px;
+    width: 48px;
+    height: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boton,
+  .visible,
+  .visible:hover {
+    transition: opacity 0.01s, visibility 0s;
+    transform: none;
+  }
+}

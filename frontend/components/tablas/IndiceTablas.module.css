@@ -141,3 +141,17 @@
     height: 30px;
   }
 }
+
+/* Última lectura fallida: se conservan los datos anteriores y se avisa. */
+.avisoFallo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--efaat-warning-strong);
+  background: var(--efaat-warning-soft);
+  border: 1px solid var(--efaat-warning-border);
+  border-radius: 12px;
+}

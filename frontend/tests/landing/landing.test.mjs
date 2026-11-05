@@ -212,6 +212,22 @@ prueba("prueba gratuita como solicitud pendiente, sin activación inmediata", ()
     assert.ok(!/(activación|acceso) inmediat/i.test(textoLanding));
 });
 
+prueba("la landing anuncia una prueba de 3 días (72 horas) y ya no menciona 7 días", () => {
+    const landing = fs.readFileSync(path.join(FRONT, "components/landing/Landing.tsx"), "utf8");
+    assert.match(landing, /const DIAS_PRUEBA = 3;/);
+    assert.match(landing, /const HORAS_PRUEBA = DIAS_PRUEBA \* 24;/);
+    assert.ok(!/7 d[ií]as|siete d[ií]as/i.test(textoLanding), "queda una mención a 7 días");
+    assert.ok(!/DIAS_PRUEBA_GRATUITA/.test(textoLanding), "la landing no debe usar la duración de planes.ts");
+    // El enlace de prueba sin plan es el propio de la landing (3 días); los de
+    // cada plan siguen siendo enlaceSolicitud(plan), que no menciona duración.
+    assert.ok(!/enlaceSolicitud\(\)/.test(textoLanding));
+    assert.match(textoLanding, /Solicitar prueba gratis de \{DIAS_PRUEBA\} días/);
+    assert.match(textoLanding, /\(\$\{HORAS_PRUEBA\} horas\)/);
+    for (const plan of planes.PLANES) {
+        assert.ok(!/\d+ d[ií]as/.test(decodeURIComponent(planes.enlaceSolicitud(plan))), `${plan.id} no debe citar duración`);
+    }
+});
+
 prueba("no se anuncian pagos Android ni control de inactividad", () => {
     assert.ok(!/android/i.test(textoLanding));
     assert.ok(!/inactividad|inactivos?/i.test(textoLanding));

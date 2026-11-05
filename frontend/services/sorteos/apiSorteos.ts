@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { invalidar } from "@/lib/cache/almacen";
 import type { TablaDisenoConfig } from "@/components/tablas/disenoTypes";
 import type { PerfilCaptura } from "@/services/tablas/perfilCaptura";
 
@@ -575,7 +576,22 @@ export function describirError(r: { motivo: string; error?: string; migracion?: 
 
 export const esSesionCaducada = (r: { motivo: string }) => r.motivo === "sin_sesion" || r.motivo === "sesion_invalida";
 
+// Cualquier operación que modifica (aunque falle a medias) deja el estado de
+// sorteos del índice de Reservas como no vigente: al volver se revalida.
+// Sufijo de services/tablas/indiceSorteos.ts (no se importa: evita el ciclo).
+function olvidarIndice(metodo: string) {
+    if (metodo !== "GET") invalidar((c) => c.endsWith("|indiceSorteos"));
+}
+
 async function llamar<T>(metodo: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", ruta: string, cuerpo?: unknown): Promise<Respuesta<T>> {
+    try {
+        return await llamarServidor<T>(metodo, ruta, cuerpo);
+    } finally {
+        olvidarIndice(metodo);
+    }
+}
+
+async function llamarServidor<T>(metodo: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", ruta: string, cuerpo?: unknown): Promise<Respuesta<T>> {
 
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
