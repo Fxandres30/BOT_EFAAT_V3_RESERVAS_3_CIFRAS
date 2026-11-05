@@ -51,6 +51,10 @@ const {
     desactivarModoRegistro
 } = require("./configuracionStickerPago");
 
+// Biblioteca del PREDETERMINADO (046): solo guarda una copia con imagen;
+// nunca decide nada del registro ni de la confirmación de pagos.
+const { guardarEnBiblioteca } = require("./bibliotecaStickersPago");
+
 // Devuelve SIEMPRE { intervino: boolean }.
 async function registrarStickerPago(ctx) {
 
@@ -186,6 +190,27 @@ async function registrarStickerPago(ctx) {
         if (resultado.ok) {
 
             console.log("[STICKER-REGISTRO] Sticker de pago registrado correctamente.");
+
+            // Solo el nivel predeterminado alimenta la biblioteca (los
+            // específicos por grupo no cambian). Se lanza SIN esperar: la
+            // descarga de la imagen no retrasa el procesamiento de mensajes
+            // y guardarEnBiblioteca() nunca lanza. La promesa se expone solo
+            // para las pruebas; dispatcher.js lee únicamente "intervino".
+            if (objetivo.nivel === "predeterminado") {
+
+                const biblioteca = guardarEnBiblioteca({
+
+                    usuarioId,
+                    msg: ctx.message,
+                    sock: ctx.sock,
+                    stickerSha256: datosSticker.fileSha256Hex,
+                    registradoPor: remitenteJid
+
+                });
+
+                return { intervino: true, biblioteca };
+
+            }
 
         } else {
 

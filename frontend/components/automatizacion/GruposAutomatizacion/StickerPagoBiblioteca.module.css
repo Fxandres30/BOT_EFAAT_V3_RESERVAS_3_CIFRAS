@@ -1,0 +1,211 @@
+/* Galería de stickers de pago (sección del predeterminado). Tokens --efaat-*. */
+
+.barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.espera {
+  padding: 12px;
+  border: 1px dashed var(--efaat-primary-border);
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-primary-soft);
+}
+
+.biblioteca {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--efaat-border);
+}
+
+.bibliotecaTitulo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--efaat-text);
+}
+
+.contador {
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: var(--efaat-radius-pill);
+  background: var(--efaat-surface-sunken);
+  color: var(--efaat-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.vacia {
+  margin: 0;
+  padding: 18px 12px;
+  border: 1px dashed var(--efaat-border);
+  border-radius: var(--efaat-radius-control);
+  color: var(--efaat-text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.galeria {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 379px) {
+  .galeria {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+}
+
+.tarjeta {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-card);
+  background: var(--efaat-surface);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tarjeta:hover {
+  box-shadow: var(--efaat-shadow-sm);
+}
+
+.tarjetaPredeterminada {
+  border-color: var(--efaat-primary);
+  box-shadow: 0 0 0 1px var(--efaat-primary);
+}
+
+/* Cuadrícula de fondo para que se vea la transparencia del sticker. */
+.vista {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  padding: 12px;
+  background-color: var(--efaat-surface-muted);
+  background-image:
+    linear-gradient(45deg, var(--efaat-surface-sunken) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--efaat-surface-sunken) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--efaat-surface-sunken) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--efaat-surface-sunken) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+.imagen {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.sinVista {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--efaat-text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.distintivo {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: var(--efaat-radius-pill);
+  background: var(--efaat-primary);
+  color: var(--efaat-primary-contrast);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.animado {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 1px 6px;
+  border-radius: var(--efaat-radius-pill);
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.pie {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--efaat-border);
+}
+
+.fecha {
+  min-width: 0;
+  color: var(--efaat-text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.eliminar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--efaat-radius-sm);
+  background: transparent;
+  color: var(--efaat-text-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.eliminar:hover:not(:disabled) {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.eliminar:focus-visible {
+  outline: 2px solid var(--efaat-primary);
+  outline-offset: 1px;
+}
+
+.eliminar:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.nota {
+  margin: 0;
+  padding: 0 10px 10px;
+  color: var(--efaat-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}

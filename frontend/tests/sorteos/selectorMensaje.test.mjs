@@ -37,6 +37,8 @@ function cargarTs(rutaAbs) {
         if (spec === "@/lib/supabase") return { supabase: new Proxy({}, { get: (_, p) => clienteGlobal[p] }) };
         if (spec === "@/lib/botApi") return { botApiHeaders: () => ({ "x-service-token": "t" }) };
         if (spec === "next/server") return { NextResponse: { json: (cuerpo, init = {}) => ({ cuerpo, status: init.status || 200 }) } };
+        // apiSorteos invalida la caché del índice de Reservas tras operar.
+        if (spec === "@/lib/cache/almacen") return { invalidar: () => {} };
         if (spec.startsWith("@/")) return {};
         return require(spec);
     };

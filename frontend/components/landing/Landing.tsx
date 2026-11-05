@@ -16,7 +16,8 @@
 //     (ver lib/comercial/planes.ts); esto es solo presentación.
 //   - Reacciones: ✅ todos reservados, ❌ todos ocupados, ninguna si es
 //     parcial (backend/bot/funciones/reservas/reaccionReserva.js).
-//   - Consultas: solo los números propios de cada participante.
+//   - Consultas (backend/bot/funciones/consultas/resolverConsulta.js): sus
+//     números reservados, sus pagos pendientes y los números disponibles.
 //   - «Asignación automática»: el número pedido en el grupo queda a nombre
 //     del participante sin intervención. No hay asignación al azar.
 //   - Confirmación de pagos: desde el panel (uno a uno o por lote). El
@@ -140,8 +141,8 @@ const FUNCIONES_EXTRA: Funcion[] = [
     },
     {
         icono: Search,
-        titulo: "Consulta de números propios",
-        texto: "Cada participante puede preguntar en el grupo qué números tiene reservados y EFAAT le responde solo con los suyos."
+        titulo: "Consultas de los participantes",
+        texto: "Los participantes pueden consultar sus números reservados, conocer sus pagos pendientes y preguntar qué números siguen disponibles."
     },
     {
         icono: FileText,

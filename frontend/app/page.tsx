@@ -7,7 +7,7 @@ import Landing from "@/components/landing/Landing";
 export const metadata: Metadata = {
   title: "EFAAT — Automatiza tus sorteos de WhatsApp",
   description:
-    "Reservas automáticas, respuestas en el grupo, consulta de números propios y sorteos programados desde un solo panel. Solicita una prueba gratuita de 3 días."
+    "Reservas automáticas y respuestas en el grupo: los participantes consultan sus números reservados, sus pagos pendientes y los números disponibles. Sorteos programados desde un solo panel. Solicita una prueba gratuita de 3 días."
 };
 
 export default function Home() {

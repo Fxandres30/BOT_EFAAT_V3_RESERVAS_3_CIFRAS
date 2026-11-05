@@ -50,9 +50,9 @@ export default function IndiceTablas() {
     // Usuario de la sesión ya leída en el navegador (DashboardLayout no monta
     // nada antes): permite elegir la instantánea en el primer pintado.
     const usuarioLocal = usuarioSesionLocal();
-    const [usuarioId, setUsuarioId] = useState<string | null>(() => usuarioLocal ?? ultimoUsuarioIndice());
+    const [usuarioVista, setUsuarioVista] = useState<string | null>(() => usuarioLocal ?? ultimoUsuarioIndice());
     const [tablas, setTablas] = useState<ConfiguracionTabla[] | null>(() => tablasClienteEnCache(usuarioLocal ?? ultimoUsuarioIndice()) ?? null);
-    const fuentes = useDato<FuentesIndice>(usuarioId ? claveIndiceSorteos(usuarioId) : null) ?? null;
+    const fuentes = useDato<FuentesIndice>(usuarioVista ? claveIndiceSorteos(usuarioVista) : null) ?? null;
     const [ahora, setAhora] = useState(() => new Date());
 
     // Solo la del usuario de la sesión (leerInstantanea lo exige); se vuelve
@@ -68,22 +68,23 @@ export default function IndiceTablas() {
 
         const marcarHora = () => { if (vivo) setAhora(new Date()); };
 
-        getUser().then(async ({ data }) => {
+        (async () => {
 
-            const id = data.user?.id ?? null;
+            const { data } = await getUser();
+            const usuarioId = data.user?.id ?? null;
             if (!vivo) return;
 
-            if (!id) { setUsuarioId(null); setTablas([]); return; }
+            if (!usuarioId) { setUsuarioVista(null); setTablas([]); return; }
 
-            setUsuarioId(id);
+            setUsuarioVista(usuarioId);
             // Otro usuario que el de la caché: lo suyo (o nada) mientras se lee.
-            if (id !== ultimoUsuarioIndice()) setTablas(tablasClienteEnCache(id) ?? null);
+            if (usuarioId !== ultimoUsuarioIndice()) setTablas(tablasClienteEnCache(usuarioId) ?? null);
 
             // Revalidación en segundo plano: lo que hay en pantalla se conserva.
-            cargarIndiceSorteos(id).then(marcarHora);
-            obtenerTablasCliente(id).then((lista) => { if (vivo) setTablas(lista); });
+            cargarIndiceSorteos(usuarioId).then(marcarHora);
+            obtenerTablasCliente(usuarioId).then((lista) => { if (vivo) setTablas(lista); });
 
-            const forzar = () => cargarIndiceSorteos(id, { forzar: true }).then(marcarHora);
+            const forzar = () => cargarIndiceSorteos(usuarioId, { forzar: true }).then(marcarHora);
             recarga = crearRecargaAgrupada(forzar, ESPERA_REALTIME_MS);
             intervalo = setInterval(forzar, REFRESCO_MS);
 
@@ -92,10 +93,10 @@ export default function IndiceTablas() {
             // mientras tanto no llegó por Realtime.
             let cortado = false;
             canal = supabase
-                .channel(`indice-reservas-${id}`)
+                .channel(`indice-reservas-${usuarioId}`)
                 .on(
                     "postgres_changes",
-                    { event: "*", schema: "public", table: "eventos_bot", filter: `usuario_id=eq.${id}` },
+                    { event: "*", schema: "public", table: "eventos_bot", filter: `usuario_id=eq.${usuarioId}` },
                     () => recarga?.senal()
                 )
                 .subscribe((estado) => {
@@ -106,7 +107,7 @@ export default function IndiceTablas() {
                     }
                 });
 
-        });
+        })();
 
         const alVolverRed = () => recarga?.ahora();
         window.addEventListener("online", alVolverRed);
@@ -124,7 +125,7 @@ export default function IndiceTablas() {
     // Datos del servidor útiles: al menos una fuente respondió (en memoria).
     // Tienen prioridad absoluta sobre la instantánea.
     const servidor = fuentes && (fuentes.activos !== null || fuentes.programados !== null) ? fuentes : null;
-    const guardada = !servidor && instantanea && instantanea.usuarioId === usuarioId ? instantanea : null;
+    const guardada = !servidor && instantanea && instantanea.usuarioId === usuarioVista ? instantanea : null;
     const vistaTablas = tablas ?? guardada?.tablas ?? null;
 
     // Estado de cada precio, calculado una vez para el resumen y las
@@ -143,10 +144,10 @@ export default function IndiceTablas() {
     // Tras cada lectura CORRECTA del servidor se guarda la instantánea (solo
     // lo que muestran las tarjetas) del usuario de la sesión.
     useEffect(() => {
-        if (!fuentes || fuentes.fallo || !tablas || !usuarioId || usuarioId !== usuarioSesionLocal()) return;
+        if (!fuentes || fuentes.fallo || !tablas || !usuarioVista || usuarioVista !== usuarioSesionLocal()) return;
         const leido = new Date(fuentes.leidoEn);
         guardarInstantanea({
-            usuarioId,
+            usuarioId: usuarioVista,
             leidoEn: fuentes.leidoEn,
             tablas,
             estados: tablas.map(({ precio, tabla }) => ({
@@ -155,7 +156,7 @@ export default function IndiceTablas() {
             })),
             disponibles: { activos: Boolean(fuentes.activos), programados: Boolean(fuentes.programados) }
         });
-    }, [fuentes, tablas, usuarioId]);
+    }, [fuentes, tablas, usuarioVista]);
 
     const hayCuenta = Boolean(estados?.some(({ entradas }) =>
         entradas?.some(e => e.estado === "programado" && e.publicarEn && e.publicarEn > ahora)

@@ -131,7 +131,7 @@ async function main() {
 
         caido = false;
         await page.click('a[href="/tablas/5000"]');
-        await page.waitForFunction(() => location.pathname === "/tablas/5000", { timeout: 120000 });
+        await page.waitForFunction(() => location.pathname === "/tablas/5000" && document.querySelector('a[href="/tablas"]'), { timeout: 120000 });
         await page.click('a[href="/tablas"]');
         await page.waitForFunction(() => !document.body.innerText.includes("No se pudo actualizar el estado"), { timeout: 30000 });
         paso("conexión recuperada: se revalida y el aviso desaparece");
