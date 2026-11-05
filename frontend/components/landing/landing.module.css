@@ -1192,21 +1192,30 @@
   font-weight: 500;
 }
 
-.planGrupos {
-  display: flex;
-  align-items: center;
+/* Capacidades del plan (grupos, tablas, respaldos): mismo bloque destacado
+   que antes tenía solo los grupos, ahora con tres filas comparables. */
+.planCapacidades {
+  display: grid;
   gap: 8px;
-  padding: 10px 12px;
+  margin: 0;
+  padding: 12px;
   border-radius: var(--efaat-radius-control);
   background: var(--efaat-primary-soft);
   color: var(--efaat-primary-active);
   font-size: 14px;
   font-weight: 700;
   line-height: 1.3;
+  list-style: none;
   box-shadow: inset 0 0 0 1px var(--efaat-primary-border);
 }
 
-.planGrupos svg {
+.planCapacidades li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.planCapacidades svg {
   flex: none;
 }
 

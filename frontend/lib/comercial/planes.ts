@@ -14,14 +14,18 @@ export interface PlanComercial {
     nombre: string;
     precioMensualCOP: number;
     maxGrupos: number;
+    // Capacidades COMERCIALES (Fase 1): solo se muestran en la landing.
+    // Ninguna parte del sistema las aplica todavía.
+    maxTablas: number;      // tablas de configuración (números y precios)
+    maxRespaldos: number;   // secciones de respaldo; cada una admite 1 número
     recomendado?: boolean;
 }
 
 export const PLANES: readonly PlanComercial[] = [
-    { id: "esencial", nombre: "Esencial", precioMensualCOP: 49999, maxGrupos: 1 },
-    { id: "profesional", nombre: "Profesional", precioMensualCOP: 139999, maxGrupos: 2, recomendado: true },
-    { id: "avanzado", nombre: "Avanzado", precioMensualCOP: 299999, maxGrupos: 5 },
-    { id: "empresarial", nombre: "Empresarial", precioMensualCOP: 499999, maxGrupos: 10 }
+    { id: "esencial", nombre: "Esencial", precioMensualCOP: 49999, maxGrupos: 1, maxTablas: 1, maxRespaldos: 1 },
+    { id: "profesional", nombre: "Profesional", precioMensualCOP: 139999, maxGrupos: 2, maxTablas: 2, maxRespaldos: 2, recomendado: true },
+    { id: "avanzado", nombre: "Avanzado", precioMensualCOP: 299999, maxGrupos: 5, maxTablas: 5, maxRespaldos: 5 },
+    { id: "empresarial", nombre: "Empresarial", precioMensualCOP: 499999, maxGrupos: 10, maxTablas: 10, maxRespaldos: 10 }
 ];
 
 // Duración COMERCIAL de la prueba gratuita: única fuente para la landing y
@@ -40,6 +44,17 @@ export function formatearCOP(valor: number): string {
 
 export function textoGrupos(maxGrupos: number): string {
     return maxGrupos === 1 ? "1 grupo de WhatsApp" : `Hasta ${maxGrupos} grupos de WhatsApp`;
+}
+
+export function textoTablas(maxTablas: number): string {
+    return maxTablas === 1 ? "1 tabla de configuración" : `${maxTablas} tablas de configuración`;
+}
+
+// Espacios duros ( ) para que «· N números» no se parta entre líneas.
+export function textoRespaldos(maxRespaldos: number): string {
+    return maxRespaldos === 1
+        ? "1 sección de respaldo · 1 número"
+        : `${maxRespaldos} secciones de respaldo · ${maxRespaldos} números`;
 }
 
 // Enlace mailto para solicitar la prueba o un plan. No envía nada por sí

@@ -385,6 +385,20 @@ prueba("formato COP y texto de grupos", () => {
     assert.strictEqual(planes.textoGrupos(5), "Hasta 5 grupos de WhatsApp");
 });
 
+prueba("capacidades comerciales de tablas y secciones de respaldo", () => {
+    const resumen = planes.PLANES.map((p) => [p.id, p.maxTablas, p.maxRespaldos]);
+    assert.deepStrictEqual(resumen, [
+        ["esencial", 1, 1],
+        ["profesional", 2, 2],
+        ["avanzado", 5, 5],
+        ["empresarial", 10, 10]
+    ]);
+    assert.strictEqual(planes.textoTablas(1), "1 tabla de configuración");
+    assert.strictEqual(planes.textoTablas(5), "5 tablas de configuración");
+    assert.strictEqual(planes.textoRespaldos(1), "1 sección de respaldo · 1 número");
+    assert.strictEqual(planes.textoRespaldos(10), "10 secciones de respaldo · 10 números");
+});
+
 prueba("los enlaces de solicitud son mailto a contacto@efaat.com", () => {
     const general = planes.enlaceSolicitud();
     assert.ok(general.startsWith("mailto:contacto@efaat.com?subject="));

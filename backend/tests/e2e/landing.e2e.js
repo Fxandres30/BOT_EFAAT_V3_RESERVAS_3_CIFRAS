@@ -99,7 +99,12 @@ async function main() {
             texto: e.textContent.replace(/\s+/g, " ")
         })));
         assert.deepStrictEqual(planes.map((p) => p.id), ["esencial", "profesional", "avanzado", "empresarial"]);
-        const esperados = [["$49.999", "1 grupo"], ["$139.999", "Hasta 2 grupos"], ["$299.999", "Hasta 5 grupos"], ["$499.999", "Hasta 10 grupos"]];
+        const esperados = [
+            ["$49.999", "1 grupo", "1 tabla de configuración", "1 sección de respaldo · 1 número"],
+            ["$139.999", "Hasta 2 grupos", "2 tablas de configuración", "2 secciones de respaldo · 2 números"],
+            ["$299.999", "Hasta 5 grupos", "5 tablas de configuración", "5 secciones de respaldo · 5 números"],
+            ["$499.999", "Hasta 10 grupos", "10 tablas de configuración", "10 secciones de respaldo · 10 números"]
+        ];
         planes.forEach((p, i) => esperados[i].forEach((t) => assert.ok(p.texto.includes(t), `${p.id} sin «${t}»`)));
         assert.ok(planes[1].texto.includes("Recomendado") && planes.filter((p) => p.texto.includes("Recomendado")).length === 1);
         paso("cuatro planes con precio COP, límite de grupos y Profesional recomendado");

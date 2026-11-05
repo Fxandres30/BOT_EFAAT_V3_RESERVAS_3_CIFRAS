@@ -75,7 +75,9 @@ import {
     PLANES,
     enlaceSolicitud,
     formatearCOP,
-    textoGrupos
+    textoGrupos,
+    textoRespaldos,
+    textoTablas
 } from "@/lib/comercial/planes";
 import type { PlanComercial } from "@/lib/comercial/planes";
 import DemoSorteo from "./demo/DemoSorteo";
@@ -233,8 +235,10 @@ const RECOMENDACIONES: Recomendacion[] = [
 ];
 
 // --------------------------------------------------------------------------
-// Planes: precio y grupos vienen de lib/comercial/planes.ts (fuente única);
-// aquí solo el texto comercial de cada tarjeta.
+// Planes: precio y capacidades (grupos, tablas, respaldos) vienen de
+// lib/comercial/planes.ts (fuente única) y se muestran en el bloque de
+// capacidades de cada tarjeta; aquí solo el resto del texto comercial, sin
+// repetir esas cifras para no recargar la tarjeta.
 // --------------------------------------------------------------------------
 
 interface DetallePlan {
@@ -247,7 +251,7 @@ const PLAN_DETALLE: Record<PlanComercial["id"], DetallePlan> = {
     esencial: {
         descripcion: "Para empezar a automatizar un grupo de sorteos.",
         incluye: [
-            "Solo sorteos instantáneos",
+            "Sorteos instantáneos",
             "Gestión de reservas y pagos",
             "Asignación automática de números",
             "Configuración de tablas y precios",
@@ -289,6 +293,8 @@ type Celda = boolean | string;
 
 const COMPARATIVA: { concepto: string; valores: [Celda, Celda, Celda, Celda] }[] = [
     { concepto: "Grupos de WhatsApp", valores: ["1", "Hasta 2", "Hasta 5", "Hasta 10"] },
+    { concepto: "Tablas de configuración", valores: ["1", "2", "5", "10"] },
+    { concepto: "Secciones de respaldo (1 número c/u)", valores: ["1", "2", "5", "10"] },
     { concepto: "Sorteos instantáneos", valores: [true, true, true, true] },
     { concepto: "Sorteos programados", valores: [false, true, true, true] },
     { concepto: "Gestión de reservas", valores: [true, true, true, true] },
@@ -613,9 +619,11 @@ export default function Landing() {
                                             <strong>{formatearCOP(plan.precioMensualCOP)}</strong>
                                             <span>COP/mes</span>
                                         </p>
-                                        <p className={styles.planGrupos}>
-                                            <Users size={18} aria-hidden="true" /> {textoGrupos(plan.maxGrupos)}
-                                        </p>
+                                        <ul className={styles.planCapacidades} aria-label={`Capacidad del plan ${plan.nombre}`}>
+                                            <li><Users size={18} aria-hidden="true" /> {textoGrupos(plan.maxGrupos)}</li>
+                                            <li><Grid3x3 size={18} aria-hidden="true" /> {textoTablas(plan.maxTablas)}</li>
+                                            <li><ShieldCheck size={18} aria-hidden="true" /> {textoRespaldos(plan.maxRespaldos)}</li>
+                                        </ul>
                                         <ul className={styles.planLista}>
                                             {detalle.base && (
                                                 <li className={styles.planBase}><Check size={16} aria-hidden="true" /> {detalle.base}</li>
