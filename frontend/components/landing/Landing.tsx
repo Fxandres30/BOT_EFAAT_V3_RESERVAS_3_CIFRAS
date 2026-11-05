@@ -229,8 +229,10 @@ function Encabezado() {
         <header className={styles.encabezado}>
             <div className={`${styles.contenedor} ${styles.encabezadoFila}`}>
                 <a href="#inicio" className={styles.marca} aria-label="EFAAT, inicio">
-                    <span className={styles.marcaLogo} aria-hidden="true">E</span>
-                    EFAAT
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img className={styles.marcaLogo} src="/sidebar/sorteo-icono.png" alt="" aria-hidden="true" />
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img className={styles.marcaTexto} src="/sidebar/logo-efaat360.png" alt="" aria-hidden="true" />
                 </a>
                 <nav aria-label="Secciones" className={styles.nav}>
                     <a href="#funciones">Funciones</a>

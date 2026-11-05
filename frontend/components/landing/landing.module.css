@@ -147,15 +147,49 @@
   text-decoration: none;
 }
 
+/* Máquina de sorteo completa (3:2) contenida en el cuadrado, sin recorte. */
 .marcaLogo {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  background: var(--efaat-primary);
-  color: #fff;
-  font-size: 16px;
+  display: block;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+/* Logotipo EFAAT360 (3:1), proporción respetada. */
+.marcaTexto {
+  display: block;
+  width: 125px;
+  height: auto;
+}
+
+/* Móvil: los botones de la derecha ocupan ~239 px fijos. La máquina queda
+   fija y el logo usa solo el espacio libre (nunca se monta sobre ellos). */
+@media (max-width: 479px) {
+  .marca {
+    flex: 0 1 auto;
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .marcaLogo {
+    width: 40px;
+    height: 40px;
+  }
+
+  .marcaTexto {
+    flex: 0 1 100px;
+    width: auto;
+    min-width: 0;
+    max-width: 100px;
+  }
+}
+
+/* Pantallas muy estrechas: no cabe el logo legible; queda solo la máquina. */
+@media (max-width: 379px) {
+  .marcaTexto {
+    display: none;
+  }
 }
 
 .nav {

@@ -171,14 +171,14 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           className="sidebar__logo"
-          src={encodeURI("/Sorteo Neón Azul con Bolas Numeradas.png")}
+          src="/sidebar/sorteo-icono.png"
           alt=""
           aria-hidden="true"
         />
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           className="sidebar__brandText"
-          src={encodeURI("/Logo futurista EFAAT360 con órbita luminosa.png")}
+          src="/sidebar/logo-efaat360.png"
           alt="EFAAT360"
         />
       </div>
