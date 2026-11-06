@@ -93,6 +93,11 @@ function destino(metodo: Metodo, ruta: string[]): string | null {
         return metodo === "POST" ? `/eventos/${b}/accion` : null;
     }
 
+    // Permiso de reservas del sorteo (F3-E).
+    if (ruta.length === 3 && a === "eventos" && UUID.test(b) && c === "reservas") {
+        return metodo === "PUT" ? `/eventos/${b}/reservas` : null;
+    }
+
     if (ruta.length === 3 && UUID.test(a) && b === "grupos" && c === "reintentar") {
         return metodo === "POST" ? `/${a}/grupos/reintentar` : null;
     }

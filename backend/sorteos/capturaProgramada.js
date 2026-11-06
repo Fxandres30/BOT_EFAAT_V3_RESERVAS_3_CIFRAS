@@ -15,11 +15,12 @@
 //   - «Compartir» en Tablas con grupos nuevos: la captura de la cuadrícula +
 //     la huella de la tabla en ese momento.
 //
-// Al publicar se usa SOLO si es de la versión confirmada del sorteo y la
+// Al publicar se usa SOLO si es de la versión confirmada del sorteo, la
 // tabla sigue como estaba al capturarla (misma huella: libres, ocupados y
-// pagados). Si no, no se publica una imagen desactualizada (ni anterior a un
-// reinicio): el grupo queda en revisión y «Reintentar» vuelve a capturar.
-// El servidor nunca genera la imagen de una publicación (sin Chromium).
+// pagados) y la capturó el panel para esa misma acción. Si no, la imagen se
+// genera en ese momento con el MISMO capturarTabla en Chromium headless
+// (F4-G, ver imagenActualDelSorteo más abajo). Nunca se publica una imagen
+// desactualizada (ni anterior a un reinicio).
 //
 // Dónde: disco del servidor del backend (sin migración):
 //   <dir>/<sorteoId>.json            ficha { version, huella, archivo, sha256 }
@@ -139,28 +140,108 @@ async function huellaActual(sorteo, { obtenerNumeros = null } = {}) {
     return huellaNumeros(await (obtenerNumeros || leerNumerosReal)(sorteo.tabla, sorteo.usuario_id));
 }
 
-// La imagen guardada del sorteo, solo si sigue siendo la de su tabla.
-async function imagenDelSorteo(sorteo, opciones = {}) {
+// ==========================================================================
+// F4-G (06/11/2026) — imagen de la publicación generada EN EL MOMENTO.
+//
+// Arquitectura oficial (autorizada por el usuario): un único generador
+// (capturarTabla de «Compartir»), un único diseño (TablaImprimible) y un
+// único envío (compartirEnGrupos). Cuando no hay un navegador del
+// administrador (la hora de un programado, el ciclo automático, una
+// recuperación), el MISMO capturarTabla se ejecuta en Chromium headless
+// sobre la página /tablas/imprimir del panel (compartirTabla.capturarImagenTabla).
+// No es otro generador: es el mismo código del panel en otro navegador.
+//
+// Regla:
+//   1. Se releen los números de la tabla del sorteo (datos persistidos) y se
+//      calcula su huella.
+//   2. Si el panel acaba de capturar la imagen para ESTA acción (publicar
+//      ahora, reintentar, grupos nuevos) de la versión confirmada y con la
+//      MISMA huella, se usa esa: es la misma imagen, ya hecha.
+//      La captura de «Confirmar y programar» nunca se reutiliza: un
+//      programado genera la suya al llegar su hora.
+//   3. Si no, se genera ahora con esos mismos números + el diseño y el
+//      perfil (ventana/columna) guardados en el sorteo.
+//   Si Chromium falla, la publicación falla con el error real: nunca se
+//   envía una imagen antigua como alternativa.
+//
+// Una sola generación por sorteo, versión y estado de la tabla en este
+// proceso: los grupos de una misma publicación (o dos ciclos simultáneos)
+// comparten la misma promesa. Cada grupo vuelve a leer la tabla, así que
+// si cambia entre grupos, el siguiente genera la imagen nueva.
+// ==========================================================================
+
+const REUTILIZABLES = new Set(["publicar_ahora", "reintentar", "grupos_nuevos"]);
+const VIDA_GENERACION_MS = 2 * 60 * 1000;
+const enCurso = new Map(); // clave -> { promesa, hasta }
+
+// Generador del servidor: el capturarTabla de «Compartir» en Chromium headless.
+// Se resuelve en cada llamada (las pruebas lo sustituyen en el módulo).
+const generadorServidor = (...args) => require("../services/compartirTabla").capturarImagenTabla(...args);
+
+function datosDeImagen(sorteo, numeros) {
+    const { normalizarConfigDiseno } = require("./disenoTabla");
+    return {
+        numerosDisponibles: numeros.numerosDisponibles || [],
+        numerosOcupados: numeros.numerosOcupados || [],
+        numerosPagados: numeros.numerosPagados || [],
+        cifras: sorteo.cifras,
+        cantidad: sorteo.cantidad_numeros,
+        diseno: normalizarConfigDiseno(sorteo.config?.diseno?.config ?? null)
+    };
+}
+
+function perfilDe(sorteo) {
+    const c = sorteo.config?.captura;
+    return c && Number(c.ventana) > 0 && Number(c.contenido) > 0 ? { ventana: Number(c.ventana), contenido: Number(c.contenido) } : null;
+}
+
+// -> { png, huella, origen: "panel" | "servidor" }
+async function imagenActualDelSorteo(sorteo, { obtenerNumeros = null, generar = null } = {}) {
+
+    const numeros = await (obtenerNumeros || leerNumerosReal)(sorteo.tabla, sorteo.usuario_id);
+    const huella = huellaNumeros(numeros);
+    const version = Number(sorteo.confirmado_version);
 
     const guardada = await leer(sorteo.id);
-
-    if (!guardada || guardada.version !== Number(sorteo.confirmado_version)) {
-        throw errorRevision("no hay imagen de la tabla para la versión confirmada de este sorteo (se confirmó sin ella o se editó después). Pulsa «Reintentar» para revisar la tabla y publicar con una imagen nueva.", "sin_captura");
+    if (guardada && guardada.version === version && guardada.huella === huella && REUTILIZABLES.has(guardada.origen)) {
+        return { png: guardada.png, huella, origen: "panel" };
     }
 
-    if ((await huellaActual(sorteo, opciones)) !== guardada.huella) {
-        throw errorRevision("la tabla cambió desde que se capturó la imagen (reservas, pagos, liberaciones o reinicio) y no se publica una imagen desactualizada. Pulsa «Reintentar» para revisar la tabla actual y publicar con una imagen nueva.", "tabla_cambiada");
+    const clave = `${sorteo.usuario_id}:${sorteo.id}:${version}:${huella}`;
+    const ahora = Date.now();
+    for (const [k, v] of enCurso) if (v.hasta < ahora) enCurso.delete(k);
+
+    let entrada = enCurso.get(clave);
+    if (!entrada) {
+        const promesa = (async () => {
+            const png = await (generar || generadorServidor)(Number(sorteo.config?.valor), sorteo.usuario_id, null, {
+                datos: datosDeImagen(sorteo, numeros),
+                captura: perfilDe(sorteo)
+            });
+            if (!Buffer.isBuffer(png) || !png.length) throw new Error("el generador no devolvió un PNG válido");
+            return png;
+        })();
+        entrada = { promesa, hasta: ahora + VIDA_GENERACION_MS };
+        enCurso.set(clave, entrada);
+        // Un fallo no se conserva: el siguiente intento vuelve a generar.
+        promesa.catch(() => { if (enCurso.get(clave) === entrada) enCurso.delete(clave); });
     }
 
-    return guardada.png;
+    return { png: await entrada.promesa, huella, origen: "servidor" };
 
 }
 
-// Dependencia `capturarImagen` del publicador: toda publicación de un
-// sorteo usa su imagen guardada. Sin sorteo no hay publicación que hacer.
+// Dependencia `capturarImagen` del publicador: la imagen de CUALQUIER
+// publicación de un sorteo, con los datos de la tabla de este momento.
 async function capturarParaPublicar(_precio, _usuarioId, _eventoId = null, contexto = {}) {
     if (!contexto?.sorteo) throw errorRevision("falta el sorteo de la publicación.", "sin_sorteo");
-    return imagenDelSorteo(contexto.sorteo);
+    const r = await imagenActualDelSorteo(contexto.sorteo);
+    return r.png;
 }
 
-module.exports = { huellaNumeros, huellaActual, guardar, leer, imagenDelSorteo, imagenProgramada: imagenDelSorteo, capturarParaPublicar, directorio };
+const _olvidarGeneraciones = () => enCurso.clear();
+
+module.exports = {
+    huellaNumeros, huellaActual, guardar, leer,
+    imagenActualDelSorteo, capturarParaPublicar, datosDeImagen, directorio, _olvidarGeneraciones
+};

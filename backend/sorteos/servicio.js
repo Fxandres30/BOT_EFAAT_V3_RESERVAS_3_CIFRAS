@@ -13,6 +13,7 @@
 // ==========================================================================
 
 const repo = require("./repo");
+const creacionIdempotente = require("./creacionIdempotente");
 const loterias = require("./loterias");
 const { validarSorteo, validarPlantilla, fechaSorteoDe, instanteBogota, identidadDelSorteo, normalizarPremios, texto: textoLimpio, LIMITES } = require("./validar");
 const { normalizarConfigDiseno } = require("./disenoTabla");
@@ -215,7 +216,20 @@ async function prepararSorteo(usuarioId, entrada, anterior = null) {
 
 }
 
+// POST /sorteos. K4 (F4-F): con solicitud_id (opcional) la misma solicitud
+// crea UN solo borrador y sus repeticiones devuelven ese mismo borrador
+// (sorteos/creacionIdempotente.js). Sin él, como siempre.
 async function crearSorteo(usuarioId, entrada) {
+    const solicitud = creacionIdempotente.validarSolicitud(entrada?.solicitud_id);
+    if (!solicitud.ok) return falla("validacion", { errores: [{ campo: "solicitud_id", mensaje: "Identificador de solicitud no válido (8 a 100 letras, números, «-» o «_»)." }] });
+    return creacionIdempotente.crearUnaVez({
+        db: supabase, usuarioId, solicitudId: solicitud.solicitudId,
+        crear: () => crearSorteoNuevo(usuarioId, entrada),
+        obtener: (id) => repo.obtenerSorteo(usuarioId, id)
+    });
+}
+
+async function crearSorteoNuevo(usuarioId, entrada) {
 
     const p = await prepararSorteo(usuarioId, entrada);
     if (!p.ok) return p;
@@ -484,6 +498,13 @@ async function guardarCaptura(id, version, captura, origen = null) {
 async function confirmar(usuarioId, id, { version, confirmacion, reinicio, captura, imagen, huella } = {}) {
 
     if (confirmacion !== true) return falla("confirmacion_requerida");
+    // Reintento de la MISMA confirmación (misma versión ya confirmada: doble
+    // clic, respuesta perdida): devuelve su estado, no un error (F4-F, K3).
+    const yaConfirmada = await repo.obtenerSorteo(usuarioId, id);
+    if (yaConfirmada.ok && yaConfirmada.data.estado !== "borrador" && yaConfirmada.data.config?.publicacion_inmediata !== true &&
+        Number(yaConfirmada.data.version) === Number(version) && Number(yaConfirmada.data.confirmado_version) === Number(version)) {
+        return { ...yaConfirmada, aviso: "Esta programación ya estaba confirmada: no se confirmó otra vez." };
+    }
 
     const previa = await vistaPrevia(usuarioId, id);
     if (!previa.ok) return previa;
@@ -1107,7 +1128,9 @@ const activos = {
 const socketActivoDe = (usuarioId) => require("../services/baileys/manager").getSocketActivoDe(usuarioId);
 const eventos = {
     listar: (usuarioId) => gestionEventos.listar(usuarioId, { ahora: reloj.ahora() }),
-    aplicar: (usuarioId, id, entrada) => gestionEventos.aplicar(usuarioId, id, entrada, { ahora: reloj.ahora(), socketDe: eventos._socketDe })
+    aplicar: (usuarioId, id, entrada) => gestionEventos.aplicar(usuarioId, id, entrada, { ahora: reloj.ahora(), socketDe: eventos._socketDe }),
+    // Permiso de reservas del sorteo (F3-E): decisión del administrador.
+    permisoReservas: (usuarioId, id, entrada) => gestionEventos.cambiarPermisoReservas(usuarioId, id, entrada)
 };
 eventos._socketDe = socketActivoDe;
 

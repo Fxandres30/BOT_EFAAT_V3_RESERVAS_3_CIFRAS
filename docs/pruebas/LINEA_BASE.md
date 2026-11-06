@@ -29,6 +29,22 @@ El ejecutor es [`scripts/pruebas/ejecutar.js`](../../scripts/pruebas/ejecutar.js
 | 06/11 (F1-A, `npm test`, 131 s) | 192 (incluye las 5 de caracterización) | 191 | **0** | 1 | 2 |
 | 06/11 (F1-B, `npm test`, 138 s) | 197 (+5 de F1-B: `tiempoColombia` ×2, `contarNumeros`, `reservas/liberacion`, `estadosProgramacion`) | 196 | **0** | 1 | 2 |
 | 06/11 (F1-C, `npm test`, 140 s) | 198 (+1: `inactividad/fechaCompraDeFila`) | 197 | **0** | 1 | 2 |
+| 06/11 (F2, `npm test`, 135 s) | 199 (+1: `caracterizacion/criteriosEstadoSorteo`) | 198 | **0** | 1 | 2 |
+| 06/11 (cierre de F2, `npm test`, 137 s) | 199 | 198 | **0** | 1 | 3 (+1: `caracterizacion/estadoSorteosSqlReal`, pasa 4/4 con `--entorno` y PGlite) |
+| 06/11 (F3, `npm test`, 175 s) | 201 (+2: `caracterizacion/modalidadesCierre` C6, `caracterizacion/orquestadorCierre`) | 200 | **0** | 1 | 3 |
+| 06/11 (endurecimiento F3, `npm test`, 111 s) | 203 (+2: `caracterizacion/cierreGrupoProtegido`, `caracterizacion/revisionFinalF3`) | 202 | **0** | 1 | 3 (las 2 de PGlite pasan con `--entorno`) |
+| 06/11 (F4-C, `npm test`, 115 s) | 205 (+2: `caracterizacion/activacionEntradas` C7 con 25 huellas, `caracterizacion/concurrenciaActivacion` C8 con 7 casos) | 204 | **0** | 1 | 3 |
+| 06/11 (F4-D, `npm test` ×5, 109-117 s) | 206 (+1: `sorteos/activarEventoNucleo`) | 205 | **0** en 4 de 5 ejecuciones; **1 sin identificar en 1** (no se repitió en 4 ejecuciones completas ni en 20 repeticiones con carga de C7, C8 y el núcleo) | 1 | 3 |
+| 06/11 (F4-E, `npm test` ×6, salidas completas guardadas) | 207 (+1: `deteccion/deteccionNucleo`) | 206 | **0** en 3 de 6; 1 en las otras 3: dos veces `sorteosProgramados` (aborto de libuv al salir, R17, ya existía antes de F4) y una vez `cierreGrupoProtegido` caso 1 (corregido en la prueba, R18; 18/18 después) | 1 | 3 |
+| 06/11 (F4-F, `npm test` ×4, salidas completas guardadas) | 208 (+1: `caracterizacion/reclamosF4F`, 20 casos) | 206 | **1** en las dos últimas: `calendarioMaestro` (depende de la hora del día, R21; pasa 24/24 con el reloj a las 08:00 de Colombia). Las dos primeras tenían además `recuperacionCaidas` 4: regresión de F4-F (K3), **corregida** | 1 | 3 |
+| 06/11 (F4-F.1, `npm test` ×2, salidas completas guardadas) | 209 (+1: `caracterizacion/publicacionCompartida`, 7 casos) | 208 | **0** en las dos (R21 resuelto) | 1 | 3 |
+| 06/11 (F4-G, `npm test` ×2, salidas completas guardadas) | 210 (+1: `caracterizacion/recuperacionF4G`, 12 casos) | 209 | **0** en las dos | 1 | 3 |
+
+### Expectativas cambiadas a propósito en el cierre de F2
+
+- `reservas/reaccionesReserva`, `reservas/reservaCifras` y seis de `consultas/` (`compatibilidadMisReservas`, `consultasEstadoNumeros`, `consultasPago`, `intencionesMisNumeros`, `misReservasComoMisNumeros`, `unificacionConsultasEstado`): su fixture de «sorteo en curso» no tenía `activo`. Con la regla 4 una fila sin `activo` cuenta como cerrada, así que se añadió `activo: true` al fixture. **Ninguna aserción cambió.**
+- `frontend/tests/eventos/estadoEvento.test.mjs`: «activo ausente = en curso» pasa a «activo ausente = cerrado» (regla 4), comparado con el backend.
+- Cargadores de `.ts` con resolución de imports relativos (sin cambiar aserciones): `eventos/centroEventos`, `eventos/estadoEvento`, `seguridad/aislamientoPanel`, `sorteos/administrarSorteos` (panel) y `eventos/agruparEventosPanel` (backend).
 
 ### Fuentes únicas creadas en F1-B (cada una con su prueba)
 
@@ -54,6 +70,7 @@ Si una ejecución completa muestra fallos con `process out of memory` o «El arc
 |---|---|
 | `backend/tests/sorteos/capturaRealSorteo.test.js` | Chromium y el panel real en `FRONTEND_URL` |
 | `backend/tests/seguridad/cuadriculaClienteSqlReal.test.js` | PGlite (`PGLITE_MODULE`) |
+| `backend/tests/caracterizacion/estadoSorteosSqlReal.test.js` | PGlite (`PGLITE_MODULE`): valida la consulta de diagnóstico de F2 contra `estadosGestion.js` |
 
 ### Desfases resueltos en F1-A
 

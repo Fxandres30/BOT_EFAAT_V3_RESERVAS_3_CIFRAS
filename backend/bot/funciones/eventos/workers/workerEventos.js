@@ -8,7 +8,9 @@ const { reconciliarAperturaGrupo } = require("../grupos/reconciliarApertura");
 // (solo tras confirmar apertura), aplicado aquí a la ruta de reconciliación.
 const { escanearGrupo } = require("../../usuarios/escanerIdentidadesLifecycle");
 const { verificarHoraCierre } = require("../lifecycle/verificarHoraCierre");
-const { finDelEvento } = require("../../../../shared/eventos/estadosGestion");
+const { vigente } = require("../../../../shared/eventos/estadosGestion");
+const { reintentarCierresWhatsapp } = require("../lifecycle/cerrarEvento");
+const { registrarAperturaConfirmada } = require("../lifecycle/activacion/aperturaGrupo");
 
 // Motor central (04/11): un evento guardado sin poder abrir su grupo dejó su
 // ciclo de automatización «pendiente»; al abrirse aquí se reanuda (apertura
@@ -39,6 +41,12 @@ async function workerEventos(sock, { ahora } = {}) {
 
         }
 
+        // Reintentos de WhatsApp de los cierres manuales que ya están cerrados
+        // en la base pero cuyo grupo no se pudo cerrar (orquestador, F3). Se
+        // ejecutan después de leer los activos y también cuando no queda
+        // ninguno. Solo filas de ESTE dueño.
+        const reintentarWhatsapp = () => reintentarCierresWhatsapp({ db: supabase, sock, usuarioId: tenant, ahora: momento().getTime() });
+
         const { data: eventos, error } = await supabase
             .from("eventos_bot")
             .select("*")
@@ -55,6 +63,8 @@ async function workerEventos(sock, { ahora } = {}) {
         }
 
         if (!eventos || eventos.length === 0) {
+
+            await reintentarWhatsapp();
 
             return;
 
@@ -76,7 +86,7 @@ async function workerEventos(sock, { ahora } = {}) {
         // terminada (cierre_estado "cerrado", cancelada, desactivada...) que
         // un reintento antiguo dejó con activo=true no es un sorteo en curso:
         // ni se reabre su grupo ni se vuelve a cerrar.
-        const delTenant = (eventos || []).filter(e => e.usuario_id === tenant && autorizados.has(e.grupo_id) && !finDelEvento(e));
+        const delTenant = (eventos || []).filter(e => e.usuario_id === tenant && autorizados.has(e.grupo_id) && vigente(e));
 
         // ============================================================
         // RECONCILIACIÓN DE APERTURA
@@ -128,19 +138,10 @@ async function workerEventos(sock, { ahora } = {}) {
 
                     }
 
-                    const { error: errorUpdate } = await supabase
-                        .from("eventos_bot")
-                        .update({ abierto: true })
-                        .eq("id", evento.id);
-
-                    if (errorUpdate) {
-
-                        console.error(`❌ No se pudo registrar abierto=true del evento ${evento.id} (se reintentará):`, errorUpdate.message);
-                        continue;
-
-                    }
-
-                    evento.abierto = true;
+                    // Registro común de una apertura confirmada (F4-G): solo
+                    // sobre una fila todavía activa. Si otro cierre la terminó
+                    // entretanto, no se marca abierta ni se reanuda su ciclo.
+                    if (!(await registrarAperturaConfirmada(supabase, evento))) continue;
                     sincronizadas++;
 
                     console.log(`🔓 Reconciliado: grupo del evento ${evento.id} abierto en WhatsApp`);
@@ -203,6 +204,8 @@ async function workerEventos(sock, { ahora } = {}) {
             }
 
         }
+
+        await reintentarWhatsapp();
 
     } catch (error) {
 

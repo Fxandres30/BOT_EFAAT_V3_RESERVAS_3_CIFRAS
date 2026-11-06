@@ -40,6 +40,8 @@ function cargarTs(rutaAbs) {
         // apiSorteos invalida la caché del índice de Reservas tras operar.
         if (spec === "@/lib/cache/almacen") return { invalidar: () => {} };
         if (spec.startsWith("@/")) return {};
+        // Imports relativos a otros .ts (obtenerEventos -> estadoEvento, F2).
+        if (spec.startsWith(".")) return cargarTs(path.resolve(path.dirname(rutaAbs), `${spec}.ts`));
         return require(spec);
     };
     new Function("module", "exports", "require", outputText)(modulo, modulo.exports, requerir);

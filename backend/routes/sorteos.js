@@ -18,11 +18,17 @@ router.use(exigirUsuario);
 
 const ESTADO_HTTP = {
     validacion: 400,
+    // Orquestador de cierre (F3): otra acción cambió el sorteo entretanto; y
+    // permiso de reservas sin la migración 047.
+    estado_cambio: 409,
+    migracion_pendiente: 409,
     confirmacion_requerida: 400,
     confirmacion_actividad_requerida: 409,
     no_encontrado: 404,
     version_cambiada: 409,
     estado_invalido: 409,
+    // K4 (F4-F): otra petición con el mismo solicitud_id sigue creando.
+    solicitud_en_curso: 409,
     ya_publicado: 409,
     bloqueado: 409,
     conflicto: 409,
@@ -124,7 +130,11 @@ router.patch("/cuentas/:id", conId(async (req, res) => responder(res, await serv
 // Sorteos ya en los grupos (activos e inactivos recientes) y sus acciones:
 // cerrar, reabrir, desactivar (grupo o todos), cancelar, eliminar (lógico).
 router.get("/eventos", seguro(async (req, res) => responder(res, await servicio.eventos.listar(req.usuarioId))));
-router.post("/eventos/:id/accion", conId(async (req, res) => responder(res, await servicio.eventos.aplicar(req.usuarioId, req.params.id, req.body || {}))));
+// El operador (historial) sale del TOKEN, nunca del cuerpo de la petición.
+const operadorDe = (req) => req.usuarioEmail || req.usuarioId;
+router.post("/eventos/:id/accion", conId(async (req, res) => responder(res, await servicio.eventos.aplicar(req.usuarioId, req.params.id, { ...(req.body || {}), operador: operadorDe(req) }))));
+// Permiso de reservas del sorteo (F3-E): segun_estado | permitidas | desactivadas.
+router.put("/eventos/:id/reservas", conId(async (req, res) => responder(res, await servicio.eventos.permisoReservas(req.usuarioId, req.params.id, { modo: req.body?.modo, operador: operadorDe(req) }))));
 
 // ------------------------------------------------------ sorteos activos ---
 // El sorteo en curso de cada tabla, lo haya detectado el bot o creado el

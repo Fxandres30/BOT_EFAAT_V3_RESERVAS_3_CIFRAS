@@ -17,9 +17,16 @@ interface FilaEstado {
 
 const GESTION = ["desactivado", "cancelado", "eliminado"];
 
-function motivoGestion(f: FilaEstado): string | null {
+// FUENTE ÚNICA DEL PANEL para el estado de una fila de eventos_bot (F2,
+// 06/11/2026). Espejo de backend/shared/eventos/estadosGestion.js:
+// motivoGestion y eliminado son la misma regla (lo comprueba
+// backend/tests/caracterizacion/criteriosEstadoSorteo.test.js). Nada en el
+// panel debe volver a combinar activo/estado/cierre_motivo a mano.
+export function motivoGestion(f: FilaEstado): string | null {
     if (f.estado && GESTION.includes(f.estado)) return f.estado;
-    const motivo = String(f.cierre_motivo || "");
+    // Fila normalizada (F3): el motivo original sigue después del prefijo.
+    let motivo = String(f.cierre_motivo || "");
+    if (motivo.startsWith("normalizado: ")) motivo = motivo.slice("normalizado: ".length);
     if (motivo.startsWith("panel:")) {
         const m = motivo.slice("panel:".length).split(/[\s:]/)[0];
         if (GESTION.includes(m)) return m;
@@ -28,9 +35,25 @@ function motivoGestion(f: FilaEstado): string | null {
     return null;
 }
 
-// Mismo criterio de «activo» que agruparEventos (null/undefined = activo).
+// Eliminación lógica desde «Administrar»: la fila se conserva y no se muestra.
+export function eliminado(f: FilaEstado): boolean {
+    return motivoGestion(f) === "eliminado";
+}
+
+// «En curso» en Eventos: MISMO criterio que el backend
+// (estadosGestion.enCursoPorActivo / gestionEventos.estadoFila), para que el
+// panel y el backend muestren exactamente el mismo estado (regla 3, F2).
+// REGLA F2 (06/11/2026): antes el panel daba por en curso cualquier fila con
+// activo distinto de false, también activo NULL; el backend la mostraba
+// cerrada. Ahora NULL = cerrada en los dos (regla 4; «inerte para el bot»
+// desde el 22/10). Una fila activo=true ya terminada (C3) sigue «en curso» en
+// los dos hasta F3: sus acciones (cerrar/reabrir) dependen de activo.
+export function enCursoPorActivo(f: FilaEstado): boolean {
+    return f.activo === true;
+}
+
 export function estadoFila(f: FilaEstado): EstadoEvento {
-    if (f.activo !== false) return "en_curso";
+    if (enCursoPorActivo(f)) return "en_curso";
     const m = motivoGestion(f);
     return m === "desactivado" || m === "cancelado" || m === "sustituido" ? m : "cerrado";
 }
@@ -39,7 +62,7 @@ export function estadoFila(f: FilaEstado): EstadoEvento {
 // alguno; si no, el de la primera fila (la representante).
 export function estadoSorteo(filas: FilaEstado[]): EstadoEvento {
     if (!filas.length) return "cerrado";
-    return filas.some(f => f.activo !== false) ? "en_curso" : estadoFila(filas[0]);
+    return filas.some(enCursoPorActivo) ? "en_curso" : estadoFila(filas[0]);
 }
 
 export const ETIQUETA_ESTADO: Record<EstadoEvento, { texto: string; kind: StatusKind }> = {

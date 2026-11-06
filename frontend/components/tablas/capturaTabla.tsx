@@ -10,7 +10,9 @@
 // previa de los sorteos (instantáneo y programado), «Publicar ahora»,
 // «Confirmar y programar», «Reintentar» y los grupos nuevos. Las diferencias
 // entre usos son solo datos de entrada (números, diseño, ancho), nunca otro
-// renderizador. El servidor no genera imágenes (sin Chromium).
+// renderizador. Sin navegador del administrador (p. ej. un programado a su
+// hora), el servidor ejecuta ESTE MISMO capturarTabla sobre TablaImprimible
+// en Chromium headless (/tablas/imprimir, F4-G); nunca otro generador.
 //
 // Entrada: los números como los pinta la imagen (libres / ocupados /
 // pagados: mismo contrato que el backend) + diseño + ancho. Salida: el PNG

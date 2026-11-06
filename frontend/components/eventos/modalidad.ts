@@ -2,6 +2,8 @@
 // columnas que ya existen en eventos_bot (cifras, valor, estado, activo) —
 // no hay columna nueva ni datos inventados.
 
+import { enCursoPorActivo } from "./estadoEvento";
+
 export type Modalidad = "dos" | "tres_pago" | "tres_gratis";
 
 export type Fase = "activo" | "programado" | "finalizado";
@@ -39,14 +41,17 @@ export function modalidadDe(evento: { cifras?: number | null; cantidad_numeros?:
     return !valor ? "tres_gratis" : "tres_pago";
 }
 
-// finalizado: cerrado por el bot (estado "cerrado" / activo=false).
+// finalizado: cerrado por el bot (estado "cerrado") o no en curso según la
+//   fuente única del panel (estadoEvento.enCursoPorActivo: activo !== true).
+//   REGLA F2 (06/11/2026): antes activo NULL contaba como activo; ahora
+//   como finalizado (regla 4), igual que en el backend.
 // programado: solo si el estado lo dice explícitamente — hoy el bot no
 //   crea eventos programados; NO se deduce por fecha (fecha_evento se
 //   guarda en UTC y un sorteo nocturno parecería "de mañana").
 // activo: el resto.
 export function faseDe(evento: { estado?: string | null; activo?: boolean | null }): Fase {
     const estado = (evento?.estado || "").toLowerCase();
-    if (estado === "cerrado" || estado === "finalizado" || evento?.activo === false) return "finalizado";
+    if (estado === "cerrado" || estado === "finalizado" || !enCursoPorActivo(evento || {})) return "finalizado";
     if (estado === "programado") return "programado";
     return "activo";
 }

@@ -47,7 +47,8 @@ function cargarModulos(fake) {
 
 }
 
-const EVENTO = { id: "evento-1", tabla: TABLA, valor: 5000, cifras: 2, grupo_id: "g1", usuario_id: "u1" };
+// activo: true — sorteo en curso (F2: una fila sin activo cuenta como cerrada).
+const EVENTO = { id: "evento-1", activo: true, estado: "abierto", tabla: TABLA, valor: 5000, cifras: 2, grupo_id: "g1", usuario_id: "u1" };
 const USUARIO = { id: "cliente-1", nombre: "Cliente Uno", telefono: "3000000000", lid: null };
 
 function sembrar(fake) {

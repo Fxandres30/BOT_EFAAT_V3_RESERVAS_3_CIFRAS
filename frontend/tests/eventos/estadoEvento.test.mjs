@@ -27,7 +27,9 @@ function cargarTs(rutaAbs) {
         compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true }
     });
     const modulo = { exports: {} };
-    new Function("module", "exports", "require", outputText)(modulo, modulo.exports, require);
+    // Imports relativos a otros .ts (agruparEventos -> estadoEvento, F2).
+    const requerir = (id) => id.startsWith(".") ? cargarTs(path.resolve(path.dirname(rutaAbs), `${id}.ts`)) : require(id);
+    new Function("module", "exports", "require", outputText)(modulo, modulo.exports, requerir);
     return modulo.exports;
 }
 
@@ -64,7 +66,11 @@ prueba("sorteo con varios grupos: «En curso» si lo está en alguno; si no, el 
     assert.strictEqual(estadoSorteo([FILAS.desactivada, FILAS.activa]), "en_curso");
     assert.strictEqual(estadoSorteo([FILAS.cancelada, FILAS.cancelada]), "cancelado");
     assert.strictEqual(estadoSorteo([]), "cerrado");
-    assert.strictEqual(estadoSorteo([{ estado: "abierto" }]), "en_curso", "activo ausente = activo (como agruparEventos)");
+    // CAMBIO INTENCIONADO F2 (regla 4, 06/11/2026): antes «activo ausente =
+    // activo»; ahora una fila sin activo (NULL) es cerrada, igual que en el
+    // backend (gestionEventos / estadosGestion.estadoEnGrupoPorActivo).
+    assert.strictEqual(estadoSorteo([{ estado: "abierto" }]), "cerrado", "activo ausente = cerrado (regla 4)");
+    assert.strictEqual(estadoSorteo([{ activo: null, estado: "abierto" }]), backend.estadoEnGrupoPorActivo({ activo: null, estado: "abierto" }), "paridad con el backend");
 });
 
 prueba("etiquetas: nunca el texto crudo de la base; desactivado y cancelado se distinguen de cerrado", () => {

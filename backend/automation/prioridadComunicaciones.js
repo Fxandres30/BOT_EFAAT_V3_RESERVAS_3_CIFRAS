@@ -46,15 +46,18 @@ function fuentesDeComunicacion(configSorteo) {
 async function sorteoDelEvento(evento) {
     if (!evento?.usuario_id || !evento?.identidad_evento_real) return { ok: true, sorteo: null };
     const { data, error } = await supabase.from("sorteos_programados")
-        .select("id, estado, config")
+        .select("id, estado, config, identidad_evento_real")
         .eq("usuario_id", evento.usuario_id)
         .eq("identidad_evento_real", evento.identidad_evento_real)
         .neq("estado", "cancelado")
         .order("creado_en", { ascending: false })
-        .limit(1);
+        .limit(10);
     // Sin la migración 024 no hay sorteos del panel: todo es del grupo.
     if (error) return error.code === "42P01" ? { ok: true, sorteo: null } : { ok: false, error };
-    return { ok: true, sorteo: data?.[0] || null };
+    // Criterio único (F4-F.1): la más reciente, salvo una adoptante pura (sus
+    // avisos son los de la programación propietaria de la publicación).
+    const { elegirProgramacion } = require("../sorteos/publicacionCompartida");
+    return { ok: true, sorteo: await elegirProgramacion(supabase, evento.usuario_id, data || []) };
 }
 
 // Fuentes para un evento concreto. { ok, fuentes, sorteo }
@@ -67,17 +70,34 @@ async function fuentesDelEvento(evento) {
 // Claves del ExecutionGuard de los DOS avisos de cierre posibles de un evento
 // en un grupo. Si cualquiera existe (en cualquier estado: enviado, en curso o
 // fallido), el cierre de ese evento y grupo ya se gestionó: no se envía otro.
-const claveCierreSorteo = (sorteoId, grupoId) => `sorteo:${sorteoId}:grupo:${grupoId}:aviso_cierre`;
+//
+// VIGENCIA (F3-D, 06/11/2026): un sorteo reabierto tiene un ciclo NUEVO, y su
+// siguiente cierre es otro cierre legítimo con su propio aviso. Por eso solo
+// cuenta la vigencia ACTUAL: el ciclo más reciente del evento y la clave del
+// aviso propio de esa vigencia. Un evento con un solo ciclo (nunca reabierto)
+// usa exactamente las claves de siempre: ningún aviso ya enviado se repite.
+const claveCierreSorteo = (sorteoId, grupoId, sufijo = "aviso_cierre") => `sorteo:${sorteoId}:grupo:${grupoId}:${sufijo}`;
 const claveCierreGrupo = (eventSessionId) => `${eventSessionId}:CLOSE_MESSAGE`;
+
+// Ciclos del evento, del más antiguo al más reciente.
+async function ciclosDelEvento(eventoId) {
+    if (!eventoId) return [];
+    const { data, error } = await supabase.from("event_sessions").select("id, creado_en").eq("evento_id", eventoId).order("creado_en", { ascending: true });
+    if (error) throw error;
+    return data || [];
+}
+
+// Sufijo de la clave del aviso propio del sorteo en la vigencia actual: el de
+// siempre en el primer ciclo; el id del ciclo de reapertura después.
+function sufijoAvisoCierre(ciclos) {
+    return (ciclos || []).length > 1 ? `aviso_cierre:${ciclos[ciclos.length - 1].id}` : "aviso_cierre";
+}
 
 async function avisoCierreYaEnviado({ eventoId, grupoId, sorteoId = null }) {
     const claves = [];
-    if (sorteoId) claves.push(claveCierreSorteo(sorteoId, grupoId));
-    if (eventoId) {
-        const { data: ciclos, error } = await supabase.from("event_sessions").select("id").eq("evento_id", eventoId);
-        if (error) throw error;
-        for (const c of ciclos || []) claves.push(claveCierreGrupo(c.id));
-    }
+    const ciclos = await ciclosDelEvento(eventoId);
+    if (sorteoId) claves.push(claveCierreSorteo(sorteoId, grupoId, sufijoAvisoCierre(ciclos)));
+    if (ciclos.length) claves.push(claveCierreGrupo(ciclos[ciclos.length - 1].id));
     if (!claves.length) return false;
     const { data, error } = await supabase.from("automation_actions").select("clave_idempotencia").in("clave_idempotencia", claves);
     if (error) throw error;
@@ -92,5 +112,7 @@ module.exports = {
     fuentesDelEvento,
     avisoCierreYaEnviado,
     claveCierreSorteo,
-    claveCierreGrupo
+    claveCierreGrupo,
+    ciclosDelEvento,
+    sufijoAvisoCierre
 };

@@ -43,11 +43,17 @@ const { mensajeRecordatorio, mensajeAvisoCierre } = require("./mensajes");
 const { partesBogota, instanteBogota, fechaSorteoDe, identidadDelSorteo } = require("./validar");
 const { decidirRecordatoriosSegunEstado } = require("../automation/eventRules");
 const { leerEstadoParaRecordatorios } = require("../automation/repo/estadoSorteo");
-const { cierreSilencioso, finDelEvento } = require("../shared/eventos/estadosGestion");
-const { sorteosActivosDelPrecio, filasPorId, reemplazarAnteriores, revertirReemplazo } = require("../shared/eventos/unSorteoPorPrecio");
+const { cierreSilencioso, finDelEvento, vigente } = require("../shared/eventos/estadosGestion");
+const { sorteosActivosDelPrecio, reemplazarAnteriores, revertirReemplazo } = require("../shared/eventos/unSorteoPorPrecio");
 // Recordatorios y cierre: los del sorteo tienen prioridad sobre los generales
 // del grupo (automation/scheduler.js); la decisión es la misma en los dos.
 const prioridad = require("../automation/prioridadComunicaciones");
+const activacionPanel = require("./activacionPanel");
+const compartida = require("./publicacionCompartida");
+const { MAX_INTENTOS_AUTOMATICOS, EN_ESPERA, sinPromesaDeReintento, esInstantaneo, resultadoInstantaneo, finalizarSorteo } = require("./estadoPublicacion");
+const { recuperarAtascados } = require("./recuperacionPublicacion");
+// Movidos a la entrada del panel (F4-F); se siguen exportando desde aquí.
+const { eventoTerminado, ERROR_IMAGEN } = activacionPanel;
 // Liberación: los mismos campos, filtro y auditoría que el botón «Liberar»
 // del panel (fuente única, F1-B).
 const { consultaLiberacion } = require("../bot/funciones/reservas/liberacion");
@@ -61,7 +67,6 @@ async function otraCuentaEnGrupo(supabase, usuarioId, grupoId) {
     return { hay: (data || []).some(f => f.usuario_id !== usuarioId) };
 }
 
-const MAX_INTENTOS_AUTOMATICOS = 5;
 const VENTANA_RECORDATORIO_MS = 10 * 60 * 1000;
 // El reinicio de la tabla («Reiniciar la tabla antes de publicar») se hace
 // en el proceso de publicación, aproximadamente este tiempo antes del
@@ -74,54 +79,15 @@ const ANTICIPO_REINICIO_MS = 60 * 1000;
 // con este prefijo en ultimo_error para explicarlo. Se reintenta en cada
 // ciclo hasta el cierre de reservas del sorteo nuevo; nunca se reemplaza
 // el sorteo actual.
-const EN_ESPERA = "En espera: ";
 const TIPOS_ESPERA = new Set(["sorteo_activo", "otra_cuenta"]);
 
 const enEspera = (grupo) => String(grupo?.ultimo_error || "").startsWith(EN_ESPERA);
 
-// Con este prefijo el panel distingue que la imagen no llegó a generarse.
-const ERROR_IMAGEN = "No se pudo generar la imagen de la tabla";
+// ERROR_IMAGEN (prefijo con el que el panel distingue que la imagen no llegó
+// a generarse) y eventoTerminado viven en activacionPanel.js (F4-F).
 
-const COMO_TERMINO = {
-    cerrado: "ya está cerrado",
-    cancelado: "fue cancelado",
-    desactivado: "fue desactivado",
-    eliminado: "fue eliminado",
-    sustituido: "fue sustituido por otro sorteo"
-};
-
-// Sin reintento automático pendiente, el mensaje no puede prometerlo.
-const sinPromesaDeReintento = (texto) => String(texto || "").replace(/[.;]?\s*se reintentará\.?/gi, ".");
-
-// SORTEO INSTANTÁNEO (config.publicacion_inmediata): no hereda el flujo de
-// los programados. Se publica solo cuando el administrador lo pide
-// («Publicar ahora» o «Reintentar» de UN destino: publicarPendientes con su
-// sorteoId); el ciclo automático no lo toma. Por eso un destino que falla o
-// tendría que esperar nunca queda «fallido»/«pendiente» a la espera de un
-// ciclo: queda en error (requiere_revision) con el motivo real, y se
-// reintenta solo ese destino, a mano.
-const esInstantaneo = (sorteo) => sorteo?.config?.publicacion_inmediata === true;
-
-function resultadoInstantaneo(cambios) {
-    if (cambios.estado === "fallido") {
-        return { ...cambios, estado: "requiere_revision", ultimo_error: sinPromesaDeReintento(cambios.ultimo_error) };
-    }
-    if (cambios.estado === "pendiente") {
-        const { intentos: _intentos, ...resto } = cambios;
-        const motivo = String(cambios.ultimo_error || "").replace(EN_ESPERA, "").split(" Debe resolverse antes")[0];
-        return { ...resto, estado: "requiere_revision", ultimo_error: `No se publicó en este momento: ${motivo} Cuando se resuelva, pulsa «Reintentar» en este destino.` };
-    }
-    return cambios;
-}
-
-// Una programación nunca revierte lo que decidió el administrador: el grupo
-// se detiene y lo dice. Nada se escribe en el evento.
-function eventoTerminado(fin) {
-    const siguiente = fin === "eliminado"
-        ? "Para volver a publicarlo, programa un sorteo con otra fecha, hora o valor."
-        : "Para continuar, reábrelo en Eventos y pulsa «Reintentar».";
-    return { estado: "requiere_revision", ultimo_error: `El sorteo de este grupo ${COMO_TERMINO[fin]}: no se publicó ni se reactivó. ${siguiente}` };
-}
+// MAX_INTENTOS_AUTOMATICOS, EN_ESPERA, sinPromesaDeReintento, esInstantaneo,
+// resultadoInstantaneo y finalizarSorteo viven en estadoPublicacion.js (F4-G).
 
 function dependenciasReales() {
     return {
@@ -130,11 +96,11 @@ function dependenciasReales() {
         consultarEventoDelSorteo: require("../bot/funciones/eventos/consultarEvento").consultarEventoDelSorteo,
         abrirGrupo: require("../bot/funciones/eventos/grupos/abrirGrupo").abrirGrupo,
         sendMessage: require("../services/baileys/send").sendMessage,
-        // Imagen: la de un sorteo programado es la captura del panel guardada
-        // al confirmarlo (capturaProgramada.js: la MISMA captura que publica
-        // el instantáneo), solo si la tabla no cambió. El resto, lo de siempre
-        // (compartirTabla.capturarImagenTabla). Texto del anuncio y envío de
-        // imagen + pie con ExecutionGuard, como «Compartir».
+        // Imagen (F4-G): generada en el momento con los datos actuales de la
+        // tabla por el generador de «Compartir» (capturaProgramada.js →
+        // capturarTabla en el navegador del panel o, sin él, en Chromium
+        // headless). Texto del anuncio y envío de imagen + pie con
+        // ExecutionGuard, como «Compartir».
         capturarImagen: require("./capturaProgramada").capturarParaPublicar,
         textoParaCompartir: require("../services/destinosCompartir").textoParaCompartir,
         compartirEnGrupos: require("../services/compartirTabla").compartirEnGrupos,
@@ -233,167 +199,17 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora, 
     if (!previo.ok) return { estado: "fallido", ultimo_error: "No se pudo comprobar el evento del grupo; se reintentará." };
     if (finDelEvento(previo.data)) return eventoTerminado(finDelEvento(previo.data));
 
-    // La imagen es obligatoria y va ANTES de crear o tocar el evento: si no
-    // se puede generar, no se escribe nada. Lo que publica «Compartir» para
-    // este sorteo: la tabla del precio con el diseño guardado en el sorteo.
-    let imagen;
-    try {
-        // sorteoId: «Publicar ahora» entrega la captura que el panel ya hizo
-        // de ESTE sorteo (servicio.publicarAhora); si no, se captura ahora.
-        // Programado: la captura guardada al confirmarlo (capturaProgramada.js).
-        imagen = await deps.capturarImagen(Number(config.valor), usuarioId, null, { sorteoId: sorteo.id, sorteo, captura: config.captura, disenoSorteo: config.diseno || null });
-    } catch (err) {
-        // La imagen guardada no vale (no existe o la tabla cambió): repetir no
-        // lo arregla; el administrador vuelve a capturar con «Reintentar».
-        if (err?.revision) {
-            return { estado: "requiere_revision", ultimo_error: `${ERROR_IMAGEN}: ${err.message} No se envió nada.` };
-        }
-        // Falta configuración: repetir daría el mismo error. Lo arregla una
-        // persona y luego pide el reintento.
-        if (err?.configuracion) {
-            return { estado: "requiere_revision", ultimo_error: `${ERROR_IMAGEN} por la configuración del servidor: ${err.message} No se envió nada. Cuando esté corregida, pulsa «Reintentar».` };
-        }
-        return { estado: "fallido", ultimo_error: `${ERROR_IMAGEN} (${err?.message || err}); no se envió nada. Se reintentará.` };
-    }
-
-    if (!Buffer.isBuffer(imagen) || !imagen.length) {
-        return { estado: "fallido", ultimo_error: `${ERROR_IMAGEN} (no se obtuvo un PNG válido); no se envió nada. Se reintentará.` };
-    }
-
-    // La captura tarda: el evento se vuelve a leer justo antes de escribir,
-    // por si el administrador lo cerró entretanto.
-    const releido = await buscarEventoDelSorteo(grupoId, usuarioId, sorteo.identidad_evento_real);
-    if (!releido.ok) return { estado: "fallido", ultimo_error: "No se pudo comprobar el evento del grupo; se reintentará." };
-    if (finDelEvento(releido.data)) return eventoTerminado(finDelEvento(releido.data));
-    const eventoAnterior = releido.data;
-
-    // UN SORTEO POR PRECIO (01/11): el sorteo anterior del MISMO precio se
-    // reemplaza en TODOS sus grupos; el sorteo propio de otro precio que
-    // seguía abierto en ESTE grupo, solo aquí (un sorteo vigente por grupo).
-    // Antes de guardar el nuevo (la 043 rechaza dos activos del mismo
-    // precio); si el nuevo no se guarda, se deshace.
-    const motivoReemplazo = `sustituido por el sorteo ${config.nombre || ""} ${config.hora_fin || ""}`.trim();
-    const ocupan = await sorteosActivosDelPrecio(deps.supabase, { usuarioId, valor: config.valor, identidad: sorteo.identidad_evento_real, excepto: eventoAnterior?.id ? [eventoAnterior.id] : [] });
-    const delGrupoCompletas = await filasPorId(deps.supabase, usuarioId, delGrupo.map(f => f.id).filter(id => !(ocupan.filas || []).some(o => o.id === id)));
-    if (!ocupan.ok || !delGrupoCompletas.ok) return { estado: "fallido", ultimo_error: "No se pudo revisar el sorteo anterior de este precio; no se publicó. Se reintentará." };
-    const reemplazo = await reemplazarAnteriores(deps.supabase, { usuarioId, filas: [...ocupan.filas, ...delGrupoCompletas.filas], motivo: motivoReemplazo, ahora });
-    if (!reemplazo.ok) return { estado: "fallido", ultimo_error: `No se pudo reemplazar el sorteo anterior (${reemplazo.error?.message || "error"}); no se publicó. Se reintentará.` };
-
-    const guardado = await deps.guardarEvento({
-        sock,
-        grupoId,
-        evento: {
-            nombre: config.nombre,
-            hora: config.hora_fin,
-            horaCierre: config.hora_cierre,
-            valor: config.valor,
-            premios: config.premios || [],
-            tabla: sorteo.tabla,
-            cifras: sorteo.cifras,
-            cantidad_numeros: sorteo.cantidad_numeros
-        },
-        eventoAnterior,
-        sorteoVigente: { identidad_evento_real: sorteo.identidad_evento_real, fecha_evento: fechaSorteo }
+    // Imagen, relectura y ACTIVACIÓN (núcleo central), una sola vez por sorteo
+    // y grupo entre programaciones (K3, F4-F): entrada del panel
+    // (activacionPanel.js). Mismas escrituras, orden, mensajes y estados.
+    return activacionPanel.publicarDestino({
+        sock, sorteo, grupo, delGrupo, fechaSorteo, ahora, deps, solicitado, buscarEventoDelSorteo,
+        esperar: (motivo) => ({
+            estado: "pendiente",
+            intentos: Math.max(0, (Number(grupo.intentos) || 0) - 1),
+            ultimo_error: `${EN_ESPERA}${motivo}${cierre ? ` Debe resolverse antes del cierre de reservas (${fechaSorteo} ${config.hora_cierre}); si no, quedará en revisión.` : ""}`
+        })
     });
-
-    if (!guardado?.id) {
-        await revertirReemplazo(deps.supabase, { usuarioId, cerradas: reemplazo.cerradas, motivo: motivoReemplazo });
-        return { estado: "fallido", ultimo_error: "No se pudo guardar el evento; se reintentará." };
-    }
-
-    // Contadores del evento con las reservas que ya tiene su identidad
-    // (anticipadas desde el panel); la fila nueva nace en cero.
-    try { if (deps.actualizarEvento) await deps.actualizarEvento(guardado); } catch { /* best-effort */ }
-
-    const base = { evento_bot_id: guardado.id };
-
-    // Mensaje desactivado en el sorteo (activo=false): se publica la imagen
-    // sin texto. Un texto vacío por cualquier otro motivo sigue sin publicarse.
-    const texto = await deps.textoParaCompartir(usuarioId, guardado);
-    if (texto?.origen !== "sorteo" || (!texto.texto && texto.activo !== false)) {
-        return { ...base, estado: "fallido", ultimo_error: "No se pudo preparar el texto del anuncio del sorteo; no se envió nada. Se reintentará." };
-    }
-
-    // Sin el grupo abierto los clientes no pueden reservar: el anuncio no se
-    // envía y el grupo no cuenta como publicado. Se reintenta (misma fila,
-    // por identidad); entretanto el worker de eventos también intenta
-    // abrirlo (abierto=false, mismo mecanismo que la detección).
-    const abierto = await deps.abrirGrupo({ sock, grupoId });
-    if (!abierto) {
-        if (guardado.abierto !== false) await deps.supabase.from("eventos_bot").update({ abierto: false }).eq("id", guardado.id);
-        return { ...base, estado: "fallido", ultimo_error: "WhatsApp no confirmó la apertura del grupo: no se envió el anuncio. Se reintentará." };
-    }
-
-    // Apertura pendiente de un intento anterior: WhatsApp ya la confirmó.
-    if (guardado.abierto === false) await deps.supabase.from("eventos_bot").update({ abierto: true }).eq("id", guardado.id).eq("activo", true);
-
-    // Solicitud FIJA por sorteo, grupo y reintento manual: los reintentos
-    // automáticos usan la misma clave del ExecutionGuard y nunca duplican el
-    // anuncio; solo el administrador abre una nueva (reintentos_manuales).
-    const r = await deps.compartirEnGrupos({
-        evento: guardado,
-        sock,
-        grupos: [{ grupo_id: grupoId, nombre: guardado.grupo_nombre || null }],
-        caption: texto.texto,
-        solicitudId: `sorteo-${sorteo.id}-publicacion-${Number(grupo.reintentos_manuales) || 0}`,
-        imagen
-    });
-
-    // Rechazado antes de enviar (sin sesión, imagen inválida...).
-    if (!r?.ok) return { ...base, estado: "fallido", ultimo_error: `No se envió el anuncio (${r?.motivo || "error"}); se reintentará.` };
-
-    const envio = r.resultados[0] || { estado: "fallido", motivo: "sin_resultado" };
-
-    if (envio.estado === "enviado" || envio.estado === "ya_enviado") {
-        // Un evento es un evento: el MISMO motor que el detector de WhatsApp
-        // (ciclo de automatización, OPEN_MESSAGE, y luego tabla inicial,
-        // recordatorios, actualizaciones y cierre del Scheduler). Después del
-        // anuncio, como en WhatsApp. «ya_enviado» = un intento anterior se
-        // cortó tras enviar: el motor lo completa sin repetir nada. Nunca
-        // cambia el resultado de la publicación.
-        const motor = deps.motorEventos || require("../automation/motorEventos");
-        await motor.procesarEventoPublicado({ evento: guardado, sock, ahora, tablaPublicada: true });
-        return { ...base, estado: "publicado", version_publicada: sorteo.version, publicado_en: ahora.toISOString(), ultimo_error: null };
-    }
-
-    // El registro de idempotencia no se pudo crear: el anuncio NO se envió.
-    if (envio.motivo === "error_insert") {
-        return { ...base, estado: "fallido", ultimo_error: "No se pudo registrar el envío; se reintentará." };
-    }
-
-    // Falló el envío, o un intento anterior quedó a medias: no se sabe con
-    // certeza si llegó. Nunca se reenvía solo.
-    return {
-        ...base,
-        estado: "requiere_revision",
-        ultimo_error: envio.motivo === "fallo_ejecucion"
-            ? `El anuncio no se pudo enviar: ${envio.error}`
-            : `Estado del anuncio incierto (${envio.motivo}); revisa el grupo antes de reintentar.`
-    };
-
-}
-
-async function finalizarSorteo(usuarioId, sorteoId) {
-
-    const grupos = await repo.gruposDelSorteo(usuarioId, sorteoId);
-    if (!grupos.ok) return;
-
-    const lista = grupos.data;
-    const enCurso = lista.some(g => g.estado === "pendiente" || g.estado === "publicando" ||
-        (g.estado === "fallido" && (Number(g.intentos) || 0) < MAX_INTENTOS_AUTOMATICOS));
-
-    if (enCurso) return;
-
-    const vivos = lista.filter(g => g.estado !== "cancelado");
-    const publicados = vivos.filter(g => g.estado === "publicado").length;
-
-    const estado = vivos.length === 0 ? "cancelado"
-        : publicados === vivos.length ? "publicado"
-            : publicados > 0 ? "publicado_parcial"
-                : "fallido";
-
-    await repo.actualizarSorteoSi(usuarioId, sorteoId, { estados: ["publicando"] }, { estado });
-
 }
 
 // ¿El sorteo pidió reiniciar la tabla al publicar y todavía no se hizo? Las
@@ -455,15 +271,15 @@ async function reemplazarParaReiniciar({ usuarioId, sorteo, revision, ahora, dep
     if (!alPublicar) return { anticipado: true };
 
     const motivo = motivoDeReemplazo(sorteo.config);
-    const r = await reemplazarAnteriores(deps.supabase, { usuarioId, filas: ocupan.filas, motivo, ahora });
+    const r = await reemplazarAnteriores(deps.supabase, { usuarioId, filas: ocupan.filas, motivo, ahora, modalidad: "sustitucion_reinicio" });
     if (!r.ok) return { error: `no se pudo reemplazar el sorteo anterior (${r.error?.message || "error"}); no se modificó nada y se reintentará.` };
 
-    return { reemplazo: { cerradas: r.cerradas, motivo } };
+    return { reemplazo: { cerradas: r.cerradas, motivo, modalidad: r.modalidad } };
 
 }
 
 async function deshacerReemplazo(deps, usuarioId, reemplazo) {
-    await revertirReemplazo(deps.supabase, { usuarioId, cerradas: reemplazo.cerradas, motivo: reemplazo.motivo });
+    await revertirReemplazo(deps.supabase, { usuarioId, cerradas: reemplazo.cerradas, motivo: reemplazo.motivo, modalidad: reemplazo.modalidad });
 }
 
 // Reinicio de la tabla elegido al programar: se hace UNA vez, en el proceso
@@ -694,7 +510,13 @@ async function procesarPublicados({ sock, deps, ahora }) {
     for (const sorteo of res.data) {
 
         const grupos = await repo.gruposDelSorteo(usuarioId, sorteo.id);
-        const publicados = (grupos.data || []).filter(g => g.estado === "publicado" && g.evento_bot_id);
+        // Publicación COMPARTIDA (K3, F4-F.1): en un grupo cuya publicación
+        // produjo otra programación del mismo sorteo, los recordatorios y el
+        // aviso de cierre los envía la propietaria. Sin poder saberlo, no se
+        // envía nada en este ciclo (nunca un duplicado).
+        let adoptados;
+        try { adoptados = await compartida.gruposAdoptados(deps.supabase, sorteo, grupos.data); } catch { continue; }
+        const publicados = (grupos.data || []).filter(g => g.estado === "publicado" && g.evento_bot_id && !adoptados.has(g.grupo_id));
         if (!publicados.length) continue;
 
         // Fila completa: el estado real de los números (antes de cada
@@ -713,7 +535,12 @@ async function procesarPublicados({ sock, deps, ahora }) {
             // otro): nada más que enviar para éste.
             if (!ev || ev.identidad_evento_real !== sorteo.identidad_evento_real) continue;
 
-            if (ev.activo) {
+            // REGLA F2 (06/11/2026): solo un sorteo VIGENTE recibe
+            // recordatorios. Una fila activo=true ya terminada (C3) ya no los
+            // recibe. El aviso de cierre (rama siguiente) conserva su
+            // condición exacta (!ev.activo): esa fila tampoco recibe ahora un
+            // aviso que antes no recibía. El cierre es F3.
+            if (vigente(ev)) {
 
                 // Estado real del sorteo, leído solo si algún recordatorio
                 // está dentro de su ventana (una vez por grupo y ciclo).
@@ -750,16 +577,21 @@ async function procesarPublicados({ sock, deps, ahora }) {
 
                 }
 
-            } else if (ev.estado === "cerrado" && !cierreSilencioso(ev) && prioridad.fuentesDeComunicacion(sorteo.config).cierre === prioridad.SORTEO) {
+            } else if (!ev.activo && ev.estado === "cerrado" && !cierreSilencioso(ev) && prioridad.fuentesDeComunicacion(sorteo.config).cierre === prioridad.SORTEO) {
 
                 if (!deps.puedeActuar(sock)) return { ok: true, envios };
 
                 // Nunca dos avisos de cierre para el mismo evento y grupo: si
                 // la automatización del grupo ya lo anunció, no se envía otro.
                 // Sin poder comprobarlo, se reintenta en el próximo ciclo.
+                // Vigencia actual (F3-D): tras una reapertura, el aviso del
+                // siguiente cierre lleva la clave de su ciclo; sin reapertura,
+                // la de siempre.
                 let yaAnunciado;
+                let sufijoAviso = "aviso_cierre";
                 try {
                     yaAnunciado = await prioridad.avisoCierreYaEnviado({ eventoId: ev.id, grupoId: g.grupo_id });
+                    sufijoAviso = prioridad.sufijoAvisoCierre(await prioridad.ciclosDelEvento(ev.id));
                 } catch {
                     envios.push({ tipo: "aviso_cierre", grupo: g.grupo_id, ejecutada: false, motivo: "estado_no_disponible" });
                     continue;
@@ -770,7 +602,7 @@ async function procesarPublicados({ sock, deps, ahora }) {
                 }
 
                 const { texto } = mensajeAvisoCierre(sorteo.config, sorteo.cuentas_snapshot, { fecha });
-                const r = await enviarUnaVez({ deps, sock, sorteo, grupoId: g.grupo_id, sufijo: "aviso_cierre", tipoAccion: "SORTEO_AVISO_CIERRE", texto });
+                const r = await enviarUnaVez({ deps, sock, sorteo, grupoId: g.grupo_id, sufijo: sufijoAviso, tipoAccion: "SORTEO_AVISO_CIERRE", texto });
                 envios.push({ tipo: "aviso_cierre", grupo: g.grupo_id, ejecutada: r.ejecutada, motivo: r.motivo || null });
 
             }
@@ -800,6 +632,13 @@ async function liberarVencidas({ sock, deps, ahora }) {
 
         const reservas = sorteo.config.reservas || {};
         if (reservas.liberar_no_pagados !== true || !(reservas.vencimiento_minutos > 0)) continue;
+        // Publicación COMPARTIDA (K3, F4-F.1): una programación que solo adopta
+        // publicaciones de otra no aplica su vencimiento: lo gobierna la
+        // propietaria. Sin poder saberlo, no se libera nada en este ciclo.
+        try {
+            const destinos = await repo.gruposDelSorteo(usuarioId, sorteo.id);
+            if (!destinos.ok || await compartida.esPuraAdoptante(deps.supabase, sorteo, destinos.data)) continue;
+        } catch { continue; }
 
         // Solo mientras el sorteo siga activo en algún grupo.
         const { data: activos } = await deps.supabase.from("eventos_bot").select("*")
@@ -871,114 +710,7 @@ async function liberarVencidas({ sock, deps, ahora }) {
 
 }
 
-// -------------------------------------------- recuperación tras caídas ---
-
-// Un grupo «publicando» más viejo que esto es de un proceso que murió (mismo
-// umbral que el panel, administracion.PUBLICANDO_ATASCADO_MS): una
-// publicación real (captura + envío) nunca dura tanto.
-const PUBLICANDO_ATASCADO_MS = 10 * 60 * 1000;
-
-const claveAnuncio = (sorteo, grupo) =>
-    `TABLA_COMPARTIR:${sorteo.usuario_id}:${Number(sorteo.config?.valor)}:sorteo-${sorteo.id}-publicacion-${Number(grupo.reintentos_manuales) || 0}:${grupo.grupo_id}`;
-
-const INCIERTO = "El servidor se reinició mientras se enviaba el anuncio a este grupo: no se sabe si llegó. No se reenvía solo para no duplicarlo. Revisa el grupo en WhatsApp: si el anuncio no está, pulsa «Reintentar».";
-
-// recuperarAtascados: decide qué pasó con cada grupo atascado leyendo el
-// registro del ExecutionGuard de SU anuncio, que se escribe ANTES de enviar
-// («en_progreso») y se marca «ok» o «error» después:
-//   ok           el anuncio llegó: el grupo queda publicado y el evento pasa
-//                por el motor central con la hora REAL del anuncio (reglas
-//                de horario y tolerancia de la apertura: nunca tarde). Nada
-//                se reenvía.
-//   en_progreso  la caída fue DURANTE el envío: WhatsApp pudo recibirlo.
-//                Nunca se reenvía solo: revisión manual.
-//   error        el envío falló: revisión manual (como siempre).
-//   sin registro nunca se envió nada: el programado vuelve a su reintento
-//                automático normal; el instantáneo queda para «Reintentar».
-// Cada cambio va condicionado a que el grupo siga «publicando» (nunca pisa
-// a otro proceso ni a una cancelación). Nunca lanza.
-async function recuperarAtascados({ sock, deps, ahora }) {
-
-    const usuarioId = sock.context.usuarioId;
-    const informe = [];
-
-    try {
-
-        const umbral = new Date(ahora.getTime() - PUBLICANDO_ATASCADO_MS).toISOString();
-        const { data: atascados, error } = await deps.supabase.from("sorteos_programados_grupos").select("*")
-            .eq("usuario_id", usuarioId).eq("estado", "publicando").lt("actualizado_en", umbral);
-        if (error || !atascados?.length) return { ok: !error, informe };
-
-        const obtenerPorClave = deps.obtenerPorClave || require("../automation/executionGuard").obtenerPorClave;
-        const buscarEvento = deps.consultarEventoDelSorteo || require("../bot/funciones/eventos/consultarEvento").consultarEventoDelSorteo;
-        const sorteosTocados = new Set();
-
-        for (const grupo of atascados) {
-
-            const s = await repo.obtenerSorteo(usuarioId, grupo.sorteo_id);
-            if (!s.ok) continue;
-            const sorteo = s.data;
-
-            let registro;
-            try { registro = await obtenerPorClave(claveAnuncio(sorteo, grupo)); } catch { continue; }
-
-            let cambios;
-            let evento = null;
-
-            if (registro?.estado === "ok") {
-                const ev = await buscarEvento(grupo.grupo_id, usuarioId, sorteo.identidad_evento_real);
-                if (!ev.ok) continue;
-                evento = ev.data;
-                cambios = {
-                    estado: "publicado",
-                    version_publicada: sorteo.version,
-                    publicado_en: registro.actualizado_en || registro.ejecutado_en || ahora.toISOString(),
-                    ultimo_error: null,
-                    ...(evento?.id ? { evento_bot_id: evento.id } : {})
-                };
-            } else if (registro) {
-                cambios = {
-                    estado: "requiere_revision",
-                    ultimo_error: registro.estado === "error"
-                        ? `El anuncio no se pudo enviar: ${registro.detalle?.mensaje || "error de WhatsApp"}`
-                        : INCIERTO
-                };
-            } else {
-                // Nada salió: es un intento fallido más, como cualquier otro.
-                cambios = { estado: "fallido", ultimo_error: "El servidor se reinició antes de enviar el anuncio; no se envió nada. Se reintentará." };
-                if (esInstantaneo(sorteo)) cambios = resultadoInstantaneo(cambios);
-                else if ((Number(grupo.intentos) || 0) >= MAX_INTENTOS_AUTOMATICOS) {
-                    cambios = { estado: "requiere_revision", ultimo_error: sinPromesaDeReintento(cambios.ultimo_error) };
-                }
-            }
-
-            const marcado = await repo.marcarGrupoSi(usuarioId, grupo.id, ["publicando"], cambios);
-            if (!marcado.ok || marcado.data === false) continue;
-            sorteosTocados.add(sorteo.id);
-            informe.push({ sorteo: sorteo.id, grupo: grupo.grupo_id, estado: cambios.estado, anuncio: registro?.estado || "sin_registro" });
-
-            // El anuncio llegó: el evento pasa por el motor central, con la
-            // hora real del anuncio. Solo si sigue activo (un evento cerrado
-            // o cancelado entretanto no abre ciclo).
-            if (evento?.activo === true && !finDelEvento(evento)) {
-                const motor = deps.motorEventos || require("../automation/motorEventos");
-                await motor.procesarEventoPublicado({ evento, sock, ahora, tablaPublicada: true, momento: cambios.publicado_en });
-            }
-
-        }
-
-        for (const id of sorteosTocados) await finalizarSorteo(usuarioId, id);
-
-        return { ok: true, informe };
-
-    } catch (err) {
-
-        console.error("❌ [SORTEOS] error recuperando publicaciones interrumpidas:", err?.message);
-        return { ok: false, informe };
-
-    }
-
-}
+// Recuperación de publicaciones interrumpidas: sorteos/recuperacionPublicacion.js (F4-G).
 
 // ----------------------------------------------------------------- tick ---
 

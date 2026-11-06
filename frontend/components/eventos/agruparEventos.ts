@@ -9,6 +9,8 @@
 // sin identidad (anterior a la migración 015) es su propio sorteo.
 
 import type { Evento } from "./types";
+// «En curso» del panel: fuente única (estadoEvento.ts, F2).
+import { enCursoPorActivo } from "./estadoEvento";
 
 export interface GrupoAsociado {
     evento_id?: string;
@@ -39,7 +41,7 @@ function marcaTiempo(evento: Evento): number {
 // Fila que representa al sorteo: una activa si queda alguna (sus contadores
 // son los que el bot mantiene al día) y, entre ellas, la más reciente.
 function representante(filas: Evento[]): Evento {
-    const activas = filas.filter((f) => f.activo !== false);
+    const activas = filas.filter(enCursoPorActivo);
     const candidatas = activas.length ? activas : filas;
     return candidatas.reduce((a, b) => (marcaTiempo(b) > marcaTiempo(a) ? b : a));
 }
@@ -59,13 +61,13 @@ export function agruparEventos(eventos: Evento[]): EventoCompartido[] {
     return [...porClave.entries()].map(([clave, filas]) => {
 
         const base = representante(filas);
-        const algunaActiva = filas.some((f) => f.activo !== false);
+        const algunaActiva = filas.some(enCursoPorActivo);
 
         return {
             ...base,
             clave,
             activo: algunaActiva,
-            abierto: filas.some((f) => f.activo !== false && f.abierto === true),
+            abierto: filas.some((f) => enCursoPorActivo(f) && f.abierto === true),
             grupos: filas.map((f) => ({
                 evento_id: f.id,
                 grupo_id: f.grupo_id,

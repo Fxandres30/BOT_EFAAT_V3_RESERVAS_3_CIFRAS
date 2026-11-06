@@ -372,8 +372,11 @@ prueba("S5. el sorteo ACTIVO del MISMO precio: el ciclo anticipado no lo cierra;
     assert.strictEqual(fake.tablas.reservas_archivo.filter(x => x.estado === "pagado").length, 3);
     assert.strictEqual(grupoDe(s.id).estado, "publicado", grupoDe(s.id).ultimo_error);
     assert.strictEqual(enviados.length, 1);
+    // Endurecimiento F3: el historial lo registra con SU modalidad (antes quedaba como «precio»).
+    assert.deepStrictEqual((fake.tablas.eventos_bot_historial || []).filter(x => x.evento_id === "ev-ant-a").map(x => [x.modalidad, x.resultado]), [["sustitucion_reinicio", "ok"]]);
     // B no se ve afectado.
     assert.strictEqual(fake.tablas[T5K].filter(f => f.usuario_id === B && f.estado === "reservado").length, 2);
+
 });
 
 prueba("S6. reemplazo hecho pero la 030 rechaza la escritura (tabla_cambio): se DESHACE el reemplazo y no se publica", async () => {
@@ -388,6 +391,8 @@ prueba("S6. reemplazo hecho pero la 030 rechaza la escritura (tabla_cambio): se 
     assert.strictEqual(fake.tablas[T5K].filter(f => f.usuario_id === A && f.estado !== "libre").length, 6, "nada liberado");
     assert.strictEqual(enviados.length, 0);
     assert.ok(/la tabla cambió/.test(grupoDe(s.id).ultimo_error), grupoDe(s.id).ultimo_error);
+    // Endurecimiento F3: el deshacer pasa por el orquestador y queda en el historial.
+    assert.deepStrictEqual((fake.tablas.eventos_bot_historial || []).filter(x => x.evento_id === "ev-ant-a").map(x => [x.modalidad, x.resultado, x.detalle.deshecha ?? null]), [["sustitucion_reinicio", "ok", null], ["sustitucion_reinicio", "error", true]]);
     // Siguiente ciclo: se vuelve a decidir con la tabla nueva y se completa.
     await tick(A, seg(90), d);
     assert.strictEqual(fake.tablas.reservas_archivo.length, 6);

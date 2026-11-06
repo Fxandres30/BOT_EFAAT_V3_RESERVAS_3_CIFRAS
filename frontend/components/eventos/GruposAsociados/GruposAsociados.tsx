@@ -1,7 +1,7 @@
 import { Users } from "lucide-react";
 
 import type { GrupoAsociado } from "../agruparEventos";
-import { ETIQUETA_ESTADO, estadoFila } from "../estadoEvento";
+import { ETIQUETA_ESTADO, enCursoPorActivo, estadoFila } from "../estadoEvento";
 
 import styles from "./GruposAsociados.module.css";
 
@@ -34,7 +34,7 @@ export default function GruposAsociados({ grupos }: { grupos?: GrupoAsociado[] }
                     <li key={g.evento_id || g.grupo_id} className={styles.item}>
                         <span className={styles.nombre}>{nombre(g)}</span>
                         <span className={styles.estado}>
-                            {g.activo !== false && g.abierto === false ? "En curso · grupo sin abrir" : ETIQUETA_ESTADO[estadoFila(g)].texto}
+                            {enCursoPorActivo(g) && g.abierto === false ? "En curso · grupo sin abrir" : ETIQUETA_ESTADO[estadoFila(g)].texto}
                         </span>
                     </li>
                 ))}

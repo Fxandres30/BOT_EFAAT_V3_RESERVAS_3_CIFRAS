@@ -133,7 +133,8 @@ inyectar(r("bot/ai/aiService.js"), { suggestReply: async () => { throw new Error
 inyectar(r("shared/variables/variablesGlobalesRepo.js"), { obtenerVariablesActivas: async () => [] });
 inyectar(r("bot/funciones/reservas/actualizarEvento.js"), { actualizarEvento: async () => {} });
 
-const EVENTO = { id: "ev-1", nombre_evento: "Lotería de Prueba", tabla: TABLA, cifras: 2, identidad_evento_real: IDENTIDAD, usuario_id: TENANT, hora_fin: "22:30", valor: 5000 };
+// activo: true — sorteo en curso (F2: una fila sin activo cuenta como cerrada).
+const EVENTO = { id: "ev-1", activo: true, estado: "abierto", nombre_evento: "Lotería de Prueba", tabla: TABLA, cifras: 2, identidad_evento_real: IDENTIDAD, usuario_id: TENANT, hora_fin: "22:30", valor: 5000 };
 
 inyectar(r("bot/funciones/eventos/detectarEvento.js"), { detectarEvento: async () => null });
 inyectar(r("bot/funciones/eventos/consultarEvento.js"), { consultarEvento: async () => EVENTO });

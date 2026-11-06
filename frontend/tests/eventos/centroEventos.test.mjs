@@ -32,7 +32,9 @@ function cargarTs(rutaAbs) {
         compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true }
     });
     const modulo = { exports: {} };
-    new Function("module", "exports", "require", outputText)(modulo, modulo.exports, require);
+    // Imports relativos a otros .ts (p. ej. agruparEventos -> estadoEvento, F2).
+    const requerir = (id) => id.startsWith(".") ? cargarTs(path.resolve(path.dirname(rutaAbs), `${id}.ts`)) : require(id);
+    new Function("module", "exports", "require", outputText)(modulo, modulo.exports, requerir);
     return modulo.exports;
 }
 

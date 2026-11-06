@@ -46,11 +46,13 @@ const CICLO_VIVO = ["pendiente", "abierto", "cerrando"];
 // RECUPERACIÓN (04/11). Una apertura solo se anuncia si sale como mucho este
 // tiempo después del anuncio real; más tarde, el ciclo se abre igual
 // (recordatorios, cierre) pero el OPEN_MESSAGE queda registrado como omitido.
-const TOLERANCIA_APERTURA_MS = 15 * 60 * 1000;
+const recuperacion = require("./recuperacion");
+const TOLERANCIA_APERTURA_MS = recuperacion.UMBRALES.CICLO_TOLERANCIA_APERTURA_MS;
 // Un ciclo se considera interrumpido (no en curso) pasado este margen.
-const MARGEN_RECUPERACION_MS = 2 * 60 * 1000;
+const MARGEN_RECUPERACION_MS = recuperacion.UMBRALES.CICLO_MARGEN_MS;
 // Ciclos pendientes más viejos que esto no se reanudan (datos históricos).
-const ANTIGUEDAD_MAXIMA_MS = 24 * 60 * 60 * 1000;
+const ANTIGUEDAD_MAXIMA_MS = recuperacion.UMBRALES.CICLO_ANTIGUEDAD_MAXIMA_MS;
+// (Umbrales comunes desde F4-G: automation/recuperacion.js.)
 
 const claveApertura = (eventSession) => `${eventSession.id}:OPEN_MESSAGE`;
 const cierrePasado = (evento, ahora) => require("../bot/funciones/eventos/lifecycle/verificarHoraCierre").verificarHoraCierre(evento, ahora);
@@ -131,6 +133,45 @@ async function registrarEvento(evento, { ahora } = {}) {
     }
 
     return { eventSession: null, nuevo: false, motivo: decision.motivo };
+
+}
+
+// --------------------------------------------------------- reapertura ---
+
+// abrirCicloDeReapertura({ evento, ahora }) — F3-D. Un sorteo reabierto desde
+// el panel necesita un ciclo de automatización VIVO para volver a recibir sus
+// recordatorios y para que su siguiente cierre se anuncie (las claves de los
+// avisos van por ciclo). Si todavía tiene uno vivo (se reabrió antes de que el
+// scheduler cerrara el anterior), se reutiliza. Si no, se crea un ciclo
+// lógico NUEVO con las reglas de siempre (engine.onEventoDetectado), con la
+// identidad del ciclo y un sufijo de reapertura; el anterior se conserva. El
+// nuevo nace con la apertura y la tabla inicial dadas por hechas (el sorteo ya
+// se anunció): no se repiten. Lo confirma la reapertura del grupo de WhatsApp
+// (worker → reanudarApertura), como cualquier ciclo pendiente.
+// -> { eventSession, nuevo, motivo }. Nunca lanza.
+async function abrirCicloDeReapertura({ evento, ahora = new Date() }) {
+
+    try {
+
+        if (!evento?.id) return { eventSession: null, nuevo: false, motivo: "evento_nulo" };
+
+        const vivo = await cicloVivoDelEvento(evento.id);
+        if (vivo) return { eventSession: vivo, nuevo: false, motivo: "ciclo_vivo" };
+
+        const decision = await engine.onEventoDetectado(evento, { ahora, sufijoCiclo: `:reapertura:${ahora.toISOString()}` });
+        if (!decision.eventSession) return { eventSession: null, nuevo: false, motivo: decision.motivo };
+
+        await omitirApertura(evento, decision.eventSession, "reapertura");
+        await cubrirTablaInicial(evento, decision.eventSession);
+
+        return { eventSession: decision.eventSession, nuevo: true, motivo: null };
+
+    } catch (err) {
+
+        console.error(`❌ [MOTOR EVENTOS] no se pudo abrir el ciclo de reapertura del evento ${evento?.id}:`, err?.message);
+        return { eventSession: null, nuevo: false, motivo: "error", error: err?.message };
+
+    }
 
 }
 
@@ -287,7 +328,9 @@ async function recuperarCiclos({ sock, ahora = new Date(), abiertas = [] }) {
             if (ses.estado !== "abierto" || !ses.abierto_en) continue;
             const edad = ahora.getTime() - new Date(ses.abierto_en).getTime();
             if (edad < MARGEN_RECUPERACION_MS || edad > TOLERANCIA_APERTURA_MS) continue;
-            if (await executionGuard.obtenerPorClave(claveApertura(ses))) continue;
+            // Regla común de envíos (F4-G): solo se envía lo NO INICIADO; uno
+            // confirmado, en curso (incierto) o fallido nunca se repite aquí.
+            if (!recuperacion.reenviable(recuperacion.estadoDelEnvio(await executionGuard.obtenerPorClave(claveApertura(ses))))) continue;
             const evento = await eventosBotRepo.obtenerPorId(ses.evento_id);
             if (!evento || evento.activo !== true || cierrePasado(evento, ahora)) continue;
             enSegundoPlano(engine.enviarMensajeApertura(evento, ses, sock));
@@ -346,6 +389,7 @@ module.exports = {
     confirmarApertura,
     procesarEventoPublicado,
     reanudarApertura,
+    abrirCicloDeReapertura,
     enSegundoPlano,
     esperarEnvios
 };

@@ -21,6 +21,11 @@ function cargarTs(archivo) {
     const { outputText } = ts.transpileModule(fuente, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } });
     const m = new Module(archivo, module);
     m.filename = archivo;
+    // Imports relativos a otros .ts del panel (agruparEventos -> estadoEvento, F2).
+    const requerirOriginal = m.require.bind(m);
+    m.require = (id) => id.startsWith(".") && fs.existsSync(path.resolve(path.dirname(archivo), `${id}.ts`))
+        ? cargarTs(path.resolve(path.dirname(archivo), `${id}.ts`))
+        : requerirOriginal(id);
     m._compile(outputText, archivo);
     return m.exports;
 }

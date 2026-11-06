@@ -6,9 +6,10 @@
 // grupos nuevos»). Es la función del botón «Compartir» (capturarTabla) sobre
 // una copia oculta de TablaImprimible con los números de la vista previa del
 // sorteo (vistaPrevia: los mismos que comprueba el backend con la huella) y
-// el ancho de la columna del panel en este dispositivo. El backend guarda la
-// imagen como LA del sorteo (sorteos/capturaProgramada.js) y el publicador
-// la envía tal cual.
+// el ancho de la columna del panel en este dispositivo. El backend la guarda
+// (sorteos/capturaProgramada.js) y la envía si la tabla sigue igual en esa
+// misma acción; un programado genera la suya a su hora con este mismo
+// capturarTabla en Chromium headless (F4-G).
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 

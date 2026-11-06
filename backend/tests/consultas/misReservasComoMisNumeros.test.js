@@ -89,7 +89,8 @@ inyectar(r("bot/funciones/reservas/detectarReserva.js"), {
     detectarReserva: async () => ({ ok: true, mensaje: "x" })
 });
 
-const EVENTO = { id: "ev-1", usuario_id: "tenant-test", nombre_evento: "Lotería De Manizales", tabla: TABLA, cifras: 2, identidad_evento_real: "id-sorteo", hora_fin: "22:30", valor: 3000 };
+// activo: true — sorteo en curso (F2: una fila sin activo cuenta como cerrada).
+const EVENTO = { id: "ev-1", activo: true, estado: "abierto", usuario_id: "tenant-test", nombre_evento: "Lotería De Manizales", tabla: TABLA, cifras: 2, identidad_evento_real: "id-sorteo", hora_fin: "22:30", valor: 3000 };
 
 inyectar(r("bot/funciones/eventos/detectarEvento.js"), { detectarEvento: async () => null });
 inyectar(r("bot/funciones/eventos/consultarEvento.js"), { consultarEvento: async () => EVENTO });

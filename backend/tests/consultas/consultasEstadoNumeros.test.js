@@ -75,7 +75,8 @@ function sembrarEscenarioTotalmentePagado(fake) {
 
 }
 
-const EVENTO = { id: "evento-1", usuario_id: "tenant-test", tabla: TABLA, valor: 5000 };
+// activo: true — sorteo en curso (F2: una fila sin activo cuenta como cerrada).
+const EVENTO = { id: "evento-1", activo: true, estado: "abierto", usuario_id: "tenant-test", tabla: TABLA, valor: 5000 };
 const USUARIO = { id: "cliente-1" };
 
 const resultados = [];

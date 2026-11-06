@@ -67,6 +67,39 @@ function camposCambiados(anterior, datos, { grupoLeido }) {
 
 }
 
+// Permiso de reservas ya decidido para este sorteo en otro grupo (047). Lo
+// toma de la fila vigente que continúa o, si no, de la fila más reciente de
+// la misma identidad. null = no hay permiso guardado (o falta la 047): la
+// fila nueva queda como siempre (NULL = «según el estado»). Nunca lanza.
+const MODOS_PERMISO = ["segun_estado", "permitidas", "desactivadas"];
+async function permisoReservasDelSorteo(usuarioId, identidad, sorteoVigente) {
+    if (MODOS_PERMISO.includes(sorteoVigente?.reservas_modo)) return sorteoVigente.reservas_modo;
+    if (!usuarioId || !identidad) return null;
+    try {
+        const { data, error } = await supabase.from("eventos_bot").select("*")
+            .eq("usuario_id", usuarioId).eq("identidad_evento_real", identidad)
+            .order("actualizado_en", { ascending: false }).limit(1);
+        if (error) return null;
+        // El panel escribe el permiso en TODAS las filas del sorteo: basta la
+        // más reciente.
+        const modo = data?.[0]?.reservas_modo;
+        return MODOS_PERMISO.includes(modo) ? modo : null;
+    } catch {
+        return null;
+    }
+}
+
+// La fila ACTIVA de un sorteo en un grupo (la que protege la 049). Nunca lanza.
+async function filaActivaDelSorteo(usuarioId, grupoId, identidad) {
+    try {
+        const { data, error } = await supabase.from("eventos_bot").select("*")
+            .eq("usuario_id", usuarioId).eq("grupo_id", grupoId).eq("identidad_evento_real", identidad).eq("activo", true).limit(1);
+        return error ? null : (data?.[0] || null);
+    } catch {
+        return null;
+    }
+}
+
 async function guardarEvento({
 
     sock,
@@ -300,6 +333,13 @@ async function guardarEvento({
 
     };
 
+    // Permiso de reservas (F3-E, 047): es del SORTEO, no del grupo. Un grupo
+    // que se suma a un sorteo ya configurado hereda el permiso de sus otras
+    // filas (misma identidad); si no, quedaría «según el estado» solo en ese
+    // grupo. Sin la 047 las filas no traen la columna y no se añade nada.
+    const modoHeredado = await permisoReservasDelSorteo(registro.usuario_id, registro.identidad_evento_real, sorteoVigente);
+    if (modoHeredado) registro.reservas_modo = modoHeredado;
+
     console.log("====================================");
     console.log("📦 DATOS A INSERTAR");
     console.log("====================================");
@@ -337,6 +377,17 @@ async function guardarEvento({
         console.dir(resultado.error, { depth: null });
 
         if (esPrecioOcupado(resultado.error)) console.log("⛔ La base rechazó el evento: este precio ya tiene otro sorteo activo de este cliente (043). Hay que reemplazar el anterior antes.");
+
+        // C2 (F4-F), solo con la migración 049: otra operación creó a la vez
+        // la fila ACTIVA de este sorteo en este grupo (índice único). No es un
+        // fallo: se devuelve la fila ganadora en vez de crear otra.
+        if (resultado.error?.code === "23505" && registro.identidad_evento_real) {
+            const ganadora = await filaActivaDelSorteo(registro.usuario_id, grupoId, registro.identidad_evento_real);
+            if (ganadora) {
+                console.log(`🤝 Otra operación creó a la vez este sorteo en el grupo (049): se adopta su fila ${ganadora.id}.`);
+                return ganadora;
+            }
+        }
 
         return null;
 

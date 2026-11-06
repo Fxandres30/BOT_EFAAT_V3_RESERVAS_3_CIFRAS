@@ -51,14 +51,17 @@ const REINTENTO_MANUAL = "reintento manual solicitado";
 const { ESTADOS_EDITABLES, ESTADOS_NUNCA_PUBLICADOS, ESTADOS_PENDIENTES_DE_PUBLICAR } = require("./estadosProgramacion");
 // Un grupo «publicando» más viejo que esto es de un proceso que murió: no
 // hay nada en marcha y no debe impedir eliminar para siempre.
-const PUBLICANDO_ATASCADO_MS = 10 * 60 * 1000;
+// Mismo umbral que la recuperación (automation/recuperacion.js, F4-G).
+const PUBLICANDO_ATASCADO_MS = require("../automation/recuperacion").UMBRALES.PUBLICACION_ATASCADA_MS;
 // Prefijo del publicador para un grupo que espera un conflicto real.
 const EN_ESPERA = "En espera: ";
 
 const falla = (motivo, extra = {}) => ({ ok: false, motivo, ...extra });
 
-// Igual que sorteosActivos: abierto mientras no esté cerrado.
-const abierto = (e) => e.activo !== false && e.estado !== "cerrado";
+// Igual que sorteosActivos: criterio B (anterior) de la fuente única,
+// estadosGestion.abiertoPorEstado (F2). Pasarlo al canónico es una decisión
+// pendiente: cambiaría el estado operativo de las filas contradictorias.
+const { abiertoPorEstado: abierto } = require("../shared/eventos/estadosGestion");
 
 // Un grupo se cancela si todavía no se publicó. En revisión, solo si nunca
 // se creó su evento (no pudo llegar ningún anuncio).

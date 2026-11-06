@@ -82,9 +82,10 @@ const falla = (motivo, extra = {}) => ({ ok: false, motivo, ...extra });
 
 const digitos = (v) => Number(String(v ?? "").replace(/[^\d]/g, "")) || null;
 
-function abierto(e) {
-    return e.activo !== false && e.estado !== "cerrado";
-}
+// Criterio B (anterior) de la fuente única: estadosGestion.abiertoPorEstado
+// (F2). Pasarlo al canónico (vigente) es una decisión pendiente: cambiaría
+// qué filas contradictorias se pueden editar.
+const { abiertoPorEstado: abierto } = require("../shared/eventos/estadosGestion");
 
 // Filas activas del cliente (opcional: solo las de ese precio y su tabla).
 async function filasActivas(usuarioId, precio = null) {
@@ -150,9 +151,10 @@ async function sorteoProgramadoDe(usuarioId, identidad) {
     // select("*"): archivado_en solo existe con la 038.
     const { data, error } = await supabase.from("sorteos_programados").select("*")
         .eq("usuario_id", usuarioId).eq("identidad_evento_real", identidad).neq("estado", "cancelado")
-        .order("creado_en", { ascending: false }).limit(1);
+        .order("creado_en", { ascending: false }).limit(10);
     if (error) throw new Error(`No se pudo leer la programación del sorteo: ${error.message}`);
-    const p = data?.[0] || null;
+    // Criterio único (F4-F.1): la más reciente, salvo una adoptante pura.
+    const p = await require("./publicacionCompartida").elegirProgramacion(supabase, usuarioId, data);
     return p && !p.archivado_en ? p : null;
 }
 

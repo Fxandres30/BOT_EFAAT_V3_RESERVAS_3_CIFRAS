@@ -53,12 +53,25 @@ const { consultarEventoDelSorteo } = require(r("bot/funciones/eventos/consultarE
 const { abrirGrupo } = require(r("bot/funciones/eventos/grupos/abrirGrupo.js"));
 const { actualizarEvento } = require(r("bot/funciones/reservas/actualizarEvento.js"));
 
-// La captura del SERVIDOR (Chromium) no debe usarse en un programado.
+// F4-G: a su hora, un programado genera la imagen NUEVA con el MISMO
+// capturarTabla de «Compartir» ejecutado en Chromium headless
+// (compartirTabla.capturarImagenTabla). Simulado: el PNG codifica los datos
+// recibidos, así se comprueba qué tabla se pintó.
+const crypto = require("crypto");
 let capturasServidor = [];
+let servidorFalla = null;
+function pngDeDatos(datos, captura) {
+    const h = crypto.createHash("sha256").update(JSON.stringify({ d: datos.numerosDisponibles, o: datos.numerosOcupados, p: datos.numerosPagados, diseno: datos.diseno, captura: captura || null })).digest();
+    return Buffer.concat([png(4242), h]);
+}
 compartirTabla.capturarImagenTabla = async (...args) => {
     capturasServidor.push(args);
-    throw new Error("Falta FRONTEND_URL (simulado): el servidor no puede capturar");
+    if (servidorFalla) throw new Error(servidorFalla);
+    const opciones = args[3] || {};
+    return pngDeDatos(opciones.datos, opciones.captura);
 };
+const datosGenerados = (i = -1) => capturasServidor[i < 0 ? capturasServidor.length + i : i][3].datos;
+const imagenGenerada = (i = -1) => { const o = capturasServidor[i < 0 ? capturasServidor.length + i : i][3]; return pngDeDatos(o.datos, o.captura); };
 
 // Hoy 15/10; se publica el 22/10 08:00 (Colombia) y se juega ese día.
 const T0 = new Date("2026-10-15T15:00:00Z");
@@ -93,6 +106,8 @@ function escenario() {
     intentosEnvio = 0;
     fallaEnvio = () => null;
     capturasServidor = [];
+    servidorFalla = null;
+    capturaProgramada._olvidarGeneraciones();
     reloj = T0;
     fs.rmSync(DIR_CAPTURAS, { recursive: true, force: true });
     const t = fake.tablas;
@@ -207,7 +222,7 @@ prueba("1. Programar: la captura del panel se guarda ligada a la versión confir
     assert.strictEqual(enviados.length, 0, "programar no publica");
 });
 
-prueba("2-4. A la hora: se envía la imagen guardada (bytes idénticos), solo al grupo elegido, sin Chromium del servidor", async () => {
+prueba("2-4. A la hora: se genera una imagen NUEVA con la tabla actual y se envía solo al grupo elegido; nunca la captura de la confirmación", async () => {
     escenario();
     const s = await crear();
     assert.ok((await confirmarConCaptura(s)).ok);
@@ -215,15 +230,18 @@ prueba("2-4. A la hora: se envía la imagen guardada (bytes idénticos), solo al
     assert.strictEqual(grupoDe(s.id, "g1@g.us").estado, "publicado", grupoDe(s.id, "g1@g.us").ultimo_error);
     assert.deepStrictEqual(enviados.map(e => e.jid), ["g1@g.us"], "solo el grupo del sorteo");
     assert.strictEqual(enviados[0].tipo, "imagen");
-    assert.ok(Buffer.from(enviados[0].image).equals(PNG1), "la captura guardada, tal cual");
-    assert.strictEqual(capturasServidor.length, 0, "el servidor no capturó nada");
+    assert.strictEqual(capturasServidor.length, 1, "una generación en el servidor");
+    assert.ok(!Buffer.from(enviados[0].image).equals(PNG1), "no la captura de la confirmación");
+    assert.ok(Buffer.from(enviados[0].image).equals(imagenGenerada()), "la imagen recién generada");
+    assert.deepStrictEqual(datosGenerados().numerosOcupados, ["07", "08"]);
+    assert.deepStrictEqual(datosGenerados().numerosPagados, ["08"]);
     assert.ok(accionesCompartir().some(a => a.clave_idempotencia === `TABLA_COMPARTIR:${A}:3000:sorteo-${s.id}-publicacion-0:g1@g.us` && a.estado === "ok"));
     assert.strictEqual(eventosDe(s).length, 1);
     await tick(SIGUIENTE);
     assert.strictEqual(enviados.length, 1, "el ciclo siguiente no repite");
 });
 
-prueba("5. Mismo formato que el instantáneo: misma imagen y mismo pie para el mismo sorteo", async () => {
+prueba("5. Mismo formato que el instantáneo: el generador recibe los MISMOS datos que la vista previa capturada por el panel, y el mismo pie", async () => {
     // Instantáneo: «Publicar ahora» con la captura del panel.
     escenario();
     reloj = EN_PUBLICACION;
@@ -232,6 +250,7 @@ prueba("5. Mismo formato que el instantáneo: misma imagen y mismo pie para el m
     const pub = await silencio(() => servicio.publicarAhora(A, inst.id, { version: inst.version, confirmacion: true, imagen: dataUrl(PNG1) }));
     assert.ok(pub.ok && pub.data.publicados === 1, JSON.stringify(pub));
     const delInstantaneo = enviados[0];
+    const vistaInst = (await silencio(() => servicio.vistaPrevia(A, inst.id))).data;
 
     // Programado, mismo sorteo, a su hora.
     escenario();
@@ -242,26 +261,54 @@ prueba("5. Mismo formato que el instantáneo: misma imagen y mismo pie para el m
 
     assert.ok(delInstantaneo && delProgramado);
     assert.strictEqual(delProgramado.tipo, delInstantaneo.tipo);
-    assert.ok(Buffer.from(delProgramado.image).equals(Buffer.from(delInstantaneo.image)), "la misma imagen");
+    // El panel capturó TablaImprimible con los números y el diseño de su vista
+    // previa; el servidor ejecuta la misma captura con estos mismos datos.
+    const g = datosGenerados();
+    assert.deepStrictEqual(
+        { d: g.numerosDisponibles, o: g.numerosOcupados, p: g.numerosPagados },
+        { d: vistaInst.numeros.numerosDisponibles, o: vistaInst.numeros.numerosOcupados, p: vistaInst.numeros.numerosPagados },
+        "los mismos números que pintó el panel"
+    );
+    const { normalizarConfigDiseno } = require(r("sorteos/disenoTabla.js"));
+    assert.deepStrictEqual(g.diseno, normalizarConfigDiseno(vistaInst.diseno?.config ?? null), "el mismo diseño");
     assert.strictEqual(delProgramado.texto, delInstantaneo.texto, "el mismo pie");
     assert.ok(delProgramado.texto.includes("Antioqueñita Día") && delProgramado.texto.includes("Nequi A"), delProgramado.texto);
 });
 
-prueba("6a. La tabla cambió antes de la hora: no se envía una imagen desactualizada; revisión, sin evento ni reintentos solos", async () => {
+prueba("6a. La tabla cambió antes de la hora: se publica con una imagen NUEVA de la tabla actual (nunca la desactualizada), una sola vez", async () => {
     escenario();
     const s = await crear();
     assert.ok((await confirmarConCaptura(s)).ok);
     Object.assign(fake.tablas[T5K][20], { estado: "reservado" });
     await tick(EN_PUBLICACION);
     const g = grupoDe(s.id, "g1@g.us");
-    assert.strictEqual(g.estado, "requiere_revision");
-    assert.ok(/No se pudo generar la imagen de la tabla: la tabla cambió/.test(g.ultimo_error), g.ultimo_error);
-    assert.strictEqual(enviados.length + intentosEnvio, 0, "nada enviado ni intentado");
-    assert.strictEqual(eventosDe(s).length, 0, "no se creó el evento");
-    assert.strictEqual(capturasServidor.length, 0);
+    assert.strictEqual(g.estado, "publicado", g.ultimo_error);
+    assert.strictEqual(enviados.length, 1);
+    assert.ok(!Buffer.from(enviados[0].image).equals(PNG1), "nunca la imagen desactualizada");
+    assert.ok(datosGenerados().numerosOcupados.includes("20"), "la reserva nueva está en la imagen");
+    assert.ok(Buffer.from(enviados[0].image).equals(imagenGenerada()));
+    assert.strictEqual(eventosDe(s).length, 1);
     await tick(SIGUIENTE);
     await tick(DESPUES);
-    assert.strictEqual(intentosEnvio, 0, "los ciclos siguientes no lo intentan");
+    assert.strictEqual(intentosEnvio, 1, "los ciclos siguientes no repiten");
+});
+
+prueba("6a-bis. Chromium no funciona: error real, nada enviado (ni la captura guardada), sin evento; se reintenta y publica una vez cuando vuelve", async () => {
+    escenario();
+    const s = await crear();
+    assert.ok((await confirmarConCaptura(s)).ok);
+    servidorFalla = "Failed to launch the browser process (simulado)";
+    await tick(EN_PUBLICACION);
+    const g = grupoDe(s.id, "g1@g.us");
+    assert.strictEqual(g.estado, "fallido");
+    assert.ok(/Failed to launch the browser process/.test(g.ultimo_error), g.ultimo_error);
+    assert.strictEqual(enviados.length + intentosEnvio, 0, "nada enviado ni intentado");
+    assert.strictEqual(eventosDe(s).length, 0, "sin imagen no se crea el evento");
+    servidorFalla = null;
+    await tick(DESPUES);
+    assert.strictEqual(grupoDe(s.id, "g1@g.us").estado, "publicado", grupoDe(s.id, "g1@g.us").ultimo_error);
+    assert.strictEqual(enviados.length, 1);
+    assert.ok(Buffer.from(enviados[0].image).equals(imagenGenerada()));
 });
 
 prueba("6b. Falla el envío de WhatsApp: queda en revisión y NUNCA se reenvía solo", async () => {
@@ -292,7 +339,8 @@ prueba("6c. Fallo transitorio antes de enviar (apertura del grupo): el ciclo sig
     await tick(DESPUES, d);
     assert.strictEqual(grupoDe(s.id, "g1@g.us").estado, "publicado");
     assert.strictEqual(enviados.length, 1, "una sola publicación");
-    assert.ok(Buffer.from(enviados[0].image).equals(PNG1));
+    assert.ok(Buffer.from(enviados[0].image).equals(imagenGenerada()));
+    assert.strictEqual(capturasServidor.length, 1, "la tabla no cambió: la misma generación");
     assert.strictEqual(eventosDe(s).length, 1, "un solo evento");
 });
 
@@ -301,9 +349,13 @@ prueba("7. Reintentar con captura nueva: publica ese grupo ya, una vez; doble cl
     usarServicio();
     const s = await crear();
     assert.ok((await confirmarConCaptura(s)).ok);
-    Object.assign(fake.tablas[T5K][20], { estado: "reservado" });
+    // Revisión por un envío fallido; la tabla cambia después.
+    fallaEnvio = () => "conexión cerrada";
     await tick(EN_PUBLICACION);
     assert.strictEqual(grupoDe(s.id, "g1@g.us").estado, "requiere_revision");
+    fallaEnvio = () => null;
+    intentosEnvio = 0;
+    Object.assign(fake.tablas[T5K][20], { estado: "reservado" });
 
     reloj = SIGUIENTE;
     // Huella vieja (la tabla cambió): rechazado sin tocar nada.
@@ -347,12 +399,13 @@ prueba("8a. Editar tras confirmar: no publica sin reconfirmar; al reconfirmar se
     await tick(EN_PUBLICACION);
     await tick(SIGUIENTE);
     assert.strictEqual(enviados.length, 1, "una sola publicación");
-    assert.ok(Buffer.from(enviados[0].image).equals(PNG2), "la captura de la versión confirmada");
+    assert.ok(!Buffer.from(enviados[0].image).equals(PNG1) && !Buffer.from(enviados[0].image).equals(PNG2), "imagen nueva a la hora, no capturas de confirmación");
+    assert.ok(Buffer.from(enviados[0].image).equals(imagenGenerada()));
     assert.ok(enviados[0].texto.includes("450.000"), enviados[0].texto);
     assert.strictEqual(sorteoDb(s.id).config.premios[0].premio, 450000, "la configuración editada se conserva");
 });
 
-prueba("8b. Reconfirmar SIN captura (panel anterior): la captura de la versión vieja no se usa; revisión sin enviar", async () => {
+prueba("8b. Reconfirmar SIN captura (panel anterior): la captura de la versión vieja no se usa; a la hora se genera una nueva y se publica una vez", async () => {
     escenario();
     const s = await crear();
     assert.ok((await confirmarConCaptura(s, PNG1)).ok);
@@ -361,10 +414,11 @@ prueba("8b. Reconfirmar SIN captura (panel anterior): la captura de la versión 
     assert.ok(conf.ok, JSON.stringify(conf));
     await tick(EN_PUBLICACION);
     const g = grupoDe(s.id, "g1@g.us");
-    assert.strictEqual(g.estado, "requiere_revision");
-    assert.ok(/no hay imagen de la tabla para la versión confirmada/.test(g.ultimo_error), g.ultimo_error);
-    assert.strictEqual(intentosEnvio, 0);
-    assert.strictEqual(capturasServidor.length, 0, "tampoco se recurre a la captura del servidor");
+    assert.strictEqual(g.estado, "publicado", g.ultimo_error);
+    assert.strictEqual(intentosEnvio, 1);
+    assert.ok(!Buffer.from(enviados[0].image).equals(PNG1), "la captura de la versión vieja no se usa");
+    assert.ok(Buffer.from(enviados[0].image).equals(imagenGenerada()));
+    assert.ok(enviados[0].texto.includes("450.000"), enviados[0].texto);
 });
 
 prueba("9. Confirmar con una captura que no corresponde: huella distinta o PNG inválido → nada se programa ni se guarda", async () => {
@@ -380,12 +434,25 @@ prueba("9. Confirmar con una captura que no corresponde: huella distinta o PNG i
     assert.strictEqual(await capturaProgramada.leer(s.id), null);
 });
 
-prueba("10. Una sola fuente de imagen: el instantáneo también publica la imagen guardada; nunca la captura del servidor", async () => {
-    capturasServidor = [];
-    const sorteoInst = { id: "00000000-0000-4000-8000-000000000999", usuario_id: A, tabla: T5K, config: { publicacion_inmediata: true }, confirmado_version: 1 };
-    await assert.rejects(() => capturaProgramada.capturarParaPublicar(3000, A, null, { sorteoId: sorteoInst.id, sorteo: sorteoInst }), /no hay imagen de la tabla/);
+prueba("10. Una sola fuente de imagen: sin captura del panel, el MISMO generador en el servidor con los datos actuales; sin sorteo no hay imagen", async () => {
+    escenario();
+    const sorteoInst = { id: "00000000-0000-4000-8000-000000000999", usuario_id: A, tabla: T5K, cifras: 2, cantidad_numeros: 100, config: { publicacion_inmediata: true, valor: 3000 }, confirmado_version: 1 };
+    const png1 = await capturaProgramada.capturarParaPublicar(3000, A, null, { sorteoId: sorteoInst.id, sorteo: sorteoInst });
+    assert.strictEqual(capturasServidor.length, 1);
+    assert.ok(png1.equals(imagenGenerada()));
+    assert.strictEqual(capturasServidor[0][0], 3000);
+    assert.strictEqual(capturasServidor[0][1], A);
+    // Una captura del panel de «Confirmar» con la misma huella NO se reutiliza;
+    // una de «Publicar ahora» sí (es la que el panel acaba de hacer).
+    const huella = capturaProgramada.huellaNumeros(datosGenerados());
+    await capturaProgramada.guardar(sorteoInst.id, { version: 1, huella, png: PNG1, origen: "confirmar" });
+    capturaProgramada._olvidarGeneraciones();
+    assert.ok(!(await capturaProgramada.capturarParaPublicar(3000, A, null, { sorteo: sorteoInst })).equals(PNG1));
+    await capturaProgramada.guardar(sorteoInst.id, { version: 1, huella, png: PNG2, origen: "publicar_ahora" });
+    assert.ok((await capturaProgramada.capturarParaPublicar(3000, A, null, { sorteo: sorteoInst })).equals(PNG2));
+    await capturaProgramada.guardar(sorteoInst.id, { version: 1, huella: "otra", png: PNG2, origen: "publicar_ahora" });
+    assert.ok(!(await capturaProgramada.capturarParaPublicar(3000, A, null, { sorteo: sorteoInst })).equals(PNG2), "con otra huella no se reutiliza");
     await assert.rejects(() => capturaProgramada.capturarParaPublicar(3000, A, null, {}), /falta el sorteo/);
-    assert.strictEqual(capturasServidor.length, 0, "nunca va a Chromium");
 });
 
 // ------------------------------------------------------------- ejecutar ---

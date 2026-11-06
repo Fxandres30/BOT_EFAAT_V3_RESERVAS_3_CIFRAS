@@ -92,9 +92,27 @@ const gruposSorteo = require(r("sorteos/gruposSorteo.js"));
 const capturaProgramada = require(r("sorteos/capturaProgramada.js"));
 const compartirTabla = require(r("services/compartirTabla.js"));
 
-// Chromium del servidor: PROHIBIDO en cualquier publicación de un sorteo.
+// F4-G: sin navegador del administrador, la imagen la genera el MISMO
+// capturarTabla en Chromium headless (compartirTabla.capturarImagenTabla).
+// Aquí se simula: el PNG codifica los datos que recibe (números, diseño y
+// perfil), así cada prueba comprueba QUÉ tabla se pintó.
+const crypto = require("crypto");
 let capturasServidor = 0;
-compartirTabla.capturarImagenTabla = async () => { capturasServidor++; throw new Error("Falta FRONTEND_URL (simulado)"); };
+let generadas = [];
+let servidorFalla = null;
+let retardoGenerar = 0;
+function pngDeDatos(datos, captura) {
+    const h = crypto.createHash("sha256").update(JSON.stringify({ d: datos.numerosDisponibles, o: datos.numerosOcupados, p: datos.numerosPagados, diseno: datos.diseno, captura: captura || null })).digest();
+    return Buffer.concat([png(4242), h]);
+}
+compartirTabla.capturarImagenTabla = async (precio, usuarioId, eventoId, opciones = {}) => {
+    capturasServidor++;
+    generadas.push({ precio, usuarioId, eventoId, opciones });
+    if (retardoGenerar) await new Promise(res => setTimeout(res, retardoGenerar));
+    if (servidorFalla) throw new Error(servidorFalla);
+    return pngDeDatos(opciones.datos, opciones.captura);
+};
+const ultimaGenerada = () => { const g = generadas[generadas.length - 1]; return g && pngDeDatos(g.opciones.datos, g.opciones.captura); };
 
 const T0 = new Date("2026-10-15T15:00:00Z");           // se programa
 const PUBLICAR = new Date("2026-10-22T13:00:00Z");     // 08:00 Colombia
@@ -140,6 +158,10 @@ function escenario() {
     falla = () => null;
     retardoEnvio = 0;
     capturasServidor = 0;
+    generadas = [];
+    servidorFalla = null;
+    retardoGenerar = 0;
+    capturaProgramada._olvidarGeneraciones();
     reloj = T0;
     fs.rmSync(DIR_CAPTURAS, { recursive: true, force: true });
     const t = fake.tablas;
@@ -206,7 +228,7 @@ prueba("1. Instantáneo: «Publicar ahora» guarda la captura y el núcleo la en
     assert.strictEqual(capturasServidor, 0);
 });
 
-prueba("2. Programado: la captura de «Confirmar y programar» sale por el MISMO núcleo, con el mismo pie que el instantáneo", async () => {
+prueba("2. Programado: a su hora genera una imagen NUEVA (capturarTabla en Chromium headless, no la de «Confirmar») y sale por el MISMO núcleo con el mismo pie", async () => {
     escenario(); reloj = seg(0);
     const inst = await crear(instantanea());
     await publicarAhora(inst, P1);
@@ -217,9 +239,14 @@ prueba("2. Programado: la captura de «Confirmar y programar» sale por el MISMO
     assert.ok(c.ok, JSON.stringify(c));
     await tick(seg(60));
     assert.strictEqual(a("g1@g.us").length, 1);
-    assert.ok(a("g1@g.us")[0].image.equals(P1));
+    assert.strictEqual(capturasServidor, 1, "una generación al llegar la hora");
+    assert.ok(!a("g1@g.us")[0].image.equals(P1), "no reutiliza la captura de la confirmación");
+    assert.ok(a("g1@g.us")[0].image.equals(ultimaGenerada()), "la imagen recién generada");
+    const g = generadas[0];
+    assert.strictEqual(g.precio, 3000);
+    assert.strictEqual(g.usuarioId, A);
+    assert.strictEqual(g.opciones.datos.numerosPagados.length, 3, "los datos persistidos de la tabla");
     assert.strictEqual(a("g1@g.us")[0].texto, pieInstantaneo, "mismo pie que el instantáneo");
-    assert.strictEqual(capturasServidor, 0);
 });
 
 prueba("3. «Compartir» con un grupo nuevo: su captura se guarda y el núcleo la publica en el grupo nuevo", async () => {
@@ -241,7 +268,7 @@ prueba("3. «Compartir» con un grupo nuevo: su captura se guarda y el núcleo l
 
 // ------------------------------------------------------------- 4 y 5 ---
 
-prueba("4. Reintentar: sin captura nueva usa la guardada si la tabla no cambió; con la tabla cambiada pide captura nueva y la publica una vez", async () => {
+prueba("4. Reintentar: sin captura nueva usa la del panel si la tabla no cambió; un programado con la tabla cambiada se publica a su hora con imagen NUEVA, una vez", async () => {
     escenario(); reloj = seg(0);
     const s = await crear(instantanea({ grupos: ["g1@g.us", "g2@g.us"] }));
     falla = (jid) => (jid === "g2@g.us" ? "conexión cerrada" : null);
@@ -259,20 +286,19 @@ prueba("4. Reintentar: sin captura nueva usa la guardada si la tabla no cambió;
     await silencio(async () => servicio.confirmar(A, p.id, { version: p.version, confirmacion: true, imagen: dataUrl(P1), huella: await huella(p.id) }));
     fake.tablas[T5K].find(f => f.usuario_id === A && f.numero === "40").estado = "reservado";
     await tick(seg(60));
-    assert.strictEqual(grupoDe(p.id, "g1@g.us").estado, "requiere_revision");
-    const sinCaptura = await silencio(() => servicio.reintentarGrupo(A, p.id, "g1@g.us"));
-    assert.ok(sinCaptura.ok);
-    await tick(seg(90));
-    assert.strictEqual(enviados.length, 0, "sin captura nueva no se publica una imagen vieja");
-    reloj = seg(120);
-    const ok = await silencio(async () => servicio.reintentarGrupo(A, p.id, "g1@g.us", { imagen: dataUrl(P3), huella: await huella(p.id) }));
-    assert.ok(ok.ok && grupoDe(p.id, "g1@g.us").estado === "publicado", JSON.stringify(ok));
+    assert.strictEqual(grupoDe(p.id, "g1@g.us").estado, "publicado", grupoDe(p.id, "g1@g.us").ultimo_error);
     assert.strictEqual(enviados.length, 1);
-    assert.ok(enviados[0].image.equals(P3));
-    assert.strictEqual(capturasServidor, 0);
+    assert.ok(!enviados[0].image.equals(P1), "nunca la imagen desactualizada de la confirmación");
+    assert.ok(generadas[0].opciones.datos.numerosOcupados.includes("40"), "la imagen incluye la reserva hecha después de programar");
+    assert.ok(enviados[0].image.equals(ultimaGenerada()));
+    // Ciclos posteriores no repiten la publicación ni la generación.
+    await tick(seg(90));
+    await tick(seg(120));
+    assert.strictEqual(enviados.length, 1);
+    assert.strictEqual(capturasServidor, 1);
 });
 
-prueba("5. Grupos nuevos desde «Editar»: con captura + huella publica; con huella vieja no guarda ni envía; sin captura y tabla cambiada → revisión", async () => {
+prueba("5. Grupos nuevos desde «Editar»: con huella vieja no guarda ni envía; sin captura y tabla cambiada → imagen NUEVA del servidor con la tabla actual", async () => {
     escenario(); reloj = seg(0);
     const s = await crear(instantanea());
     await publicarAhora(s, P1);
@@ -287,16 +313,12 @@ prueba("5. Grupos nuevos desde «Editar»: con captura + huella publica; con hue
 
     const sinImagen = await silencio(() => gruposSorteo.publicarGruposNuevos(A, s.id));
     assert.ok(sinImagen.ok);
-    assert.strictEqual(enviados.length, 1, "la imagen guardada ya no es la de la tabla: no se envía");
-    assert.ok(/la tabla cambió/.test(grupoDe(s.id, "g2@g.us").ultimo_error), grupoDe(s.id, "g2@g.us").ultimo_error);
-
-    // Los dos quedaron en revisión: «Reintentar» con captura nueva, uno a uno.
-    for (const g of ["g2@g.us", "g3@g.us"]) {
-        const r = await silencio(async () => servicio.reintentarGrupo(A, s.id, g, { imagen: dataUrl(P2), huella: await huella(s.id) }));
-        assert.ok(r.ok && grupoDe(s.id, g).estado === "publicado", JSON.stringify(r));
-    }
-    assert.ok(a("g2@g.us")[0].image.equals(P2) && a("g3@g.us")[0].image.equals(P2));
-    assert.strictEqual(capturasServidor, 0);
+    assert.strictEqual(enviados.length, 3, "g2 y g3 publicados");
+    for (const g of ["g2@g.us", "g3@g.us"]) assert.strictEqual(grupoDe(s.id, g).estado, "publicado", grupoDe(s.id, g).ultimo_error);
+    assert.ok(!a("g2@g.us")[0].image.equals(P1), "la imagen guardada ya no es la de la tabla: no se envía");
+    assert.ok(a("g2@g.us")[0].image.equals(ultimaGenerada()) && a("g3@g.us")[0].image.equals(ultimaGenerada()));
+    assert.ok(generadas[0].opciones.datos.numerosOcupados.includes("60"));
+    assert.strictEqual(capturasServidor, 1, "una sola generación para los dos grupos con la misma tabla");
 });
 
 // ------------------------------------------------------------- 6 a 8 ---
@@ -316,15 +338,18 @@ prueba("6. Reiniciar la tabla antes de publicar: el reinicio va ANTES del envío
     const aplicado = rpc.llamadas.find(l => l.args.p_aplicar);
     assert.ok(aplicado && aplicado.cuando === 0, "el reinicio se aplicó antes de cualquier envío");
     assert.strictEqual(fake.tablas.reservas_archivo.length, 3, "los 3 números del sorteo anterior se archivaron");
-    assert.ok(enviados[0].image.equals(P1));
+    assert.strictEqual(capturasServidor, 1);
+    assert.strictEqual(generadas[0].opciones.datos.numerosOcupados.length, 0, "la imagen pinta la tabla YA reiniciada");
+    assert.ok(enviados[0].image.equals(ultimaGenerada()));
 });
 
-prueba("7-8. Conservar la tabla: se publica si no cambió; si cambió después de programar, revisión sin enviar", async () => {
+prueba("7-8. Conservar la tabla: se publica si no cambió; si cambió después de programar, se publica con la tabla ACTUAL (imagen nueva)", async () => {
     escenario();
     const s = await crear(entrada());
     await silencio(async () => servicio.confirmar(A, s.id, { version: s.version, confirmacion: true, imagen: dataUrl(P1), huella: await huella(s.id) }));
     await tick(seg(60));
-    assert.ok(a("g1@g.us")[0]?.image.equals(P1));
+    assert.ok(a("g1@g.us")[0]?.image.equals(ultimaGenerada()));
+    assert.strictEqual(generadas[0].opciones.datos.numerosPagados.length, 3);
     assert.strictEqual(fake.tablas[T5K].filter(f => f.usuario_id === A && f.estado === "pagado").length, 3, "conservar no libera nada");
 
     escenario();
@@ -332,8 +357,62 @@ prueba("7-8. Conservar la tabla: se publica si no cambió; si cambió después d
     await silencio(async () => servicio.confirmar(A, p.id, { version: p.version, confirmacion: true, imagen: dataUrl(P1), huella: await huella(p.id) }));
     fake.tablas[T5K].find(f => f.usuario_id === A && f.numero === "70").estado = "pagado";
     await tick(seg(60));
-    assert.strictEqual(enviados.length, 0);
-    assert.strictEqual(grupoDe(p.id, "g1@g.us").estado, "requiere_revision");
+    assert.strictEqual(enviados.length, 1);
+    assert.strictEqual(grupoDe(p.id, "g1@g.us").estado, "publicado");
+    assert.ok(generadas[0].opciones.datos.numerosPagados.includes("70"), "el pago hecho después de programar sale en la imagen");
+    assert.ok(enviados[0].image.equals(ultimaGenerada()));
+});
+
+// ------------------------------------------------------------ F4-G -----
+
+prueba("13. Chromium falla a la hora: no se envía NADA (ni la captura de la confirmación); el ciclo siguiente genera de nuevo y publica una vez", async () => {
+    escenario();
+    const s = await crear(entrada());
+    await silencio(async () => servicio.confirmar(A, s.id, { version: s.version, confirmacion: true, imagen: dataUrl(P1), huella: await huella(s.id) }));
+    servidorFalla = "Failed to launch the browser process (simulado)";
+    await tick(seg(60));
+    assert.strictEqual(enviados.length, 0, "sin imagen nueva no se publica una antigua");
+    assert.strictEqual(grupoDe(s.id, "g1@g.us").estado, "fallido");
+    assert.ok(/Failed to launch/.test(grupoDe(s.id, "g1@g.us").ultimo_error), "se registra el error real");
+    assert.ok(!fake.tablas.eventos_bot.length, "sin imagen no se crea el evento");
+    servidorFalla = null;
+    fake.tablas[T5K].find(f => f.usuario_id === A && f.numero === "77").estado = "reservado";
+    await tick(seg(180));
+    assert.strictEqual(grupoDe(s.id, "g1@g.us").estado, "publicado", grupoDe(s.id, "g1@g.us").ultimo_error);
+    assert.strictEqual(enviados.length, 1);
+    assert.strictEqual(capturasServidor, 2, "el fallo no se guarda: se vuelve a generar");
+    assert.ok(generadas[1].opciones.datos.numerosOcupados.includes("77"));
+    assert.ok(enviados[0].image.equals(ultimaGenerada()));
+});
+
+prueba("14. Dos ciclos simultáneos de un programado con 3 grupos: UNA generación, un envío por grupo, la misma imagen", async () => {
+    escenario();
+    const s = await crear(entrada({ grupos: ["g1@g.us", "g2@g.us", "g3@g.us"] }));
+    await silencio(async () => servicio.confirmar(A, s.id, { version: s.version, confirmacion: true, imagen: dataUrl(P1), huella: await huella(s.id) }));
+    retardoGenerar = 30;
+    retardoEnvio = 10;
+    await Promise.all([tick(seg(60)), tick(seg(60)), tick(seg(61))]);
+    await tick(seg(120));
+    for (const g of ["g1@g.us", "g2@g.us", "g3@g.us"]) {
+        assert.strictEqual(a(g).length, 1, `un envío en ${g}`);
+        assert.ok(a(g)[0].image.equals(ultimaGenerada()));
+    }
+    assert.strictEqual(capturasServidor, 1, "una sola generación");
+});
+
+prueba("15. Perfil y diseño guardados en el sorteo llegan al generador (la misma imagen que «Compartir» en ese dispositivo)", async () => {
+    escenario();
+    const s = await crear(entrada());
+    await silencio(async () => servicio.confirmar(A, s.id, { version: s.version, confirmacion: true, imagen: dataUrl(P1), huella: await huella(s.id), captura: { ventana: 390, contenido: 358 } }));
+    await tick(seg(60));
+    const g = generadas[0];
+    assert.ok(g, "se generó");
+    assert.deepStrictEqual(g.opciones.captura, { ventana: 390, contenido: 358 });
+    const sorteo = fake.tablas.sorteos_programados.find(x => x.id === s.id);
+    const { normalizarConfigDiseno } = require(r("sorteos/disenoTabla.js"));
+    assert.deepStrictEqual(g.opciones.datos.diseno, normalizarConfigDiseno(sorteo.config?.diseno?.config ?? null));
+    assert.strictEqual(g.opciones.datos.cifras, sorteo.cifras);
+    assert.strictEqual(g.opciones.datos.cantidad, sorteo.cantidad_numeros);
 });
 
 // ---------------------------------------------------------- 9 y 10 -----

@@ -260,7 +260,7 @@ prueba("11. Base con una restricción antigua sobre «estado»: se guarda «cerr
         if (t !== "eventos_bot") return q;
         const update = q.update.bind(q);
         q.update = (v) => (["desactivado", "cancelado", "eliminado"].includes(v.estado)
-            ? { eq() { return this; }, then(ok) { return Promise.resolve({ data: null, error: { code: "23514", message: "check constraint" } }).then(ok); } }
+            ? { eq() { return this; }, is() { return this; }, select() { return this; }, then(ok) { return Promise.resolve({ data: null, error: { code: "23514", message: "check constraint" } }).then(ok); } }
             : update(v));
         return q;
     };
@@ -284,7 +284,8 @@ function sinMigracion039({ conCheck = false } = {}) {
         const q = original(t);
         if (t !== "eventos_bot") return q;
         const update = q.update.bind(q);
-        const fallo = (error) => ({ eq() { return this; }, then(ok) { return Promise.resolve({ data: null, error }).then(ok); } });
+        // eq/is/select: la escritura condicionada del orquestador (F3) los encadena.
+        const fallo = (error) => ({ eq() { return this; }, is() { return this; }, select() { return this; }, then(ok) { return Promise.resolve({ data: null, error }).then(ok); } });
         q.update = (v) => {
             if ("archivado_en" in v) return fallo({ code: "PGRST204", message: "Could not find the 'archivado_en' column of 'eventos_bot' in the schema cache" });
             if (conCheck && ["desactivado", "cancelado", "eliminado"].includes(v.estado)) return fallo({ code: "23514", message: "check constraint" });

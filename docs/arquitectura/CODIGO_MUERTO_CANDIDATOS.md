@@ -15,6 +15,15 @@ Inventario F1-C, 06/11/2026. **No se ha eliminado nada.** «Sin importadores» s
 | Scripts `backend/_*.js` (23), `bot/funciones/consultas/_matriz_*.js`, `bot/funciones/eventos/_test_consistencia_grupos.js`, `services/baileys/_test_groupQueue.js` | Scripts manuales de fases anteriores; los 12 que tocan datos reales llevan la guarda de F1-A | Decidir cuáles se archivan y cuáles se convierten en pruebas de `npm test` |
 | `diagnostico-real-send.patch`, `index (3).html` (raíz) | Archivos sueltos en la raíz | Que no sean referencia de nadie |
 
+### Sin uso desde F3 (06/11/2026), no eliminado
+
+| Archivo | Evidencia |
+|---|---|
+| `backend/sorteos/gestionEventos.js::cerrarWhatsApp` y `actualizarFila` | Las acciones pasan por el orquestador (`terminarFila`, `reabrirFila`); `actualizarFila` solo la usa ya `cerrarWhatsApp`, que no tiene llamadores |
+| `backend/bot/funciones/eventos/lifecycle/procesarEvento.js`, `evaluarEvento.js`, `verificarTodosPagados.js` y la propagación de `cerrarEvento()` | Sin uso en producción (solo `tests/eventos/cierrePorPagos.test.js` y un script); el camino vivo es `procesarSorteo` |
+| `backend/automation/repo/eventSessions.js::marcarCerrando`, `marcarExpirado` | Sin llamadores |
+| `backend/shared/eventos/unSorteoPorPrecio.js::COLUMNAS_SIN_CIERRE` | Constante sin uso desde que el respaldo vive en `escribirFin` |
+
 ## Panel
 
 | Archivo | Evidencia | Confirmar antes de borrar |

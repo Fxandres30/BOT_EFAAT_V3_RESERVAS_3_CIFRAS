@@ -1,5 +1,5 @@
 const supabase = require("../../../lib/supabase");
-const { eliminado, finDelEvento } = require("../../../shared/eventos/estadosGestion");
+const { eliminado, vigente } = require("../../../shared/eventos/estadosGestion");
 
 // Sorteo (eventos_bot) de un grupo PARA UN CLIENTE. usuarioId es el dueño
 // validado de la sesión que recibió el mensaje (sock.context.usuarioId) o
@@ -48,7 +48,7 @@ async function consultarEvento(grupoId, usuarioId) {
     // activo=true después de cerrarla (cierre_estado "cerrado") no gana al
     // sorteo en curso. Sin ninguno, el más reciente (historia: el llamador
     // decide qué hacer con un sorteo terminado).
-    return filas.find(f => f.activo === true && !finDelEvento(f)) || filas[0] || null;
+    return filas.find(vigente) || filas[0] || null;
 
 }
 

@@ -162,7 +162,13 @@ async function cambiarGrupos(usuarioId, sorteoId, grupos, { origen = "panel" } =
         const e = await estadoEnGrupo(usuarioId, sorteo, g);
         if (!e.ok) return falla("error_supabase", { mensaje: "No se pudo comprobar el sorteo en el grupo; no se cambió nada más.", resultado });
 
-        if (e.fila?.activo === true) {
+        // Publicación COMPARTIDA (K3, F4-F.1): si en este grupo la publicó OTRA
+        // programación del mismo sorteo, el evento es de ella: quitar el grupo
+        // de ESTA programación no lo desactiva (solo deja de ser su destino).
+        const deOtra = e.fila?.activo === true &&
+            (await require("./publicacionCompartida").gruposAdoptados(require("../lib/supabase"), sorteo, [g])).has(g.grupo_id);
+
+        if (e.fila?.activo === true && !deOtra) {
             const gestion = require("./gestionEventos");
             const d = await gestion.aplicar(usuarioId, e.fila.id, { accion: "desactivar", alcance: "grupo" });
             if (!d.ok) return falla("error_desactivar", { mensaje: `No se pudo desactivar el sorteo en ${g.grupo_nombre || g.grupo_id}: ${d.mensaje || d.motivo}`, resultado });
@@ -435,10 +441,11 @@ async function programacionDeIdentidad(usuarioId, identidad) {
     // sin ella daría error y todos los sorteos parecerían «sin programación».
     const { data, error } = await supabase.from("sorteos_programados").select("*")
         .eq("usuario_id", usuarioId).eq("identidad_evento_real", identidad).neq("estado", "cancelado")
-        .order("creado_en", { ascending: false }).limit(1);
+        .order("creado_en", { ascending: false }).limit(10);
     // Falla cerrado: sin poder leerlo no se decide (ni se crea otra).
     if (error) throw new Error(`No se pudo leer la programación del sorteo: ${error.message}`);
-    const p = data?.[0];
+    // Criterio único (F4-F.1): la más reciente, salvo una adoptante pura.
+    const p = await require("./publicacionCompartida").elegirProgramacion(supabase, usuarioId, data);
     return p && !p.archivado_en ? { id: p.id, estado: p.estado, archivado_en: p.archivado_en || null } : null;
 }
 

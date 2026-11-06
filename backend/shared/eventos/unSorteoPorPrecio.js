@@ -63,7 +63,12 @@ async function filasPorId(supabase, usuarioId, ids) {
 // Cierra como «sustituido» cada fila todavía activa (condicionado a
 // activo=true). -> { ok, cerradas: [fila tal como estaba] }. Si una falla,
 // deshace las anteriores y devuelve ok=false: o se cierran todas o ninguna.
-async function reemplazarAnteriores(supabase, { usuarioId, filas, motivo, ahora = new Date() }) {
+async function reemplazarAnteriores(supabase, { usuarioId, filas, motivo, ahora = new Date(), modalidad = "sustitucion_precio" }) {
+
+    // Escritura y respaldo sin la 023: los del orquestador central del cierre
+    // (F3-C), condicionados a activo=true como siempre. El algoritmo (qué
+    // filas, todo o nada, deshacer) no cambia.
+    const { escribirFin, registrarHistorialEvento } = require("../../bot/funciones/eventos/lifecycle/cerrarEvento");
 
     const cerradas = [];
     const instante = ahora.toISOString();
@@ -74,21 +79,17 @@ async function reemplazarAnteriores(supabase, { usuarioId, filas, motivo, ahora 
 
         const cambios = { activo: false, estado: "cerrado", cierre_estado: "cerrado", cierre_motivo: motivo, cerrado_en: instante, actualizado_en: instante };
 
-        let { data, error } = await supabase.from("eventos_bot").update(cambios)
-            .eq("usuario_id", usuarioId).eq("id", f.id).eq("activo", true).select("id");
-
-        // Sin las columnas de cierre por grupo (023).
-        if (error && COLUMNAS_SIN_CIERRE.has(error.code)) {
-            ({ data, error } = await supabase.from("eventos_bot").update({ activo: false, estado: "cerrado", actualizado_en: instante })
-                .eq("usuario_id", usuarioId).eq("id", f.id).eq("activo", true).select("id"));
-        }
+        const { escrita, error } = await escribirFin(supabase, { fila: f, cambios, requiere: "activa", usuarioId });
 
         if (error) {
-            await revertirReemplazo(supabase, { usuarioId, cerradas, motivo });
+            await revertirReemplazo(supabase, { usuarioId, cerradas, motivo, modalidad });
             return { ok: false, error, cerradas: [] };
         }
 
-        if (data?.length) cerradas.push(f);
+        if (escrita) {
+            cerradas.push(f);
+            await registrarHistorialEvento(supabase, { usuarioId, eventoId: f.id, identidad: f.identidad_evento_real, grupoId: f.grupo_id, modalidad, actor: "sistema", motivo, resultado: "ok", detalle: { fin: "cerrado", todo_o_nada: true } });
+        }
 
     }
 
@@ -96,25 +97,20 @@ async function reemplazarAnteriores(supabase, { usuarioId, filas, motivo, ahora 
         console.log(`🔁 [UN SORTEO POR PRECIO] ${cerradas.length} fila(s) del sorteo anterior cerradas como sustituidas (${motivo}); reservas y pagos intactos.`);
     }
 
-    return { ok: true, cerradas };
+    return { ok: true, cerradas, modalidad };
 
 }
 
 // Deshace un reemplazo cuyo sorteo nuevo no se pudo guardar. Solo restaura
 // las filas que siguen cerradas por ESTE reemplazo (mismo cierre_motivo):
 // nunca reabre algo que otra acción cerró después.
-async function revertirReemplazo(supabase, { usuarioId, cerradas, motivo }) {
+//
+// Endurecimiento F3: la escritura vive en el orquestador
+// (cerrarEvento.deshacerSustitucion), que además la deja en el historial.
+async function revertirReemplazo(supabase, { usuarioId, cerradas, motivo, modalidad = "sustitucion_precio" }) {
 
-    for (const f of cerradas) {
-        const restaurar = {
-            activo: f.activo, estado: f.estado,
-            cierre_estado: f.cierre_estado ?? null, cierre_motivo: f.cierre_motivo ?? null, cerrado_en: f.cerrado_en ?? null,
-            actualizado_en: new Date().toISOString()
-        };
-        const { error } = await supabase.from("eventos_bot").update(restaurar)
-            .eq("usuario_id", usuarioId).eq("id", f.id).eq("cierre_motivo", motivo);
-        if (error) console.error(`❌ [UN SORTEO POR PRECIO] no se pudo deshacer el cierre de ${f.id}:`, error.message);
-    }
+    const { deshacerSustitucion } = require("../../bot/funciones/eventos/lifecycle/cerrarEvento");
+    await deshacerSustitucion({ db: supabase, usuarioId, filas: cerradas, motivo, modalidad });
 
     if (cerradas.length) console.log(`↩️ [UN SORTEO POR PRECIO] el sorteo nuevo no se guardó: ${cerradas.length} fila(s) del anterior vuelven a estar activas.`);
 

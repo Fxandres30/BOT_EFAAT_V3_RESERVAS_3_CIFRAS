@@ -1,0 +1,2772 @@
+{
+  "E1 anuncio nuevo en un grupo": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [],
+    "enviados": [
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Dos últimas cifras",
+            "premio": 300000,
+            "tipo": "dos_ultimas_cifras"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [
+      "g1@g.us not_announcement"
+    ],
+    "resultado": {
+      "activo": true,
+      "evento": "E:g1#1"
+    },
+    "sorteos_programados": []
+  },
+  "E2 re-anuncio del mismo sorteo en el mismo grupo": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [],
+    "enviados": [
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Dos últimas cifras",
+            "premio": 300000,
+            "tipo": "dos_ultimas_cifras"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [
+      "g1@g.us not_announcement",
+      "g1@g.us not_announcement"
+    ],
+    "resultado": {
+      "activo": true,
+      "evento": "E:g1#1"
+    },
+    "sorteos_programados": []
+  },
+  "E3 el mismo sorteo anunciado en otro grupo (continuación)": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      },
+      {
+        "clave_idempotencia": "S:g2#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g2#1",
+        "grupo_id": "g2@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [],
+    "enviados": [
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val",
+      "g2@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      },
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g2#1",
+        "grupo_id": "g2@g.us",
+        "id": "S:g2#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Dos últimas cifras",
+            "premio": 300000,
+            "tipo": "dos_ultimas_cifras"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      },
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g2@g.us",
+        "grupo_nombre": "Nombre g2@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g2#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Dos últimas cifras",
+            "premio": 300000,
+            "tipo": "dos_ultimas_cifras"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [
+      "g1@g.us not_announcement",
+      "g2@g.us not_announcement"
+    ],
+    "resultado": {
+      "activo": true,
+      "evento": "E:g2#1"
+    },
+    "sorteos_programados": []
+  },
+  "E4 re-anuncio de un sorteo ya cerrado en el grupo: no se reactiva": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [],
+    "enviados": [
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": false,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cerrado_en": "<t>",
+        "cierre_estado": "cerrado",
+        "cierre_motivo": "panel:cerrado manualmente",
+        "cierre_ultimo_error": null,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "cerrado",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Dos últimas cifras",
+            "premio": 300000,
+            "tipo": "dos_ultimas_cifras"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [
+      {
+        "actor": "panel",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "modalidad": "cerrar",
+        "motivo": "panel:cerrado manualmente",
+        "resultado": "ok"
+      }
+    ],
+    "historial_programacion": [],
+    "operaciones": [
+      "g1@g.us not_announcement"
+    ],
+    "resultado": {
+      "activo": false,
+      "evento": "E:g1#1"
+    },
+    "sorteos_programados": []
+  },
+  "E5 anuncio de OTRO precio en el mismo grupo (sustitución en el grupo)": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [],
+    "enviados": [
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Lotería de Manizales",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Dos últimas cifras",
+            "premio": 140000,
+            "tipo": "dos_ultimas_cifras"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 10000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [
+      "g1@g.us not_announcement",
+      "g1@g.us not_announcement"
+    ],
+    "resultado": {
+      "activo": true,
+      "evento": "E:g1#1"
+    },
+    "sorteos_programados": []
+  },
+  "E5b anuncio de OTRO precio en el mismo grupo cuando el anterior YA tiene números (fila nueva + sustitución)": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      },
+      {
+        "clave_idempotencia": "S:g1#2:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#2",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {
+      "reservado": 1
+    },
+    "destinos": [],
+    "enviados": [
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val",
+      "g1@g.us texto 🔓 Grupo abierto: Lotería de Manizales —"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      },
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#2",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#2",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": false,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cerrado_en": "<t>",
+        "cierre_estado": "cerrado",
+        "cierre_motivo": "sustituido por el anuncio de Lotería de Manizales 22:30",
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "cerrado",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Dos últimas cifras",
+            "premio": 300000,
+            "tipo": "dos_ultimas_cifras"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      },
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#2",
+        "identidad_evento_real": "I#2",
+        "libres": 100,
+        "nombre_evento": "Lotería de Manizales",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Dos últimas cifras",
+            "premio": 140000,
+            "tipo": "dos_ultimas_cifras"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 10000
+      }
+    ],
+    "historial_eventos": [
+      {
+        "actor": "deteccion",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "modalidad": "sustitucion_anuncio",
+        "motivo": "sustituido por el anuncio de Lotería de Manizales 22:30",
+        "resultado": "ok"
+      }
+    ],
+    "historial_programacion": [],
+    "operaciones": [
+      "g1@g.us not_announcement",
+      "g1@g.us not_announcement"
+    ],
+    "resultado": {
+      "activo": true,
+      "evento": "E:g1#2"
+    },
+    "sorteos_programados": []
+  },
+  "E6 anuncio de otro sorteo del MISMO precio en otro grupo, por el administrador (reemplazo por precio)": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      },
+      {
+        "clave_idempotencia": "S:g2#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g2#1",
+        "grupo_id": "g2@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [],
+    "enviados": [
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val",
+      "g2@g.us texto 🔓 Grupo abierto: Lotería de Manizales —"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      },
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g2#1",
+        "grupo_id": "g2@g.us",
+        "id": "S:g2#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": false,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cerrado_en": "<t>",
+        "cierre_estado": "cerrado",
+        "cierre_motivo": "sustituido por el anuncio de Lotería de Manizales 22:30",
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "cerrado",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Dos últimas cifras",
+            "premio": 300000,
+            "tipo": "dos_ultimas_cifras"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      },
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g2@g.us",
+        "grupo_nombre": "Nombre g2@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g2#1",
+        "identidad_evento_real": "I#2",
+        "libres": 100,
+        "nombre_evento": "Lotería de Manizales",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Dos últimas cifras",
+            "premio": 140000,
+            "tipo": "dos_ultimas_cifras"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [
+      {
+        "actor": "sistema",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "modalidad": "sustitucion_precio",
+        "motivo": "sustituido por el anuncio de Lotería de Manizales 22:30",
+        "resultado": "ok"
+      }
+    ],
+    "historial_programacion": [],
+    "operaciones": [
+      "g1@g.us not_announcement",
+      "g2@g.us not_announcement"
+    ],
+    "resultado": {
+      "activo": true,
+      "evento": "E:g2#1"
+    },
+    "sorteos_programados": []
+  },
+  "E7 lo mismo enviado por un cliente (no administrador): no reemplaza en otros grupos": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [],
+    "enviados": [
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Dos últimas cifras",
+            "premio": 300000,
+            "tipo": "dos_ultimas_cifras"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [
+      "g1@g.us not_announcement"
+    ],
+    "resultado": null,
+    "sorteos_programados": []
+  },
+  "E8 el mismo anuncio sobre un sorteo programado ya publicado: re-anuncio": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "TABLA_COMPARTIR:A:3000:sorteo-P#1-publicacion-0:g1@g.us",
+        "estado": "ok",
+        "event_session_id": null,
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "TABLA_COMPARTIR"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:INITIAL_TABLE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "INITIAL_TABLE"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [
+      {
+        "estado": "publicado",
+        "evento_bot_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "intentos": 1,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1",
+        "ultimo_error": null
+      }
+    ],
+    "enviados": [
+      "g1@g.us imagen 🎉 *Antioqueñita Día* 🎉\n🕘 Juega a las ",
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Premio mayor",
+            "premio": 300000,
+            "tipo": "otro"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [
+      "g1@g.us not_announcement"
+    ],
+    "resultado": {
+      "activo": true,
+      "evento": "E:g1#1"
+    },
+    "sorteos_programados": [
+      {
+        "config": {
+          "grupos": [
+            "g1@g.us"
+          ],
+          "hora_cierre": "22:26",
+          "nombre": "Antioqueñita Día",
+          "publicacion_inmediata": false,
+          "valor": 3000
+        },
+        "confirmado_version": 1,
+        "estado": "publicado",
+        "id": "P#1",
+        "identidad_evento_real": "I#1",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "version": 1
+      }
+    ]
+  },
+  "E9 aislamiento: sesión validada de otro cliente → no se crea nada": {
+    "automation_actions": [],
+    "cuadricula": {},
+    "destinos": [],
+    "enviados": [],
+    "event_sessions": [],
+    "eventos_bot": [],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [],
+    "resultado": null,
+    "sorteos_programados": []
+  },
+  "P1 programado: publicación a su hora en dos grupos": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "TABLA_COMPARTIR:A:3000:sorteo-P#1-publicacion-0:g1@g.us",
+        "estado": "ok",
+        "event_session_id": null,
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "TABLA_COMPARTIR"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:INITIAL_TABLE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "INITIAL_TABLE"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      },
+      {
+        "clave_idempotencia": "TABLA_COMPARTIR:A:3000:sorteo-P#1-publicacion-0:g2@g.us",
+        "estado": "ok",
+        "event_session_id": null,
+        "grupo_id": "g2@g.us",
+        "tipo_accion": "TABLA_COMPARTIR"
+      },
+      {
+        "clave_idempotencia": "S:g2#1:INITIAL_TABLE",
+        "estado": "ok",
+        "event_session_id": "S:g2#1",
+        "grupo_id": "g2@g.us",
+        "tipo_accion": "INITIAL_TABLE"
+      },
+      {
+        "clave_idempotencia": "S:g2#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g2#1",
+        "grupo_id": "g2@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [
+      {
+        "estado": "publicado",
+        "evento_bot_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "intentos": 1,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1",
+        "ultimo_error": null
+      },
+      {
+        "estado": "publicado",
+        "evento_bot_id": "E:g2#1",
+        "grupo_id": "g2@g.us",
+        "intentos": 1,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1",
+        "ultimo_error": null
+      }
+    ],
+    "enviados": [
+      "g1@g.us imagen 🎉 *Antioqueñita Día* 🎉\n🕘 Juega a las ",
+      "g2@g.us imagen 🎉 *Antioqueñita Día* 🎉\n🕘 Juega a las ",
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val",
+      "g2@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      },
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g2#1",
+        "grupo_id": "g2@g.us",
+        "id": "S:g2#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Premio mayor",
+            "premio": 300000,
+            "tipo": "otro"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      },
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g2@g.us",
+        "grupo_nombre": "Nombre g2@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g2#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Premio mayor",
+            "premio": 300000,
+            "tipo": "otro"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [
+      "g1@g.us not_announcement",
+      "g2@g.us not_announcement"
+    ],
+    "resultado": {
+      "aviso": null,
+      "mensaje": null,
+      "motivo": null,
+      "ok": true,
+      "repetido": null
+    },
+    "sorteos_programados": [
+      {
+        "config": {
+          "grupos": [
+            "g1@g.us",
+            "g2@g.us"
+          ],
+          "hora_cierre": "22:26",
+          "nombre": "Antioqueñita Día",
+          "publicacion_inmediata": false,
+          "valor": 3000
+        },
+        "confirmado_version": 1,
+        "estado": "publicado",
+        "id": "P#1",
+        "identidad_evento_real": "I#1",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "version": 1
+      }
+    ]
+  },
+  "P2 programado: antes de su hora no hace nada": {
+    "automation_actions": [],
+    "cuadricula": {},
+    "destinos": [
+      {
+        "estado": "pendiente",
+        "grupo_id": "g1@g.us",
+        "intentos": 0,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1"
+      }
+    ],
+    "enviados": [],
+    "event_sessions": [],
+    "eventos_bot": [],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [],
+    "resultado": {
+      "aviso": null,
+      "mensaje": null,
+      "motivo": null,
+      "ok": true,
+      "repetido": null
+    },
+    "sorteos_programados": [
+      {
+        "config": {
+          "grupos": [
+            "g1@g.us"
+          ],
+          "hora_cierre": "22:26",
+          "nombre": "Antioqueñita Día",
+          "publicacion_inmediata": false,
+          "valor": 3000
+        },
+        "confirmado_version": 1,
+        "estado": "programado",
+        "id": "P#1",
+        "identidad_evento_real": "I#1",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "version": 1
+      }
+    ]
+  },
+  "P3 instantáneo: «Publicar ahora»": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "TABLA_COMPARTIR:A:3000:sorteo-P#1-publicacion-0:g1@g.us",
+        "estado": "ok",
+        "event_session_id": null,
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "TABLA_COMPARTIR"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:INITIAL_TABLE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "INITIAL_TABLE"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      },
+      {
+        "clave_idempotencia": "TABLA_COMPARTIR:A:3000:sorteo-P#1-publicacion-0:g2@g.us",
+        "estado": "ok",
+        "event_session_id": null,
+        "grupo_id": "g2@g.us",
+        "tipo_accion": "TABLA_COMPARTIR"
+      },
+      {
+        "clave_idempotencia": "S:g2#1:INITIAL_TABLE",
+        "estado": "ok",
+        "event_session_id": "S:g2#1",
+        "grupo_id": "g2@g.us",
+        "tipo_accion": "INITIAL_TABLE"
+      },
+      {
+        "clave_idempotencia": "S:g2#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g2#1",
+        "grupo_id": "g2@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [
+      {
+        "estado": "publicado",
+        "evento_bot_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "intentos": 1,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1",
+        "ultimo_error": null
+      },
+      {
+        "estado": "publicado",
+        "evento_bot_id": "E:g2#1",
+        "grupo_id": "g2@g.us",
+        "intentos": 1,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1",
+        "ultimo_error": null
+      }
+    ],
+    "enviados": [
+      "g1@g.us imagen 🎉 *Antioqueñita Día* 🎉\n🕘 Juega a las ",
+      "g2@g.us imagen 🎉 *Antioqueñita Día* 🎉\n🕘 Juega a las ",
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val",
+      "g2@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      },
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g2#1",
+        "grupo_id": "g2@g.us",
+        "id": "S:g2#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Premio mayor",
+            "premio": 300000,
+            "tipo": "otro"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      },
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g2@g.us",
+        "grupo_nombre": "Nombre g2@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g2#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Premio mayor",
+            "premio": 300000,
+            "tipo": "otro"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [
+      "g1@g.us not_announcement",
+      "g2@g.us not_announcement"
+    ],
+    "resultado": {
+      "aviso": null,
+      "mensaje": null,
+      "motivo": null,
+      "ok": true,
+      "repetido": null
+    },
+    "sorteos_programados": [
+      {
+        "config": {
+          "grupos": [
+            "g1@g.us",
+            "g2@g.us"
+          ],
+          "hora_cierre": "22:26",
+          "nombre": "Antioqueñita Día",
+          "publicacion_inmediata": true,
+          "valor": 3000
+        },
+        "confirmado_version": 1,
+        "estado": "publicado",
+        "id": "P#1",
+        "identidad_evento_real": "I#1",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "version": 1
+      }
+    ]
+  },
+  "P4 programado: fallo de apertura y reintento automático en el siguiente ciclo": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "TABLA_COMPARTIR:A:3000:sorteo-P#1-publicacion-0:g1@g.us",
+        "estado": "ok",
+        "event_session_id": null,
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "TABLA_COMPARTIR"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:INITIAL_TABLE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "INITIAL_TABLE"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [
+      {
+        "estado": "publicado",
+        "evento_bot_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "intentos": 2,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1",
+        "ultimo_error": null
+      }
+    ],
+    "enviados": [
+      "g1@g.us imagen 🎉 *Antioqueñita Día* 🎉\n🕘 Juega a las ",
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Premio mayor",
+            "premio": 300000,
+            "tipo": "otro"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [
+      "g1@g.us not_announcement"
+    ],
+    "resultado": {
+      "aviso": null,
+      "mensaje": null,
+      "motivo": null,
+      "ok": true,
+      "repetido": null
+    },
+    "sorteos_programados": [
+      {
+        "config": {
+          "grupos": [
+            "g1@g.us"
+          ],
+          "hora_cierre": "22:26",
+          "nombre": "Antioqueñita Día",
+          "publicacion_inmediata": false,
+          "valor": 3000
+        },
+        "confirmado_version": 1,
+        "estado": "publicado",
+        "id": "P#1",
+        "identidad_evento_real": "I#1",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "version": 1
+      }
+    ]
+  },
+  "P5 instantáneo: fallo de apertura (sin reintento automático) y «Reintentar» manual": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "TABLA_COMPARTIR:A:3000:sorteo-P#1-publicacion-1:g1@g.us",
+        "estado": "ok",
+        "event_session_id": null,
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "TABLA_COMPARTIR"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:INITIAL_TABLE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "INITIAL_TABLE"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [
+      {
+        "estado": "publicado",
+        "evento_bot_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "intentos": 1,
+        "reintentos_manuales": 1,
+        "sorteo_id": "P#1",
+        "ultimo_error": null
+      }
+    ],
+    "enviados": [
+      "g1@g.us imagen 🎉 *Antioqueñita Día* 🎉\n🕘 Juega a las ",
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Premio mayor",
+            "premio": 300000,
+            "tipo": "otro"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [
+      {
+        "accion": "reintentar",
+        "resultado": "pedido",
+        "sorteo_id": "P#1"
+      },
+      {
+        "accion": "reintentar",
+        "resultado": "ok",
+        "sorteo_id": "P#1"
+      }
+    ],
+    "operaciones": [
+      "g1@g.us not_announcement"
+    ],
+    "resultado": {
+      "aviso": "Publicado en Grupo 1.",
+      "mensaje": null,
+      "motivo": null,
+      "ok": true,
+      "repetido": null
+    },
+    "sorteos_programados": [
+      {
+        "config": {
+          "grupos": [
+            "g1@g.us"
+          ],
+          "hora_cierre": "22:26",
+          "nombre": "Antioqueñita Día",
+          "publicacion_inmediata": true,
+          "valor": 3000
+        },
+        "confirmado_version": 1,
+        "estado": "publicado",
+        "id": "P#1",
+        "identidad_evento_real": "I#1",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "version": 1
+      }
+    ]
+  },
+  "P6 programado: «Reintentar» manual de un destino en revisión (clave nueva)": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "TABLA_COMPARTIR:A:3000:sorteo-P#1-publicacion-1:g1@g.us",
+        "estado": "ok",
+        "event_session_id": null,
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "TABLA_COMPARTIR"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:INITIAL_TABLE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "INITIAL_TABLE"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [
+      {
+        "estado": "publicado",
+        "evento_bot_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "intentos": 1,
+        "reintentos_manuales": 1,
+        "sorteo_id": "P#1",
+        "ultimo_error": null
+      }
+    ],
+    "enviados": [
+      "g1@g.us imagen 🎉 *Antioqueñita Día* 🎉\n🕘 Juega a las ",
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Premio mayor",
+            "premio": 300000,
+            "tipo": "otro"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [
+      {
+        "accion": "reintentar",
+        "resultado": "pedido",
+        "sorteo_id": "P#1"
+      }
+    ],
+    "operaciones": [
+      "g1@g.us not_announcement"
+    ],
+    "resultado": {
+      "aviso": null,
+      "mensaje": null,
+      "motivo": null,
+      "ok": true,
+      "repetido": null
+    },
+    "sorteos_programados": [
+      {
+        "config": {
+          "grupos": [
+            "g1@g.us"
+          ],
+          "hora_cierre": "22:26",
+          "nombre": "Antioqueñita Día",
+          "publicacion_inmediata": false,
+          "valor": 3000
+        },
+        "confirmado_version": 1,
+        "estado": "publicado",
+        "id": "P#1",
+        "identidad_evento_real": "I#1",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "version": 1
+      }
+    ]
+  },
+  "P7 grupo nuevo en un sorteo ya publicado (cambiar grupos + publicar)": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "TABLA_COMPARTIR:A:3000:sorteo-P#1-publicacion-0:g1@g.us",
+        "estado": "ok",
+        "event_session_id": null,
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "TABLA_COMPARTIR"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:INITIAL_TABLE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "INITIAL_TABLE"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      },
+      {
+        "clave_idempotencia": "TABLA_COMPARTIR:A:3000:sorteo-P#1-publicacion-0:g2@g.us",
+        "estado": "ok",
+        "event_session_id": null,
+        "grupo_id": "g2@g.us",
+        "tipo_accion": "TABLA_COMPARTIR"
+      },
+      {
+        "clave_idempotencia": "S:g2#1:INITIAL_TABLE",
+        "estado": "ok",
+        "event_session_id": "S:g2#1",
+        "grupo_id": "g2@g.us",
+        "tipo_accion": "INITIAL_TABLE"
+      },
+      {
+        "clave_idempotencia": "S:g2#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g2#1",
+        "grupo_id": "g2@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [
+      {
+        "estado": "publicado",
+        "evento_bot_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "intentos": 1,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1",
+        "ultimo_error": null
+      },
+      {
+        "estado": "publicado",
+        "evento_bot_id": "E:g2#1",
+        "grupo_id": "g2@g.us",
+        "intentos": 1,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1",
+        "ultimo_error": null
+      }
+    ],
+    "enviados": [
+      "g1@g.us imagen 🎉 *Antioqueñita Día* 🎉\n🕘 Juega a las ",
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val",
+      "g2@g.us imagen 🎉 *Antioqueñita Día* 🎉\n🕘 Juega a las ",
+      "g2@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      },
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g2#1",
+        "grupo_id": "g2@g.us",
+        "id": "S:g2#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Premio mayor",
+            "premio": 300000,
+            "tipo": "otro"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      },
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g2@g.us",
+        "grupo_nombre": "Nombre g2@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g2#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Premio mayor",
+            "premio": 300000,
+            "tipo": "otro"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [
+      {
+        "accion": "cambiar_grupos",
+        "resultado": "hecho",
+        "sorteo_id": "P#1"
+      },
+      {
+        "accion": "publicar_grupos_nuevos",
+        "resultado": "ok",
+        "sorteo_id": "P#1"
+      }
+    ],
+    "operaciones": [
+      "g1@g.us not_announcement",
+      "g2@g.us not_announcement"
+    ],
+    "resultado": {
+      "aviso": null,
+      "mensaje": null,
+      "motivo": null,
+      "ok": true,
+      "repetido": null
+    },
+    "sorteos_programados": [
+      {
+        "config": {
+          "grupos": [
+            "g1@g.us"
+          ],
+          "hora_cierre": "22:26",
+          "nombre": "Antioqueñita Día",
+          "publicacion_inmediata": false,
+          "valor": 3000
+        },
+        "confirmado_version": 1,
+        "estado": "publicado",
+        "id": "P#1",
+        "identidad_evento_real": "I#1",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "version": 1
+      }
+    ]
+  },
+  "P8 panel: sorteo de otro sorteo del mismo precio activo en otro grupo (reemplazo por precio)": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "S:g2#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g2#1",
+        "grupo_id": "g2@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      },
+      {
+        "clave_idempotencia": "TABLA_COMPARTIR:A:3000:sorteo-P#1-publicacion-0:g1@g.us",
+        "estado": "ok",
+        "event_session_id": null,
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "TABLA_COMPARTIR"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:INITIAL_TABLE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "INITIAL_TABLE"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [
+      {
+        "estado": "publicado",
+        "evento_bot_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "intentos": 1,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1",
+        "ultimo_error": null
+      }
+    ],
+    "enviados": [
+      "g2@g.us texto 🔓 Grupo abierto: Lotería de Manizales —",
+      "g1@g.us imagen 🎉 *Antioqueñita Día* 🎉\n🕘 Juega a las ",
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g2#1",
+        "grupo_id": "g2@g.us",
+        "id": "S:g2#1",
+        "usuario_id": "A"
+      },
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": false,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cerrado_en": "<t>",
+        "cierre_estado": "cerrado",
+        "cierre_motivo": "sustituido por el sorteo Antioqueñita Día 22:30",
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "cerrado",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g2@g.us",
+        "grupo_nombre": "Nombre g2@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g2#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Lotería de Manizales",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Dos últimas cifras",
+            "premio": 140000,
+            "tipo": "dos_ultimas_cifras"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      },
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#2",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Premio mayor",
+            "premio": 300000,
+            "tipo": "otro"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [
+      {
+        "actor": "sistema",
+        "evento_id": "E:g2#1",
+        "grupo_id": "g2@g.us",
+        "modalidad": "sustitucion_precio",
+        "motivo": "sustituido por el sorteo Antioqueñita Día 22:30",
+        "resultado": "ok"
+      }
+    ],
+    "historial_programacion": [],
+    "operaciones": [
+      "g2@g.us not_announcement",
+      "g1@g.us not_announcement"
+    ],
+    "resultado": {
+      "aviso": null,
+      "mensaje": null,
+      "motivo": null,
+      "ok": true,
+      "repetido": null
+    },
+    "sorteos_programados": [
+      {
+        "config": {
+          "grupos": [
+            "g1@g.us"
+          ],
+          "hora_cierre": "22:26",
+          "nombre": "Antioqueñita Día",
+          "publicacion_inmediata": true,
+          "valor": 3000
+        },
+        "confirmado_version": 1,
+        "estado": "publicado",
+        "id": "P#1",
+        "identidad_evento_real": "I#2",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "version": 1
+      }
+    ]
+  },
+  "P9 panel: otra cuenta abre un sorteo en el grupo después de confirmar → en espera": {
+    "automation_actions": [],
+    "cuadricula": {},
+    "destinos": [
+      {
+        "estado": "pendiente",
+        "grupo_id": "g1@g.us",
+        "intentos": 0,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1",
+        "ultimo_error": "En espera: Otra cuenta tiene un sorteo abierto en este grupo. Se publicará en cuanto termine. Debe resolverse antes del cierre de reservas (2026-10-22 22:26); si no, quedará en revisión. Para publicar antes, cierra el sorteo actual o cambia el grupo."
+      }
+    ],
+    "enviados": [],
+    "event_sessions": [],
+    "eventos_bot": [
+      {
+        "activo": true,
+        "estado": "abierto",
+        "grupo_id": "g1@g.us",
+        "hora_fin": "21:00",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "nombre_evento": "Otro",
+        "usuario_id": "B",
+        "valor": 5000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [],
+    "resultado": {
+      "aviso": null,
+      "mensaje": null,
+      "motivo": null,
+      "ok": true,
+      "repetido": null
+    },
+    "sorteos_programados": [
+      {
+        "config": {
+          "grupos": [
+            "g1@g.us"
+          ],
+          "hora_cierre": "22:26",
+          "nombre": "Antioqueñita Día",
+          "publicacion_inmediata": false,
+          "valor": 3000
+        },
+        "confirmado_version": 1,
+        "estado": "publicando",
+        "id": "P#1",
+        "identidad_evento_real": "I#2",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "version": 1
+      }
+    ]
+  },
+  "P10 panel publica un sorteo ya detectado en el grupo (evento existente)": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      },
+      {
+        "clave_idempotencia": "TABLA_COMPARTIR:A:3000:sorteo-P#1-publicacion-0:g1@g.us",
+        "estado": "ok",
+        "event_session_id": null,
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "TABLA_COMPARTIR"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [
+      {
+        "estado": "publicado",
+        "evento_bot_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "intentos": 1,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1",
+        "ultimo_error": null
+      }
+    ],
+    "enviados": [
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val",
+      "g1@g.us imagen 🎉 *Antioqueñita Día* 🎉\n🕘 Juega a las "
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Premio mayor",
+            "premio": 300000,
+            "tipo": "otro"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [
+      "g1@g.us not_announcement",
+      "g1@g.us not_announcement"
+    ],
+    "resultado": {
+      "aviso": null,
+      "mensaje": null,
+      "motivo": null,
+      "ok": true,
+      "repetido": null
+    },
+    "sorteos_programados": [
+      {
+        "config": {
+          "grupos": [
+            "g1@g.us"
+          ],
+          "hora_cierre": "22:26",
+          "nombre": "Antioqueñita Día",
+          "publicacion_inmediata": true,
+          "valor": 3000
+        },
+        "confirmado_version": 1,
+        "estado": "publicado",
+        "id": "P#1",
+        "identidad_evento_real": "I#1",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "version": 1
+      }
+    ]
+  },
+  "P11 vincular un sorteo detectado y agregarle un grupo": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      },
+      {
+        "clave_idempotencia": "TABLA_COMPARTIR:A:3000:sorteo-P#1-publicacion-0:g2@g.us",
+        "estado": "ok",
+        "event_session_id": null,
+        "grupo_id": "g2@g.us",
+        "tipo_accion": "TABLA_COMPARTIR"
+      },
+      {
+        "clave_idempotencia": "S:g2#1:INITIAL_TABLE",
+        "estado": "ok",
+        "event_session_id": "S:g2#1",
+        "grupo_id": "g2@g.us",
+        "tipo_accion": "INITIAL_TABLE"
+      },
+      {
+        "clave_idempotencia": "S:g2#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g2#1",
+        "grupo_id": "g2@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [
+      {
+        "estado": "publicado",
+        "evento_bot_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "intentos": 0,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1"
+      },
+      {
+        "estado": "publicado",
+        "evento_bot_id": "E:g2#1",
+        "grupo_id": "g2@g.us",
+        "intentos": 1,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1",
+        "ultimo_error": null
+      }
+    ],
+    "enviados": [
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val",
+      "g2@g.us imagen 🎉 *Antioqueñita Día* 🎉\n🕘 Juega a las ",
+      "g2@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      },
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g2#1",
+        "grupo_id": "g2@g.us",
+        "id": "S:g2#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Dos últimas cifras",
+            "premio": 300000,
+            "tipo": "dos_ultimas_cifras"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      },
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g2@g.us",
+        "grupo_nombre": "Nombre g2@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g2#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Dos últimas cifras",
+            "premio": 300000,
+            "tipo": "dos_ultimas_cifras"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [
+      {
+        "accion": "vincular_detectado",
+        "resultado": "hecho",
+        "sorteo_id": "P#1"
+      },
+      {
+        "accion": "cambiar_grupos",
+        "resultado": "hecho",
+        "sorteo_id": "P#1"
+      },
+      {
+        "accion": "publicar_grupos_nuevos",
+        "resultado": "ok",
+        "sorteo_id": "P#1"
+      }
+    ],
+    "operaciones": [
+      "g1@g.us not_announcement",
+      "g2@g.us not_announcement"
+    ],
+    "resultado": {
+      "aviso": null,
+      "mensaje": null,
+      "motivo": null,
+      "ok": true,
+      "repetido": null
+    },
+    "sorteos_programados": [
+      {
+        "config": {
+          "evento_origen_id": "E:g1#1",
+          "grupos": [
+            "g1@g.us"
+          ],
+          "hora_cierre": "22:26",
+          "nombre": "Antioqueñita Día",
+          "origen": "whatsapp",
+          "publicacion_inmediata": true,
+          "valor": 3000
+        },
+        "confirmado_version": 1,
+        "estado": "publicado",
+        "id": "P#1",
+        "identidad_evento_real": "I#1",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "version": 1
+      }
+    ]
+  },
+  "R1 apertura fallida en la detección; el worker la abre después y reanuda el ciclo": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [],
+    "enviados": [
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Dos últimas cifras",
+            "premio": 300000,
+            "tipo": "dos_ultimas_cifras"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [
+      "g1@g.us not_announcement"
+    ],
+    "resultado": null,
+    "sorteos_programados": []
+  },
+  "R2 publicación interrumpida ANTES de enviar (sin registro): vuelve a intentarse": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "TABLA_COMPARTIR:A:3000:sorteo-P#1-publicacion-0:g1@g.us",
+        "estado": "ok",
+        "event_session_id": null,
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "TABLA_COMPARTIR"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:INITIAL_TABLE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "INITIAL_TABLE"
+      },
+      {
+        "clave_idempotencia": "S:g1#1:OPEN_MESSAGE",
+        "estado": "ok",
+        "event_session_id": "S:g1#1",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "OPEN_MESSAGE"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [
+      {
+        "estado": "publicado",
+        "evento_bot_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "intentos": 2,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1",
+        "ultimo_error": null
+      }
+    ],
+    "enviados": [
+      "g1@g.us imagen 🎉 *Antioqueñita Día* 🎉\n🕘 Juega a las ",
+      "g1@g.us texto 🔓 Grupo abierto: Antioqueñita Día — val"
+    ],
+    "event_sessions": [
+      {
+        "abierto_en": "<t>",
+        "estado": "abierto",
+        "evento_id": "E:g1#1",
+        "grupo_id": "g1@g.us",
+        "id": "S:g1#1",
+        "usuario_id": "A"
+      }
+    ],
+    "eventos_bot": [
+      {
+        "abierto": true,
+        "activo": true,
+        "actualizado_en": "<t>",
+        "cantidad_numeros": 100,
+        "cifras": 2,
+        "creado_en": "<t>",
+        "descripcion_grupo": null,
+        "estado": "abierto",
+        "fecha_evento": "2026-10-22",
+        "grupo_id": "g1@g.us",
+        "grupo_nombre": "Nombre g1@g.us",
+        "hora_cierre": "22:26",
+        "hora_fin": "22:30",
+        "id": "E:g1#1",
+        "identidad_evento_real": "I#1",
+        "libres": 100,
+        "nombre_evento": "Antioqueñita Día",
+        "pagados": 0,
+        "participantes": 2,
+        "pendientes": 0,
+        "premios": [
+          {
+            "nombre": "Premio mayor",
+            "premio": 300000,
+            "tipo": "otro"
+          }
+        ],
+        "reservados": 0,
+        "session_id": "ses-aaaa",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "telefono_bot": "573000000000",
+        "usuario_id": "A",
+        "valor": 3000
+      }
+    ],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [
+      "g1@g.us not_announcement"
+    ],
+    "resultado": {
+      "aviso": null,
+      "mensaje": null,
+      "motivo": null,
+      "ok": true,
+      "repetido": null
+    },
+    "sorteos_programados": [
+      {
+        "config": {
+          "grupos": [
+            "g1@g.us"
+          ],
+          "hora_cierre": "22:26",
+          "nombre": "Antioqueñita Día",
+          "publicacion_inmediata": false,
+          "valor": 3000
+        },
+        "confirmado_version": 1,
+        "estado": "publicado",
+        "id": "P#1",
+        "identidad_evento_real": "I#1",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "version": 1
+      }
+    ]
+  },
+  "R3 publicación interrumpida DESPUÉS de enviar (registro ok): publicado sin reenviar": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "TABLA_COMPARTIR:A:3000:sorteo-P#1-publicacion-0:g1@g.us",
+        "estado": "ok",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "TABLA_COMPARTIR"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [
+      {
+        "estado": "publicado",
+        "grupo_id": "g1@g.us",
+        "intentos": 1,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1",
+        "ultimo_error": null
+      }
+    ],
+    "enviados": [],
+    "event_sessions": [],
+    "eventos_bot": [],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [],
+    "resultado": {
+      "aviso": null,
+      "mensaje": null,
+      "motivo": null,
+      "ok": true,
+      "repetido": null
+    },
+    "sorteos_programados": [
+      {
+        "config": {
+          "grupos": [
+            "g1@g.us"
+          ],
+          "hora_cierre": "22:26",
+          "nombre": "Antioqueñita Día",
+          "publicacion_inmediata": false,
+          "valor": 3000
+        },
+        "confirmado_version": 1,
+        "estado": "publicado",
+        "id": "P#1",
+        "identidad_evento_real": "I#1",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "version": 1
+      }
+    ]
+  },
+  "R4 publicación interrumpida DURANTE el envío (en_progreso): revisión, sin reenviar": {
+    "automation_actions": [
+      {
+        "clave_idempotencia": "TABLA_COMPARTIR:A:3000:sorteo-P#1-publicacion-0:g1@g.us",
+        "estado": "en_progreso",
+        "grupo_id": "g1@g.us",
+        "tipo_accion": "TABLA_COMPARTIR"
+      }
+    ],
+    "cuadricula": {},
+    "destinos": [
+      {
+        "estado": "requiere_revision",
+        "grupo_id": "g1@g.us",
+        "intentos": 1,
+        "reintentos_manuales": 0,
+        "sorteo_id": "P#1",
+        "ultimo_error": "El servidor se reinició mientras se enviaba el anuncio a este grupo: no se sabe si llegó. No se reenvía solo para no duplicarlo. Revisa el grupo en WhatsApp: si el anuncio no está, pulsa «Reintentar»."
+      }
+    ],
+    "enviados": [],
+    "event_sessions": [],
+    "eventos_bot": [],
+    "historial_eventos": [],
+    "historial_programacion": [],
+    "operaciones": [],
+    "resultado": {
+      "aviso": null,
+      "mensaje": null,
+      "motivo": null,
+      "ok": true,
+      "repetido": null
+    },
+    "sorteos_programados": [
+      {
+        "config": {
+          "grupos": [
+            "g1@g.us"
+          ],
+          "hora_cierre": "22:26",
+          "nombre": "Antioqueñita Día",
+          "publicacion_inmediata": false,
+          "valor": 3000
+        },
+        "confirmado_version": 1,
+        "estado": "fallido",
+        "id": "P#1",
+        "identidad_evento_real": "I#1",
+        "tabla": "5k_15k_reservas_2_cifras",
+        "version": 1
+      }
+    ]
+  }
+}

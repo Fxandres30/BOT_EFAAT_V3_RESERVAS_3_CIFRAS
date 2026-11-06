@@ -28,7 +28,7 @@
 // nada lo hace: ver docs/EFAAT_AUTOMATION_PHASE_4B_IMPLEMENTATION.md).
 // ==========================================================================
 
-const { cierreSilencioso, motivoGestion } = require("../shared/eventos/estadosGestion");
+const { cierreSilencioso, motivoGestion, vigente } = require("../shared/eventos/estadosGestion");
 const eventSessionsRepo = require("./repo/eventSessions");
 const eventosBotRepo = require("./repo/eventosBot");
 const automationConfigRepo = require("./repo/automationConfig");
@@ -353,6 +353,15 @@ async function procesarEventSession(eventSession, sock, opciones = {}) {
         return; // un evento ya cerrado no evalúa recordatorios/updates
 
     }
+
+    // 1b. REGLA F2 (06/11/2026): un sorteo que no está vigente no recibe
+    //     tabla inicial, recordatorios ni actualizaciones. Son las filas
+    //     activo=true ya terminadas (estado/cierre_estado «cerrado» o motivo
+    //     de gestión, riesgo C3) y las de activo NULL (históricas, «inertes»).
+    //     Antes las recibían. NO se ejecuta aquí el cierre: el aviso de cierre
+    //     y el fin del ciclo siguen dependiendo de activo === false (paso 1),
+    //     que es la mecánica de cierre (F3).
+    if (!vigente(evento)) return; // sin log por tick (mismo criterio que evaluar*)
 
     // 2. Publicación inicial de la tabla real (Fase 5) — independiente de
     //    OPEN_MESSAGE, ver automation/tablaInicial.js.

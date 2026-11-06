@@ -113,7 +113,8 @@ const eventHandler = require(r("bot/handlers/eventHandler.js"));
 
 const TENANT = "tenant-1";
 const USUARIO = { id: "cliente-1" };
-const CON_PRECIO = { id: "ev-1", usuario_id: "tenant-test", nombre_evento: "Lotería De Manizales", tabla: TABLA, cifras: 2, valor: 5000 };
+// activo: true — sorteo en curso (F2: una fila sin activo cuenta como cerrada).
+const CON_PRECIO = { id: "ev-1", activo: true, estado: "abierto", usuario_id: "tenant-test", nombre_evento: "Lotería De Manizales", tabla: TABLA, cifras: 2, valor: 5000 };
 const SIN_PRECIO = { ...CON_PRECIO, valor: null };
 
 function sembrar(filas) {

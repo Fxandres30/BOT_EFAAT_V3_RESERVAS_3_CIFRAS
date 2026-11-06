@@ -1,7 +1,7 @@
 const supabase = require("../../../lib/supabase");
 const { reservaPerteneceAUsuario } = require("../usuarios/obtenerUsuarioGlobal");
 const { soloDelCliente } = require("../reservas/filtroCliente");
-const { finDelEvento } = require("../../../shared/eventos/estadosGestion");
+const { vigente } = require("../../../shared/eventos/estadosGestion");
 const { fechaEventoHoy } = require("../eventos/identidadEventoReal");
 
 // ¿Este sorteo es el VIGENTE de su tabla? Solo un sorteo vigente genera
@@ -11,9 +11,15 @@ const { fechaEventoHoy } = require("../eventos/identidadEventoReal");
 // (bot caído a la hora del sorteo) es historia, no el sorteo actual.
 // Un sorteo terminado nunca se presenta como actual ni reconstruye deuda
 // (error en producción 31/10/2026: «¿qué debo?» nombraba sorteos pasados).
+// REGLA F2 (06/11/2026): «activo» = fuente única (estadosGestion.vigente).
+// Antes bastaba con que la vigencia no hubiera terminado, así que una fila
+// con activo NULL (histórica, «inerte para el bot») contaba como vigente y
+// su deuda se presentaba como actual, aunque el pago por sticker ya la
+// rechazaba. Ahora es cerrada (regla 4). Las reservas y los pagos de esa
+// fila no cambian: solo deja de presentarse como el sorteo actual.
 function sorteoVigente(evento, ahora = new Date()) {
 
-    if (!evento || finDelEvento(evento)) return false;
+    if (!vigente(evento)) return false;
 
     const fecha = evento.fecha_evento ? String(evento.fecha_evento).slice(0, 10) : null;
 

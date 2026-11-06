@@ -348,8 +348,22 @@ export interface SorteoEnGrupos {
     /** null = no se pudieron contar en este momento (nunca se muestra 0). */
     reservados: number | null;
     pagados: number | null;
-    grupos: { evento_id: string; grupo_id: string; grupo_nombre: string | null; estado: EstadoEventoGrupo; abierto_whatsapp: boolean }[];
+    /** Permiso de reservas (F3-E): decisión del administrador, aparte del
+     *  estado. Opcional: un backend anterior no lo envía. */
+    reservas_modo?: ModoReservas;
+    /** ¿Acepta reservas nuevas ahora? (estado + permiso + hora de cierre). */
+    acepta_reservas?: boolean;
+    grupos: { evento_id: string; grupo_id: string; grupo_nombre: string | null; estado: EstadoEventoGrupo; abierto_whatsapp: boolean; reservas_modo?: ModoReservas }[];
 }
+
+/** Permiso de reservas del sorteo (backend shared/eventos/estadosGestion.js). */
+export type ModoReservas = "segun_estado" | "permitidas" | "desactivadas";
+
+export const ETIQUETA_MODO_RESERVAS: Record<ModoReservas, string> = {
+    segun_estado: "Según el estado (abierto: sí · cerrado: no)",
+    permitidas: "Permitidas (también con el sorteo cerrado)",
+    desactivadas: "Desactivadas"
+};
 
 export type AccionEvento = "cerrar" | "reabrir" | "desactivar" | "cancelar" | "eliminar";
 
@@ -640,8 +654,13 @@ export const apiSorteos = {
     eventos: () => llamar<SorteoEnGrupos[]>("GET", "/eventos"),
     accionEvento: (eventoId: string, cuerpo: { accion: AccionEvento; alcance?: "grupo" | "todos"; hora_cierre?: string; sustituir?: boolean; cerrar_grupo_whatsapp?: boolean }) =>
         llamar<ResultadoAccionEvento>("POST", `/eventos/${eventoId}/accion`, cuerpo),
+    /** Permiso de reservas del sorteo en todos sus grupos (F3-E). */
+    permisoReservas: (eventoId: string, modo: ModoReservas) =>
+        llamar<{ reservas_modo: ModoReservas; grupos: { evento_id: string; grupo_id: string; reservas_modo: ModoReservas }[] }>("PUT", `/eventos/${eventoId}/reservas`, { modo }),
     obtener: (id: string) => llamar<Sorteo>("GET", `/${id}`),
-    crear: (config: ConfigSorteo & { plantilla_id?: string | null }) => llamar<Sorteo>("POST", "", config),
+    // solicitud_id (F4-F, opcional): la misma solicitud crea UN solo borrador;
+    // repetirla (doble clic, respuesta perdida) devuelve ese mismo borrador.
+    crear: (config: ConfigSorteo & { plantilla_id?: string | null; solicitud_id?: string }) => llamar<Sorteo>("POST", "", config),
     editar: (id: string, config: ConfigSorteo & { version: number; plantilla_id?: string | null }) => llamar<Sorteo>("PUT", `/${id}`, config),
     vistaPrevia: (id: string) => llamar<VistaPrevia>("GET", `/${id}/vista-previa`),
     /** `imagen`: la captura de la vista previa (la misma que publica el instantáneo) y la huella de

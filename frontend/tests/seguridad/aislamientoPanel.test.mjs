@@ -64,6 +64,8 @@ function cargarTs(rutaAbs) {
     const modulo = { exports: {} };
     const requerir = spec => {
         if (spec === "@/lib/supabase") return { supabase: new Proxy({}, { get: (_, p) => clienteGlobal[p] }) };
+        // Imports relativos a otros .ts (obtenerEventos -> estadoEvento, F2).
+        if (spec.startsWith(".")) return cargarTs(path.resolve(path.dirname(rutaAbs), `${spec}.ts`));
         return require(spec);
     };
     new Function("module", "exports", "require", outputText)(modulo, modulo.exports, requerir);

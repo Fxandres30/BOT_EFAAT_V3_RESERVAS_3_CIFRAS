@@ -35,7 +35,10 @@
 const supabase = require("../lib/supabase");
 const repo = require("./repo");
 const { instanteBogota, HORA } = require("./validar");
-const { motivoGestion, eliminado } = require("../shared/eventos/estadosGestion");
+const { motivoGestion, eliminado, estadoEnGrupoPorActivo, enCursoPorActivo, vigente, MODOS_RESERVA, modoReservas, puedeReservar } = require("../shared/eventos/estadosGestion");
+const { verificarHoraCierre } = require("../bot/funciones/eventos/lifecycle/verificarHoraCierre");
+// Orquestador central del cierre (F3): todas las acciones pasan por él.
+const orquestador = require("../bot/funciones/eventos/lifecycle/cerrarEvento");
 const { sorteosActivosDelPrecio } = require("../shared/eventos/unSorteoPorPrecio");
 const { ESTADOS_EDITABLES } = require("./estadosProgramacion");
 
@@ -75,10 +78,13 @@ async function filasDelSorteo(usuarioId, eventoId) {
 
 // Conteo de números por identidad: repo.contarNumerosIdentidad (F1-B).
 
-function estadoFila(f) {
-    if (f.activo) return "en_curso";
-    return motivoGestion(f) || "cerrado";
-}
+// Estado de cada grupo y del sorteo: criterio C (anterior, solo `activo`)
+// de la fuente única, estadosGestion.estadoEnGrupoPorActivo /
+// enCursoPorActivo (F2). Pasarlo al canónico (estadoEnGrupo) es una decisión
+// pendiente: una fila activo=true ya cerrada pasaría de «En curso» a
+// «Cerrado» en Eventos.
+const estadoFila = estadoEnGrupoPorActivo;
+const enCurso = enCursoPorActivo;
 
 // Sorteos del cliente de los últimos días (activos e inactivos, nunca los
 // eliminados), uno por sorteo real con el estado de CADA grupo.
@@ -95,7 +101,7 @@ async function listar(usuarioId, { ahora = new Date() } = {}) {
 
     const grupos = new Map();
     for (const f of data || []) {
-        if (eliminado(f) || !(f.activo || reciente(f))) continue;
+        if (eliminado(f) || !(enCurso(f) || reciente(f))) continue;
         const k = f.identidad_evento_real || `evento:${f.id}`;
         if (!grupos.has(k)) grupos.set(k, []);
         grupos.get(k).push(f);
@@ -106,10 +112,10 @@ async function listar(usuarioId, { ahora = new Date() } = {}) {
     for (const filas of grupos.values()) {
 
         // Representante: la activa, si no la más reciente.
-        const base = filas.find(f => f.activo) || filas[0];
+        const base = filas.find(enCurso) || filas[0];
         // En curso: toda su tabla (UNA TABLA = UN SORTEO). Cerrado: la tabla
         // puede ser ya de otro sorteo; solo la identidad de la fila lo recuerda.
-        const numeros = filas.some(f => f.activo)
+        const numeros = filas.some(enCurso)
             ? await repo.contarNumerosTabla(usuarioId, base.tabla)
             : await repo.contarNumerosIdentidad(usuarioId, base.tabla, base.identidad_evento_real);
 
@@ -121,15 +127,19 @@ async function listar(usuarioId, { ahora = new Date() } = {}) {
             hora_fin: base.hora_fin || null,
             hora_cierre: base.hora_cierre || null,
             valor: Number(String(base.valor ?? "").replace(/[^\d]/g, "")) || null,
-            estado: filas.some(f => f.activo) ? "en_curso" : estadoFila(base),
+            estado: filas.some(enCurso) ? "en_curso" : estadoFila(base),
             reservados: numeros.reservados,
             pagados: numeros.pagados,
+            // Permiso de reservas (F3-E): decisión del administrador, aparte del estado.
+            reservas_modo: modoReservas(base),
+            acepta_reservas: puedeReservar({ evento: base, cierrePasado: verificarHoraCierre(base, ahora) }).permitido,
             grupos: filas.map(f => ({
                 evento_id: f.id,
                 grupo_id: f.grupo_id,
                 grupo_nombre: f.grupo_nombre || null,
                 estado: estadoFila(f),
-                abierto_whatsapp: f.abierto !== false
+                abierto_whatsapp: f.abierto !== false,
+                reservas_modo: modoReservas(f)
             }))
         });
 
@@ -282,21 +292,41 @@ async function aplicar(usuarioId, eventoId, entrada = {}, { ahora = new Date(), 
 
     if (accion === "cerrar" || accion === "desactivar") {
 
-        const objetivo = alcanzadas.filter(f => f.activo);
+        const objetivo = alcanzadas.filter(enCurso);
         if (!objetivo.length) return falla("estado_invalido", { mensaje: alcance === "grupo" ? "El sorteo ya no está activo en este grupo." : "El sorteo ya no está activo en ningún grupo." });
 
         const cambios = accion === "cerrar"
             ? cambiosFin("cerrado", "panel:cerrado manualmente", ahora)
             : cambiosFin("desactivado", "panel:desactivado", ahora);
 
+        // Orquestador central (F3-C): escritura condicionada en la base,
+        // WhatsApp «después» con reintento (solo «cerrar») e historial.
+        // Una fila activo=true que YA había terminado (C3) se normaliza en
+        // silencio: no se reescribe su motivo ni se anuncia un cierre tardío.
+        const sock = socketDe ? socketDe(usuarioId) : null;
+        const actor = entrada.operador || "panel";
+        const cerrarWa = accion === "cerrar" && entrada.cerrar_grupo_whatsapp !== false;
+
         for (const f of objetivo) {
-            const u = await actualizarFila(usuarioId, f.id, cambios);
-            if (!u.ok) return falla("error_supabase", { error: u.error, resultado });
-            resultado.grupos.push({ evento_id: f.id, grupo_id: f.grupo_id, estado: accion === "cerrar" ? "cerrado" : "desactivado" });
+
+            const r = vigente(f)
+                ? await orquestador.terminarFila({ db: supabase, fila: f, modalidad: accion, cambios, usuarioId, sock, cerrarGrupo: cerrarWa, actor })
+                : await orquestador.normalizarCierre({ db: supabase, fila: f, usuarioId, actor, ahora });
+
+            if (r.error) return falla("error_supabase", { error: r.error, resultado });
+            if (!r.escrita) continue; // otra acción la terminó entretanto: no se pisa
+
+            resultado.grupos.push({ evento_id: f.id, grupo_id: f.grupo_id, estado: vigente(f) ? (accion === "cerrar" ? "cerrado" : "desactivado") : "normalizado" });
+
+            if (cerrarWa && vigente(f)) {
+                const wa = { cerrado: "cerrado", fallido: "fallido", sin_sesion: "sin_sesion", omitido_en_uso: "omitido_otro_sorteo_activo" }[r.whatsapp] || r.whatsapp;
+                resultado.whatsapp.push({ grupo_id: f.grupo_id, whatsapp: wa, error: r.errorWhatsapp || null });
+            }
+
         }
 
-        if (accion === "cerrar" && entrada.cerrar_grupo_whatsapp !== false) {
-            resultado.whatsapp = await cerrarWhatsApp({ usuarioId, filas: objetivo, socketDe });
+        if (!resultado.grupos.length) {
+            return falla("estado_cambio", { mensaje: "El sorteo cambió mientras se aplicaba la acción (otra acción o el cierre automático lo terminó). Revisa su estado." });
         }
 
         if (accion === "desactivar") {
@@ -311,12 +341,28 @@ async function aplicar(usuarioId, eventoId, entrada = {}, { ahora = new Date(), 
             ? cambiosFin("cancelado", "panel:cancelado", ahora)
             : { ...cambiosFin("eliminado", "panel:eliminado", ahora), archivado_en: ahora.toISOString() };
 
+        let intentadas = 0;
+
         for (const f of alcanzadas) {
-            // Un sorteo ya terminado conserva cómo terminó, salvo al eliminarlo.
-            if (accion === "cancelar" && !f.activo && motivoGestion(f) === "cancelado") continue;
-            const u = await actualizarFila(usuarioId, f.id, f.activo ? cambios : { ...cambios, cerrado_en: f.cerrado_en || cambios.cerrado_en });
-            if (!u.ok) return falla("error_supabase", { error: u.error, resultado });
+            // Un sorteo ya terminado conserva cómo terminó, salvo al eliminarlo
+            // (regla de siempre; en el orquestador: requisito «cancelable»).
+            if (accion === "cancelar" && !enCurso(f) && motivoGestion(f) === "cancelado") continue;
+            intentadas++;
+            // Orquestador (F3-C): condicionado al estado leído; si otra acción
+            // la cambió entretanto, se relee y se aplica sobre el estado actual
+            // (cancelar y eliminar también valen sobre una fila cerrada). Las
+            // columnas se calculan con la fila que de verdad se escribe.
+            const r = await orquestador.terminarFila({
+                db: supabase, fila: f, modalidad: accion, usuarioId, actor: entrada.operador || "panel",
+                cambios: (x) => (enCurso(x) ? cambios : { ...cambios, cerrado_en: x.cerrado_en || cambios.cerrado_en })
+            });
+            if (r.error) return falla("error_supabase", { error: r.error, resultado });
+            if (!r.escrita) continue;
             resultado.grupos.push({ evento_id: f.id, grupo_id: f.grupo_id, estado: accion === "cancelar" ? "cancelado" : "eliminado" });
+        }
+
+        if (intentadas && !resultado.grupos.length) {
+            return falla("estado_cambio", { mensaje: "El sorteo cambió mientras se aplicaba la acción. Revisa su estado y vuelve a intentarlo." });
         }
 
         resultado.publicaciones_detenidas = await detenerPublicacionesPendientes(usuarioId, identidad, null);
@@ -325,7 +371,7 @@ async function aplicar(usuarioId, eventoId, entrada = {}, { ahora = new Date(), 
 
     if (accion === "reabrir") {
 
-        const objetivo = alcanzadas.filter(f => !f.activo);
+        const objetivo = alcanzadas.filter(f => !enCurso(f));
         if (!objetivo.length) return falla("estado_invalido", { mensaje: "El sorteo ya está activo." });
 
         // Cierre de reservas: el indicado o el que tenía; debe ser futuro y
@@ -364,9 +410,15 @@ async function aplicar(usuarioId, eventoId, entrada = {}, { ahora = new Date(), 
         }
 
         for (const c of conflictos) {
-            const u = await actualizarFila(usuarioId, c.id, cambiosFin("cerrado", `sustituido por ${nombreDe(evento)} (reabierto desde el panel)`, ahora));
-            if (!u.ok) return falla("error_supabase", { error: u.error, resultado });
-            resultado.grupos.push({ evento_id: c.id, grupo_id: c.grupo_id, estado: "sustituido" });
+            // Orquestador (F3-C), modalidad «sustitución al reabrir»: mismas
+            // columnas, condicionado a que siga activo (si otra acción lo
+            // cerró entretanto, ya no es un conflicto).
+            const u = await orquestador.terminarFila({
+                db: supabase, fila: c, modalidad: "sustitucion_reabrir", usuarioId, actor: entrada.operador || "panel",
+                cambios: cambiosFin("cerrado", `sustituido por ${nombreDe(evento)} (reabierto desde el panel)`, ahora)
+            });
+            if (u.error) return falla("error_supabase", { error: u.error, resultado });
+            if (u.escrita) resultado.grupos.push({ evento_id: c.id, grupo_id: c.grupo_id, estado: "sustituido" });
         }
 
         const cambios = {
@@ -384,10 +436,19 @@ async function aplicar(usuarioId, eventoId, entrada = {}, { ahora = new Date(), 
             actualizado_en: ahora.toISOString()
         };
 
+        // Reapertura central (F3-D): condicionada al estado leído, con
+        // historial, y restaura el ciclo de automatización (el vivo o uno
+        // nuevo de reapertura) para que vuelvan los recordatorios y el
+        // siguiente cierre se anuncie una vez.
         for (const f of objetivo) {
-            const u = await actualizarFila(usuarioId, f.id, cambios);
-            if (!u.ok) return falla("error_supabase", { error: u.error, resultado });
-            resultado.grupos.push({ evento_id: f.id, grupo_id: f.grupo_id, estado: "en_curso" });
+            const u = await orquestador.reabrirFila({ db: supabase, fila: f, cambios, usuarioId, actor: entrada.operador || "panel", ahora });
+            if (u.error) return falla("error_supabase", { error: u.error, resultado });
+            if (!u.escrita) continue; // otra acción la cambió entretanto
+            resultado.grupos.push({ evento_id: f.id, grupo_id: f.grupo_id, estado: "en_curso", ciclo: u.ciclo?.nuevo ? "nuevo" : (u.ciclo?.eventSession ? "vivo" : (u.ciclo?.motivo || null)) });
+        }
+
+        if (!resultado.grupos.some(g => g.estado === "en_curso")) {
+            return falla("estado_cambio", { mensaje: "El sorteo cambió mientras se reabría. Revisa su estado y vuelve a intentarlo." });
         }
 
     }
@@ -398,4 +459,43 @@ async function aplicar(usuarioId, eventoId, entrada = {}, { ahora = new Date(), 
 
 }
 
-module.exports = { listar, aplicar, ACCIONES };
+// ------------------------------------------------- permiso de reservas ---
+
+// cambiarPermisoReservas(usuarioId, eventoId, { modo, operador }) — F3-E.
+// Decisión del ADMINISTRADOR, independiente del estado del sorteo: se escribe
+// en TODAS las filas del sorteo (misma identidad). Nunca la cambia ninguna
+// automatización. Queda en el historial con el valor anterior y el nuevo.
+// Sin la migración 047: falla clara, sin tocar nada.
+async function cambiarPermisoReservas(usuarioId, eventoId, { modo, operador = "panel" } = {}) {
+
+    if (!MODOS_RESERVA.includes(modo)) {
+        return falla("validacion", { errores: [{ campo: "modo", mensaje: "Elige: según el estado, permitidas o desactivadas." }] });
+    }
+
+    const r = await filasDelSorteo(usuarioId, eventoId);
+    if (!r.ok) return r;
+
+    const grupos = [];
+
+    for (const f of r.filas) {
+        const anterior = modoReservas(f);
+        const { error } = await supabase.from("eventos_bot").update({ reservas_modo: modo }).eq("usuario_id", usuarioId).eq("id", f.id);
+        if (error && SIN_COLUMNA.has(error.code)) {
+            return falla("migracion_pendiente", { mensaje: "Falta aplicar la migración 047 (permiso de reservas) en la base: el permiso no se puede cambiar todavía. Todos los sorteos siguen «según el estado»." });
+        }
+        if (error) return falla("error_supabase", { error: error.message, grupos });
+        grupos.push({ evento_id: f.id, grupo_id: f.grupo_id, reservas_modo: modo });
+        await orquestador.registrarHistorialEvento(supabase, {
+            usuarioId, eventoId: f.id, identidad: f.identidad_evento_real, grupoId: f.grupo_id,
+            modalidad: "permiso_reservas", actor: operador, motivo: `${anterior} → ${modo}`, resultado: "ok",
+            detalle: { anterior, nuevo: modo }
+        });
+    }
+
+    console.log(`🛠️ [GESTIÓN SORTEOS] permiso de reservas «${modo}» en ${grupos.length} grupo(s) (${operador}).`);
+
+    return { ok: true, data: { reservas_modo: modo, grupos } };
+
+}
+
+module.exports = { listar, aplicar, cambiarPermisoReservas, ACCIONES };

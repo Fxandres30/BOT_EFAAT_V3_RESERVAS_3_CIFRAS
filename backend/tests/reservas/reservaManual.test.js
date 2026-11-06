@@ -281,9 +281,17 @@ prueba("contacto de otro cliente -> 404 y nada cambia", async () => {
     assert.strictEqual(fila(A, "00").estado, "libre");
 });
 
-prueba("sorteo cerrado -> se reserva igual (el estado del sorteo no bloquea); grupo desautorizado -> rechazo", async () => {
+// CAMBIO INTENCIONADO F3-E (06/11/2026, decisión del responsable): antes el
+// estado del sorteo no decidía nada en la reserva manual. Ahora manda el
+// PERMISO de reservas del sorteo: con el predeterminado («según el estado») un
+// sorteo cerrado rechaza; con «permitidas» el administrador reserva en él.
+prueba("sorteo cerrado: con el permiso predeterminado se rechaza; con «permitidas» se reserva; grupo desautorizado -> rechazo", async () => {
     sembrar();
     fake.tablas.eventos_bot.filter(e => e.usuario_id === A).forEach(e => { e.estado = "cerrado"; e.hora_cierre = "00:00"; e.fecha_evento = "2000-01-01"; });
+    const segunEstado = await reservar("00", { contactoId: C1, eventoId: EV_A1, motivo: "prueba" });
+    assert.strictEqual(segunEstado.json.motivo, "reservas_no_permitidas", JSON.stringify(segunEstado.json));
+    assert.strictEqual(fila(A, "00").estado, "libre", "nada reservado");
+    fake.tablas.eventos_bot.filter(e => e.usuario_id === A).forEach(e => { e.reservas_modo = "permitidas"; });
     const cerrado = await reservar("00", { contactoId: C1, eventoId: EV_A1, motivo: "prueba" });
     assert.strictEqual(cerrado.status, 200, JSON.stringify(cerrado.json));
     assert.deepStrictEqual([fila(A, "00").estado, fila(A, "00").evento_id], ["reservado", EV_A1]);

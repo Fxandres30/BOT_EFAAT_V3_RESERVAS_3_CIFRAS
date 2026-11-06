@@ -190,6 +190,13 @@ type CargaSorteo =
     | { tipo: "ok"; sorteo: Sorteo }
     | { tipo: "error"; mensaje: string };
 
+// Identificador de solicitud para POST /sorteos (8-100 caracteres [A-Za-z0-9_-]).
+function nuevaSolicitud(): string {
+    const c = typeof crypto !== "undefined" ? crypto : undefined;
+    if (c && "randomUUID" in c) return c.randomUUID();
+    return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 export default function FormularioSorteo({ open, sorteoId = null, onClose, onGuardado, valorInicial, instantaneo = false }: Props) {
 
     // Estado inicial al montar: la página remonta este componente (key) cada
@@ -197,6 +204,9 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
     // Al editar, los campos NO se muestran ni se pueden guardar hasta tener
     // el sorteo real del backend: nunca un formulario vacío por un fallo.
     const edicion = Boolean(sorteoId);
+    // Identificador de ESTA creación (F4-F): el doble clic y los reintentos
+    // envían el mismo, así el backend crea un solo borrador.
+    const solicitudCreacion = useRef<string>(nuevaSolicitud());
     const [carga, setCarga] = useState<CargaSorteo>(edicion ? { tipo: "cargando" } : { tipo: "nuevo" });
     const [intentoCarga, setIntentoCarga] = useState(0);
     const sorteo = carga.tipo === "ok" ? carga.sorteo : null;
@@ -416,7 +426,7 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
         // nunca crea otro.
         const r = edicion && sorteo
             ? await apiSorteos.editar(sorteo.id, { ...config, version: sorteo.version, plantilla_id: form.plantillaId || null })
-            : await apiSorteos.crear({ ...config, plantilla_id: form.plantillaId || null });
+            : await apiSorteos.crear({ ...config, plantilla_id: form.plantillaId || null, solicitud_id: solicitudCreacion.current });
 
         if (!r.ok) {
             setErrores(r.errores || []);
@@ -431,6 +441,8 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
             if (!p.ok) setError(`El sorteo se guardó, pero la plantilla no: ${describirError(p)}`);
         }
 
+        // La siguiente creación es otra solicitud (F4-F).
+        if (!edicion) solicitudCreacion.current = nuevaSolicitud();
         setGuardando(false);
         onGuardado(r.data);
 

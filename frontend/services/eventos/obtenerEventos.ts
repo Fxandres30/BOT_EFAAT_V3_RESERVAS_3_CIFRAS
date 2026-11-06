@@ -1,4 +1,7 @@
 import { supabase } from "@/lib/supabase";
+// Eliminación lógica: fuente única del panel (estadoEvento.eliminado, espejo
+// de backend estadosGestion.eliminado), F2.
+import { eliminado } from "../../components/eventos/estadoEvento";
 
 // SEGURIDAD (2026-10-21): antes leía eventos_bot SIN filtrar, así que cada
 // cliente veía los sorteos de todos. Ahora solo los del usuario de la
@@ -52,7 +55,6 @@ export async function obtenerEventos(cliente: ClienteEventos = supabase){
 
     // Eliminados desde «Administrar» (eliminación lógica, backend
     // sorteos/gestionEventos.js): se conservan en la base, no se muestran.
-    return (data || []).filter((e: { estado?: string | null; cierre_motivo?: string | null }) =>
-        e.estado !== "eliminado" && !String(e.cierre_motivo || "").startsWith("panel:eliminado"));
+    return (data || []).filter((e: { estado?: string | null; cierre_motivo?: string | null }) => !eliminado(e));
 
 }

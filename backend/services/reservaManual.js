@@ -13,9 +13,10 @@
 //     procesos: de dos intentos simultáneos solo uno encuentra la fila libre.
 //   - Validaciones: formato del número según las cifras del sorteo, grupo
 //     autorizado (politicaGrupos.js) y contacto del directorio del cliente
-//     (contactos_tenant). El estado del sorteo NO decide si se puede
-//     reservar: con sorteo activo (abierto o cerrado), programado o sin
-//     ninguno, el propietario reserva cuando quiere.
+//     (contactos_tenant). En un sorteo, manda el PERMISO de reservas que
+//     decide el administrador (F3-E, estadosGestion.puedeReservar: según el
+//     estado, permitidas o desactivadas), igual que para el bot. Un
+//     programado sin publicar o «sin sorteo» se reservan como siempre.
 //   - Ninguna operación envía mensajes ni toca WhatsApp.
 //   - Cada intento (también rechazos y errores) queda en reservas_auditoria
 //     (migración 032) con origen 'manual'.
@@ -29,6 +30,9 @@ const { soloDelCliente } = require("../bot/funciones/reservas/filtroCliente");
 const { validarFormatoNumero } = require("../bot/funciones/reservas/extraerNumeros");
 const { reservarNumerosDetallado } = require("../bot/funciones/reservas/reservarNumeros");
 const { sorteoAceptaReservas } = require("../bot/funciones/reservas/detectarReserva");
+// Permiso de reservas del sorteo (F3-E): fuente única, también para el panel.
+const { puedeReservar, modoReservas, eliminado: eliminadoFila } = require("../shared/eventos/estadosGestion");
+const { verificarHoraCierre } = require("../bot/funciones/eventos/lifecycle/verificarHoraCierre");
 const { actualizarEvento } = require("../bot/funciones/reservas/actualizarEvento");
 const { registrarAuditoria, historialNumero, contextoAuditoriaFila: contextoFila } = require("../bot/funciones/reservas/auditoriaReservas");
 const { consultaLiberacion } = require("../bot/funciones/reservas/liberacion");
@@ -144,6 +148,41 @@ async function sorteoDelPrecio(usuarioId, tabla, precio) {
         : [principal];
 
     return { ok: true, filas };
+
+}
+
+// Destino de una reserva manual en el sorteo del precio (F3-E): el sorteo en
+// curso (sorteoDelPrecio) o, si no hay ninguno, el MÁS RECIENTE del precio si
+// está cerrado y su permiso de reservas es «permitidas» (decisión del
+// administrador). Un sorteo cancelado, eliminado o sustituido nunca es
+// destino. Sin ninguno de los dos, filas vacías (la reserva queda «sin
+// sorteo», como siempre). Las liberaciones y pagos por lote siguen usando
+// sorteoDelPrecio.
+async function destinoSorteoDelPrecio(usuarioId, tabla, precio) {
+
+    const activo = await sorteoDelPrecio(usuarioId, tabla, precio);
+    if (!activo.ok || activo.filas.length) return activo;
+
+    const { data, error } = await supabase
+        .from("eventos_bot")
+        .select("*")
+        .eq("usuario_id", usuarioId)
+        .eq("tabla", tabla)
+        .order("creado_en", { ascending: false })
+        .limit(50);
+
+    if (error) return { ok: false, error, filas: [] };
+
+    const delPrecio = (data || []).filter(e => Number(String(e.valor ?? "").replace(/[^\d]/g, "")) === precio && !eliminadoFila(e));
+    const ultimo = delPrecio[0];
+
+    if (!ultimo || modoReservas(ultimo) !== "permitidas" || !puedeReservar({ evento: ultimo }).permitido) return { ok: true, filas: [] };
+
+    const filas = ultimo.identidad_evento_real
+        ? delPrecio.filter(e => e.identidad_evento_real === ultimo.identidad_evento_real && puedeReservar({ evento: e }).permitido)
+        : [ultimo];
+
+    return { ok: true, filas, cerrado: true };
 
 }
 
@@ -399,7 +438,7 @@ async function contextoNumero({ usuarioId, precio, numero, ahora = new Date() })
     const estado = estadoDeFila(fila, ahora);
 
     const [sorteo, historial, programados, sinPublicar] = await Promise.all([
-        sorteoDelPrecio(usuarioId, config.tabla, config.precio),
+        destinoSorteoDelPrecio(usuarioId, config.tabla, config.precio),
         historialNumero({ usuarioId, tabla: config.tabla, numero: fila.numero }),
         programadosDelPrecio(usuarioId, config, ahora),
         sorteosSinPublicar(usuarioId)
@@ -561,9 +600,9 @@ function baseReserva({ usuarioId, operador, precio, motivo, observaciones, solic
 }
 
 // Todo lo que una reserva manual comprueba ANTES de tocar la tabla: tabla del
-// precio, sorteo y grupo, grupo autorizado y contacto. El estado del
-// sorteo (cerrado, hora de cierre, que no haya ninguno) no impide reservar:
-// sin sorteo elegido ni activo, la reserva queda sin sorteo. La misma función
+// precio, sorteo y grupo, grupo autorizado y contacto. En un sorteo manda
+// su PERMISO de reservas (F3-E); sin sorteo elegido ni activo (ni uno
+// cerrado con reservas permitidas), la reserva queda sin sorteo. La misma función
 // para un número y para un lote: una sola versión de las reglas.
 // Devuelve { ok: true, config, evento, ctx, ctxContacto, contacto, anticipada,
 // sinSorteo, cifras } o { ok: false, respuesta }. rechazar audita y devuelve
@@ -604,7 +643,9 @@ async function prepararReserva({ usuarioId, precio, contactoId, nuevoContacto, e
 
     } else {
 
-        const sorteo = await sorteoDelPrecio(usuarioId, config.tabla, config.precio);
+        // Sorteo en curso del precio o, si no hay, el último cerrado con
+        // reservas «permitidas» (F3-E).
+        const sorteo = await destinoSorteoDelPrecio(usuarioId, config.tabla, config.precio);
         if (!sorteo.ok) return { ok: false, respuesta: await rechazar(rechazo("error_sorteo", "No se pudo leer el sorteo activo.")) };
 
         if (eventoId) {
@@ -620,6 +661,25 @@ async function prepararReserva({ usuarioId, precio, contactoId, nuevoContacto, e
     }
 
     if (!evento) return { ok: false, respuesta: await rechazar(rechazo("falta_grupo", "Selecciona el grupo de WhatsApp de la reserva.")) };
+
+    // PERMISO DE RESERVAS (F3-E): la reserva manual en el sorteo respeta la
+    // configuración del administrador, igual que el bot. «Sin sorteo» y las
+    // reservas anticipadas de un programado no son reservas en este sorteo:
+    // no les afecta.
+    if (!sinSorteo && !anticipada) {
+        const permiso = puedeReservar({ evento, cierrePasado: verificarHoraCierre(evento, new Date()) });
+        if (!permiso.permitido) {
+            const mensajes = {
+                reservas_desactivadas: "Las reservas de este sorteo están desactivadas. Actívalas en Eventos (permiso de reservas) o reserva «Sin sorteo».",
+                sorteo_cerrado: "El sorteo está cerrado y su permiso de reservas es «según el estado». Para reservar en él, cambia el permiso a «Permitidas» en Eventos, o reserva «Sin sorteo».",
+                cierre_pasado: "Pasó la hora de cierre de reservas y el permiso del sorteo es «según el estado». Para reservar en él, cambia el permiso a «Permitidas» en Eventos, o reserva «Sin sorteo».",
+                sorteo_cancelado: "El sorteo está cancelado: no acepta reservas nuevas.",
+                sorteo_eliminado: "El sorteo está eliminado: no acepta reservas nuevas.",
+                sorteo_sustituido: "El sorteo fue sustituido por otro: no acepta reservas nuevas."
+            };
+            return { ok: false, respuesta: await rechazar(rechazo("reservas_no_permitidas", mensajes[permiso.motivo] || "Este sorteo no acepta reservas nuevas."), { evento_id: evento.id, identidad_evento_real: evento.identidad_evento_real || null, grupo_id: evento.grupo_id || null, grupo_nombre: evento.grupo_nombre || null }) };
+        }
+    }
 
     const ctx = {
         evento_id: evento.id,

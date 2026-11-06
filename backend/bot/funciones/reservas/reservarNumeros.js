@@ -4,6 +4,8 @@ const { validarFormatoNumero } = require("./extraerNumeros");
 const { registrarAuditoria } = require("./auditoriaReservas");
 const { buscarBloqueo } = require("../bloqueo/bloqueoActivo");
 const { fechaHoraRegistro } = require("../../../shared/tiempo/colombia");
+const { puedeReservar } = require("../../../shared/eventos/estadosGestion");
+const { verificarHoraCierre } = require("../eventos/lifecycle/verificarHoraCierre");
 
 // Devuelve las filas que el UPDATE realmente reservó (array; vacío si no
 // tomó ninguna o si falló). El panel (services/reservaManual.js) usa esta
@@ -243,6 +245,7 @@ async function reservarNumerosDetallado({
     if (evento.usuario_id) {
 
         const manual = origen === "manual";
+        const codigoPermiso = evento.id && puedeReservar({ evento, cierrePasado: verificarHoraCierre(evento, new Date()) }).motivo === "sorteo_cerrado_permitido" ? "sorteo_cerrado_permitido" : null;
 
         await registrarAuditoria(data.map((fila) => ({
 
@@ -266,6 +269,9 @@ async function reservarNumerosDetallado({
             motivo: auditoria.motivo || null,
             observaciones: auditoria.observaciones || null,
             resultado: "ok",
+            // F3-E: reserva aceptada en un sorteo cerrado porque su permiso es
+            // «permitidas» (decisión del administrador): queda señalada.
+            codigo: codigoPermiso,
             solicitud_id: auditoria.solicitudId || null
 
         })));

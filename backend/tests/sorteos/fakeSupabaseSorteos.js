@@ -92,7 +92,14 @@ function crearFake() {
             limit(n) { q.limite = n; return b; },
             single() { q.unico = "single"; return b; },
             maybeSingle() { q.unico = "maybe"; return b; },
-            then(ok, ko) { return Promise.resolve().then(ejecutar).then(ok, ko); }
+            // control.latencia(tabla, op) (F4-C): si devuelve una promesa, la
+            // operación espera a que se resuelva antes de ejecutarse (simula la
+            // latencia de la base real para provocar carreras). Sin el gancho,
+            // o si devuelve null, el comportamiento es el de siempre.
+            then(ok, ko) {
+                const espera = typeof control.latencia === "function" ? control.latencia(tabla, q.op) : null;
+                return (espera ? Promise.resolve(espera) : Promise.resolve()).then(ejecutar).then(ok, ko);
+            }
         };
 
         function ejecutar() {

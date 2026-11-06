@@ -42,7 +42,8 @@ const PAQUETES = {
 // Necesitan un entorno real local: solo con --entorno.
 const REQUIEREN_ENTORNO = {
     "backend/tests/sorteos/capturaRealSorteo.test.js": "abre Chromium contra el panel real (FRONTEND_URL)",
-    "backend/tests/seguridad/cuadriculaClienteSqlReal.test.js": "necesita PGlite (PGLITE_MODULE)"
+    "backend/tests/seguridad/cuadriculaClienteSqlReal.test.js": "necesita PGlite (PGLITE_MODULE)",
+    "backend/tests/caracterizacion/estadoSorteosSqlReal.test.js": "necesita PGlite (PGLITE_MODULE)"
 };
 
 // Fallos conocidos y documentados (docs/pruebas/LINEA_BASE.md). No ocultan

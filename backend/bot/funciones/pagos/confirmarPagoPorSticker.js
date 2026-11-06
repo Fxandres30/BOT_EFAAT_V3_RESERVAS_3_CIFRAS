@@ -57,7 +57,8 @@ const { actualizarEvento } = require("../reservas/actualizarEvento");
 const { marcarReservasPagadasPorAdmin } = require("./marcarReservasPagadasPorAdmin");
 const { registrarComprasDeFilas } = require("../inactividad/inactividadRepo");
 const { enmascararJid: enmascarar } = require("../../utils/enmascararJid");
-const { finDelEvento } = require("../../../shared/eventos/estadosGestion");
+// ¿Sigue en curso? Fuente única (F2): misma regla que antes (activo y sin fin).
+const { vigente } = require("../../../shared/eventos/estadosGestion");
 
 // FASE 1 (configuración desde el panel) + corrección arquitectónica
 // (predeterminado/específico): el hash autorizado ya NO viene de
@@ -239,7 +240,7 @@ async function confirmarPagoPorSticker(ctx) {
 
         // Un sorteo terminado (aunque un reintento antiguo dejara activo=true)
         // no recibe pagos por sticker: nunca se toca su tabla por él.
-        if (!evento || !evento.activo || finDelEvento(evento)) {
+        if (!vigente(evento)) {
 
             console.log("[PAGO-STICKER] Sin evento activo para este grupo — no se modifican reservas.");
             return;

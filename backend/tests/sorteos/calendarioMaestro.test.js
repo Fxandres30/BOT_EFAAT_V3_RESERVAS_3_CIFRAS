@@ -35,6 +35,21 @@ process.env.SESSIONS_API_TOKEN = "token-servicio-pruebas";
 const calendario = require(r("sorteos/calendario.js"));
 const loterias = require(r("sorteos/loterias.js"));
 const servicio = require(r("sorteos/servicio.js"));
+
+// R21 (F4-F.1, 06/11/2026): RELOJ FIJO para las pruebas que crean un sorteo
+// que se publica «mañana». Antes usaban la hora real (Date.now() + 24 h) y la
+// validación de servicio.crearSorteo con su reloj real: ejecutadas después de
+// las 12:56 de Colombia, la publicación quedaba tras el cierre del sorteo de
+// las 13:00 y la prueba fallaba. Ahora el instante es siempre el mismo (08:00
+// de Colombia), inyectado en el reloj del servicio (servicio._reloj, el mismo
+// gancho que usa el arnés de eventos). Las expectativas no cambian.
+const AHORA_FIJA = new Date("2026-11-13T13:00:00Z");
+const MANANA_FIJA = new Date(AHORA_FIJA.getTime() + 86400000).toISOString();
+async function conRelojFijo(fn) {
+    const previo = servicio._reloj.ahora;
+    servicio._reloj.ahora = () => AHORA_FIJA;
+    try { return await fn(); } finally { servicio._reloj.ahora = previo; }
+}
 const { CATALOGO_BASE, NOTA_SIEMBRA_ANTIGUA, claveDe } = require(r("sorteos/catalogoBase.js"));
 const { SQL_026, catalogoGlobalDe026 } = require("./catalogo026");
 
@@ -623,11 +638,11 @@ prueba("historial: renombrar o restaurar la lotería no cambia los sorteos ya cr
     escenario();
     const a = (await loterias.listar(A)).data;
     const samán = a.find(x => x.etiqueta === "Samán de la Suerte");
-    const s = await servicio.crearSorteo(A, {
+    const s = await conRelojFijo(() => servicio.crearSorteo(A, {
         modalidad: "dos_cifras", nombre: "Samán de la Suerte", loteria_id: samán.id, hora_fin: "13:00", valor: 5000,
         premios: [{ nombre: "Premio mayor", premio: 300000 }], grupos: ["g1@g.us"], cuentas: ["cuenta-a1"],
-        publicar_en: new Date(Date.now() + 86400000).toISOString(), mensajes: { publicacion: "", aviso_cierre: "" }, recordatorios: []
-    });
+        publicar_en: MANANA_FIJA, mensajes: { publicacion: "", aviso_cierre: "" }, recordatorios: []
+    }));
     assert.ok(s.ok, JSON.stringify(s));
     const r1 = await loterias.restaurar(A, samán.id);
     assert.strictEqual(r1.data.etiqueta, "El Samán de la Suerte");
@@ -642,12 +657,11 @@ prueba("integración: un sorteo con lotería tradicional guarda su loteria_id y 
     escenario({ con026: false });
     const l = (await loterias.listar(A)).data;
     const bogota = l.find(x => x.etiqueta === "Lotería de Bogotá");
-    const manana = new Date(Date.now() + 86400000).toISOString();
-    const s = await servicio.crearSorteo(A, {
+    const s = await conRelojFijo(() => servicio.crearSorteo(A, {
         modalidad: "dos_cifras", nombre: "Lotería de Bogotá", loteria_id: bogota.id, hora_fin: "22:30", valor: 5000,
         premios: [{ nombre: "Premio mayor", premio: 300000 }], grupos: ["g1@g.us"], cuentas: ["cuenta-a1"],
-        publicar_en: manana, mensajes: { publicacion: "", aviso_cierre: "" }, recordatorios: []
-    });
+        publicar_en: MANANA_FIJA, mensajes: { publicacion: "", aviso_cierre: "" }, recordatorios: []
+    }));
     assert.ok(s.ok, JSON.stringify(s));
     assert.strictEqual(s.data.config.loteria_id, bogota.id);
     assert.strictEqual(s.data.config.hora_fin, "22:30", "la hora la decide el usuario");

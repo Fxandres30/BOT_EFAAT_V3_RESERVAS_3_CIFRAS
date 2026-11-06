@@ -108,8 +108,14 @@ const { consultarEventoDelSorteo } = require(r("bot/funciones/eventos/consultarE
 const { abrirGrupo } = require(r("bot/funciones/eventos/grupos/abrirGrupo.js"));
 const { actualizarEvento } = require(r("bot/funciones/reservas/actualizarEvento.js"));
 
-// Nunca la captura del servidor (Chromium): la imagen es la del panel.
-compartirTabla.capturarImagenTabla = async () => { throw new Error("captura del servidor no permitida en esta prueba"); };
+// F4-G: un programado genera su imagen a la hora con el MISMO capturarTabla
+// en Chromium headless (simulado: se registran los datos que recibe). En el
+// instantáneo la imagen es la que el panel acaba de capturar.
+let generadas = [];
+compartirTabla.capturarImagenTabla = async (precio, usuarioId, eventoId, opciones = {}) => {
+    generadas.push(opciones.datos);
+    return Buffer.concat([PNG1.subarray(0, 33), Buffer.from(JSON.stringify(opciones.datos.numerosOcupados))]);
+};
 
 // Hoy 15/10; se publica el 22/10 08:00 (Colombia) y se juega ese día.
 const T0 = new Date("2026-10-15T15:00:00Z");
@@ -145,6 +151,8 @@ let fallaEnvio = () => null;
 function escenario({ bloqueados = [], anteriorActivo = true } = {}) {
     fake = crearFake();
     rpc.llamadas = [];
+    generadas = [];
+    capturaProgramada._olvidarGeneraciones();
     enviados = [];
     fallaEnvio = () => null;
     reloj = T0;
@@ -243,7 +251,7 @@ async function prueba(nombre, fn) {
 
 (async () => {
 
-await prueba("1. Reiniciar CON bloqueados a mano (programado): la vista previa los muestra ocupados; al publicar la imagen guardada coincide con la tabla real y se publica", async () => {
+await prueba("1. Reiniciar CON bloqueados a mano (programado): la vista previa los muestra ocupados; al publicar se genera la imagen de la tabla real reiniciada (= vista previa) y se publica", async () => {
     escenario({ bloqueados: ["50", "77"] });
     const s = await crear();
     const v = await vista(s);
@@ -264,7 +272,9 @@ await prueba("1. Reiniciar CON bloqueados a mano (programado): la vista previa l
     assert.strictEqual(anteriorActivo(), false, "reemplazado");
     assert.strictEqual(aplicadas(), 1);
     assert.strictEqual(enviados.length, 1);
-    assert.ok(Buffer.from(enviados[0].image).equals(PNG1), "se envía la captura del panel");
+    assert.strictEqual(generadas.length, 1, "imagen generada a la hora");
+    assert.strictEqual(capturaProgramada.huellaNumeros(generadas[0]), v.huella_tabla, "pinta exactamente la tabla reiniciada que mostró la vista previa");
+    assert.deepStrictEqual([...generadas[0].numerosOcupados].sort(), ["50", "77"], "con los bloqueados conservados");
 });
 
 await prueba("2. Reiniciar SIN bloqueados: todo libre en la vista previa y en la tabla real; se publica", async () => {

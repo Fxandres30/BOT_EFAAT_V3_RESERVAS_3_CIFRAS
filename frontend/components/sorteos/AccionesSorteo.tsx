@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 
-import { Badge, Button, Input, type BadgeTone } from "@/components/ui";
-import { apiSorteos, describirError, type AccionEvento, type EstadoEventoGrupo, type SorteoEnGrupos } from "@/services/sorteos/apiSorteos";
+import { Badge, Button, Input, Select, type BadgeTone } from "@/components/ui";
+import { apiSorteos, describirError, ETIQUETA_MODO_RESERVAS, type AccionEvento, type EstadoEventoGrupo, type ModoReservas, type SorteoEnGrupos } from "@/services/sorteos/apiSorteos";
 import styles from "./Sorteos.module.css";
 
 // Acciones de estado de un sorteo que ya está en los grupos (cerrar,
@@ -25,9 +25,9 @@ export const ESTADO_SORTEO: Record<EstadoEventoGrupo, { texto: string; tono: Bad
 
 // Qué hace cada acción, dicho antes de confirmar.
 const EXPLICACION: Record<AccionEvento, string> = {
-    cerrar: "Deja de aceptar reservas, como el cierre por hora. Si hay sesión de WhatsApp, se cierra el grupo (salvo que tenga otro sorteo activo). Se envían los avisos de cierre configurados.",
+    cerrar: "Cierra el sorteo, como el cierre por hora: deja de aceptar reservas salvo que su permiso de reservas sea «Permitidas». Si hay sesión de WhatsApp, se cierra el grupo (salvo que tenga otro sorteo activo). Se envían los avisos de cierre configurados.",
     desactivar: "Lo apaga sin enviar ningún mensaje: sin reservas, recordatorios ni aviso de cierre. Los pagos pendientes de los clientes se siguen informando. Se detienen sus publicaciones programadas pendientes.",
-    reabrir: "Vuelve a aceptar reservas. El cierre de reservas debe estar en el futuro. EFAAT abrirá el grupo de WhatsApp en el próximo ciclo.",
+    reabrir: "Vuelve a estar en curso y acepta reservas según su permiso de reservas (que no cambia). El cierre de reservas debe estar en el futuro. EFAAT abrirá el grupo de WhatsApp en el próximo ciclo.",
     cancelar: "El sorteo no se juega: se detiene en todos sus grupos y sus publicaciones pendientes. Sus reservas y pagos se conservan, pero las reservas ya no se cobran a los clientes.",
     eliminar: "Lo oculta del panel y de las consultas en todos sus grupos. No se borra nada: reservas, pagos e historial se conservan."
 };
@@ -56,6 +56,41 @@ interface BotonesProps {
 
 // Una fila por grupo (con su estado y sus acciones) y las acciones de todo
 // el sorteo.
+// Permiso de reservas del sorteo (F3-E): decisión del administrador,
+// independiente del estado. Lo valida y aplica el backend en todos los canales
+// (bot y panel); cerrar o reabrir nunca lo cambian. Con el sorteo cerrado y
+// «Permitidas» no se reabre el grupo de WhatsApp.
+export function PermisoReservasSorteo({ sorteo: s }: { sorteo: SorteoEnGrupos }) {
+
+    const [modo, setModo] = useState<ModoReservas>(s.reservas_modo || "segun_estado");
+    const [ocupado, setOcupado] = useState(false);
+    const [mensaje, setMensaje] = useState<string | null>(null);
+
+    async function cambiar(nuevo: ModoReservas) {
+        if (nuevo === modo || ocupado) return;
+        setOcupado(true);
+        setMensaje(null);
+        const r = await apiSorteos.permisoReservas(s.id, nuevo);
+        setOcupado(false);
+        if (!r.ok) { setMensaje(r.mensaje || describirError(r)); return; }
+        setModo(nuevo);
+        setMensaje("Permiso de reservas guardado.");
+    }
+
+    return (
+        <div className={styles.acciones}>
+            <Select label="Reservas" value={modo} disabled={ocupado} onChange={(e) => cambiar(e.target.value as ModoReservas)}>
+                {(Object.keys(ETIQUETA_MODO_RESERVAS) as ModoReservas[]).map(m => <option key={m} value={m}>{ETIQUETA_MODO_RESERVAS[m]}</option>)}
+            </Select>
+            {s.acepta_reservas !== undefined && modo === (s.reservas_modo || "segun_estado") && (
+                <span className={styles.ayuda}>{s.acepta_reservas ? "Ahora acepta reservas nuevas." : "Ahora no acepta reservas nuevas."}</span>
+            )}
+            {mensaje && <span className={styles.ayuda}>{mensaje}</span>}
+        </div>
+    );
+
+}
+
 export function BotonesSorteo({ sorteo: s, onAccion, onEditar }: BotonesProps) {
 
     const enCurso = s.grupos.filter(g => g.estado === "en_curso");
@@ -65,6 +100,7 @@ export function BotonesSorteo({ sorteo: s, onAccion, onEditar }: BotonesProps) {
 
     return (
         <>
+            {s.estado !== "cancelado" && <PermisoReservasSorteo sorteo={s} />}
             {s.grupos.map(g => (
                 <div key={g.evento_id} className={styles.acciones}>
                     <span className={styles.ayuda}>{g.grupo_nombre || g.grupo_id}</span>
@@ -131,7 +167,7 @@ export function ConfirmarAccionSorteo({ pendiente, onVolver, onHecho }: Confirma
         }
 
         const wa = r.data.whatsapp.filter(w => w.whatsapp !== "cerrado");
-        const avisoWa = wa.length ? ` WhatsApp: ${wa.map(w => w.whatsapp === "sin_sesion" ? "sin sesión conectada, el grupo no se cerró" : w.whatsapp === "omitido_otro_sorteo_activo" ? "el grupo sigue abierto porque tiene otro sorteo activo" : "no confirmó el cierre del grupo").join("; ")}.` : "";
+        const avisoWa = wa.length ? ` WhatsApp: ${wa.map(w => w.whatsapp === "sin_sesion" ? "sin sesión conectada, el grupo no se cerró" : w.whatsapp === "omitido_otro_sorteo_activo" ? "el grupo sigue abierto porque tiene otro sorteo activo" : w.whatsapp === "en_curso" ? "el cierre del grupo ya estaba en curso; se confirmará en unos segundos" : "no confirmó el cierre del grupo").join("; ")}.` : "";
         const detenidas = r.data.publicaciones_detenidas ? ` Publicaciones pendientes detenidas: ${r.data.publicaciones_detenidas}.` : "";
 
         onHecho(`${TITULO_ACCION[pendiente.accion]}: hecho en ${r.data.grupos.length} grupo(s).${detenidas}${avisoWa}`);

@@ -23,7 +23,7 @@ const { verificarHoraCierre, cierreAtrasado } = require("./verificarHoraCierre")
 const { cerrarFilaDeEvento, esperaAntesDeReintentar } = require("./cerrarEvento");
 const { estadoDelSorteo } = require("../sorteoReal");
 const { sincronizarContadores } = require("../../reservas/actualizarEvento");
-const { finDelEvento } = require("../../../../shared/eventos/estadosGestion");
+const { vigente } = require("../../../../shared/eventos/estadosGestion");
 
 // Grupos donde OTRO sorteo (no estas filas) sigue vigente: no cerrado, no
 // terminado y sin haber llegado a su cierre. Al recuperar el cierre de un
@@ -31,7 +31,7 @@ const { finDelEvento } = require("../../../../shared/eventos/estadosGestion");
 function gruposConOtroSorteoVigente(filas, todas, ahora) {
     const propias = new Set(filas);
     return new Set((todas || [])
-        .filter(o => o && !propias.has(o) && o.activo && !finDelEvento(o) && !verificarHoraCierre(o, ahora))
+        .filter(o => o && !propias.has(o) && vigente(o) && !verificarHoraCierre(o, ahora))
         .map(o => o.grupo_id));
 }
 
@@ -45,7 +45,7 @@ async function procesarSorteo({ sock, filas, todas = [], ahora = Date.now() }) {
     // "cerrado", cancelado, desactivado...) no se procesa aunque un reintento
     // antiguo la haya dejado con activo=true: nunca se cierra dos veces ni se
     // toca su grupo, que puede ser ya el de otro sorteo.
-    const activas = (filas || []).filter(f => f && f.activo && !finDelEvento(f));
+    const activas = (filas || []).filter(vigente);
 
     if (!activas.length) return { accion: "nada", resultados: [] };
 
@@ -101,7 +101,9 @@ async function procesarSorteo({ sock, filas, todas = [], ahora = Date.now() }) {
             sock,
             fila,
             motivo: detalle.length ? `${motivo} (${detalle.join("; ")})` : motivo,
-            cerrarGrupo: !grupoEnUso
+            cerrarGrupo: !grupoEnUso,
+            // Modalidad para el orquestador (F3): hora, pagados o recuperado.
+            modalidad: recuperado ? "recuperado" : motivo
         });
 
         resultados.push({ eventoId: fila.id, grupoId: fila.grupo_id, resultado: cerrado ? "cerrado" : "fallido", ...(grupoEnUso ? { grupoEnUso: true } : {}), ...(recuperado ? { recuperado: true } : {}) });

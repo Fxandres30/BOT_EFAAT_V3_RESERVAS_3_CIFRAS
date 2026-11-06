@@ -54,7 +54,11 @@ async function onEventoDetectado(evento, opciones = {}) {
 
     }
 
-    const identidadCiclo = eventRules.crearIdentidadCiclo(evento);
+    // opciones.sufijoCiclo (F3-D): un sorteo REABIERTO abre un ciclo lógico
+    // nuevo (identidad + sufijo de reapertura) con las mismas reglas de
+    // siempre; el ciclo anterior se conserva como historia. Sin sufijo, la
+    // identidad de siempre.
+    const identidadCiclo = eventRules.crearIdentidadCiclo(evento) + (opciones.sufijoCiclo || "");
 
     const [grupoAutorizado, configuracion, eventSessionExistente] = await Promise.all([
 
