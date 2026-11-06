@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import Landing from "@/components/landing/Landing";
+import RedireccionAppInstalada from "@/components/landing/RedireccionAppInstalada";
 
 // "/" es la landing comercial pública. Antes redirigía a /login; el panel
 // sigue entrando por /login y /register sin cambios.
@@ -11,5 +12,10 @@ export const metadata: Metadata = {
 };
 
 export default function Home() {
-  return <Landing />;
+  return (
+    <>
+      <RedireccionAppInstalada />
+      <Landing />
+    </>
+  );
 }

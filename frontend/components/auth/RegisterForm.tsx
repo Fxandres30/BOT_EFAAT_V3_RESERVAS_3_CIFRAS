@@ -10,6 +10,7 @@ import { register } from "@/services/auth/register";
 import { useSesion } from "@/hooks/useSesion";
 import { evaluarContrasena, LONGITUD_MINIMA } from "@/lib/auth/seguridadContrasena";
 import { CampoContrasena, MedidorSeguridad, AvisoCoincidencia } from "./CampoContrasena";
+import PantallaCarga from "./PantallaCarga";
 
 // Crear cuenta: nombre + correo + contraseña con Supabase Auth. La cuenta
 // queda pendiente hasta confirmar el correo; después se inicia sesión en
@@ -88,7 +89,8 @@ export default function RegisterForm() {
 
   }
 
-  if (sesion !== "sin_sesion") return null;
+  // Comprobando la sesión o entrando al panel: pantalla de carga, nunca en blanco.
+  if (sesion !== "sin_sesion") return <PantallaCarga />;
 
   if (pendienteConfirmar) {
     return (

@@ -7,7 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "EFAAT360",
     short_name: "EFAAT360",
     description: "Gestiona tus sorteos en grupos de WhatsApp: reservas, pagos, mensajes automáticos y sesiones.",
-    start_url: "/",
+    // Entrada de la app instalada: /app decide panel o login según la sesión.
+    start_url: "/app",
     scope: "/",
     display: "standalone",
     lang: "es",

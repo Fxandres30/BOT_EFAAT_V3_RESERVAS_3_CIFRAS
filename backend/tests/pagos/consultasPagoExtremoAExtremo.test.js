@@ -172,14 +172,14 @@ async function test(nombre, fn) {
 
     // UNA TABLA = UN SORTEO (31/10/2026): el 41 se reservó en el ciclo
     // anterior (Boyacá) pero está en la tabla del sorteo actual (Cauca): es
-    // deuda de ESTE sorteo, no «de otro». La otra tabla del cliente
-    // (Medellín, $10.000) sí es otro sorteo, con todos sus números.
-    await test("9a. misma tabla con otra identidad: deuda de este sorteo; otra tabla del cliente: «otros sorteos»", async () => {
+    // deuda de ESTE sorteo. AISLAMIENTO POR SORTEO (06/11/2026): la otra
+    // tabla del cliente (Medellín) es OTRO sorteo y nunca entra en la respuesta.
+    await test("9a. misma tabla con otra identidad: deuda de este sorteo; el otro sorteo del cliente (Medellín) NO aparece", async () => {
         const [msg] = await preguntar("¿Qué debo?", USUARIOS.multi);
         assert.match(msg, /Te falta pagar: \( 41 \) — \$5\.000/);
         assert.doesNotMatch(msg, /Boyacá/, "el ciclo anterior de la misma tabla no es otro sorteo");
         assert.doesNotMatch(msg, /42/, "lo pagado no es deuda");
-        assert.match(msg, /Medellín.*\( 05 - 06 \) — \$20\.000/, "otra tabla: todos sus números, sea cual sea su identidad");
+        assert.doesNotMatch(msg, /Medellín|05|06|otros sorteos/, "nunca otro sorteo en la respuesta");
     });
 
     await test("9b. aislamiento: nunca la cuadrícula de otro cliente; el sorteo cancelado no se nombra", async () => {
@@ -189,12 +189,11 @@ async function test(nombre, fn) {
         assert.doesNotMatch(msg, /90/);
     });
 
-    await test("9c. preguntando en el grupo 2: toda su tabla ( 05 - 06 ) y la deuda de la otra tabla ( 41 )", async () => {
+    await test("9c. preguntando en el grupo 2: toda su tabla ( 05 - 06 ) y NADA del sorteo del grupo 1 ( 41 )", async () => {
         const [msg] = await preguntar("¿Cuánto me falta?", USUARIOS.multi, G2);
         assert.match(msg, /Te falta pagar: \( 05 - 06 \)/);
         assert.match(msg, /\$20\.000/);
-        assert.match(msg, /Cauca.*\( 41 \)/, "la otra tabla, con su sorteo activo");
-        assert.doesNotMatch(msg, /Medellín/, "el sorteo actual no se repite como «otro sorteo»");
+        assert.doesNotMatch(msg, /Cauca|41|otros sorteos/, "el otro sorteo nunca se mezcla");
     });
 
     await test("«Ya pagué» (afirmación) sigue sin respuesta; «¿ya pagué?» responde el estado real", async () => {
@@ -222,12 +221,12 @@ async function test(nombre, fn) {
         assert.match(msg, /41/);
     });
 
-    await test("plantilla «sin pago» + deuda en otro sorteo: la plantilla y luego el detalle del otro sorteo", async () => {
+    await test("plantilla «sin pago» con deuda también en otro sorteo: solo la plantilla de ESTE sorteo, sin anexar el otro", async () => {
         plantilla("consulta_pago_sin_pago", "SIN_PAGO {{numeros_pendientes}}");
         const [msg] = await preguntar("¿Qué debo?", USUARIOS.multi, G2);
         assert.match(msg, /^SIN_PAGO/);
-        assert.match(msg, /Pendiente en otros sorteos/);
-        assert.match(msg, /41/);
+        assert.doesNotMatch(msg, /Pendiente en otros sorteos/);
+        assert.doesNotMatch(msg, /41/);
     });
 
     await test("interruptores del panel: un estado DESACTIVADO calla solo ese estado; los demás responden", async () => {
@@ -256,7 +255,7 @@ async function test(nombre, fn) {
         assert.strictEqual(JSON.stringify([fake.tablas[T5], fake.tablas[T10], fake.tablas.eventos_bot]), antes);
     });
 
-    await test("error leyendo los otros sorteos: se responde igual el sorteo actual", async () => {
+    await test("error leyendo OTRA tabla del cliente: no afecta, se responde el sorteo actual (ya no se lee)", async () => {
         fake.control.fallarTabla = T10;
         try {
             const [msg] = await preguntar("¿Qué debo?", USUARIOS.sinPago);

@@ -37,7 +37,15 @@ require.cache[r("bot/funciones/eventos/grupos/cerrarGrupo.js")] = {
 
 const servicio = require(r("sorteos/servicio.js"));
 const { consultarEvento } = require(r("bot/funciones/eventos/consultarEvento.js"));
-const { consultarPendientesOtrosSorteos } = require(r("bot/funciones/consultas/consultarMisNumeros.js"));
+const { resolverConsulta } = require(r("bot/funciones/consultas/resolverConsulta.js"));
+// «¿Qué debo?» del participante u1 en el sorteo de ese evento (aislado por
+// sorteo). Sin fecha: las fechas de este escenario son de T0 (pasado) y aquí
+// solo importa lo que decide la gestión (activo, cancelado, reabierto).
+const deudaEn = async (evento) => {
+    const { log } = console; console.log = () => {};
+    try { return await resolverConsulta({ tipo: "consulta_pago", evento: { ...evento, fecha_evento: null }, usuario: { id: "u1" }, modo: "resumen", bucket: "pendiente" }); }
+    finally { console.log = log; }
+};
 const { cierreSilencioso } = require(r("shared/eventos/estadosGestion.js"));
 
 // Hoy: 15/10 10:00 Colombia.
@@ -219,11 +227,12 @@ prueba("8. Cancelar: todos sus grupos, publicaciones pendientes detenidas y sus 
     assert.ok([EV_G1, EV_G2].every(id => ev(id).estado === "cancelado" && !ev(id).activo));
     assert.strictEqual(fake.tablas.sorteos_programados_grupos.find(g => g.grupo_id === "g3@g.us").estado, "cancelado");
     assert.strictEqual(numeros(), antes, "reservas y pagos conservados");
-    // Pagos: preguntando desde otro sorteo, el cancelado no aparece como
-    // deuda. UNA TABLA = UN SORTEO: su tabla (con el 03 de un ciclo anterior
-    // incluido) es la del sorteo cancelado, así que nada de ella es deuda.
-    const otros = await consultarPendientesOtrosSorteos({ evento: { usuario_id: A, identidad_evento_real: "otro" }, usuario: { id: "u1" }, ahora: T0 });
-    assert.deepStrictEqual(otros.map(o => o.identidad), []);
+    // Pagos: el sorteo cancelado ya no es el vigente de su grupo, así que
+    // nada de su tabla es deuda (sin borrar nada).
+    for (const id of [EV_G1, EV_G2]) {
+        const d = await deudaEn(ev(id));
+        assert.ok(d.sinSorteoVigente && d.reservados.length === 0, JSON.stringify(d));
+    }
 });
 
 prueba("9. Eliminar (lógico) un sorteo ACTIVO: se oculta del listado y de las consultas, nada se borra", async () => {
@@ -334,8 +343,8 @@ prueba("13. Sin la 039: reabrir un sorteo cancelado limpia el motivo y el cierre
         assert.strictEqual(ev(id).cerrado_en, null);
         assert.ok(!cierreSilencioso(ev(id)), "su cierre se anunciará como siempre");
     }
-    const otros = await consultarPendientesOtrosSorteos({ evento: { usuario_id: A, identidad_evento_real: "otro" }, usuario: { id: "u1" }, ahora: T0 });
-    assert.ok(otros.some(o => o.identidad === "id-actual"), "sus reservas vuelven a ser deuda");
+    const d = await deudaEn(ev(EV_G1));
+    assert.ok(!d.sinSorteoVigente && d.reservados.length > 0, `sus reservas vuelven a ser deuda: ${JSON.stringify(d)}`);
     // Panel: en curso en sus dos grupos, con los mismos contadores.
     const actual = (await get("/eventos")).json.data.find(s => s.identidad === "id-actual");
     assert.strictEqual(actual.estado, "en_curso");

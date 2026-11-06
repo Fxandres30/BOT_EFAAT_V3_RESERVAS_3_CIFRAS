@@ -47,6 +47,10 @@ async function obtenerFilasDelUsuario({ evento, usuario }) {
         return [];
     }
 
+    // AISLAMIENTO POR SORTEO (06/11/2026): ver filtroDelSorteo más abajo.
+    const delSorteo = await filtroDelSorteo(evento);
+    if (delSorteo === null) return null;
+
     const condiciones = [`usuario_global_id.eq.${usuario.id}`];
 
     if (usuario.lid) {
@@ -104,7 +108,62 @@ async function obtenerFilasDelUsuario({ evento, usuario }) {
     // Antes se descartaban las filas con otra identidad: un número del
     // cliente en esta misma tabla (reservado a mano, conservado de otro
     // ciclo...) no aparecía en «mis números» ni en «qué debo».
-    return (data || []).filter(f => reservaPerteneceAUsuario(f, usuario));
+    return (data || []).filter(f => reservaPerteneceAUsuario(f, usuario) && delSorteo(f));
+
+}
+
+// ==========================================================================
+// AISLAMIENTO POR SORTEO (06/11/2026). Una consulta («qué debo», «mis
+// números», «cuántos tengo», «¿el 23 es mío?») responde EXCLUSIVAMENTE del
+// sorteo del grupo (evento). Nunca se agregan otros sorteos del cliente.
+//
+// Tabla de USO EXCLUSIVO (ningún otro sorteo vigente del cliente en ella):
+// rige UNA TABLA = UN SORTEO (31/10). Una fila sin identidad, de un ciclo
+// conservado o reservada a mano es de la cuadrícula de este sorteo.
+//
+// Tabla COMPARTIDA (otro sorteo vigente del mismo cliente usa la misma
+// tabla física: dos precios en 5k_15k o en reservas_dos_cifras): solo
+// cuentan las filas con la identidad de ESTE sorteo. Una fila sin identidad
+// o de un sorteo terminado podría ser de cualquiera de los dos: no se
+// adivina y no se cuenta en ninguno (los datos no cambian).
+//
+// -> predicado (fila) => ¿es de este sorteo? | null si no se pudo leer (el
+//    llamador no afirma nada).
+// ==========================================================================
+async function filtroDelSorteo(evento, ahora = new Date()) {
+
+    const ajenas = await identidadesDeOtrosSorteos(evento, ahora);
+    if (ajenas === null) return null;
+    if (!ajenas.size) return () => true;
+
+    const propia = evento.identidad_evento_real || null;
+    return (fila) => Boolean(propia) && fila?.identidad_evento_real === propia;
+
+}
+
+// Identidades de los OTROS sorteos vigentes del cliente en evento.tabla.
+// -> Set (vacío si la tabla es de uso exclusivo) | null si falló la lectura.
+async function identidadesDeOtrosSorteos(evento, ahora = new Date()) {
+
+    if (!evento?.usuario_id || !evento?.tabla) return new Set();
+
+    const { data, error } = await supabase
+        .from("eventos_bot")
+        .select("id, identidad_evento_real, tabla, activo, estado, cierre_estado, cierre_motivo, cerrado_en, fecha_evento, usuario_id")
+        .eq("usuario_id", evento.usuario_id)
+        .eq("tabla", evento.tabla)
+        .eq("activo", true);
+
+    if (error) {
+        console.log("❌ No se pudieron leer los sorteos que comparten la tabla:", error.message);
+        return null;
+    }
+
+    const propia = evento.identidad_evento_real || null;
+
+    return new Set((data || [])
+        .filter(e => e.id !== evento.id && e.identidad_evento_real && e.identidad_evento_real !== propia && sorteoVigente(e, ahora))
+        .map(e => e.identidad_evento_real));
 
 }
 
@@ -143,127 +202,6 @@ async function consultarMisNumerosPorEstado({ evento, usuario }) {
 
 }
 
-// ==========================================================================
-// Deuda en OTROS sorteos VIGENTES del mismo cliente (tenant).
-//
-// "¿Qué debo?" se responde con el sorteo del grupo y, además, con lo
-// pendiente en las demás TABLAS del cliente que tienen un sorteo VIGENTE
-// (otro grupo, otro precio). Solo números todavía "reservado" del usuario;
-// nunca otro tenant, nunca se modifica nada.
-//
-// Una tabla sin sorteo vigente (su último sorteo cerró, se canceló, se
-// desactivó o quedó de un día pasado) NO aporta deuda: sus filas son
-// historia. Antes se representaba cada tabla con su sorteo más reciente
-// aunque hubiera terminado (bastaba con los últimos 30 días y no estar
-// cancelado) y la respuesta nombraba sorteos pasados con sus números.
-// ==========================================================================
-
-// Nunca lanza. -> { ok, lista }: ok=false si alguna lectura falló (la
-// lista trae lo que sí se pudo leer). Así «no tienes pendientes en otros
-// sorteos» solo se afirma cuando de verdad se revisaron.
-async function consultarPendientesOtrosSorteosVerificado(args) {
-
-    try {
-        return await leerPendientesOtrosSorteos(args);
-    } catch (err) {
-        console.log("⚠️ No se pudieron leer los pendientes de otros sorteos:", err?.message);
-        return { ok: false, lista: [] };
-    }
-
-}
-
-// Compatibilidad: solo la lista.
-async function consultarPendientesOtrosSorteos(args) {
-
-    return (await consultarPendientesOtrosSorteosVerificado(args)).lista;
-
-}
-
-async function leerPendientesOtrosSorteos({ evento, usuario, ahora = new Date() }) {
-
-    if (!evento?.usuario_id || !usuario?.id) return { ok: true, lista: [] };
-
-    const { data: eventos, error } = await supabase
-        .from("eventos_bot")
-        .select("*")
-        .eq("usuario_id", evento.usuario_id)
-        .eq("activo", true)
-        .order("creado_en", { ascending: false })
-        .limit(200);
-
-    if (error) {
-        console.log("⚠️ No se pudieron leer los otros sorteos del cliente:", error.message);
-        return { ok: false, lista: [] };
-    }
-
-    // UNA TABLA = UN SORTEO (31/10/2026): la deuda se agrupa por TABLA, no
-    // por identidad, y cada tabla la representa su sorteo VIGENTE (eventos
-    // ya vienen del más nuevo al más viejo). La tabla de este evento solo se
-    // salta si él es el vigente: sus números ya los cuenta «mis números».
-    // Si el sorteo del grupo terminó y su tabla sigue viva con otro sorteo
-    // (tabla conservada, otro grupo), esa deuda se informa con ESE sorteo.
-    const tablaPropia = sorteoVigente(evento, ahora) ? evento.tabla : null;
-    const porTabla = new Map();
-
-    for (const e of eventos || []) {
-        if (!e.tabla || e.tabla === tablaPropia || porTabla.has(e.tabla)) continue;
-        if (sorteoVigente(e, ahora)) porTabla.set(e.tabla, e);
-    }
-
-    if (!porTabla.size) return { ok: true, lista: [] };
-
-    const condiciones = [`usuario_global_id.eq.${usuario.id}`];
-    if (usuario.lid) condiciones.push(`lid.eq.${usuario.lid}`);
-    if (usuario.telefono) {
-        condiciones.push(`telefono.eq.${usuario.telefono}`);
-        condiciones.push(`contacto.eq.${usuario.telefono}`);
-    }
-
-    const resultado = [];
-    let ok = true;
-
-    for (const [tabla, e] of porTabla) {
-
-        const { data, error: errorTabla } = await supabase
-            .from(tabla)
-            .select("numero, estado, usuario_global_id, lid, telefono, contacto")
-            .eq("usuario_id", evento.usuario_id)
-            .eq("estado", "reservado")
-            .or(condiciones.join(","))
-            .order("numero", { ascending: true });
-
-        if (errorTabla) {
-            console.log(`⚠️ No se pudieron leer los pendientes de otros sorteos en ${tabla}:`, errorTabla.message);
-            ok = false;
-            continue;
-        }
-
-        const numeros = (data || [])
-            .filter(f => reservaPerteneceAUsuario(f, usuario))
-            .map(f => f.numero)
-            .sort();
-
-        if (!numeros.length) continue;
-
-        const valor = Number(e.valor) || 0;
-
-        resultado.push({
-            eventoId: e.id,
-            identidad: e.identidad_evento_real || null,
-            nombre: e.nombre_evento || null,
-            hora_fin: e.hora_fin || null,
-            fecha_evento: e.fecha_evento ? String(e.fecha_evento).slice(0, 10) : null,
-            numeros,
-            montoPendiente: valor > 0 ? numeros.length * valor : null
-        });
-
-    }
-
-    // Más reciente primero (fecha del sorteo).
-    return { ok, lista: resultado.sort((a, b) => String(b.fecha_evento || "").localeCompare(String(a.fecha_evento || ""))) };
-
-}
-
 // Compatibilidad: misma lectura, solo la lista de números.
 async function consultarMisNumeros({ evento, usuario }) {
 
@@ -277,6 +215,5 @@ module.exports = {
     sorteoVigente,
     consultarMisNumeros,
     consultarMisNumerosPorEstado,
-    consultarPendientesOtrosSorteos,
-    consultarPendientesOtrosSorteosVerificado
+    filtroDelSorteo
 };

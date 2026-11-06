@@ -122,19 +122,14 @@ async function responderResultado(ctx) {
     // con su mensaje fijo: una plantilla de estado no contesta eso.
     const esPreguntaPuntualDePago = resultado.tipo === "consulta_pago" && resultado.modo !== "resumen";
 
-    // Pendientes en OTROS sorteos del cliente (resolverConsulta.js). Una
-    // plantilla de "pago completo"/"sin saldo" diría "no debes nada": con
-    // deuda en otro sorteo se usa el mensaje fijo, que dice ambas cosas. En
-    // las demás, el detalle se añade después del texto de la plantilla.
-    const textoOtros = resultado.tipo === "consulta_pago" ? (resultado.textoOtrosPendientes || "") : "";
-    const plantillaContradiria = Boolean(textoOtros) &&
-        (resultado.estadoPago === "pago_completo" || resultado.estadoPago === "sin_saldo");
+    // AISLAMIENTO POR SORTEO (06/11/2026): la respuesta de pago ya no anexa
+    // pendientes de OTROS sorteos del cliente; habla solo del sorteo del grupo.
 
     // Lo que la plantilla no menciona y sí es cierto (p. ej. «Ya es tuyo: 12»
     // en una reserva): va después de su texto.
-    const anexo = [textoOtros, resultado.textoAdicional || ""].filter(Boolean).join("\n\n");
+    const anexo = resultado.textoAdicional || "";
 
-    const puedeUsarPlantillas = (!esAgotado || tipoPresentacion === "disponibilidad_agotada") && !esPreguntaPuntualDePago && !plantillaContradiria && !esErrorTecnico && !soloMensajeFijo && Boolean(tipoPresentacion);
+    const puedeUsarPlantillas = (!esAgotado || tipoPresentacion === "disponibilidad_agotada") && !esPreguntaPuntualDePago && !esErrorTecnico && !soloMensajeFijo && Boolean(tipoPresentacion);
 
     let config = null;
     let habilitadas = [];

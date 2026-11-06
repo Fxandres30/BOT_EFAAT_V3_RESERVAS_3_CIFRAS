@@ -3,7 +3,7 @@
 // resultado estructurado con un "mensaje" fijo (fallback determinístico,
 // igual patrón que reserva.mensaje en detectarReserva.js). Gemini solo
 // redacta a partir de este resultado; nunca lo calcula.
-const { consultarMisNumerosPorEstado, consultarPendientesOtrosSorteosVerificado, sorteoVigente } = require("./consultarMisNumeros");
+const { consultarMisNumerosPorEstado, sorteoVigente } = require("./consultarMisNumeros");
 const { determinarEstadoPago } = require("../../../shared/pagos/determinarEstadoPago");
 const { consultarNumero } = require("./consultarNumero");
 const { consultarDisponibilidad } = require("./consultarDisponibilidad");
@@ -85,41 +85,12 @@ function formatearMonto(monto) {
 //                  al día", "¿ya pagué?"): SOLO lo pendiente y su valor si
 //                  hay precio; si no queda nada pendiente, lo dice. Nunca
 //                  afirma un pago que no esté registrado como "pagado".
-// "26/10 22:30" — fecha y hora del sorteo para distinguirlo de otro de la
-// misma lotería.
-function etiquetaSorteo(o) {
-    const fecha = o.fecha_evento ? o.fecha_evento.slice(5, 10).split("-").reverse().join("/") : null;
-    const cuando = [fecha, o.hora_fin ? String(o.hora_fin).slice(0, 5) : null].filter(Boolean).join(" ");
-    return `${o.nombre || "Sorteo"}${cuando ? ` (${cuando})` : ""}`;
-}
-
-// Números pendientes del cliente en OTROS sorteos (consultarPendientesOtrosSorteos).
-// "" si no hay ninguno. Lo usa el mensaje fijo y, tras una plantilla del
-// panel, responderResultado.js.
-// verificados=false: alguna lectura de otros sorteos falló; se dice, para no
-// dar a entender que no hay nada pendiente allí.
-function textoOtrosPendientes(otros, verificados = true) {
-
-    const aviso = verificados ? [] : ["⚠️ No pude revisar en este momento si tienes pendientes en otros sorteos."];
-
-    if (!otros?.length) return aviso.join("\n");
-
-    const lineas = otros.map(o => {
-        const valor = o.montoPendiente != null ? ` — ${formatearMonto(o.montoPendiente)}` : "";
-        return `• ${etiquetaSorteo(o)}: ${formatearListaNumeros(o.numeros)}${valor}`;
-    });
-
-    return ["⏳ Pendiente en otros sorteos:", ...lineas, ...aviso].join("\n");
-
-}
-
-function construirMensajeResumen({ enfoque, todos, reservados, pagados, montoPendiente, otrosPendientes = [], otrosVerificados = true }) {
-
-    const otros = enfoque === "pendiente" ? textoOtrosPendientes(otrosPendientes, otrosVerificados) : "";
+// AISLAMIENTO POR SORTEO (06/11/2026): cada respuesta habla SOLO del sorteo
+// del grupo. Ya no se añade «Pendiente en otros sorteos» (antes mezclaba,
+// p. ej., los números de «Lotería De Medellín» en el «qué debo» de otro).
+function construirMensajeResumen({ enfoque, todos, reservados, pagados, montoPendiente }) {
 
     if (todos.length === 0) {
-
-        if (otros) return ["No tienes números en este sorteo.", otros].join("\n");
 
         return enfoque === "pendiente"
             ? "No tienes números en este sorteo, así que no debes nada."
@@ -130,15 +101,12 @@ function construirMensajeResumen({ enfoque, todos, reservados, pagados, montoPen
     if (enfoque === "pendiente") {
 
         if (reservados.length === 0) {
-            return otros
-                ? ["✅ En este sorteo estás al día.", otros].join("\n")
-                : "✅ Estás al día: no tienes números pendientes de pago.";
+            return "✅ Estás al día: no tienes números pendientes de pago.";
         }
 
         const valor = montoPendiente != null ? ` — ${formatearMonto(montoPendiente)}` : "";
-        const propio = `⏳ Te falta pagar: ${formatearListaNumeros(reservados)}${valor}.`;
 
-        return otros ? [propio, otros].join("\n") : propio;
+        return `⏳ Te falta pagar: ${formatearListaNumeros(reservados)}${valor}.`;
 
     }
 
@@ -164,20 +132,16 @@ function construirMensajeResumen({ enfoque, todos, reservados, pagados, montoPen
 
 }
 
-function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, pagados, valorUnidad, otrosPendientes = [], otrosVerificados = true, sinSorteoVigente = false }) {
+function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, pagados, valorUnidad, sinSorteoVigente = false }) {
 
-    // Sin sorteo vigente en el grupo: mismos datos (vacíos) y estado de pago,
-    // pero el texto lo dice y va SIEMPRE fijo — una plantilla del panel
-    // nombraría el sorteo terminado ({{evento}}, {{fecha}}...). La pregunta
-    // de pago conserva lo pendiente en los demás sorteos vigentes.
+    // Sin sorteo vigente en el grupo no se sabe a qué sorteo se refiere la
+    // pregunta: no se adivina ni se responde con otros sorteos del cliente.
+    // Mensaje SIEMPRE fijo (una plantilla nombraría el sorteo terminado) y
+    // sin afirmar nada sobre deudas en otra parte.
     if (sinSorteoVigente) {
 
-        const base = construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, pagados, valorUnidad, otrosPendientes, otrosVerificados });
-        const dePago = modo === "resumen" && bucket === "pendiente";
-        const otros = dePago ? textoOtrosPendientes(otrosPendientes, otrosVerificados) : "";
-        const mensaje = otros
-            ? [SIN_SORTEO_VIGENTE, otros].join("\n")
-            : dePago ? `${SIN_SORTEO_VIGENTE} No tienes pagos pendientes.` : SIN_SORTEO_VIGENTE;
+        const base = construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, pagados, valorUnidad });
+        const mensaje = SIN_SORTEO_VIGENTE;
 
         return { ...base, mensaje, sinSorteoVigente: true, soloMensajeFijo: true };
 
@@ -222,17 +186,11 @@ function construirFacetaEstadoNumeros({ tipo, modo, bucket, total, reservados, p
             todos,
             reservados,
             pagados,
-            montoPendiente,
-            otrosPendientes,
-            otrosVerificados
+            montoPendiente
         });
 
-        const otros = enfoque === "pendiente" ? (otrosPendientes || []) : [];
-
         return {
-            tipo, modo, bucket, total, reservados, pagados, numerosDelUsuario: todos, mensaje, montoTotal, montoPagado, montoPendiente, estadoPago, precioConfigurado,
-            otrosPendientes: otros,
-            textoOtrosPendientes: textoOtrosPendientes(otros, enfoque === "pendiente" ? otrosVerificados : true)
+            tipo, modo, bucket, total, reservados, pagados, numerosDelUsuario: todos, mensaje, montoTotal, montoPagado, montoPendiente, estadoPago, precioConfigurado
         };
 
     }
@@ -439,15 +397,8 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
 
             const { modo: modoFinal, bucket: bucketFinal } = modoBucketImplicitos(tipo, modo, bucket);
 
-            // La respuesta de pago ("qué debo", "cuánto me falta", "estoy al
-            // día") también muestra lo pendiente en OTROS sorteos del mismo
-            // cliente: nunca "no debes nada" a quien sí debe. Si no se
-            // pudieron revisar, se avisa (y una plantilla de «al día» no se usa).
-            const otros = modoFinal === "resumen" && bucketFinal === "pendiente"
-                ? await consultarPendientesOtrosSorteosVerificado({ evento, usuario })
-                : { ok: true, lista: [] };
-
-            return construirFacetaEstadoNumeros({ tipo, modo: modoFinal, bucket: bucketFinal, ...datos, valorUnidad, otrosPendientes: otros.lista, otrosVerificados: otros.ok });
+            // Solo el sorteo del grupo (aislamiento por sorteo, 06/11/2026).
+            return construirFacetaEstadoNumeros({ tipo, modo: modoFinal, bucket: bucketFinal, ...datos, valorUnidad });
 
         }
 
@@ -597,6 +548,5 @@ async function resolverConsulta({ tipo, numeros, evento, usuario, modo, bucket, 
 
 module.exports = {
     resolverConsulta,
-    componerCombinada,
-    textoOtrosPendientes
+    componerCombinada
 };

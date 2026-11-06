@@ -216,7 +216,9 @@ async function test(nombre, fn) {
         }
         const [msg] = await preguntarSilencioso("¿Qué debo?", CLIENTE, G1);
         assert.match(msg, /Te falta pagar: \( 41 - 42 \) — \$10\.000/);
-        assert.match(msg, /Medellín.*\( 05 \) — \$10\.000/, "el otro sorteo ACTIVO del cliente sí se informa");
+        // AISLAMIENTO POR SORTEO (06/11/2026): el otro sorteo activo del
+        // cliente (Medellín) no entra en la respuesta de este.
+        assert.doesNotMatch(msg, /Medellín|\b05\b|otros sorteos/, "solo el sorteo del grupo");
         assert.strictEqual(espias.gemini, 0);
     });
 
@@ -243,23 +245,24 @@ async function test(nombre, fn) {
         }
     });
 
-    await test("4. varias tablas: preguntando en G2 cuenta su tabla y lista la otra tabla ACTIVA, nunca las terminadas", async () => {
+    await test("4. varias tablas: preguntando en G2 cuenta SOLO su tabla (ni la otra activa ni las terminadas)", async () => {
         const [msg] = await preguntarSilencioso("¿Cuánto me falta?", CLIENTE, G2);
         assert.match(msg, /Te falta pagar: \( 05 \) — \$10\.000/);
-        assert.match(msg, /Cauca.*\( 41 - 42 \) — \$10\.000/);
+        assert.doesNotMatch(msg, /Cauca|\b41\b|\b42\b|otros sorteos/, msg);
         assert.doesNotMatch(msg, HISTORICOS, msg);
         assert.doesNotMatch(msg, NUMEROS_HISTORICOS, msg);
     });
 
-    await test("5. reservas de diferentes grupos en la misma tabla: todas cuentan en el sorteo activo de esa tabla", async () => {
+    await test("5. reservas de diferentes grupos en la misma tabla: cuentan en el sorteo activo de esa tabla (en SU grupo); un grupo sin sorteo vigente no responde con otros", async () => {
         // Pregunta en G4: su propio sorteo (Tolima) terminó, pero su tabla
         // T5 sigue activa con Cauca (G1). El 42 se reservó desde G4.
         const [msg] = await preguntarSilencioso("¿Qué debo?", CLIENTE, G4);
         assert.doesNotMatch(msg, /Tolima/, msg);
         assert.doesNotMatch(msg, HISTORICOS, msg);
-        assert.match(msg, /no hay un sorteo activo en este grupo/i, msg);
-        assert.match(msg, /Cauca.*\( 41 - 42 \)/, msg);
-        assert.match(msg, /Medellín.*\( 05 \)/, msg);
+        assert.strictEqual(msg, "No hay un sorteo activo en este grupo en este momento.", "sin sorteo identificable: nunca un resultado global");
+        // En el grupo de Cauca, el 42 (reservado desde G4) sí es de Cauca.
+        const [enG1] = await preguntarSilencioso("¿Qué debo?", CLIENTE, G1);
+        assert.match(enG1, /Te falta pagar: \( 41 - 42 \)/, enG1);
     });
 
     await test("6. pago parcial: solo lo pendiente del sorteo activo", async () => {
@@ -288,12 +291,12 @@ async function test(nombre, fn) {
         assert.doesNotMatch(msg, /Te falta pagar/, msg);
     });
 
-    await test("10. evento finalizado y tabla conservada para un nuevo sorteo en OTRO grupo: cuenta como deuda del nuevo", async () => {
+    await test("10. evento finalizado y tabla conservada para un nuevo sorteo en OTRO grupo: cuenta como deuda del nuevo (en su grupo)", async () => {
         // T20: Santander (G3) terminó; Nariño se publica en otro grupo con la misma tabla.
         fake.tablas.eventos_bot.push(evento("g7-act", "g7@g.us", T20, "Nariño", { valor: 20000 }));
         const [enG3] = await preguntarSilencioso("¿Qué debo?", CLIENTE, G3);
         assert.doesNotMatch(enG3, /Santander/, enG3);
-        assert.match(enG3, /Nariño.*\( 77 \) — \$20\.000/, enG3);
+        assert.strictEqual(enG3, "No hay un sorteo activo en este grupo en este momento.", "G3 no tiene sorteo vigente: no se responde con Nariño");
         const [enG7] = await preguntarSilencioso("¿Qué debo?", CLIENTE, "g7@g.us");
         assert.match(enG7, /Te falta pagar: \( 77 \) — \$20\.000/, enG7);
         assert.doesNotMatch(enG7, /Santander/, enG7);

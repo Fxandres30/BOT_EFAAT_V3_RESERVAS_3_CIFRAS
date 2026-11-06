@@ -494,15 +494,18 @@ prueba("mis números / cantidad / pago: error de lectura → técnico, nunca «n
     }
 });
 
-prueba("pago: si no se pueden revisar los otros sorteos, se avisa y no se dice «al día»", async () => {
+// AISLAMIENTO POR SORTEO (06/11/2026): ya no se revisan otros sorteos; pero
+// si no se puede comprobar qué sorteos comparten la tabla, no se afirma nada.
+prueba("pago: si no se puede comprobar qué sorteos comparten la tabla → mensaje técnico, nunca «al día» ni otros sorteos", async () => {
     sembrar({ "12": { ...mioEste, estado: "pagado" } });
     const { enviado } = await consultar("consulta_pago", { modo: "resumen", bucket: "pendiente" });
     assert.ok(/al día/.test(enviado), `con lectura correcta: ${enviado}`);
+    assert.ok(!/otros sorteos/.test(enviado), enviado);
     fake.control.fallarTabla = "eventos_bot";
     const fallo = await consultar("consulta_pago", { modo: "resumen", bucket: "pendiente" });
     fake.control.fallarTabla = null;
-    assert.ok(/No pude revisar en este momento si tienes pendientes en otros sorteos/.test(fallo.enviado), fallo.enviado);
-    assert.ok(!/Estás al día: no tienes números pendientes/.test(fallo.enviado), fallo.enviado);
+    assert.ok(/No pude consultar los números en este momento/.test(fallo.enviado), fallo.enviado);
+    assert.ok(!/al día/.test(fallo.enviado), fallo.enviado);
 });
 
 prueba("contadores: un número sin fila no cuenta como libre", async () => {

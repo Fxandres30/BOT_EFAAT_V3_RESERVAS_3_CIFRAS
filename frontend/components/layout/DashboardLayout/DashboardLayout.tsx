@@ -8,6 +8,7 @@ import "./DashboardLayout.css";
 import Sidebar from "../Sidebar/Sidebar";
 import Topbar from "../Topbar/Topbar";
 import { useSesion } from "@/hooks/useSesion";
+import PantallaCarga from "@/components/auth/PantallaCarga";
 import { inicializarCliente } from "@/services/tablas/inicializarCliente";
 
 interface Props{
@@ -62,7 +63,7 @@ export default function DashboardLayout({
 
     if(sesion!=="con_sesion"){
 
-        return null;
+        return <PantallaCarga/>;
 
     }
 

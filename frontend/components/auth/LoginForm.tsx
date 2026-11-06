@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { login } from "@/services/auth/login";
 import { useSesion } from "@/hooks/useSesion";
 import { CampoContrasena } from "./CampoContrasena";
+import PantallaCarga from "./PantallaCarga";
 
 // Mensajes de Supabase Auth más comunes, en español.
 function mensajeError(mensaje: string) {
@@ -77,7 +78,8 @@ export default function LoginForm() {
 
   }
 
-  if (sesion !== "sin_sesion") return null;
+  // Comprobando la sesión o entrando al panel: pantalla de carga, nunca en blanco.
+  if (sesion !== "sin_sesion") return <PantallaCarga />;
 
   return (
 
