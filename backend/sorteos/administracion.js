@@ -47,9 +47,8 @@ const { MAX_INTENTOS_AUTOMATICOS, sinPromesaDeReintento, ERROR_IMAGEN, esInstant
 // Marca de servicio.reintentarGrupo para un reintento pedido y aún sin ejecutar.
 const REINTENTO_MANUAL = "reintento manual solicitado";
 
-const ESTADOS_EDITABLES = ["borrador", "programado"];
-// Estados de una programación que nunca pasó a publicarse.
-const ESTADOS_SIN_PUBLICAR = ["borrador", "programado", "cancelado"];
+// Conjuntos de estados de una programación: fuente única (F1-B).
+const { ESTADOS_EDITABLES, ESTADOS_NUNCA_PUBLICADOS, ESTADOS_PENDIENTES_DE_PUBLICAR } = require("./estadosProgramacion");
 // Un grupo «publicando» más viejo que esto es de un proceso que murió: no
 // hay nada en marcha y no debe impedir eliminar para siempre.
 const PUBLICANDO_ATASCADO_MS = 10 * 60 * 1000;
@@ -350,7 +349,7 @@ function evaluarEliminacion(sorteo, impacto) {
     if (impacto.reservas.total) avisos.push(`Los ${impacto.reservas.total} número(s) tomados (${impacto.reservas.reservados} reservado(s), ${impacto.reservas.pagados} pagado(s)) se quedan tal cual en la tabla: no se liberan ni se borran.`);
     if (impacto.reinicio_hecho) avisos.push("El reinicio de tabla que ya se hizo no se deshace.");
 
-    const conActividad = avisos.length > 0 || !ESTADOS_SIN_PUBLICAR.includes(sorteo.estado);
+    const conActividad = avisos.length > 0 || !ESTADOS_NUNCA_PUBLICADOS.includes(sorteo.estado);
 
     return {
         posible: bloqueos.length === 0,
@@ -569,7 +568,7 @@ async function cancelar(usuarioId, id, { ahora = new Date() } = {}) {
 
     // Sin publicar y con reservas anticipadas: cancelar las dejaría sin
     // sorteo. Primero se resuelven (D3). Si no se pueden contar, no se hace.
-    if (reservasAnticipadas.ESTADOS_SIN_PUBLICAR.includes(s.estado)) {
+    if (ESTADOS_PENDIENTES_DE_PUBLICAR.includes(s.estado)) {
         const r = await reservasAnticipadas.anticipadasDelSorteo(usuarioId, s);
         if (!r.ok) return falla("error_supabase");
         if (r.total) {

@@ -7,6 +7,7 @@
 // ==========================================================================
 
 const supabase = require("../../../lib/supabase");
+const { instanteColombia } = require("../../../shared/tiempo/colombia");
 
 const VIOLACION_UNICA = "23505";
 const TABLA_NO_EXISTE = "42P01";
@@ -18,24 +19,71 @@ function migracionPendiente(error) {
 
 // ---------------------------------------------------------------------------
 // Fecha de pago de una fila de la tabla dinámica -> Date (o null).
-// fecha_pago "YYYY-MM-DD" y hora_pago "HH:MM:SS" se guardan en hora de
-// Bogotá (UTC-5, sin horario de verano) — ver marcarReservasPagadasPorAdmin.js
-// y services/reservaManual.js (pagarManual). Sin fecha_pago NO se inventa
-// ninguna fecha: la fila no cuenta como compra fechable.
+// fecha_pago "YYYY-MM-DD" y hora_pago en hora de Colombia (UTC-5, sin
+// horario de verano). Formatos de hora_pago que existen:
+//   "8:36:42"   lo que escriben marcarReservasPagadasPorAdmin.js y
+//               services/reservaManual.js (shared/tiempo/colombia.js::
+//               fechaHoraRegistro = toLocaleTimeString "es-CO", sin cero
+//               inicial antes de las 10:00; "0:05:00" a medianoche);
+//   "08:36:42"  el mismo dato si la columna es `time` (Postgres lo rellena)
+//               y los datos de prueba; "08:36" sin segundos;
+//   "24:05:00"  Intl antiguo formateaba así la medianoche: mismo día, 00:05
+//               (comportamiento de siempre).
+// CORRECCIÓN F1-C (06/11/2026): antes solo se aceptaba la hora con dos
+// cifras, así que todo pago anterior a las 10:00 contaba como de las 00:00.
+// Lo demás conserva el comportamiento anterior (lo fija
+// tests/inactividad/fechaCompraDeFila.test.js comparando con la versión
+// antigua):
+//   - hora vacía o con otro formato ("basura", "8:36:42 p. m.") -> 00:00:00
+//     de ESE día, como siempre: la fecha de pago es válida y es lo que
+//     cuenta para los 15 días;
+//   - hora con el formato correcto pero imposible ("25:00:00", "10:60:00")
+//     -> null, como siempre (y como shared/tiempo/colombia.js::
+//     instanteColombia): es un dato corrupto, no se le inventa una hora;
+//   - sin fecha_pago, o con una fecha que no existe en el calendario
+//     (2026-02-30) -> null: no se inventa ninguna fecha. Antes una fecha
+//     imposible se desplazaba al mes siguiente (2 de marzo).
 // ---------------------------------------------------------------------------
+const HORA_PAGO = /^(\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/;
+const dosCifras = (n) => String(n).padStart(2, "0");
+
+// "HH:MM:SS" normalizada; "00:00:00" si no hay hora legible; null si la
+// hora tiene el formato correcto pero no existe.
+function horaDePago(horaPago) {
+
+    const m = String(horaPago ?? "").trim().match(HORA_PAGO);
+
+    if (!m) return "00:00:00";
+
+    const h = Number(m[1]) === 24 ? 0 : Number(m[1]);
+    const min = Number(m[2]);
+    const s = Number(m[3] ?? 0);
+
+    if (h > 23 || min > 59 || s > 59) return null;
+
+    return `${dosCifras(h)}:${dosCifras(min)}:${dosCifras(s)}`;
+
+}
+
+function fechaDeCalendario(fecha) {
+
+    const m = String(fecha || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+    if (!m) return false;
+
+    const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+
+    return d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3]);
+
+}
+
 function fechaCompraDeFila({ fecha_pago, hora_pago }) {
 
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha_pago || ""))) return null;
+    if (!fechaDeCalendario(fecha_pago)) return null;
 
-    // Algunas versiones de Intl formatean medianoche como "24:mm:ss".
-    let hora = String(hora_pago || "00:00:00").trim().replace(/^24:/, "00:");
+    const hora = horaDePago(hora_pago);
 
-    if (!/^\d{2}:\d{2}(:\d{2})?$/.test(hora)) hora = "00:00:00";
-    if (hora.length === 5) hora += ":00";
-
-    const fecha = new Date(`${fecha_pago}T${hora}-05:00`);
-
-    return Number.isNaN(fecha.getTime()) ? null : fecha;
+    return hora === null ? null : instanteColombia(fecha_pago, hora);
 
 }
 

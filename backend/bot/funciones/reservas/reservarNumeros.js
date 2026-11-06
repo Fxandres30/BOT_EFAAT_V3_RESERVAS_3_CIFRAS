@@ -3,6 +3,7 @@ const { soloDelCliente } = require("./filtroCliente");
 const { validarFormatoNumero } = require("./extraerNumeros");
 const { registrarAuditoria } = require("./auditoriaReservas");
 const { buscarBloqueo } = require("../bloqueo/bloqueoActivo");
+const { fechaHoraRegistro } = require("../../../shared/tiempo/colombia");
 
 // Devuelve las filas que el UPDATE realmente reservó (array; vacío si no
 // tomó ninguna o si falló). El panel (services/reservaManual.js) usa esta
@@ -63,16 +64,7 @@ async function reservarNumerosDetallado({
 
     }
 
-    const ahora = new Date();
-
-    const fechaReserva = ahora.toLocaleDateString("sv-SE", {
-        timeZone: "America/Bogota"
-    });
-
-    const horaReserva = ahora.toLocaleTimeString("es-CO", {
-        hour12: false,
-        timeZone: "America/Bogota"
-    });
+    const { fecha: fechaReserva, hora: horaReserva } = fechaHoraRegistro(new Date());
 
     const telefono =
         usuario?.telefono ||

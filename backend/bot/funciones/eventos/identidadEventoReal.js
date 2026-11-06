@@ -1,4 +1,6 @@
 const crypto = require("crypto");
+// Fecha y hora de Colombia: fuente única (F1-B).
+const { fechaColombia, horaColombia } = require("../../../shared/tiempo/colombia");
 
 // ==========================================================================
 // IDENTIDAD DE "EVENTO REAL" — independiente del grupo de WhatsApp donde se
@@ -50,12 +52,7 @@ function crearIdentidadEventoReal({
 // tenía dos identidades distintas.
 function fechaEventoHoy(ahora = new Date()) {
 
-    return new Intl.DateTimeFormat("en-CA", {
-        timeZone: "America/Bogota",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit"
-    }).format(ahora);
+    return fechaColombia(ahora);
 
 }
 
@@ -71,12 +68,7 @@ function fechaSorteoAnunciado(horaFin, horaCierre, ahora = new Date()) {
 
     if (!HHMM.test(horaFin || "") || !HHMM.test(horaCierre || "") || horaCierre > horaFin) return hoy;
 
-    const horaActual = new Intl.DateTimeFormat("en-GB", {
-        timeZone: "America/Bogota",
-        hour: "2-digit",
-        minute: "2-digit",
-        hourCycle: "h23"
-    }).format(ahora);
+    const horaActual = horaColombia(ahora);
 
     if (horaActual < "18:00" || horaFin >= horaActual) return hoy;
 

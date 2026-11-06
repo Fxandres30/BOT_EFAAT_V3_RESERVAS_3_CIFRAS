@@ -16,6 +16,9 @@
 // como "node _migrar_plantillas_seguras.js" (cwd=backend) o como
 // "node backend/_migrar_plantillas_seguras.js" (cwd=raíz del repo), sin
 // mover ni copiar el .env real de backend/.
+// GUARDA (F1-A, 06/11/2026): no arranca sin doble confirmación. Ver scripts/guardaProduccion.js.
+require("./scripts/guardaProduccion").exigir({ script: "_migrar_plantillas_seguras.js", tipo: "escritura", efectos: "con --apply, UPDATE del contenido de 66 plantillas_mensaje reales; sin --apply, lee producción" });
+
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const readline = require("readline");

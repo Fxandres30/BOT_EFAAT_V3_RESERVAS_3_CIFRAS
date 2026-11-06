@@ -37,6 +37,7 @@ const repo = require("./repo");
 const { instanteBogota, HORA } = require("./validar");
 const { motivoGestion, eliminado } = require("../shared/eventos/estadosGestion");
 const { sorteosActivosDelPrecio } = require("../shared/eventos/unSorteoPorPrecio");
+const { ESTADOS_EDITABLES } = require("./estadosProgramacion");
 
 const ACCIONES = new Set(["cerrar", "reabrir", "desactivar", "cancelar", "eliminar"]);
 const SIN_COLUMNA = new Set(["42703", "PGRST204"]);
@@ -72,15 +73,7 @@ async function filasDelSorteo(usuarioId, eventoId) {
 
 }
 
-async function contarNumeros(usuarioId, tabla, identidad) {
-    if (!tabla || !identidad) return { reservados: 0, pagados: 0, ok: true };
-    const { data, error } = await supabase.from(tabla).select("estado")
-        .eq("usuario_id", usuarioId).eq("identidad_evento_real", identidad);
-    // Sin lectura no hay conteo: null, nunca «0 reservados».
-    if (error) return { ok: false, reservados: null, pagados: null };
-    const filas = data || [];
-    return { ok: true, reservados: filas.filter(f => f.estado === "reservado").length, pagados: filas.filter(f => f.estado === "pagado").length };
-}
+// Conteo de números por identidad: repo.contarNumerosIdentidad (F1-B).
 
 function estadoFila(f) {
     if (f.activo) return "en_curso";
@@ -118,7 +111,7 @@ async function listar(usuarioId, { ahora = new Date() } = {}) {
         // puede ser ya de otro sorteo; solo la identidad de la fila lo recuerda.
         const numeros = filas.some(f => f.activo)
             ? await repo.contarNumerosTabla(usuarioId, base.tabla)
-            : await contarNumeros(usuarioId, base.tabla, base.identidad_evento_real);
+            : await repo.contarNumerosIdentidad(usuarioId, base.tabla, base.identidad_evento_real);
 
         lista.push({
             id: base.id,
@@ -222,8 +215,8 @@ async function detenerPublicacionesPendientes(usuarioId, identidad, grupoId = nu
         }
 
         // Sin ningún grupo por publicar, la programación deja de estar en curso.
-        if (!grupoId && ["borrador", "programado"].includes(p.estado)) {
-            await repo.actualizarSorteoSi(usuarioId, p.id, { estados: ["borrador", "programado"] }, { estado: "cancelado" });
+        if (!grupoId && ESTADOS_EDITABLES.includes(p.estado)) {
+            await repo.actualizarSorteoSi(usuarioId, p.id, { estados: ESTADOS_EDITABLES }, { estado: "cancelado" });
         }
 
     }

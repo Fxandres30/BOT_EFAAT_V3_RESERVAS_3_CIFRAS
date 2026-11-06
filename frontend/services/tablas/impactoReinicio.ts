@@ -11,9 +11,10 @@
 // por el estado del sorteo programado y un sorteo ya jugado bloqueaba el
 // reinicio para siempre.
 
-/** Estados de un sorteo programado que todavía no se publicó del todo
- *  (mismos que backend/sorteos/reservasAnticipadas.js). */
-export const ESTADOS_SIN_PUBLICAR = ["borrador", "programado", "publicando", "fallido"];
+/** Estados de un sorteo programado que todavía PUEDE publicarse. Espejo de
+ *  backend/sorteos/estadosProgramacion.js (misma lista y mismo nombre,
+ *  comprobado por backend/tests/sorteos/estadosProgramacion.test.js). */
+export const ESTADOS_PENDIENTES_DE_PUBLICAR = ["borrador", "programado", "publicando", "fallido"];
 
 /** Lo que el administrador escribe para confirmar el reinicio. */
 export const TEXTO_CONFIRMACION = "REINICIAR";
@@ -67,7 +68,7 @@ export function identidadesAnticipadas(sorteos: SorteoProgramadoReinicio[], even
     const conEvento = new Set(eventos.map(e => e.identidad_evento_real).filter(Boolean));
     const mapa = new Map<string, SorteoProgramadoReinicio>();
     for (const s of sorteos) {
-        if (!s.identidad_evento_real || !ESTADOS_SIN_PUBLICAR.includes(s.estado) || conEvento.has(s.identidad_evento_real)) continue;
+        if (!s.identidad_evento_real || !ESTADOS_PENDIENTES_DE_PUBLICAR.includes(s.estado) || conEvento.has(s.identidad_evento_real)) continue;
         if (!mapa.has(s.identidad_evento_real)) mapa.set(s.identidad_evento_real, s);
     }
     return mapa;

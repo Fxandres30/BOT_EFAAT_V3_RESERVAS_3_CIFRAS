@@ -6,7 +6,8 @@
   "scripts": {
     "backend": "npm start --prefix backend",
     "frontend": "npm run dev --prefix frontend",
-    "dev": "concurrently -n backend,frontend -c blue,green \"npm:backend\" \"npm:frontend\""
+    "dev": "concurrently -n backend,frontend -c blue,green \"npm:backend\" \"npm:frontend\"",
+    "test": "node scripts/pruebas/ejecutar.js backend frontend"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

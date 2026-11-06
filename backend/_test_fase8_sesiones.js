@@ -9,6 +9,9 @@
 //
 // Un solo proceso Node, de principio a fin, sin reiniciar nada.
 // Restaura Supabase exactamente al estado previo al finalizar.
+// GUARDA (F1-A, 06/11/2026): no arranca sin doble confirmación. Ver scripts/guardaProduccion.js.
+require("./scripts/guardaProduccion").exigir({ script: "_test_fase8_sesiones.js", tipo: "escritura", efectos: "manipula el gestor de sesiones contra la tabla real `sesiones` (puede cambiar activa/principal de la sesión real)" });
+
 require("dotenv").config();
 
 const supabase = require("./lib/supabase");

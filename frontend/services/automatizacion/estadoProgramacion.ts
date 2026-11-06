@@ -17,8 +17,8 @@
 // se afirma que el mensaje llegó.
 // ==========================================================================
 
-// Colombia no tiene horario de verano: el desfase es fijo.
-const DESFASE_COLOMBIA = "-05:00";
+// Colombia no tiene horario de verano: el desfase es fijo (fuente única, F1-B).
+import { DESFASE_COLOMBIA, ZONA_COLOMBIA, fechaColombia } from "../../lib/tiempo/colombia";
 
 // Ventanas de presentación (no cambian ninguna decisión del backend).
 export const PROXIMO_MS = 5 * 60 * 1000;          // «Próximo a enviarse»
@@ -120,16 +120,15 @@ export function formatearRestante(ms: number): string {
 
 }
 
-const FORMATO_DIA = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit" });
-const FORMATO_HORA = new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", hour: "numeric", minute: "2-digit", hour12: true });
+const FORMATO_HORA = new Intl.DateTimeFormat("es-CO", { timeZone: ZONA_COLOMBIA, hour: "numeric", minute: "2-digit", hour12: true });
 
 // "hoy 2:56 p. m." / "mañana 9:00 a. m." / "23/10 2:56 p. m." en hora de Colombia.
 export function formatearMomento(fecha: Date, ahora: Date): string {
 
-    const dia = FORMATO_DIA.format(fecha);
-    const hoy = FORMATO_DIA.format(ahora);
-    const manana = FORMATO_DIA.format(new Date(ahora.getTime() + 86400000));
-    const ayer = FORMATO_DIA.format(new Date(ahora.getTime() - 86400000));
+    const dia = fechaColombia(fecha);
+    const hoy = fechaColombia(ahora);
+    const manana = fechaColombia(new Date(ahora.getTime() + 86400000));
+    const ayer = fechaColombia(new Date(ahora.getTime() - 86400000));
 
     const hora = FORMATO_HORA.format(fecha);
 

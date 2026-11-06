@@ -30,7 +30,8 @@ const { validarFormatoNumero } = require("../bot/funciones/reservas/extraerNumer
 const { reservarNumerosDetallado } = require("../bot/funciones/reservas/reservarNumeros");
 const { sorteoAceptaReservas } = require("../bot/funciones/reservas/detectarReserva");
 const { actualizarEvento } = require("../bot/funciones/reservas/actualizarEvento");
-const { registrarAuditoria, historialNumero } = require("../bot/funciones/reservas/auditoriaReservas");
+const { registrarAuditoria, historialNumero, contextoAuditoriaFila: contextoFila } = require("../bot/funciones/reservas/auditoriaReservas");
+const { consultaLiberacion } = require("../bot/funciones/reservas/liberacion");
 const { evaluarGrupo } = require("../bot/funciones/grupos/politicaGrupos");
 const { buscarBloqueo } = require("../bot/funciones/bloqueo/bloqueoActivo");
 const { listarContactos } = require("../bot/funciones/usuarios/listarContactos");
@@ -42,14 +43,8 @@ const MAX_MOTIVO = 500;
 const MAX_OBSERVACIONES = 1000;
 const MAX_METODO_PAGO = 60;
 
-// Mismas columnas que limpia el reinicio seguro (migración 030).
-const CAMPOS_LIBRE = {
-    estado: "libre",
-    comprador: null, contacto: null, contacto_lower: null, nombre: null, telefono: null, lib: null,
-    grupo_id: null, grupo_nombre: null, evento_id: null, nombre_evento: null, telefono_bot: null,
-    fecha_reserva: null, hora_reserva: null, fecha_pago: null, hora_pago: null,
-    temporal_por: null, bloqueado_hasta: null, ip_reserva: null, usuario_global_id: null
-};
+// Campos que limpia una liberación (los mismos que el reinicio seguro, 030):
+// bot/funciones/reservas/liberacion.js (fuente única, F1-B).
 
 // ------------------------------------------------------------- utilidades ---
 
@@ -59,12 +54,8 @@ function texto(valor, max) {
     return t ? t.slice(0, max) : null;
 }
 
-function ahoraBogota(ahora = new Date()) {
-    return {
-        fecha: ahora.toLocaleDateString("sv-SE", { timeZone: "America/Bogota" }),
-        hora: ahora.toLocaleTimeString("es-CO", { hour12: false, timeZone: "America/Bogota" })
-    };
-}
+// Fecha y hora con el formato que se guarda en la cuadrícula: fuente única (F1-B).
+const { fechaHoraRegistro: ahoraBogota } = require("../shared/tiempo/colombia");
 
 function normalizarBusqueda(valor) {
     return String(valor || "")
@@ -947,17 +938,7 @@ async function liberarManual({ usuarioId, operador, precio, numero, confirmar, m
 
     const fila = lectura.fila;
     const accion = ["bloqueado", "en_proceso"].includes(fila.estado) ? "desbloquear" : "liberar";
-    const ctx = {
-        accion,
-        evento_id: fila.evento_id || null,
-        identidad_evento_real: fila.identidad_evento_real || null,
-        grupo_id: fila.grupo_id || null,
-        grupo_nombre: fila.grupo_nombre || null,
-        contacto_id: fila.usuario_global_id || null,
-        contacto_nombre: fila.comprador || fila.nombre || null,
-        contacto_telefono: fila.telefono || fila.contacto || null,
-        estado_anterior: fila.estado
-    };
+    const ctx = { accion, ...contextoFila(fila) };
 
     if (fila.estado === "libre") return rechazo("ya_libre", "El número ya está disponible.");
 
@@ -974,13 +955,10 @@ async function liberarManual({ usuarioId, operador, precio, numero, confirmar, m
 
     // Condicionado al estado leído: si entretanto cambió (p. ej. el bot
     // registró el pago), no se pisa.
-    const { data, error } = await soloDelCliente(
-        supabase.from(config.tabla)
-            .update(CAMPOS_LIBRE)
-            .eq("numero", base.numero)
-            .eq("estado", fila.estado),
-        { usuario_id: usuarioId }
-    ).select();
+    const { data, error } = await consultaLiberacion(supabase, { usuarioId, tabla: config.tabla })
+        .eq("numero", base.numero)
+        .eq("estado", fila.estado)
+        .select();
 
     if (error) {
         await registrarAuditoria({ ...base, ...ctx, resultado: "error", codigo: "error_guardar", error: error.message || error.code });
@@ -1041,18 +1019,7 @@ async function leerFilas(usuarioId, tabla, numeros) {
     return { ok: true, porNumero };
 }
 
-function contextoFila(fila) {
-    return {
-        evento_id: fila.evento_id || null,
-        identidad_evento_real: fila.identidad_evento_real || null,
-        grupo_id: fila.grupo_id || null,
-        grupo_nombre: fila.grupo_nombre || null,
-        contacto_id: fila.usuario_global_id || null,
-        contacto_nombre: fila.comprador || fila.nombre || null,
-        contacto_telefono: fila.telefono || fila.contacto || null,
-        estado_anterior: fila.estado
-    };
-}
+// contextoFila = auditoriaReservas.contextoAuditoriaFila (fuente única, F1-B).
 
 // ¿Hace falta autorización expresa para tocar este número? UNA TABLA = UN
 // SORTEO: con un sorteo activo de este precio en la tabla, TODOS sus números
@@ -1344,10 +1311,9 @@ async function liberarLote({ usuarioId, operador, precio, numeros, confirmar, mo
     // Un UPDATE por estado leído: si entretanto cambió, no se pisa.
     for (const [estado, lista] of porEstado) {
 
-        const { data, error } = await soloDelCliente(
-            supabase.from(config.tabla).update(CAMPOS_LIBRE).in("numero", lista).eq("estado", estado),
-            { usuario_id: usuarioId }
-        ).select();
+        const { data, error } = await consultaLiberacion(supabase, { usuarioId, tabla: config.tabla })
+            .in("numero", lista).eq("estado", estado)
+            .select();
 
         const hechos = new Set((data || []).map(f => String(f.numero)));
 

@@ -17,6 +17,9 @@
 // re-vincular, no para cambiar datos de negocio).
 // ==========================================================================
 
+// GUARDA (F1-A, 06/11/2026): no arranca sin doble confirmación. Ver scripts/guardaProduccion.js.
+require("./scripts/guardaProduccion").exigir({ script: "_reconstruccion_usuarios.js", tipo: "escritura", efectos: "BORRA TODAS las filas de `usuarios` y las vuelve a importar" });
+
 require("dotenv").config();
 
 const fs = require("fs");

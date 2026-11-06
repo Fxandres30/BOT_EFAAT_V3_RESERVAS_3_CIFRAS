@@ -20,9 +20,9 @@
 const supabase = require("../lib/supabase");
 const { fechaSorteoDe, instanteBogota } = require("./validar");
 
-// Sorteos que todavía no se publicaron: sus reservas no tienen sorteo
-// activo que las proteja.
-const ESTADOS_SIN_PUBLICAR = ["borrador", "programado", "publicando", "fallido"];
+// Sorteos que todavía pueden publicarse: sus reservas no tienen sorteo
+// activo que las proteja (estadosProgramacion.js, fuente única F1-B).
+const { ESTADOS_PENDIENTES_DE_PUBLICAR } = require("./estadosProgramacion");
 
 // «Reiniciar la tabla antes de publicar» elegido y todavía sin hacer (D2).
 function reinicioPendiente(config) {
@@ -59,7 +59,7 @@ async function sorteosSinPublicar(usuarioId) {
     const { data, error } = await supabase.from("sorteos_programados")
         .select("id, estado, tabla, identidad_evento_real, config")
         .eq("usuario_id", usuarioId)
-        .in("estado", ESTADOS_SIN_PUBLICAR);
+        .in("estado", ESTADOS_PENDIENTES_DE_PUBLICAR);
 
     if (error) return { ok: false, error };
 
@@ -167,7 +167,7 @@ async function sorteosParaReservar(usuarioId, { tabla, precio, ahora = new Date(
 }
 
 module.exports = {
-    ESTADOS_SIN_PUBLICAR,
+    ESTADOS_PENDIENTES_DE_PUBLICAR,
     reinicioPendiente,
     sorteosSinPublicar,
     anticipadasEnTabla,

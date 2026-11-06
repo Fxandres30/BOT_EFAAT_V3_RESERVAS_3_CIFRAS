@@ -19,6 +19,7 @@
 
 import type { Sorteo, SorteoActivo, SorteoGestionado } from "../sorteos/apiSorteos";
 import { calcularCierreReal, fechaValida } from "../automatizacion/estadoProgramacion";
+import { fechaColombia } from "../../lib/tiempo/colombia";
 
 export type EstadoTarjeta = "activo" | "programado" | "revision" | "sin_sorteo" | "no_disponible";
 
@@ -47,8 +48,6 @@ interface Entrada {
     ahora: Date;
 }
 
-const FORMATO_DIA = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit" });
-
 const MOTIVO_FALLIDO = "La publicación falló. Revísala en Sorteos programados.";
 const MOTIVO_PARCIAL = "Algunos grupos no se publicaron. Revísalo en Sorteos programados.";
 
@@ -60,7 +59,7 @@ const deTabla = (tablaRegistro: string | null | undefined, tabla: string) => !ta
 function momentoDeCierre(s: Sorteo): Date | null {
 
     const fecha = s.config?.fecha_sorteo
-        || (fechaValida(s.publicar_en) ? FORMATO_DIA.format(fechaValida(s.publicar_en) as Date) : null);
+        || (fechaValida(s.publicar_en) ? fechaColombia(fechaValida(s.publicar_en) as Date) : null);
 
     return calcularCierreReal(fecha, s.config?.hora_cierre || s.config?.hora_fin);
 

@@ -24,9 +24,8 @@ const { ejecutarControlInactividad } = require("./ejecutarControlInactividad");
 const intervalos = new Map(); // sessionId -> intervalId
 const ejecutando = new Set(); // sessionId
 
-function horaBogota(ahora) {
-    return Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hourCycle: "h23", timeZone: "America/Bogota" }).format(ahora));
-}
+// Hora (0-23) en Colombia: fuente única (F1-B).
+const { horaNumeroColombia: horaBogota } = require("../../../shared/tiempo/colombia");
 
 // ¿Toca evaluar ahora? Expuesto para pruebas.
 async function correspondeEjecutar({ usuarioId, config, ahora = new Date() }) {

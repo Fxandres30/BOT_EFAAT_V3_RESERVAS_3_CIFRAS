@@ -180,15 +180,9 @@ function horarioPara(loteria, fecha) {
 
 }
 
-const PARTES = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
-});
-
 // Fecha y hora actuales en Colombia: { fecha: "YYYY-MM-DD", hora: "HH:MM" }.
-function ahoraColombia(ahora = new Date()) {
-    const p = Object.fromEntries(PARTES.formatToParts(ahora).map(x => [x.type, x.value]));
-    return { fecha: `${p.year}-${p.month}-${p.day}`, hora: `${p.hour}:${p.minute}` };
-}
+// Fuente única (F1-B); se sigue exportando como ahoraColombia.
+const { partesColombia: ahoraColombia } = require("../shared/tiempo/colombia");
 
 const MOTIVOS_SIN_PROXIMO = {
     inactiva: "Lotería inactiva.",

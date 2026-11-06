@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 
 import type { AccionRegistrada } from "./estadoProgramacion";
 import { calcularCierreReal } from "./estadoProgramacion";
+import { DESFASE_COLOMBIA } from "../../lib/tiempo/colombia";
 
 // ==========================================================================
 // Historial global de envíos de la automatización (solo lectura).
@@ -32,11 +33,11 @@ export interface FiltrosHistorial {
 const LIMITE_DEFECTO = 300;
 
 function inicioDiaColombia(fecha: string): string {
-    return new Date(`${fecha}T00:00:00-05:00`).toISOString();
+    return new Date(`${fecha}T00:00:00${DESFASE_COLOMBIA}`).toISOString();
 }
 
 function finDiaColombia(fecha: string): string {
-    return new Date(`${fecha}T23:59:59.999-05:00`).toISOString();
+    return new Date(`${fecha}T23:59:59.999${DESFASE_COLOMBIA}`).toISOString();
 }
 
 export async function listarHistorial(usuarioId: string, filtros: FiltrosHistorial = {}): Promise<{ data: EntradaHistorial[] | null; error: string | null; limite: number }> {

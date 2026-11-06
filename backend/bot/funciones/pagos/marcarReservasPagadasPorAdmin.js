@@ -26,6 +26,7 @@
 
 const supabase = require("../../../lib/supabase");
 const { soloDelCliente } = require("../reservas/filtroCliente");
+const { fechaHoraRegistro } = require("../../../shared/tiempo/colombia");
 
 // ==========================================================================
 // CORRECCIÓN (auditoría "kellyJ🥰" / compradores_semanales.whatsapp=null,
@@ -172,16 +173,7 @@ async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) 
     //      estado='reservado'-> SOLO lo pendiente (nunca reescribe 'pagado').
     // ======================================================================
 
-    const ahora = new Date();
-
-    const fechaPago = ahora.toLocaleDateString("sv-SE", {
-        timeZone: "America/Bogota"
-    });
-
-    const horaPago = ahora.toLocaleTimeString("es-CO", {
-        hour12: false,
-        timeZone: "America/Bogota"
-    });
+    const { fecha: fechaPago, hora: horaPago } = fechaHoraRegistro(new Date());
 
     // Solo las filas que de verdad van a pasar a 'pagado' (estado==='reservado'
     // en la lectura de arriba) deciden qué columnas de identidad se pueden

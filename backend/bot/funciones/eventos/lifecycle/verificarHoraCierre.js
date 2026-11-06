@@ -1,4 +1,5 @@
 const { fechaEventoHoy } = require("../identidadEventoReal");
+const { instanteColombia } = require("../../../../shared/tiempo/colombia");
 
 // Instante (Date) del cierre de reservas: fecha del sorteo + hora_cierre EN
 // COLOMBIA (America/Bogota, UTC-5 todo el año: sin horario de verano). Sin
@@ -15,9 +16,7 @@ function instanteCierre(evento, ahora = new Date()) {
         return null;
 
     const fecha = evento.fecha_evento ? String(evento.fecha_evento).slice(0, 10) : fechaEventoHoy(ahora);
-    const instante = new Date(`${fecha}T${m[1].padStart(2, "0")}:${m[2]}:00-05:00`);
-
-    return Number.isNaN(instante.getTime()) ? null : instante;
+    return instanteColombia(fecha, `${m[1]}:${m[2]}`);
 
 }
 

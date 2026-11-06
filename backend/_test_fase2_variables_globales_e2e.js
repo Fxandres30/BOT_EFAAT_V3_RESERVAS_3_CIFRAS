@@ -5,6 +5,9 @@
 // _test_fase7_dinamismo.js: código de producción tal cual, solo se
 // sustituyen sendMessage (Baileys) y suggestReply (Gemini). Limpia todo lo
 // que crea al final.
+// GUARDA (F1-A, 06/11/2026): no arranca sin doble confirmación. Ver scripts/guardaProduccion.js.
+require("./scripts/guardaProduccion").exigir({ script: "_test_fase2_variables_globales_e2e.js", tipo: "escritura", efectos: "crea y borra plantillas y variables globales reales" });
+
 require("dotenv").config();
 
 const path = require("path");

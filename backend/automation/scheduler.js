@@ -62,9 +62,9 @@ const prioridad = require("./prioridadComunicaciones");
 // reservados pendientes, pagados, grupo cerrado) — ver
 // eventRules.decidirRecordatoriosSegunEstado.
 const { leerEstadoParaRecordatorios } = require("./repo/estadoSorteo");
-// Fecha de hoy en Colombia (mismo cálculo que fechaEventoHoy del bot; el
-// scheduler no requiere módulos de bot/).
-const fechaHoyColombia = (ahora) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit" }).format(ahora);
+// Fecha de hoy en Colombia: fuente única (F1-B); el scheduler sigue sin
+// depender de módulos de bot/.
+const { fechaColombia: fechaHoyColombia } = require("../shared/tiempo/colombia");
 
 // Diagnóstico del ciclo de vida (Paso 0) — solo observa.
 const cicloMensaje = require("../diagnostico/cicloMensaje");

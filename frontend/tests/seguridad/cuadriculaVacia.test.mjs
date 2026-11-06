@@ -173,7 +173,9 @@ prueba("reiniciarTabla con 0 filas visibles y base lista: la cuadrícula la crea
     respuestaBackend = { ok: true, estado: "completa", filas: 100, esperadas: 100, tabla: T5K };
     // Lo que haría el backend (027): las 100 filas del cliente.
     alPreparar = () => { db[T5K].push(...NUMEROS.map(numero => ({ usuario_id: A, numero, estado: "libre" }))); };
-    assert.strictEqual(await reiniciarTabla(5000, A), true);
+    // Desde 7c9667ec (24/10, «Reinicio manual de Tablas») reiniciarTabla devuelve
+    // el resultado que muestra ReinicioTablaModal, ya no `true` (F1-A, 06/11).
+    assert.deepStrictEqual(await reiniciarTabla(5000, A), { accion: "creada", filas: 100, noTocadas: 0, anticipadasEliminadas: 0 });
     assert.deepStrictEqual(escrituras.map(e => e.tabla), ["reservas_actividad"]);
     assert.strictEqual(db.reservas_actividad[0].detalle.accion, "creada");
 });

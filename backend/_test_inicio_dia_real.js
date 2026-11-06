@@ -13,6 +13,9 @@
 //   5. registra la ejecución (automation_actions, DAILY_START_MESSAGE)
 //   6. un segundo tick NO vuelve a enviarlo (idempotencia real)
 //   7. otro grupo/evento no recibe el mensaje incorrectamente
+// GUARDA (F1-A, 06/11/2026): no arranca sin doble confirmación. Ver scripts/guardaProduccion.js.
+require("./scripts/guardaProduccion").exigir({ script: "_test_inicio_dia_real.js", tipo: "escritura", efectos: "inserta y borra filas reales de grupos_autorizados, automation_configs y automation_actions" });
+
 require("dotenv").config();
 
 const path = require("path");

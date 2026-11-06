@@ -10,6 +10,9 @@
 //
 // Limpia todo lo que crea al final (plantillas y fila de config de prueba),
 // dejando Supabase EXACTAMENTE como estaba antes de correr el script.
+// GUARDA (F1-A, 06/11/2026): no arranca sin doble confirmación. Ver scripts/guardaProduccion.js.
+require("./scripts/guardaProduccion").exigir({ script: "_test_fase7_dinamismo.js", tipo: "escritura", efectos: "crea y borra plantillas_mensaje y configuracion_seleccion_mensajes reales" });
+
 require("dotenv").config();
 
 const path = require("path");

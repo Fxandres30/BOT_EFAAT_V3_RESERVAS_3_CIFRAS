@@ -8,6 +8,9 @@
 //   4) hace UPDATE únicamente de la columna "contenido" en esas 2 filas,
 //   5) vuelve a leerlas y verifica que ya no queden paréntesis dobles.
 // No toca ninguna otra fila, columna, tabla, ni lógica del BOT.
+// GUARDA (F1-A, 06/11/2026): no arranca sin doble confirmación. Ver scripts/guardaProduccion.js.
+require("./scripts/guardaProduccion").exigir({ script: "_corregir_2_plantillas_parentesis.js", tipo: "escritura", efectos: "UPDATE de la columna contenido de 2 filas reales de plantillas_mensaje" });
+
 require("dotenv").config({ path: require("path").join(__dirname, ".env") });
 const supabase = require("./lib/supabase");
 

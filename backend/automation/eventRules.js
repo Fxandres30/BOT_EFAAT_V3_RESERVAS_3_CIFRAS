@@ -10,20 +10,8 @@
 
 const crypto = require("crypto");
 
-// Días de la semana, en el mismo orden que devuelve Intl con weekday:"long"
-// en inglés — se traduce a español sin depender de la localización del
-// entorno (evita sorpresas de acentos/capitalización entre sistemas).
-const DIAS_EN_A_ES = {
-    Monday: "lunes",
-    Tuesday: "martes",
-    Wednesday: "miercoles",
-    Thursday: "jueves",
-    Friday: "viernes",
-    Saturday: "sabado",
-    Sunday: "domingo"
-};
-
-const ZONA_HORARIA = "America/Bogota";
+// Fecha, hora y día en Colombia: fuente única (F1-B).
+const tiempoColombia = require("../shared/tiempo/colombia");
 
 // ==========================================================================
 // IDENTIDAD DE CICLO
@@ -304,40 +292,21 @@ function evaluarInicioDia({
 // Nombre de día en español (lunes..domingo), calculado sobre la zona
 // horaria del negocio (America/Bogota), sin depender de la configuración
 // regional del proceso Node donde corra el backend.
+// Se conservan los tres nombres exportados; el cálculo vive en
+// shared/tiempo/colombia.js.
 function obtenerClaveDia(fecha) {
-
-    const nombreIngles = new Intl.DateTimeFormat("en-US", {
-        timeZone: ZONA_HORARIA,
-        weekday: "long"
-    }).format(fecha);
-
-    return DIAS_EN_A_ES[nombreIngles] || null;
-
+    return tiempoColombia.diaSemanaColombia(fecha);
 }
 
 // "HH:mm" en America/Bogota para la fecha dada.
 function obtenerHoraMinuto(fecha) {
-
-    return new Intl.DateTimeFormat("en-GB", {
-        timeZone: ZONA_HORARIA,
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false
-    }).format(fecha);
-
+    return tiempoColombia.horaColombia(fecha);
 }
 
 // "YYYY-MM-DD" en America/Bogota para la fecha dada — base de la clave de
 // idempotencia de Inicio del día (Master Spec §8: "grupo_id:DAILY_START_MESSAGE:<fecha>").
 function obtenerFechaISO(fecha) {
-
-    return new Intl.DateTimeFormat("en-CA", {
-        timeZone: ZONA_HORARIA,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit"
-    }).format(fecha);
-
+    return tiempoColombia.fechaColombia(fecha);
 }
 
 // configDia = { activo, desde: "HH:mm", hasta: "HH:mm" }. Comparación

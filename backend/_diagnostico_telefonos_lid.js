@@ -24,6 +24,9 @@
 // enmascarada (últimos 4 dígitos visibles, resto con *).
 // ==========================================================================
 
+// GUARDA (F1-A, 06/11/2026): no arranca sin doble confirmación. Ver scripts/guardaProduccion.js.
+require("./scripts/guardaProduccion").exigir({ script: "_diagnostico_telefonos_lid.js", tipo: "lectura", efectos: "se conecta al Supabase real al cargar y lee los grupos de la sesión de WhatsApp activa del proceso" });
+
 const fs = require("fs");
 const path = require("path");
 

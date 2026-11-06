@@ -18,6 +18,9 @@
 // Solo se sustituye el envío final a WhatsApp (sendImage) — mismo
 // criterio que el resto de _test_*.js de este proyecto: todo lo demás
 // (Supabase, Puppeteer, Express, Next.js) es real.
+// GUARDA (F1-A, 06/11/2026): no arranca sin doble confirmación. Ver scripts/guardaProduccion.js.
+require("./scripts/guardaProduccion").exigir({ script: "_test_fase_produccion_real_scheduler.js", tipo: "escritura", efectos: "inserta y borra grupos_autorizados, automation_configs, event_sessions y eventos_bot reales; abre Chromium contra el panel" });
+
 require("dotenv").config();
 
 const path = require("path");

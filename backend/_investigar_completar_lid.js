@@ -21,6 +21,9 @@
 //   node backend/_investigar_completar_lid.js [ruta-al-reporte.json]
 // ==========================================================================
 
+// GUARDA (F1-A, 06/11/2026): no arranca sin doble confirmación. Ver scripts/guardaProduccion.js.
+require("./scripts/guardaProduccion").exigir({ script: "_investigar_completar_lid.js", tipo: "credenciales", efectos: "lee los archivos de sesión de WhatsApp (backend/auth) y escribe un informe local" });
+
 const fs = require("fs");
 const path = require("path");
 

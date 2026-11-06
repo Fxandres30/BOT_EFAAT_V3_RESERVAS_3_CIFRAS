@@ -14,8 +14,10 @@ const { normalizarEleccionDiseno } = require("./disenoTabla");
 const { crearIdentidadEventoReal } = require("../bot/funciones/eventos/identidadEventoReal");
 const { esEstilo } = require("./estilosMensaje");
 const { variablesDesconocidas } = require("./mensajes");
+// Fecha y hora de Colombia: fuente única (F1-B). partesBogota e
+// instanteBogota se siguen exportando con su nombre.
+const { partesColombia: partesBogota, instanteColombia: instanteBogota } = require("../shared/tiempo/colombia");
 
-const ZONA = "America/Bogota";
 const HORA = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -37,29 +39,10 @@ const MODALIDADES = {
     tres_cifras_gratis: { disponible: false, motivo: "Todavía no existe la tabla de reservas 000-999 ni las reglas de participación gratuita." }
 };
 
-function partesBogota(fecha) {
-    const f = new Intl.DateTimeFormat("en-CA", {
-        timeZone: ZONA, year: "numeric", month: "2-digit", day: "2-digit",
-        hour: "2-digit", minute: "2-digit", hourCycle: "h23"
-    }).formatToParts(fecha);
-    const v = Object.fromEntries(f.map(p => [p.type, p.value]));
-    return { fecha: `${v.year}-${v.month}-${v.day}`, hora: `${v.hour}:${v.minute}` };
-}
-
-// "YYYY-MM-DD" + "HH:MM[:SS]" en hora de Colombia (UTC-5, sin horario de
-// verano) -> Date. Misma función para validar y para el publicador.
-// `hora`: "HH:MM", "HH:MM:SS" o sin cero inicial ("8:36:42"), que es como
-// reservarNumeros.js la escribe (toLocaleTimeString "es-CO"). Antes una
-// reserva hecha antes de las 10:00 daba null y nunca vencía si la base
-// devolvía el texto tal cual (una columna `time` de Postgres lo rellena).
-function instanteBogota(fecha, hora) {
-    if (!fecha || !hora) return null;
-    const m = String(hora).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-    if (!m) return null;
-    const h = `${m[1].padStart(2, "0")}:${m[2]}:${m[3] || "00"}`;
-    const d = new Date(`${fecha}T${h}-05:00`);
-    return Number.isNaN(d.getTime()) ? null : d;
-}
+// instanteBogota("YYYY-MM-DD", "HH:MM[:SS]" o "8:36:42") -> Date en hora de
+// Colombia (shared/tiempo/colombia.js::instanteColombia). Misma función para
+// validar y para el publicador; acepta la hora sin cero inicial con que
+// reservarNumeros.js la escribe.
 
 // Fecha en que se JUEGA el sorteo. Sorteos anteriores a este campo no la
 // traen: se juegan el día de su publicación (comportamiento de siempre).

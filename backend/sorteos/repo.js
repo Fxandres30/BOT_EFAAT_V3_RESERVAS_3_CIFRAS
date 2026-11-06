@@ -254,8 +254,25 @@ async function numerosPorIdentidad(usuarioId, tabla, identidades) {
 // puede pertenecer ahora a otro, y solo la identidad de la fila lo recuerda.
 async function contarNumerosTabla(usuarioId, tabla) {
     if (!usuarioId || !tabla) return { ok: true, reservados: 0, pagados: 0 };
-    const { data, error } = await supabase.from(tabla).select("estado").eq("usuario_id", usuarioId);
-    if (error) return { ok: false, reservados: null, pagados: null };
+    return conteoDeEstados(await supabase.from(tabla).select("estado").eq("usuario_id", usuarioId), tabla);
+}
+
+// Reservados y pagados de UN sorteo por su identidad (sorteos cerrados o
+// comprobaciones antes de corregir un sorteo). FUENTE ÚNICA (F1-B): antes
+// había una copia en gestionEventos.js y otra en sorteosActivos.js.
+// Sin tabla o sin identidad no hay nada que contar: 0 y 0.
+async function contarNumerosIdentidad(usuarioId, tabla, identidad) {
+    if (!tabla || !identidad) return { ok: true, reservados: 0, pagados: 0 };
+    return conteoDeEstados(await supabase.from(tabla).select("estado")
+        .eq("usuario_id", usuarioId).eq("identidad_evento_real", identidad), tabla);
+}
+
+// Sin lectura no hay conteo: ok=false y null, nunca «0 reservados».
+function conteoDeEstados({ data, error }, tabla) {
+    if (error) {
+        console.error(`❌ [SORTEOS] no se pudieron contar los números de ${tabla}:`, error.message);
+        return { ok: false, reservados: null, pagados: null };
+    }
     const filas = data || [];
     return { ok: true, reservados: filas.filter(f => f.estado === "reservado").length, pagados: filas.filter(f => f.estado === "pagado").length };
 }
@@ -502,6 +519,7 @@ module.exports = {
     eventosPorIdentidad,
     numerosPorIdentidad,
     contarNumerosTabla,
+    contarNumerosIdentidad,
     registrarHistorial,
     historialDelSorteo,
     reemplazarGrupos,

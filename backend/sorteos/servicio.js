@@ -96,7 +96,7 @@ const gestionEventos = require("./gestionEventos");
 const sorteosActivos = require("./sorteosActivos");
 const administracion = require("./administracion");
 
-const ESTADOS_EDITABLES = ["borrador", "programado"];
+const { ESTADOS_EDITABLES } = require("./estadosProgramacion");
 
 // Reloj inyectable (las pruebas fijan la hora; en producción, la real).
 const reloj = { ahora: () => new Date() };

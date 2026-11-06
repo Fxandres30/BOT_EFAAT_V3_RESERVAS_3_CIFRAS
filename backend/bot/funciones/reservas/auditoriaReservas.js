@@ -106,4 +106,22 @@ async function historialNumero({ usuarioId, tabla, numero, limite = 20 }) {
 
 }
 
-module.exports = { registrarAuditoria, historialNumero, TABLA_AUDITORIA: TABLA };
+// Datos de la fila de la cuadrícula que una operación (pagar, liberar,
+// desbloquear) deja en reservas_auditoria: quién la tenía y de qué sorteo.
+// Fuente única (F1-B): la usan el panel (reservaManual.js) y el vencimiento
+// automático (publicador.liberarVencidas). Se calcula con la fila LEÍDA
+// antes de cambiarla.
+function contextoAuditoriaFila(fila) {
+    return {
+        evento_id: fila.evento_id || null,
+        identidad_evento_real: fila.identidad_evento_real || null,
+        grupo_id: fila.grupo_id || null,
+        grupo_nombre: fila.grupo_nombre || null,
+        contacto_id: fila.usuario_global_id || null,
+        contacto_nombre: fila.comprador || fila.nombre || null,
+        contacto_telefono: fila.telefono || fila.contacto || null,
+        estado_anterior: fila.estado
+    };
+}
+
+module.exports = { registrarAuditoria, historialNumero, contextoAuditoriaFila, TABLA_AUDITORIA: TABLA };

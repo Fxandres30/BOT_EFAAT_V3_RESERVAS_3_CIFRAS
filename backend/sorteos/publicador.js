@@ -48,6 +48,10 @@ const { sorteosActivosDelPrecio, filasPorId, reemplazarAnteriores, revertirReemp
 // Recordatorios y cierre: los del sorteo tienen prioridad sobre los generales
 // del grupo (automation/scheduler.js); la decisión es la misma en los dos.
 const prioridad = require("../automation/prioridadComunicaciones");
+// Liberación: los mismos campos, filtro y auditoría que el botón «Liberar»
+// del panel (fuente única, F1-B).
+const { consultaLiberacion } = require("../bot/funciones/reservas/liberacion");
+const { registrarAuditoria, contextoAuditoriaFila } = require("../bot/funciones/reservas/auditoriaReservas");
 
 // ¿Otra cuenta tiene un sorteo activo en el grupo? (lo que revisarGrupo
 // comprueba después de los sorteos propios).
@@ -118,15 +122,6 @@ function eventoTerminado(fin) {
         : "Para continuar, reábrelo en Eventos y pulsa «Reintentar».";
     return { estado: "requiere_revision", ultimo_error: `El sorteo de este grupo ${COMO_TERMINO[fin]}: no se publicó ni se reactivó. ${siguiente}` };
 }
-
-// Campos que limpia una liberación: los MISMOS que el botón "Liberar" del
-// panel (services/reservaManual.js, liberarManual).
-const CAMPOS_LIBERACION = {
-    estado: "libre", comprador: null, contacto: null, contacto_lower: null, nombre: null, telefono: null,
-    lib: null, grupo_id: null, grupo_nombre: null, evento_id: null, nombre_evento: null,
-    fecha_reserva: null, hora_reserva: null, fecha_pago: null, hora_pago: null,
-    temporal_por: null, bloqueado_hasta: null, usuario_global_id: null
-};
 
 function dependenciasReales() {
     return {
@@ -811,8 +806,9 @@ async function liberarVencidas({ sock, deps, ahora }) {
             .eq("usuario_id", usuarioId).eq("identidad_evento_real", sorteo.identidad_evento_real).eq("activo", true);
         if (!activos?.length) continue;
 
+        // Lo que se lee de cada fila es también lo que queda en la auditoría.
         const { data: filas, error } = await deps.supabase.from(sorteo.tabla)
-            .select("numero, estado, fecha_reserva, hora_reserva, comprador, contacto")
+            .select("numero, estado, fecha_reserva, hora_reserva, comprador, contacto, nombre, telefono, usuario_global_id, evento_id, identidad_evento_real, grupo_id, grupo_nombre")
             .eq("usuario_id", usuarioId).eq("identidad_evento_real", sorteo.identidad_evento_real).eq("estado", "reservado");
         if (error) continue;
 
@@ -835,9 +831,8 @@ async function liberarVencidas({ sock, deps, ahora }) {
             const desde = Math.max(reservadoEn.getTime(), publicadoEn);
             if (ahora.getTime() - desde < reservas.vencimiento_minutos * 60 * 1000) continue;
 
-            const { data: cambiadas } = await deps.supabase.from(sorteo.tabla)
-                .update(CAMPOS_LIBERACION)
-                .eq("usuario_id", usuarioId).eq("numero", fila.numero)
+            const { data: cambiadas } = await consultaLiberacion(deps.supabase, { usuarioId, tabla: sorteo.tabla })
+                .eq("numero", fila.numero)
                 .eq("identidad_evento_real", sorteo.identidad_evento_real).eq("estado", "reservado")
                 .select("numero");
 
@@ -845,6 +840,16 @@ async function liberarVencidas({ sock, deps, ahora }) {
 
             liberadosSorteo++;
             liberados.push({ sorteo: sorteo.id, numero: fila.numero });
+
+            // Mismo registro inmutable que una liberación del panel (032):
+            // quién tenía el número y de qué sorteo, antes de limpiarlo.
+            await (deps.registrarAuditoria || registrarAuditoria)({
+                usuario_id: usuarioId, operador_id: null, operador_email: null,
+                origen: "bot", accion: "liberar", tabla: sorteo.tabla,
+                precio: Number(sorteo.config?.valor) || null, numero: String(fila.numero),
+                ...contextoAuditoriaFila(fila),
+                estado_nuevo: "libre", motivo: `vencimiento (${reservas.vencimiento_minutos} min)`, resultado: "ok"
+            });
 
             await deps.supabase.from("reservas_actividad").insert({
                 usuario_id: usuarioId,
