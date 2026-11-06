@@ -267,8 +267,12 @@ await prueba("3 + 6. Conservar con PAGADOS de otro sorteo ACTIVO de OTRO precio 
     assert.strictEqual(rpc.llamadas.length, 0);
 });
 
-await prueba("4a. Reiniciar con reservas PROTEGIDAS (sorteo activo): excepción técnica documentada, no se toca nada ni se publica", async () => {
+// El sorteo activo es de OTRO precio ($10.000) que comparte la tabla física:
+// la publicación no lo reemplaza, sus números siguen siendo suyos y la 030
+// es todo o nada. (Del MISMO precio se reemplaza y no bloquea: 4c.)
+await prueba("4a. Reiniciar con reservas PROTEGIDAS (sorteo activo de OTRO precio en la misma tabla física): excepción técnica documentada, no se toca nada ni se publica", async () => {
     escenario({ reservados: 10, pagados: 5, otroActivo: true });
+    fake.tablas.eventos_bot.find(e => e.id === "ev-otro").valor = "10000";
     const antes = filasDelOtro();
     const s = await crear({ publicacion_inmediata: true, tabla: { reiniciar: true, liberar_bloqueados: false } });
     const v = await vista(s);
@@ -278,6 +282,7 @@ await prueba("4a. Reiniciar con reservas PROTEGIDAS (sorteo activo): excepción 
     assert.strictEqual(enviados.length, 0);
     assert.ok(rpc.llamadas.every(l => l.args.p_aplicar !== true), "el reinicio nunca se aplicó");
     assert.strictEqual(filasDelOtro(), antes);
+    assert.strictEqual(fake.tablas.eventos_bot.find(e => e.id === "ev-otro").activo, true, "el sorteo de otro precio sigue activo");
 });
 
 await prueba("4b. Reiniciar con números de un sorteo TERMINADO: con confirmación, se archivan y liberan al publicar", async () => {
@@ -292,6 +297,103 @@ await prueba("4b. Reiniciar con números de un sorteo TERMINADO: con confirmaci�
     assert.ok(p.ok, JSON.stringify(p));
     assert.strictEqual(fake.tablas.reservas_archivo.length, 15, "archivados, no borrados");
     assert.strictEqual(fake.tablas[T5K].filter(f => f.identidad_evento_real === OTRO).length, 0);
+    assert.strictEqual(enviados.length, 1);
+});
+
+// ---- Un sorteo por PRECIO + política de tabla (causa del fallo 06/11) ----
+// El sorteo activo del MISMO precio lo reemplaza la publicación. Antes, con
+// «Reiniciar», sus números contaban como «protegido_activo» y la vista
+// previa bloqueaba («No se puede reiniciar la tabla…»), aunque con
+// «Conservar» la misma publicación lo reemplazaba sin problema.
+
+const filasArchivoPor = (estado) => fake.tablas.reservas_archivo.filter(x => x.estado === estado).length;
+
+await prueba("4c. REINICIAR (instantáneo) con el sorteo ACTIVO del MISMO precio: se reemplaza, sus números se archivan (pagados incluidos) y se publica", async () => {
+    escenario({ reservados: 10, pagados: 5, otroActivo: true });
+    const s = await crear({ publicacion_inmediata: true, tabla: { reiniciar: true, liberar_bloqueados: false } });
+    const v = await vista(s);
+    assert.deepStrictEqual(v.bloqueos, [], JSON.stringify(v.bloqueos));
+    assert.strictEqual(v.estado_publicacion, "listo", "no espera al cierre del sorteo reemplazado");
+    assert.ok(v.reinicio?.posible && v.reinicio.al_publicar && !v.reinicio.diferido);
+    assert.strictEqual(v.reinicio.liberables, 15);
+    assert.deepStrictEqual(v.reinicio.reemplaza.map(x => x.identidad), [OTRO]);
+    assert.ok(v.avisos.some(a => a.includes("se reemplaza") && a.includes("se archivan (no se borran")), JSON.stringify(v.avisos));
+    assert.ok(rpc.llamadas.every(l => l.args.p_aplicar !== true), "la vista previa no toca nada");
+    assert.strictEqual(fake.tablas.eventos_bot.find(e => e.id === "ev-otro").activo, true, "la vista previa no cierra nada");
+
+    const sinConfirmar = await publicarAhora(s);
+    assert.strictEqual(sinConfirmar.motivo, "confirmacion_reinicio_requerida", "la confirmación explícita se mantiene");
+    assert.strictEqual(fake.tablas.eventos_bot.find(e => e.id === "ev-otro").activo, true);
+
+    const p = await publicarAhora(s, { reinicio: { confirmado: true } });
+    assert.ok(p.ok, JSON.stringify(p));
+    assert.strictEqual(sorteoDb(s.id).estado, "publicado", JSON.stringify(grupoDb(s.id, "g1@g.us")));
+    assert.strictEqual(enviados.length, 1, "un solo anuncio");
+    const otro = fake.tablas.eventos_bot.find(e => e.id === "ev-otro");
+    assert.strictEqual(otro.activo, false);
+    assert.ok(/^sustituido por el sorteo/.test(otro.cierre_motivo), otro.cierre_motivo);
+    assert.strictEqual(fake.tablas.reservas_archivo.length, 15, "15 archivados, ninguno borrado");
+    assert.strictEqual(filasArchivoPor("pagado"), 5, "los 5 pagos quedan en el respaldo con su estado");
+    assert.ok(fake.tablas.reservas_archivo.every(x => x.identidad === OTRO && x.sorteo_id === s.id));
+    assert.ok(fake.tablas[T5K].every(f => f.estado === "libre"), "tabla libre para el sorteo nuevo");
+    assert.strictEqual(rpc.llamadas.filter(l => l.args.p_aplicar === true).length, 1, "un solo reinicio");
+    assert.ok(sorteoDb(s.id).config.tabla.reiniciado_en, "marca de idempotencia");
+
+    // Doble clic / reintento: no reinicia ni publica otra vez.
+    const otraVez = await publicarAhora(s, { reinicio: { confirmado: true } });
+    assert.ok(otraVez.ok && otraVez.data.repetido, JSON.stringify(otraVez));
+    assert.strictEqual(rpc.llamadas.filter(l => l.args.p_aplicar === true).length, 1);
+    assert.strictEqual(enviados.length, 1);
+});
+
+await prueba("4d. CONSERVAR con el sorteo ACTIVO del MISMO precio: la tabla queda EXACTAMENTE igual, se reemplaza y se publica", async () => {
+    escenario({ reservados: 10, pagados: 5, otroActivo: true });
+    const antesTabla = JSON.stringify(fake.tablas[T5K]);
+    const s = await crear({ publicacion_inmediata: true });
+    const v = await vista(s);
+    assert.deepStrictEqual(v.bloqueos, []);
+    assert.strictEqual(v.reinicio, null, "con conservar no hay reinicio");
+    const p = await publicarAhora(s);
+    assert.ok(p.ok, JSON.stringify(p));
+    assert.strictEqual(enviados.length, 1);
+    assert.strictEqual(JSON.stringify(fake.tablas[T5K]), antesTabla, "ni un número cambia");
+    assert.strictEqual(rpc.llamadas.length, 0, "nunca se llama al reinicio");
+    assert.strictEqual(fake.tablas.reservas_archivo.length, 0);
+    assert.strictEqual(fake.tablas.eventos_bot.find(e => e.id === "ev-otro").activo, false, "reemplazado como siempre");
+});
+
+await prueba("4e. REINICIAR con el activo del MISMO precio + otro ACTIVO de OTRO precio en la tabla física: bloquea y NO cierra ninguno", async () => {
+    escenario({ reservados: 10, pagados: 5, otroActivo: true });
+    fake.tablas.eventos_bot.push({ ...fake.tablas.eventos_bot[0], id: "ev-10k", grupo_id: "g2@g.us", identidad_evento_real: "id-10k", nombre_evento: "Lotería de Cundinamarca", valor: "10000" });
+    Object.assign(fake.tablas[T5K].find(f => f.numero === "90"), { estado: "pagado", identidad_evento_real: "id-10k", evento_id: "ev-10k", nombre_evento: "Lotería de Cundinamarca" });
+    const antesTabla = JSON.stringify(fake.tablas[T5K]);
+    const s = await crear({ publicacion_inmediata: true, tabla: { reiniciar: true, liberar_bloqueados: false } });
+    const v = await vista(s);
+    assert.ok(v.bloqueos.some(b => b.startsWith("No se puede reiniciar la tabla") && b.includes("Cundinamarca") && !b.includes("Bogotá")), JSON.stringify(v.bloqueos));
+    const p = await publicarAhora(s, { reinicio: { confirmado: true } });
+    assert.ok(!p.ok);
+    assert.strictEqual(enviados.length, 0);
+    assert.strictEqual(JSON.stringify(fake.tablas[T5K]), antesTabla);
+    assert.ok(fake.tablas.eventos_bot.filter(e => ["ev-otro", "ev-10k"].includes(e.id)).every(e => e.activo === true), "ninguno se cerró");
+});
+
+await prueba("4f. REINICIAR (programado) con el activo del MISMO precio que cierra DESPUÉS de publicar: no se bloquea ni espera; al publicar reemplaza, archiva y publica", async () => {
+    escenario({ reservados: 3, pagados: 4, otroActivo: true });
+    const s = await crear({ tabla: { reiniciar: true, liberar_bloqueados: false } });
+    const v = await vista(s);
+    assert.deepStrictEqual(v.bloqueos, [], JSON.stringify(v.bloqueos));
+    assert.strictEqual(v.estado_publicacion, "listo");
+    const conf = await silencio(() => servicio.confirmar(A, s.id, { version: s.version, confirmacion: true, reinicio: { confirmado: true } }));
+    assert.ok(conf.ok, JSON.stringify(conf));
+    // Ciclo anticipado (un minuto antes): no cierra el sorteo actual antes de su hora ni toca la tabla.
+    await silencio(() => publicador.tick(sock(), { ahora: new Date(new Date(PUBLICAR).getTime() - 30000), deps: deps() }));
+    assert.strictEqual(fake.tablas.eventos_bot.find(e => e.id === "ev-otro").activo, true);
+    assert.strictEqual(fake.tablas.reservas_archivo.length, 0);
+    await silencio(() => publicador.tick(sock(), { ahora: EN_PUBLICACION, deps: deps() }));
+    assert.strictEqual(grupoDb(s.id, "g1@g.us").estado, "publicado", JSON.stringify(grupoDb(s.id, "g1@g.us")));
+    assert.strictEqual(fake.tablas.eventos_bot.find(e => e.id === "ev-otro").activo, false);
+    assert.strictEqual(fake.tablas.reservas_archivo.length, 7);
+    assert.strictEqual(filasArchivoPor("pagado"), 4);
     assert.strictEqual(enviados.length, 1);
 });
 

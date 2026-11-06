@@ -269,7 +269,11 @@ async function listarProcesables(usuarioId, { modo, ahora = new Date(), lote = 1
 
     const lecturas = [
         consulta().in("estado", REINTENTABLES_AUTO).lte("proximo_intento_en", marca).order("proximo_intento_en", { ascending: true }).limit(lote),
-        consulta().eq("estado", "en_curso").lt("lease_hasta", marca).limit(lote)
+        consulta().eq("estado", "en_curso").lt("lease_hasta", marca).limit(lote),
+        // Identidad no comparable todavía: procesarExpulsion.js le pone
+        // proximo_intento_en. Una ambigüedad real lo deja null y no entra
+        // aquí (lte excluye null).
+        consulta().eq("estado", "identidad_ambigua").lte("proximo_intento_en", marca).order("proximo_intento_en", { ascending: true }).limit(lote)
     ];
 
     if (modo === "real") lecturas.push(consulta().eq("estado", "simulado").limit(lote));

@@ -93,7 +93,9 @@ prueba("formulario y vista previa en modo inmediato; «Programados» sigue igual
     const vistaPrevia = leer("components/sorteos/VistaPreviaModal.tsx");
     assert.match(vistaPrevia, /apiSorteos\.publicarAhora\(/);
     // La vista previa captura con la función de «Compartir» y publica ESA imagen (sin pedir otra al servidor).
-    assert.match(vistaPrevia, /capturarTabla\(capturaRef\.current\)/);
+    // Captura única de un sorteo (capturaSorteo.tsx), usada por la vista previa.
+    assert.match(vistaPrevia, /useCapturaSorteo\(vista\)/);
+    assert.match(leer("components/sorteos/capturaSorteo.tsx"), /capturarTabla\(ref\.current\)/);
     assert.match(vistaPrevia, /apiSorteos\.publicarAhora\(vista\.id, vista\.version, imagen\.imagen/);
     assert.doesNotMatch(vistaPrevia, /imagenPrueba/);
     assert.match(vistaPrevia, /publicandoRef\.current/, "bloqueo síncrono contra doble clic");

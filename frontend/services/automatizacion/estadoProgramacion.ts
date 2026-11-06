@@ -28,6 +28,7 @@ export const DATOS_VIEJOS_MS = 3 * 60 * 1000;
 
 export type EstadoRecordatorio =
     | "desactivado"
+    | "pausado"
     | "sin_evento"
     | "sin_hora"
     | "programado"
@@ -164,6 +165,7 @@ export function claveRecordatorio(eventSessionId: string, offset: number): strin
 
 const ETIQUETAS: Record<EstadoRecordatorio, string> = {
     desactivado: "Desactivado",
+    pausado: "En pausa",
     sin_evento: "No programado",
     sin_hora: "Sin hora de cierre",
     programado: "Programado",
@@ -181,6 +183,7 @@ const ETIQUETAS: Record<EstadoRecordatorio, string> = {
 // Motivos de omisión que escribe eventRules.decidirRecordatoriosSegunEstado
 // (detalle.resultado.motivo). Uno desconocido se muestra genérico.
 const MOTIVOS_OMISION: Record<string, string> = {
+    automatizacion_desactivada: "la automatización del grupo estaba desactivada",
     grupo_cerrado: "el grupo ya estaba cerrado",
     sin_disponibles: "no quedaban números libres",
     sin_disponibles_ni_pendientes: "no quedaban números libres ni pagos pendientes"
@@ -219,9 +222,12 @@ export interface EntradaRecordatorio {
     // Registro de automation_actions con la clave de este recordatorio.
     accion: AccionRegistrada | null;
     ahora: Date;
+    // Interruptor maestro del grupo (automation_configs.activo). Apagado,
+    // el Scheduler no envía nada nuevo (scheduler.js::motivoSinPermiso).
+    automatizacionActiva?: boolean;
 }
 
-export function estadoRecordatorio({ offset, activo, cierre, cicloAbierto, accion, ahora }: EntradaRecordatorio): ResultadoRecordatorio {
+export function estadoRecordatorio({ offset, activo, cierre, cicloAbierto, accion, ahora, automatizacionActiva = true }: EntradaRecordatorio): ResultadoRecordatorio {
 
     const base = (estado: EstadoRecordatorio, extra: Partial<ResultadoRecordatorio> = {}): ResultadoRecordatorio => ({
         offset,
@@ -275,6 +281,10 @@ export function estadoRecordatorio({ offset, activo, cierre, cicloAbierto, accio
 
     // 2. Sin registro: depende de la configuración y del calendario real.
     if (!activo) return base("desactivado");
+
+    if (!automatizacionActiva) {
+        return base("pausado", { motivo: "La automatización del grupo está desactivada: no se enviará mientras siga así." });
+    }
 
     if (!cicloAbierto) {
         return base("sin_evento", { motivo: "No hay un evento con la automatización en marcha en este grupo." });

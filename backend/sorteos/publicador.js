@@ -135,10 +135,12 @@ function dependenciasReales() {
         consultarEventoDelSorteo: require("../bot/funciones/eventos/consultarEvento").consultarEventoDelSorteo,
         abrirGrupo: require("../bot/funciones/eventos/grupos/abrirGrupo").abrirGrupo,
         sendMessage: require("../services/baileys/send").sendMessage,
-        // «Compartir» en el servidor (routes/tablas.js): imagen de la tabla
-        // del precio con el diseño guardado en el sorteo, texto del anuncio y
-        // envío de imagen + pie con ExecutionGuard.
-        capturarImagen: require("../services/compartirTabla").capturarImagenTabla,
+        // Imagen: la de un sorteo programado es la captura del panel guardada
+        // al confirmarlo (capturaProgramada.js: la MISMA captura que publica
+        // el instantáneo), solo si la tabla no cambió. El resto, lo de siempre
+        // (compartirTabla.capturarImagenTabla). Texto del anuncio y envío de
+        // imagen + pie con ExecutionGuard, como «Compartir».
+        capturarImagen: require("./capturaProgramada").capturarParaPublicar,
         textoParaCompartir: require("../services/destinosCompartir").textoParaCompartir,
         compartirEnGrupos: require("../services/compartirTabla").compartirEnGrupos,
         // Motor central de comunicaciones del evento publicado (04/11).
@@ -243,8 +245,14 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora, 
     try {
         // sorteoId: «Publicar ahora» entrega la captura que el panel ya hizo
         // de ESTE sorteo (servicio.publicarAhora); si no, se captura ahora.
-        imagen = await deps.capturarImagen(Number(config.valor), usuarioId, null, { sorteoId: sorteo.id, captura: config.captura, disenoSorteo: config.diseno || null });
+        // Programado: la captura guardada al confirmarlo (capturaProgramada.js).
+        imagen = await deps.capturarImagen(Number(config.valor), usuarioId, null, { sorteoId: sorteo.id, sorteo, captura: config.captura, disenoSorteo: config.diseno || null });
     } catch (err) {
+        // La imagen guardada no vale (no existe o la tabla cambió): repetir no
+        // lo arregla; el administrador vuelve a capturar con «Reintentar».
+        if (err?.revision) {
+            return { estado: "requiere_revision", ultimo_error: `${ERROR_IMAGEN}: ${err.message} No se envió nada.` };
+        }
         // Falta configuración: repetir daría el mismo error. Lo arregla una
         // persona y luego pide el reintento.
         if (err?.configuracion) {
@@ -428,6 +436,41 @@ async function sigueVigente(usuarioId, sorteo, estados) {
         && s.grupos.some(g => g.estado === "pendiente" || g.estado === "fallido");
 }
 
+// Mismo motivo que publicarEnGrupo: el reemplazo es el mismo, hecho antes.
+const motivoDeReemplazo = (config) => `sustituido por el sorteo ${config.nombre || ""} ${config.hora_fin || ""}`.trim();
+
+// ¿Lo único que impide el reinicio son números de sorteos activos que esta
+// publicación va a reemplazar (mismo precio y cliente)? Entonces, al
+// publicar, se cierran como «sustituido» (reservas y pagos intactos en la
+// tabla; la 030 los archiva). Devuelve:
+//   {}                  no aplica (otras protecciones u otro precio)
+//   { anticipado: true } aplicaría, pero aún no es la publicación
+//   { reemplazo }        filas cerradas (para deshacer si hace falta)
+//   { error }            no se pudo revisar o cerrar; nada cambió
+async function reemplazarParaReiniciar({ usuarioId, sorteo, revision, ahora, deps, alPublicar }) {
+
+    const protegidos = (revision.porSorteo || []).filter(g => String(g.clase).startsWith("protegido"));
+    if (!protegidos.length || protegidos.some(g => g.clase !== "protegido_activo" || !g.identidad)) return {};
+
+    const ocupan = await sorteosActivosDelPrecio(deps.supabase, { usuarioId, valor: sorteo.config.valor, identidad: sorteo.identidad_evento_real });
+    if (!ocupan.ok) return { error: "no se pudo revisar el sorteo anterior de este precio; se reintentará." };
+
+    const reemplazables = new Set(ocupan.filas.map(f => f.identidad_evento_real).filter(Boolean));
+    if (!protegidos.every(g => reemplazables.has(g.identidad))) return {};
+    if (!alPublicar) return { anticipado: true };
+
+    const motivo = motivoDeReemplazo(sorteo.config);
+    const r = await reemplazarAnteriores(deps.supabase, { usuarioId, filas: ocupan.filas, motivo, ahora });
+    if (!r.ok) return { error: `no se pudo reemplazar el sorteo anterior (${r.error?.message || "error"}); no se modificó nada y se reintentará.` };
+
+    return { reemplazo: { cerradas: r.cerradas, motivo } };
+
+}
+
+async function deshacerReemplazo(deps, usuarioId, reemplazo) {
+    await revertirReemplazo(deps.supabase, { usuarioId, cerradas: reemplazo.cerradas, motivo: reemplazo.motivo });
+}
+
 // Reinicio de la tabla elegido al programar: se hace UNA vez, en el proceso
 // de publicación (un minuto antes del anuncio o, si el bot no estaba, justo
 // antes), con la función segura de la 030 (transacción, filas bloqueadas,
@@ -460,11 +503,34 @@ async function prepararPublicacion({ usuarioId, sorteo, ahora, deps, estados = [
     const tablaCfg = sorteo.config.tabla;
     const datos = { id: sorteo.id, tabla: sorteo.tabla, liberarBloqueados: tablaCfg.liberar_bloqueados === true };
 
-    const revision = await reinicio.revisarReinicio(usuarioId, { ...datos, config: sorteo.config });
+    let revision = await reinicio.revisarReinicio(usuarioId, { ...datos, config: sorteo.config });
 
     if (!revision.ok) return { ok: false, espera: `${EN_ESPERA}no se pudo revisar la tabla para el reinicio programado; se reintentará.` };
 
+    // UN SORTEO POR PRECIO: el sorteo activo de ESTE precio lo reemplaza la
+    // publicación. Si sus números son lo único protegido, se reemplaza AQUÍ
+    // (antes del reinicio, no después como sin reinicio) para que la 030 los
+    // archive. Solo en la publicación misma: el ciclo anticipado (estado
+    // «programado») nunca cierra un sorteo antes de su hora. Si después el
+    // reinicio no se puede aplicar, el reemplazo se deshace.
+    let reemplazo = null;
+    const alPublicar = estados.includes("publicando");
     if (!revision.data.posible) {
+        const r = await reemplazarParaReiniciar({ usuarioId, sorteo, revision, ahora, deps, alPublicar });
+        if (r.error) return { ok: false, espera: `${EN_ESPERA}${r.error}` };
+        if (r.anticipado) return { ok: false, espera: `${EN_ESPERA}el sorteo activo de este precio se reemplazará al publicar y entonces se reiniciará la tabla.` };
+        if (r.reemplazo) {
+            reemplazo = r.reemplazo;
+            revision = await reinicio.revisarReinicio(usuarioId, { ...datos, config: sorteo.config });
+            if (!revision.ok) {
+                await deshacerReemplazo(deps, usuarioId, reemplazo);
+                return { ok: false, espera: `${EN_ESPERA}no se pudo revisar la tabla para el reinicio programado; se reintentará.` };
+            }
+        }
+    }
+
+    if (!revision.data.posible) {
+        if (reemplazo) await deshacerReemplazo(deps, usuarioId, reemplazo);
         // Solo números de un sorteo ACTIVO (el actual todavía no cerró): se
         // espera a que cierre. Cualquier otra protección (pago en proceso,
         // reservas sin sorteo atribuible, estado desconocido) no se resuelve
@@ -482,7 +548,8 @@ async function prepararPublicacion({ usuarioId, sorteo, ahora, deps, estados = [
         const aplicado = await reinicio.aplicarReinicio(usuarioId, datos, revision.data.huella);
         // La tabla cambió entre la revisión y la escritura (reserva o pago
         // nuevo): la 030 no hizo nada. Se vuelve a decidir en el próximo ciclo.
-        if (!aplicado.ok) return { ok: false, espera: `${EN_ESPERA}la tabla cambió durante el reinicio programado; no se modificó nada y se volverá a revisar.` };
+        if (!aplicado.ok && reemplazo) await deshacerReemplazo(deps, usuarioId, reemplazo);
+        if (!aplicado.ok) return { ok: false, espera:`${EN_ESPERA}la tabla cambió durante el reinicio programado; no se modificó nada y se volverá a revisar.` };
     }
 
     // Marca de idempotencia: un reintento del publicador (o un segundo

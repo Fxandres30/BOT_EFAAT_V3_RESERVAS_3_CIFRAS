@@ -120,7 +120,9 @@ async function reenviar(metodo: Metodo, req: Request, params: Promise<{ ruta?: s
     if (metodo !== "GET" && metodo !== "DELETE") {
         const texto = await req.text();
         // «Publicar ahora» lleva la captura PNG de la tabla: el mismo tope que «Compartir» (capturarTabla.MAX_DATA_URL).
-        const maximo = camino.endsWith("/publicar-ahora") ? 4_100_000 : 64 * 1024;
+        // Igual al confirmar un programado y al reintentar un grupo (llevan la misma captura).
+        const conImagen = camino.endsWith("/publicar-ahora") || camino.endsWith("/confirmar") || camino.endsWith("/grupos/reintentar") || camino.endsWith("/grupos/publicar");
+        const maximo = conImagen ? 4_100_000 : 64 * 1024;
         if (texto.length > maximo) return NextResponse.json({ ok: false, motivo: "demasiado_grande" }, { status: 413, headers: CABECERAS });
         cuerpo = texto || "{}";
     }

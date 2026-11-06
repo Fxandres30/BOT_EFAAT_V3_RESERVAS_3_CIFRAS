@@ -4,10 +4,9 @@ import { useEffect, useRef, useState } from "react";
 
 import { Modal, Button, Badge } from "@/components/ui";
 import TablaImprimible from "@/components/tablas/TablaImprimible";
-import { capturarTabla } from "@/services/tablas/capturarTabla";
-import { medirPerfilCaptura, type PerfilCaptura } from "@/services/tablas/perfilCaptura";
 import { apiSorteos, describirError, type EstadoPublicacion, type ResultadoPublicacionInmediata, type VistaPrevia } from "@/services/sorteos/apiSorteos";
-import { motivoNoPublicable, resumenDesdeSorteo, textoResultado, type PruebaImagen } from "@/services/sorteos/sorteoInstantaneo";
+import { motivoNoPublicable, resumenDesdeSorteo, textoResultado } from "@/services/sorteos/sorteoInstantaneo";
+import { useCapturaSorteo } from "./capturaSorteo";
 import { ESTADO_GRUPO } from "@/services/sorteos/estadosSorteo";
 import { mostrarFecha } from "./fechas";
 import styles from "./Sorteos.module.css";
@@ -16,6 +15,9 @@ interface Props {
     sorteoId: string | null;
     onClose: () => void;
     onConfirmado: () => void;
+    /** Sorteo programado: reintentar UN grupo con una captura nueva de la
+     *  tabla (la misma de «Publicar ahora» del instantáneo); se publica ya. */
+    reintento?: { grupoId: string; nombre: string | null };
 }
 
 const fechaLegible = (yyyyMmDd: string) => yyyyMmDd.split("-").reverse().join("/");
@@ -39,20 +41,16 @@ const ESTADO_INMEDIATO: Record<EstadoPublicacion, { texto: string; tono: "succes
 // anuncio -> cuentas -> grupos -> advertencias y validaciones. Los botones
 // van en el pie del modal, que no se desplaza: la tabla tiene su propio
 // scroll y nunca los oculta.
-export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Props) {
+export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado, reintento }: Props) {
 
     const [vista, setVista] = useState<VistaPrevia | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [revisado, setRevisado] = useState(false);
     const [reinicioConfirmado, setReinicioConfirmado] = useState(false);
     const [confirmando, setConfirmando] = useState(false);
-    // Imagen de la tabla: la captura de «Compartir» (capturarTabla). En el
-    // sorteo instantáneo es la que se envía; resultado real de cada grupo.
-    const [imagen, setImagen] = useState<PruebaImagen>({ tipo: "probando" });
-    const capturaRef = useRef<HTMLDivElement>(null);
-    const [perfil, setPerfil] = useState<PerfilCaptura | null>(null);
-    const [intentoImagen, setIntentoImagen] = useState(0);
     const [resultado, setResultado] = useState<ResultadoPublicacionInmediata | null>(null);
+    // Reintento de un grupo de un programado: frase del resultado real.
+    const [reintentado, setReintentado] = useState<string | null>(null);
     // Bloqueo síncrono: dos clics seguidos no lanzan dos publicaciones.
     const publicandoRef = useRef(false);
 
@@ -65,7 +63,6 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
         async function cargar(id: string) {
             const r = await apiSorteos.vistaPrevia(id);
             if (r.ok) {
-                setPerfil(medirPerfilCaptura());
                 setVista(r.data);
             } else {
                 setError(describirError(r));
@@ -77,24 +74,14 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
     }, [sorteoId]);
 
     const inmediato = vista?.publicacion_inmediata === true;
+    const enReintento = !!reintento;
+    const nombreReintento = reintento ? (reintento.nombre || reintento.grupoId) : "";
 
-    // La imagen de la tabla, con la captura del botón «Compartir» sobre la
-    // copia oculta de abajo (con el ancho que la tabla tiene en Tablas en
-    // este dispositivo). Se hace una vez y, en el instantáneo, se envía esa misma.
-    useEffect(() => {
-        if (!vista) return;
-        let vigente = true;
-        (async () => {
-            try {
-                await document.fonts?.ready;
-                const png = await capturarTabla(capturaRef.current);
-                if (vigente) setImagen({ tipo: "ok", imagen: png });
-            } catch (err) {
-                if (vigente) setImagen({ tipo: "error", mensaje: err instanceof Error ? err.message : "No se pudo generar la imagen de la tabla." });
-            }
-        })();
-        return () => { vigente = false; };
-    }, [vista, intentoImagen]);
+    // La imagen de la tabla: la captura única de un sorteo (capturaSorteo.tsx,
+    // capturarTabla de «Compartir» sobre la copia oculta). Es la que se
+    // guarda y se publica, sea instantáneo, programado o un reintento.
+    const { imagen, perfil, captura, copiaOculta, reintentar: reintentarImagen } = useCapturaSorteo(vista);
+    const capturaParaGuardar = () => captura;
 
     async function publicarAhora() {
 
@@ -106,7 +93,7 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
 
         try {
 
-            const r = await apiSorteos.publicarAhora(vista.id, vista.version, imagen.imagen, vista.reinicio?.al_publicar ? { confirmado: reinicioConfirmado } : undefined, perfil ?? undefined);
+            const r = await apiSorteos.publicarAhora(vista.id, vista.version, imagen.imagen, vista.reinicio?.al_publicar ? { confirmado: reinicioConfirmado } : undefined, perfil ?? undefined, vista.huella_tabla);
 
             if (r.ok) {
                 setResultado(r.data);
@@ -158,7 +145,8 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                 vista.id,
                 vista.version,
                 pideConfirmarReinicio ? { confirmado: reinicioConfirmado } : undefined,
-                perfil ?? undefined
+                perfil ?? undefined,
+                capturaParaGuardar()
             );
         } catch {
             setError("No se pudo confirmar la programación. Revisa el sorteo antes de reintentar.");
@@ -177,6 +165,30 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
 
     }
 
+    // «Reintentar» de un grupo de un programado: guarda la captura nueva y
+    // publica ese grupo ahora (mismo flujo que el reintento del instantáneo).
+    async function reintentarConImagen() {
+
+        const nueva = capturaParaGuardar();
+        if (!vista || !reintento || !nueva || publicandoRef.current) return;
+        publicandoRef.current = true;
+        setConfirmando(true);
+        setError(null);
+
+        try {
+            const r = await apiSorteos.reintentarGrupo(vista.id, reintento.grupoId, nueva);
+            if (r.ok) setReintentado(r.aviso || "Reintento hecho. Revisa el estado del grupo en la lista.");
+            else if (r.motivo === "tiempo_agotado" || r.motivo === "backend_no_disponible") setReintentado("No hubo respuesta a tiempo: pudo publicarse. Revisa el estado del grupo en la lista antes de reintentar otra vez.");
+            else setError([r.mensaje || describirError(r), ...(r.bloqueos || []), ...(r.errores || []).map(e => e.mensaje)].join(" "));
+        } catch {
+            setError("No se pudo reintentar. Revisa el estado del grupo antes de volver a intentarlo: pudo haberse publicado.");
+        } finally {
+            setConfirmando(false);
+            publicandoRef.current = false;
+        }
+
+    }
+
     // Publicando o confirmando, ni la X, ni Escape, ni el fondo cierran el
     // modal (antes se podía cerrar a mitad y el resultado se perdía).
     return (
@@ -185,17 +197,24 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
             onClose={onClose}
             bloquearCierre={confirmando}
             size="lg"
-            title={inmediato ? "Sorteo instantáneo · vista previa" : "Vista previa"}
+            title={enReintento ? `Reintentar en «${nombreReintento}»` : inmediato ? "Sorteo instantáneo · vista previa" : "Vista previa"}
             footer={
                 <>
-                    <Button variant="secondary" onClick={resultado ? onConfirmado : onClose} disabled={confirmando}>Cerrar</Button>
-                    {inmediato && vista?.estado === "borrador" && !resultado && (
+                    <Button variant="secondary" onClick={resultado || reintentado ? onConfirmado : onClose} disabled={confirmando}>Cerrar</Button>
+                    {enReintento && !reintentado && (
+                        <Button onClick={reintentarConImagen} loading={confirmando} disabled={!capturaParaGuardar()}
+                            title={imagen.tipo === "ok" ? undefined : "Sin la imagen de la tabla no se publica."}>
+                            {confirmando ? "Enviando…" : `Publicar ahora en «${nombreReintento}»`}
+                        </Button>
+                    )}
+                    {!enReintento && inmediato && vista?.estado === "borrador" && !resultado && (
                         <Button onClick={publicarAhora} loading={confirmando} disabled={!!motivoNoPublicable(vista, { revisado, reinicioConfirmado, imagen })} title={motivoNoPublicable(vista, { revisado, reinicioConfirmado, imagen }) || undefined}>
                             {confirmando ? "Enviando…" : "Publicar ahora"}
                         </Button>
                     )}
-                    {!inmediato && vista?.estado === "borrador" && (
-                        <Button onClick={confirmar} loading={confirmando} disabled={!vista.puede_confirmar || !revisado || (pideConfirmarReinicio && !reinicioConfirmado)}>
+                    {!enReintento && !inmediato && vista?.estado === "borrador" && (
+                        <Button onClick={confirmar} loading={confirmando} disabled={!vista.puede_confirmar || !revisado || (pideConfirmarReinicio && !reinicioConfirmado) || imagen.tipo !== "ok"}
+                            title={imagen.tipo === "ok" ? undefined : "Espera a que se genere la imagen de la tabla: es la que se publicará."}>
                             Confirmar y programar
                         </Button>
                     )}
@@ -224,12 +243,23 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                     </section>
                 )}
 
-                {vista && !resultado && (
+                {reintentado && <p className={`${styles.alerta} ${styles.alertaInfo}`} role="status">{reintentado}</p>}
+
+                {enReintento && vista && !reintentado && (
+                    <p className={`${styles.alerta} ${styles.alertaAviso}`} role="status">
+                        Revisa primero el grupo en WhatsApp: si el anuncio ya llegó, publicar de nuevo lo repetiría.
+                        {" "}Se publicará ahora solo en «{nombreReintento}», con esta imagen de la tabla tal como está en este momento y el mismo anuncio. Los grupos ya publicados no se tocan.
+                    </p>
+                )}
+
+                {vista && !resultado && !reintentado && (
                     <>
-                        <div className={`${styles.alerta} ${vista.estado_publicacion === "listo" || (!inmediato && vista.estado_publicacion === "programado") ? styles.alertaInfo : styles.alertaError}`} role="status" aria-label="Estado de la publicación">
-                            <Badge tone={estadoVista!.tono} dot>{estadoVista!.texto}</Badge>
-                            <p>{estadoVista!.detalle}</p>
-                        </div>
+                        {!enReintento && (
+                            <div className={`${styles.alerta} ${vista.estado_publicacion === "listo" || (!inmediato && vista.estado_publicacion === "programado") ? styles.alertaInfo : styles.alertaError}`} role="status" aria-label="Estado de la publicación">
+                                <Badge tone={estadoVista!.tono} dot>{estadoVista!.texto}</Badge>
+                                <p>{estadoVista!.detalle}</p>
+                            </div>
+                        )}
 
                         <section className={styles.seccion} aria-label="Fecha y hora">
                             <h3 className={styles.seccionTitulo}>Publicación</h3>
@@ -248,16 +278,7 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                                 {pideConfirmarReinicio ? " · como quedará al publicar" : ""}
                             </h3>
                             {/* Copia oculta que se captura (capturarTabla, igual que «Compartir»). */}
-                            <div aria-hidden style={{ position: "fixed", left: -10000, top: 0, pointerEvents: "none" }}>
-                                <TablaImprimible
-                                    numerosDisponibles={vista.numeros.numerosDisponibles}
-                                    numerosOcupados={vista.numeros.numerosOcupados}
-                                    numerosPagados={vista.numeros.numerosPagados}
-                                    diseno={vista.diseno.config}
-                                    contenedorRef={capturaRef}
-                                    anchoContenido={perfil?.contenido}
-                                />
-                            </div>
+                            {copiaOculta}
                             {imagen.tipo === "ok" ? (
                                 <div className={styles.tablaVista}>
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -278,13 +299,13 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                                 <div className={`${styles.alerta} ${styles.alertaError}`} role="alert">
                                     <p>{imagen.mensaje}</p>
                                     <p>Sin imagen no se publica (no se envía el texto solo).</p>
-                                    <Button size="sm" variant="secondary" onClick={() => { setImagen({ tipo: "probando" }); setIntentoImagen(n => n + 1); }}>Volver a probar</Button>
+                                    <Button size="sm" variant="secondary" onClick={reintentarImagen}>Volver a probar</Button>
                                 </div>
                             )}
                             <p className={styles.ayuda}>
-                                {inmediato
+                                {inmediato || enReintento
                                     ? "Es la imagen que se enviará al pulsar «Publicar ahora»: la misma captura que hace «Compartir»."
-                                    : "Es la misma captura que hace «Compartir». A la hora de publicar se vuelve a capturar con el estado de la tabla en ese momento."}
+                                    : "Es la imagen que se publicará a la hora programada: la misma captura que hace «Compartir» y que envía el sorteo instantáneo. Si antes de esa hora la tabla cambia (reservas, pagos o liberaciones), no se publica una imagen desactualizada: el grupo queda en revisión y lo publicas con «Reintentar», que vuelve a capturarla."}
                             </p>
                         </section>
 
@@ -366,7 +387,7 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                             </section>
                         )}
 
-                        {vista.bloqueos.length > 0 && (
+                        {!enReintento && vista.bloqueos.length > 0 && (
                             <div className={`${styles.alerta} ${styles.alertaError}`}>
                                 <strong>{inmediato ? "No se puede publicar:" : "No se puede programar todavía:"}</strong>
                                 <ul>{vista.bloqueos.map((b, i) => <li key={i}>{b}</li>)}</ul>
@@ -405,7 +426,7 @@ export default function VistaPreviaModal({ sorteoId, onClose, onConfirmado }: Pr
                             </section>
                         )}
 
-                        {vista.estado === "borrador" && vista.puede_confirmar && (
+                        {!enReintento && vista.estado === "borrador" && vista.puede_confirmar && (
                             <label className={styles.check}>
                                 <input type="checkbox" checked={revisado} onChange={e => setRevisado(e.target.checked)} />
                                 Revisé la fecha, la tabla, el anuncio, las cuentas, los grupos, los premios y el valor.

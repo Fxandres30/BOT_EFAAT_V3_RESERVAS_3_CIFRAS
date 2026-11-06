@@ -44,6 +44,8 @@ export default function SorteosPage() {
     const [error, setError] = useState<string | null>(null);
     const [formulario, setFormulario] = useState<{ abierto: boolean; sorteo: { id: string; version: number } | null }>({ abierto: params?.get("nuevo") === "1", sorteo: null });
     const [vistaPrevia, setVistaPrevia] = useState<string | null>(null);
+    // «Reintentar» un grupo de un programado: vista previa con captura nueva.
+    const [reintento, setReintento] = useState<{ sorteoId: string; grupoId: string; nombre: string | null } | null>(null);
 
     useEffect(() => {
         if (redirigir) router.replace(enlaceAdministrar(params?.get("sorteo")));
@@ -136,6 +138,7 @@ export default function SorteosPage() {
                         onDetalle={setDetalle}
                         onEliminar={s => { setAviso(null); setEliminando(s); }}
                         onActualizado={cargar}
+                        onReintentar={(sorteoId, g) => setReintento({ sorteoId, ...g })}
                     />
                 </>
             )}
@@ -172,6 +175,16 @@ export default function SorteosPage() {
                 onClose={() => { setVistaPrevia(null); cargar(); }}
                 onConfirmado={() => { setVistaPrevia(null); cargar(); }}
             />
+
+            {reintento && (
+                <VistaPreviaModal
+                    key={`reintento-${reintento.sorteoId}-${reintento.grupoId}`}
+                    sorteoId={reintento.sorteoId}
+                    reintento={{ grupoId: reintento.grupoId, nombre: reintento.nombre }}
+                    onClose={() => { setReintento(null); cargar(); }}
+                    onConfirmado={() => { setReintento(null); cargar(); }}
+                />
+            )}
 
         </div>
     );

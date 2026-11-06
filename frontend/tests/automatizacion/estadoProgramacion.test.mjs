@@ -264,7 +264,7 @@ prueba("seguimiento: solo lectura, filtrado por el usuario de la sesión, sin en
         assert.ok(bloques.length > 0, tabla);
         for (const b of bloques) assert.ok(b.slice(0, 400).includes('.eq("usuario_id", usuarioId)'), `${tabla} filtra por usuario`);
     }
-    const pagina = fs.readFileSync(path.join(FRONT, "components/automatizacion/ProgramacionAutomatizacion/ProgramacionAutomatizacion.tsx"), "utf8");
+    const pagina = fs.readFileSync(path.join(FRONT, "components/automatizacion/CentroAutomatizaciones/CentroAutomatizaciones.tsx"), "utf8");
     assert.ok(pagina.includes("data.user?.id"), "el usuario sale de la sesión");
 });
 

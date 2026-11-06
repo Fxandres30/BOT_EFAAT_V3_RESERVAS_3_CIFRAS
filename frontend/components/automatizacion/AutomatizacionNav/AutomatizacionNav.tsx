@@ -19,7 +19,7 @@ const TABS: Tab[] = [
     { href: "/automatizacion", label: "Resumen", icon: LayoutDashboard, exacto: true },
     { href: "/automatizacion/grupos", label: "Grupos", icon: Users, exacto: false },
     { href: "/automatizacion/mensajes", label: "Mensajes", icon: Mail, exacto: false },
-    { href: "/automatizacion/programacion", label: "Programación", icon: Clock, exacto: false }
+    { href: "/automatizacion/programacion", label: "Centro de control", icon: Clock, exacto: false }
 ];
 
 export default function AutomatizacionNav() {

@@ -1,4 +1,5 @@
 .wrap {
+  container-type: inline-size;
   padding: 14px;
   background: var(--efaat-surface);
   border: 1px solid var(--efaat-border);
@@ -34,4 +35,71 @@
   font-size: var(--efaat-text-xs);
   font-weight: var(--efaat-weight-semibold);
   color: var(--efaat-text);
+}
+
+/* Tarjetas de modo: cada una explica en una línea qué hace. */
+.opciones {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+@container (min-width: 560px) {
+  .opciones {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.opcion {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-surface);
+  color: var(--efaat-text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.opcion:hover:not(:disabled) {
+  border-color: var(--efaat-primary-border);
+}
+
+.opcion:disabled {
+  cursor: progress;
+  opacity: 0.75;
+}
+
+.opcion:focus-visible {
+  outline: 2px solid var(--efaat-primary);
+  outline-offset: 2px;
+}
+
+.opcionActiva {
+  border-color: var(--efaat-primary);
+  background: var(--efaat-primary-soft);
+  box-shadow: inset 0 0 0 1px var(--efaat-primary);
+}
+
+.opcionTitulo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+}
+
+.opcionActiva .opcionTitulo {
+  color: var(--efaat-primary-active);
+}
+
+.opcionTexto {
+  font-size: var(--efaat-text-xs);
+  line-height: 1.4;
+  color: var(--efaat-text-secondary);
 }

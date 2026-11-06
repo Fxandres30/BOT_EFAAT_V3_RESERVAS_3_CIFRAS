@@ -143,8 +143,35 @@ async function aplicarReinicio(usuarioId, sorteo, huella) {
 
 }
 
+// Números del cliente en estado «bloqueado» (bloqueados a mano). Solo
+// lectura. -> { ok, numeros } | { ok: false }
+async function bloqueadosDeTabla(usuarioId, tabla) {
+    const { data, error } = await supabase.from(tabla).select("numero").eq("usuario_id", usuarioId).eq("estado", "bloqueado");
+    if (error) return { ok: false };
+    return { ok: true, numeros: (data || []).map(f => f.numero) };
+}
+
+// La tabla TAL COMO LA DEJA LA 030 (vista previa e imagen del anuncio): todo
+// queda libre salvo los bloqueados a mano, que la 030 conserva (clase
+// «conservado») si no se eligió liberarlos. Mismo formato que
+// tablaEvento.obtenerNumeros, para que la huella de la imagen
+// (capturaProgramada.huellaNumeros) coincida con la tabla real reiniciada.
+// (Cualquier otra fila no libre impide el reinicio entero: la 030 es todo o
+// nada, así que no puede quedar ocupada tras un reinicio aplicado.)
+function numerosTrasReinicio(numeros, bloqueadosConservados = []) {
+    const conservados = new Set((bloqueadosConservados || []).map(String));
+    const todos = [...(numeros?.numerosDisponibles || []), ...(numeros?.numerosOcupados || [])].map(String).sort();
+    return {
+        numerosDisponibles: todos.filter(n => !conservados.has(n)),
+        numerosOcupados: todos.filter(n => conservados.has(n)),
+        numerosPagados: []
+    };
+}
+
 module.exports = {
     revisarReinicio,
     aplicarReinicio,
-    explicarReinicio
+    explicarReinicio,
+    bloqueadosDeTabla,
+    numerosTrasReinicio
 };

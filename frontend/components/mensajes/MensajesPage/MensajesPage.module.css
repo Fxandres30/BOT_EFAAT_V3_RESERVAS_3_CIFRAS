@@ -1,5 +1,5 @@
 .page {
-  max-width: 1200px;
+  max-width: 1440px;
   margin: 0 auto;
 }
 
@@ -184,13 +184,27 @@
   color: var(--efaat-text);
 }
 
+.typeHeaderText {
+  min-width: 0;
+  flex: 1 1 320px;
+}
+
+.typeDesc {
+  margin: 2px 0 0;
+  font-size: var(--efaat-text-sm);
+  color: var(--efaat-text-secondary);
+  line-height: 1.5;
+}
+
 .typeHeaderRight {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
 .typeToggle {
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -242,7 +256,7 @@
 
 .contenido {
   display: grid;
-  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 280px) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }

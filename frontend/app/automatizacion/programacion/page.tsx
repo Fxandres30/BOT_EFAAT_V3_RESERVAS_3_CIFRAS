@@ -1,10 +1,10 @@
 import DashboardLayout from "@/components/layout/DashboardLayout/DashboardLayout";
-import ProgramacionAutomatizacion from "@/components/automatizacion/ProgramacionAutomatizacion/ProgramacionAutomatizacion";
+import CentroAutomatizaciones from "@/components/automatizacion/CentroAutomatizaciones/CentroAutomatizaciones";
 
 export default function Page() {
   return (
     <DashboardLayout>
-      <ProgramacionAutomatizacion />
+      <CentroAutomatizaciones />
     </DashboardLayout>
   );
 }

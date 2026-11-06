@@ -16,6 +16,7 @@ import {
     completarPlantillasSugeridas,
     dejarActivasSoloRecomendadas
 } from "@/services/mensajes/plantillas";
+import { contenidoLegible } from "@/services/mensajes/bibliotecaVariables";
 import { PLANTILLAS_NUMEROS_PAGOS, esPlantillaSugerida, esRecomendada } from "@/services/mensajes/plantillasNumerosPagos";
 
 import styles from "./ListaPlantillas.module.css";
@@ -213,7 +214,7 @@ export default function ListaPlantillas({
                         )}
                     </span>
                     <span className={styles.preview}>
-                        {p.contenido || "(sin contenido)"}
+                        {p.contenido ? contenidoLegible(p.contenido, [], tipo) : "(sin contenido)"}
                     </span>
                 </div>
 

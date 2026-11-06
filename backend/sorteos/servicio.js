@@ -19,6 +19,7 @@ const { normalizarConfigDiseno } = require("./disenoTabla");
 const reinicioTabla = require("./reinicioTabla");
 const reservasAnticipadas = require("./reservasAnticipadas");
 const tablaEvento = require("../automation/repo/tablaEvento");
+const capturaProgramada = require("./capturaProgramada");
 const { mensajePublicacion, mensajeRecordatorio, mensajeAvisoCierre, VARIABLES, LIMITE_MENSAJE, consolidarMensajes, generar, variablesDesconocidas } = require("./mensajes");
 const { ESTILOS, esEstilo, plantillaDe } = require("./estilosMensaje");
 const preferenciasMensaje = require("./preferenciasMensaje");
@@ -47,6 +48,46 @@ async function reinicioDiferible(usuarioId, reinicio, porSorteo, publicarEn) {
     }
 
     return { ...reinicio, diferido: true, cierra_antes: ultimo.toISOString() };
+
+}
+
+// UN SORTEO POR PRECIO (01/11): publicar REEMPLAZA al sorteo activo del
+// mismo precio del cliente. Sus números son de la tabla que el administrador
+// pidió reiniciar, así que no deben bloquear el reinicio: al publicar se
+// cierra primero (sustituido) y entonces la 030 los archiva (no los borra).
+// Los de sorteos activos que NO se reemplazan (otro precio que comparte la
+// tabla física) siguen protegidos. Devuelve el reinicio recalculado o null.
+async function reinicioTrasReemplazo(usuarioId, sorteo, reinicio, porSorteo) {
+
+    const activos = (porSorteo || []).filter(g => g.clase === "protegido_activo" && g.identidad);
+    if (!activos.length) return null;
+
+    const ocupan = await sorteosActivosDelPrecio(supabase, { usuarioId, valor: sorteo.config.valor, identidad: sorteo.identidad_evento_real });
+    if (!ocupan.ok) return null;
+    const reemplazables = new Set(ocupan.filas.map(f => f.identidad_evento_real).filter(Boolean));
+
+    const sustituidos = activos.filter(g => reemplazables.has(g.identidad));
+    if (!sustituidos.length) return null;
+
+    const nuevoPorSorteo = porSorteo.map(g => sustituidos.includes(g) ? { ...g, clase: "liberable" } : g);
+    const cuantos = sustituidos.reduce((n, g) => n + (g.reservados || 0) + (g.pagados || 0) + (g.otros || 0), 0);
+    const protegidos = Math.max(0, (reinicio.protegidos || 0) - cuantos);
+    const { seLiberarian, bloqueos } = reinicioTabla.explicarReinicio({ por_sorteo: nuevoPorSorteo });
+
+    return {
+        data: {
+            ...reinicio,
+            posible: protegidos === 0,
+            // La huella de hoy cambiará al cerrar el sorteo reemplazado: el
+            // publicador vuelve a revisar y usa la de ese momento.
+            liberables: (reinicio.liberables || 0) + cuantos,
+            protegidos,
+            se_liberarian: seLiberarian,
+            bloqueos,
+            reemplaza: [...new Map(sustituidos.map(g => [g.identidad, { identidad: g.identidad, nombre: g.nombre_evento || null }])).values()]
+        },
+        porSorteo: nuevoPorSorteo
+    };
 
 }
 const tablasCliente = require("../bot/funciones/eventos/tablasCliente");
@@ -243,8 +284,20 @@ async function vistaPrevia(usuarioId, id) {
                 : "No pudimos revisar la tabla para reiniciarla. Inténtalo de nuevo en unos minutos.");
         } else {
             reinicio = rr.data;
+            let porSorteo = rr.porSorteo;
+            // Números del sorteo activo de ESTE precio: la publicación lo
+            // reemplaza antes de reiniciar, así que no bloquean.
+            const trasReemplazo = !reinicio.posible
+                ? await reinicioTrasReemplazo(usuarioId, sorteo, reinicio, porSorteo)
+                : null;
+            if (trasReemplazo) {
+                reinicio = trasReemplazo.data;
+                porSorteo = trasReemplazo.porSorteo;
+                const nombres = reinicio.reemplaza.map(x => `«${x.nombre || "sin nombre"}»`).join(", ");
+                avisos.push(`Al publicar, el sorteo activo ${nombres} de este precio se reemplaza y, como elegiste reiniciar la tabla, sus números reservados y pagados se archivan (no se borran: quedan en el respaldo del reinicio) y la tabla queda libre.`);
+            }
             const diferido = !reinicio.posible
-                ? await reinicioDiferible(usuarioId, reinicio, rr.porSorteo, momentoPublicacion)
+                ? await reinicioDiferible(usuarioId, reinicio, porSorteo, momentoPublicacion)
                 : null;
             if (diferido) {
                 reinicio = diferido;
@@ -268,11 +321,20 @@ async function vistaPrevia(usuarioId, id) {
 
     // Números para pintar la tabla de la vista previa: la MISMA fuente que la
     // imagen que se comparte (tablaEvento.obtenerNumeros: solo número y si
-    // está libre). Con reinicio, como quedaría después de reiniciar.
+    // está libre). Con reinicio, como la deja la 030: libre salvo los
+    // bloqueados a mano que conserva (si no se eligió liberarlos). Si no se
+    // pueden leer, no se arriesga una imagen que no corresponda. Si el
+    // reinicio YA se hizo (reiniciado_en: reintento tras un fallo), no se
+    // repetirá: se pinta la tabla real de ahora.
     const numeros = await tablaEvento.obtenerNumeros(sorteo.tabla, usuarioId);
-    const numerosVista = seReiniciara
-        ? { numerosDisponibles: [...numeros.numerosDisponibles, ...numeros.numerosOcupados].sort(), numerosOcupados: [], numerosPagados: [] }
-        : numeros;
+    let numerosVista = numeros;
+    if (seReiniciara && !sorteo.config.tabla?.reiniciado_en) {
+        const conservados = sorteo.config.tabla?.liberar_bloqueados === true
+            ? { ok: true, numeros: [] }
+            : await reinicioTabla.bloqueadosDeTabla(usuarioId, sorteo.tabla);
+        if (!conservados.ok) bloqueos.push("No pudimos leer los números bloqueados de la tabla para mostrarla como quedará tras el reinicio. Inténtalo de nuevo en unos minutos.");
+        numerosVista = reinicioTabla.numerosTrasReinicio(numeros, conservados.numeros || []);
+    }
 
     const autorizados = await repo.gruposAutorizados(usuarioId);
     const setAutorizados = new Set((autorizados.data || []).map(g => g.grupo_id));
@@ -323,7 +385,7 @@ async function vistaPrevia(usuarioId, id) {
         }
         for (const filas of porSorteo.values()) {
             const nombre = `${filas[0].nombre_evento || "sin nombre"} ${filas[0].hora_fin ? String(filas[0].hora_fin).slice(0, 5) : ""}`.trim();
-            avisos.push(`El precio $${Number(sorteo.config.valor || 0).toLocaleString("es-CO")} tiene activo «${nombre}» en ${filas.length} grupo(s). Al publicar, si sigue activo, se reemplazará en todos ellos: se cierra sin mensaje de cierre y sus reservas y pagos se conservan.`);
+            avisos.push(`El precio $${Number(sorteo.config.valor || 0).toLocaleString("es-CO")} tiene activo «${nombre}» en ${filas.length} grupo(s). Al publicar, si sigue activo, se reemplazará en todos ellos: se cierra sin mensaje de cierre y sus reservas y pagos se conservan${reinicio?.reemplaza ? " (en el respaldo del reinicio de la tabla)" : ""}.`);
         }
     }
 
@@ -343,6 +405,9 @@ async function vistaPrevia(usuarioId, id) {
             hora_cierre: sorteo.config.hora_cierre,
             diseno: sorteo.config.diseno || { origen: "actual", diseno_id: null, nombre: null, config: null },
             numeros: numerosVista,
+            // Huella de esos números: el panel la devuelve con la captura al
+            // confirmar o reintentar (capturaProgramada.js).
+            huella_tabla: capturaProgramada.huellaNumeros(numerosVista),
             cantidad_numeros: sorteo.cantidad_numeros,
             tabla_fisica: sorteo.tabla,
             cuentas: sorteo.cuentas_snapshot || [],
@@ -386,7 +451,37 @@ function perfilCapturaValido(captura) {
     return { ventana, contenido };
 }
 
-async function confirmar(usuarioId, id, { version, confirmacion, reinicio, captura } = {}) {
+// Captura del panel (la de la vista previa) para cualquier publicación de un
+// sorteo: valida el PNG y que pinte los números de AHORA (huella de
+// vistaPrevia). Sin huella (panel anterior a la huella) vale la de la vista
+// previa de este momento: el mismo criterio que «Compartir».
+// -> { ok, png, huella } | falla
+function validarCapturaPanel(imagen, huella, previa) {
+    const png = require("../services/destinosCompartir").imagenPng(imagen);
+    if (!png) return falla("imagen_invalida", { mensaje: "La imagen de la tabla no es un PNG válido: no se guardó nada." });
+    if (huella === undefined || huella === null) return { ok: true, png, huella: previa.huella_tabla };
+    if (typeof huella !== "string" || huella !== previa.huella_tabla) {
+        return falla("tabla_cambiada", { mensaje: "La tabla cambió mientras revisabas la vista previa (reservas o pagos nuevos). Cierra y vuelve a abrir la vista previa para capturar la imagen actual." });
+    }
+    return { ok: true, png, huella };
+}
+
+async function guardarCaptura(id, version, captura, origen = null) {
+    try {
+        await capturaProgramada.guardar(id, { version, huella: captura.huella, png: captura.png, origen });
+        return null;
+    } catch (err) {
+        console.error("❌ [SORTEOS] no se pudo guardar la imagen del sorteo:", err?.message);
+        return falla("error_imagen", { mensaje: "No se pudo guardar la imagen de la tabla en el servidor: no se hizo ningún cambio. Inténtalo de nuevo." });
+    }
+}
+
+// `imagen` + `huella`: la captura de la vista previa (capturarTabla, la
+// misma que publica el instantáneo) y la huella de los números que pinta.
+// Se guarda y es la que se publicará a la hora si la tabla no cambia. Sin
+// ella (panel anterior) se programa igual, pero a la hora el grupo queda en
+// revisión hasta que se reintente con una captura.
+async function confirmar(usuarioId, id, { version, confirmacion, reinicio, captura, imagen, huella } = {}) {
 
     if (confirmacion !== true) return falla("confirmacion_requerida");
 
@@ -399,6 +494,12 @@ async function confirmar(usuarioId, id, { version, confirmacion, reinicio, captu
     if (previa.data.publicacion_inmediata) return falla("validacion", { errores: [{ campo: "publicacion_inmediata", mensaje: "Es un sorteo instantáneo: se publica con «Publicar ahora» (sección Sorteo instantáneo)." }] });
     if (previa.data.bloqueos.length) return falla("bloqueado", { bloqueos: previa.data.bloqueos });
     if (new Date(previa.data.publicar_en).getTime() <= reloj.ahora().getTime()) return falla("validacion", { errores: [{ campo: "publicar_en", mensaje: "La hora de publicación ya pasó. Edita el sorteo." }] });
+
+    let capturaPanel = null;
+    if (imagen !== undefined) {
+        capturaPanel = validarCapturaPanel(imagen, huella, previa.data);
+        if (!capturaPanel.ok) return capturaPanel;
+    }
 
     const cambios = {
         estado: "programado",
@@ -422,6 +523,14 @@ async function confirmar(usuarioId, id, { version, confirmacion, reinicio, captu
         if (!actual.ok) return actual;
         const base = cambios.config || actual.data.config;
         cambios.config = { ...base, tabla: { ...base.tabla, reiniciar_al_publicar: true, reiniciado_en: null } };
+    }
+
+    // Antes de programar: si no se puede guardar la imagen, no se programa.
+    // La imagen de una versión que al final no se confirma no se usa nunca
+    // (el publicador exige la versión confirmada).
+    if (capturaPanel) {
+        const fallo = await guardarCaptura(id, Number(version), capturaPanel, "confirmar");
+        if (fallo) return fallo;
     }
 
     const r = await repo.actualizarSorteoSi(usuarioId, id, { version: Number(version), estados: ["borrador"] }, cambios);
@@ -474,18 +583,16 @@ function resumenPublicacion(sorteo) {
     };
 }
 
-// `imagen`: la captura que el panel hizo y mostró en la vista previa con
-// capturarTabla (la de «Compartir»). Se valida como la de «Compartir» ANTES
-// de tocar nada y se envía tal cual: no se genera otra. Sin `imagen` (panel
-// anterior) el publicador la captura con la misma función en Chromium.
-async function publicarAhora(usuarioId, id, { version, confirmacion, reinicio, imagen, captura } = {}) {
+// `imagen` + `huella`: la captura que el panel hizo y mostró en la vista
+// previa con capturarTabla (la de «Compartir»). Se valida ANTES de tocar
+// nada y se guarda como LA imagen del sorteo (capturaProgramada.js): el
+// publicador la envía tal cual, la tome esta petición o el ciclo automático.
+async function publicarAhora(usuarioId, id, { version, confirmacion, reinicio, imagen, huella, captura } = {}) {
 
     if (confirmacion !== true) return falla("confirmacion_requerida");
 
-    let imagenPanel = null;
-    if (imagen !== undefined) {
-        imagenPanel = require("../services/destinosCompartir").imagenPng(imagen);
-        if (!imagenPanel) return falla("imagen_invalida", { mensaje: "La imagen de la tabla no es un PNG válido: no se publicó nada." });
+    if (imagen !== undefined && !require("../services/destinosCompartir").imagenPng(imagen)) {
+        return falla("imagen_invalida", { mensaje: "La imagen de la tabla no es un PNG válido: no se publicó nada." });
     }
 
     const actual = await repo.obtenerSorteo(usuarioId, id);
@@ -519,6 +626,12 @@ async function publicarAhora(usuarioId, id, { version, confirmacion, reinicio, i
         return falla("no_inmediato", { mensaje: "No se puede publicar ahora sin esperar a otro sorteo. Elige «Sustituir el sorteo activo», cierra el actual o prográmalo.", bloqueos: espera });
     }
 
+    let capturaPanel = null;
+    if (imagen !== undefined) {
+        capturaPanel = validarCapturaPanel(imagen, huella, previa.data);
+        if (!capturaPanel.ok) return capturaPanel;
+    }
+
     const ahora = reloj.ahora();
     const cambios = {
         estado: "programado",
@@ -527,7 +640,7 @@ async function publicarAhora(usuarioId, id, { version, confirmacion, reinicio, i
         publicar_en: ahora.toISOString()
     };
 
-    // Los reintentos de este sorteo se capturan en el servidor: con el mismo perfil.
+    // Perfil del dispositivo donde se capturó (se conserva como información).
     const perfil = perfilCapturaValido(captura);
     if (perfil) cambios.config = { ...actual.data.config, captura: perfil };
 
@@ -535,6 +648,12 @@ async function publicarAhora(usuarioId, id, { version, confirmacion, reinicio, i
         if (reinicio?.confirmado !== true) return falla("confirmacion_reinicio_requerida");
         const base = cambios.config || actual.data.config;
         cambios.config = { ...base, tabla: { ...base.tabla, reiniciar_al_publicar: true, reiniciado_en: null } };
+    }
+
+    // La imagen, guardada ANTES de confirmar: quien tome el sorteo la encuentra.
+    if (capturaPanel) {
+        const fallo = await guardarCaptura(id, Number(version), capturaPanel, "publicar_ahora");
+        if (fallo) return fallo;
     }
 
     const r = await repo.actualizarSorteoSi(usuarioId, id, { version: Number(version), estados: ["borrador"] }, cambios);
@@ -545,19 +664,11 @@ async function publicarAhora(usuarioId, id, { version, confirmacion, reinicio, i
         return ya.ok ? { ok: true, data: { ...resumenPublicacion(ya.data), repetido: true } } : ya;
     }
 
-    // El ciclo del publicador, ahora (lo que haría el siguiente tick).
+    // El ciclo del publicador, ahora (lo que haría el siguiente tick). La
+    // imagen sale de capturaProgramada, como en cualquier otra publicación.
     const publicador = require("./publicador");
-    let deps = instantaneo._deps;
-    if (imagenPanel) {
-        const base = deps || publicador.dependenciasReales();
-        deps = {
-            ...base,
-            capturarImagen: (precio, uid, eventoId, contexto) =>
-                contexto?.sorteoId === id ? imagenPanel : base.capturarImagen(precio, uid, eventoId, contexto)
-        };
-    }
     try {
-        await publicador.tick(sock, { ahora, deps, sorteoId: id });
+        await publicador.tick(sock, { ahora, deps: instantaneo._deps, sorteoId: id });
     } catch (err) {
         console.error("❌ [SORTEO INSTANTÁNEO] error en la publicación:", err?.message);
     }
@@ -683,7 +794,11 @@ const REINTENTO_MANUAL = "reintento manual solicitado";
 
 // Reintento MANUAL de un grupo en revisión (p. ej. no se supo si el anuncio
 // llegó): el administrador decide; nunca se reintenta solo.
-async function reintentarGrupo(usuarioId, id, grupoId) {
+// `imagen` + `huella` (instantáneo o programado): una captura NUEVA del
+// panel. Se guarda como LA imagen del sorteo y ese destino se publica en
+// este momento (clave de envío nueva por reintento manual). Sin imagen, la
+// guardada (si la tabla no cambió).
+async function reintentarGrupo(usuarioId, id, grupoId, { imagen, huella } = {}) {
 
     const actual = await repo.obtenerSorteo(usuarioId, id);
     if (!actual.ok) return actual;
@@ -694,7 +809,25 @@ async function reintentarGrupo(usuarioId, id, grupoId) {
     if (actual.data.estado === "cancelado") return falla("estado_invalido", { estado: "cancelado" });
     if (actual.data.archivado_en) return falla("estado_invalido", { estado: "archivado" });
 
-    if (actual.data.config?.publicacion_inmediata === true) return reintentarDestinoInstantaneo(usuarioId, actual.data, g);
+    const esInst = actual.data.config?.publicacion_inmediata === true;
+
+    if (imagen !== undefined) {
+        if (actual.data.confirmado_version !== actual.data.version) return falla("estado_invalido", { estado: actual.data.estado, mensaje: "La programación cambió desde que se confirmó: vuelve a confirmarla." });
+        const previa = await vistaPrevia(usuarioId, id);
+        if (!previa.ok) return previa;
+        const capturaPanel = validarCapturaPanel(imagen, huella, previa.data);
+        if (!capturaPanel.ok) return capturaPanel;
+        // Sin el WhatsApp del cliente no se guarda ni se marca nada.
+        const sock = instantaneo._socketDe(usuarioId);
+        if (!sock) return falla("sin_sesion_activa");
+        const puedeActuar = instantaneo._deps?.puedeActuar || require("../services/baileys/propiedadSesion").puedeActuar;
+        if (!puedeActuar(sock)) return falla("sesion_no_disponible");
+        const fallo = await guardarCaptura(id, Number(actual.data.confirmado_version), capturaPanel, "reintentar");
+        if (fallo) return fallo;
+        return reintentarDestinoInstantaneo(usuarioId, actual.data, g, { instantaneo: esInst });
+    }
+
+    if (esInst) return reintentarDestinoInstantaneo(usuarioId, actual.data, g);
 
     // Ya pedido y todavía sin tomar por el publicador (doble clic): nada más.
     if (g.estado === "fallido" && g.ultimo_error === REINTENTO_MANUAL) {
@@ -727,7 +860,9 @@ async function reintentarGrupo(usuarioId, id, grupoId) {
 // destinos publicados no se tocan: el publicador solo reclama grupos
 // 'pendiente'/'fallido' y cada envío lleva su clave del ExecutionGuard.
 // Sin el WhatsApp del cliente no se marca nada: el destino sigue en error.
-async function reintentarDestinoInstantaneo(usuarioId, sorteo, g) {
+// También lo usa el reintento con imagen nueva de un sorteo programado
+// (`instantaneo: false`): mismo flujo; solo cambia la marca del historial.
+async function reintentarDestinoInstantaneo(usuarioId, sorteo, g, { instantaneo: esInst = true } = {}) {
 
     const sock = instantaneo._socketDe(usuarioId);
     if (!sock) return falla("sin_sesion_activa");
@@ -755,7 +890,7 @@ async function reintentarDestinoInstantaneo(usuarioId, sorteo, g) {
         }
     }
 
-    await repo.registrarHistorial(usuarioId, sorteo.id, "reintentar", "pedido", { grupo_id: g.grupo_id, grupo_nombre: g.grupo_nombre || null, estado_previo: g.estado, instantaneo: true });
+    await repo.registrarHistorial(usuarioId, sorteo.id, "reintentar", "pedido", { grupo_id: g.grupo_id, grupo_nombre: g.grupo_nombre || null, estado_previo: g.estado, instantaneo: esInst });
 
     if (["publicado", "publicado_parcial", "fallido"].includes(sorteo.estado)) {
         await repo.actualizarSorteoSi(usuarioId, sorteo.id, { estados: ["publicado", "publicado_parcial", "fallido"] }, { estado: "publicando" });
@@ -765,14 +900,14 @@ async function reintentarDestinoInstantaneo(usuarioId, sorteo, g) {
     try {
         await publicador.tick(sock, { ahora: reloj.ahora(), deps: instantaneo._deps, sorteoId: sorteo.id });
     } catch (err) {
-        console.error("❌ [SORTEO INSTANTÁNEO] error al reintentar un destino:", err?.message);
+        console.error(`❌ [${esInst ? "SORTEO INSTANTÁNEO" : "SORTEO PROGRAMADO"}] error al reintentar un destino:`, err?.message);
     }
 
     const final = await repo.obtenerSorteo(usuarioId, sorteo.id);
     if (!final.ok) return final;
 
     const destino = final.data.grupos.find(x => x.id === g.id);
-    await repo.registrarHistorial(usuarioId, sorteo.id, "reintentar", destino?.estado === "publicado" ? "ok" : "error", { grupo_id: g.grupo_id, grupo_nombre: g.grupo_nombre || null, estado: destino?.estado || null, error: destino?.ultimo_error || null, instantaneo: true });
+    await repo.registrarHistorial(usuarioId, sorteo.id, "reintentar", destino?.estado === "publicado" ? "ok" : "error", { grupo_id: g.grupo_id, grupo_nombre: g.grupo_nombre || null, estado: destino?.estado || null, error: destino?.ultimo_error || null, instantaneo: esInst });
 
     return {
         ok: true,

@@ -361,6 +361,9 @@ export interface ResultadoAccionEvento {
     publicaciones_detenidas: number;
 }
 
+/** Captura PNG de la vista previa (capturarTabla) + huella de los números que pinta. */
+export interface CapturaSorteo { imagen: string; huella: string }
+
 export interface VistaPrevia {
     id: string;
     version: number;
@@ -372,6 +375,8 @@ export interface VistaPrevia {
     diseno: DisenoSorteo;
     /** Mismos datos que la imagen compartida (número + libre u ocupado). */
     numeros: { numerosDisponibles: string[]; numerosOcupados: string[]; numerosPagados?: string[] };
+    /** Huella de `numeros`: va con la captura al confirmar o reintentar un programado. Opcional: un backend anterior no la envía. */
+    huella_tabla?: string;
     cantidad_numeros: number;
     cuentas: CuentaPago[];
     reinicio: ReinicioTabla | null;
@@ -543,11 +548,12 @@ const MENSAJES: Record<string, string> = {
     sesion_no_disponible: "Tu WhatsApp está conectado en otro servidor o reconectándose. Espera un momento; no se publicó nada.",
     error_imagen: "El servidor no pudo generar la imagen de la tabla.",
     imagen_invalida: "La imagen de la tabla no es válida: no se publicó nada. Vuelve a generarla.",
+    tabla_cambiada: "La tabla cambió mientras revisabas la vista previa. Ciérrala y vuelve a abrirla para capturar la imagen actual.",
     tiempo_agotado: "El servidor tardó demasiado en responder. Puede que se haya publicado: revisa el estado antes de reintentar."
 };
 
 // Rechazos que traen del servidor un mensaje concreto (cantidades, motivos).
-const CON_MENSAJE = new Set(["reservas_anticipadas", "no_eliminable", "nada_que_cancelar", "estado_invalido", "no_inmediato", "error_imagen"]);
+const CON_MENSAJE = new Set(["reservas_anticipadas", "no_eliminable", "nada_que_cancelar", "estado_invalido", "no_inmediato", "error_imagen", "tabla_cambiada"]);
 
 // Lo que ve el cliente cuando falla algo interno (servidor, configuración,
 // base de datos): nunca detalles técnicos. Esos van a la consola.
@@ -638,14 +644,16 @@ export const apiSorteos = {
     crear: (config: ConfigSorteo & { plantilla_id?: string | null }) => llamar<Sorteo>("POST", "", config),
     editar: (id: string, config: ConfigSorteo & { version: number; plantilla_id?: string | null }) => llamar<Sorteo>("PUT", `/${id}`, config),
     vistaPrevia: (id: string) => llamar<VistaPrevia>("GET", `/${id}/vista-previa`),
-    confirmar: (id: string, version: number, reinicio?: { confirmado: boolean }, captura?: PerfilCaptura) =>
-        llamar<Sorteo>("POST", `/${id}/confirmar`, { version, confirmacion: true, ...(reinicio ? { reinicio } : {}), ...(captura ? { captura } : {}) }),
+    /** `imagen`: la captura de la vista previa (la misma que publica el instantáneo) y la huella de
+     *  sus números; el backend la guarda y la publica a la hora si la tabla no cambió. */
+    confirmar: (id: string, version: number, reinicio?: { confirmado: boolean }, captura?: PerfilCaptura, imagen?: CapturaSorteo) =>
+        llamar<Sorteo>("POST", `/${id}/confirmar`, { version, confirmacion: true, ...(reinicio ? { reinicio } : {}), ...(captura ? { captura } : {}), ...(imagen ? { imagen: imagen.imagen, huella: imagen.huella } : {}) }),
     cancelar: (id: string) => llamar<Sorteo>("POST", `/${id}/cancelar`),
     /** «Sorteo instantáneo»: confirma y publica YA con el publicador de siempre.
      *  `imagen`: la captura de la vista previa (capturarTabla, la de «Compartir»), que se envía tal cual.
      *  `captura`: su perfil, para que los reintentos del servidor salgan iguales. */
-    publicarAhora: (id: string, version: number, imagen: string, reinicio?: { confirmado: boolean }, captura?: PerfilCaptura) =>
-        llamar<ResultadoPublicacionInmediata>("POST", `/${id}/publicar-ahora`, { version, confirmacion: true, imagen, ...(reinicio ? { reinicio } : {}), ...(captura ? { captura } : {}) }),
+    publicarAhora: (id: string, version: number, imagen: string, reinicio?: { confirmado: boolean }, captura?: PerfilCaptura, huella?: string) =>
+        llamar<ResultadoPublicacionInmediata>("POST", `/${id}/publicar-ahora`, { version, confirmacion: true, imagen, ...(huella ? { huella } : {}), ...(reinicio ? { reinicio } : {}), ...(captura ? { captura } : {}) }),
     /** Listado de la pantalla de programados (estados, impacto y acciones). */
     gestion: () => llamar<SorteoGestionado[]>("GET", "/gestion"),
     detalle: (id: string) => llamar<DetalleSorteo>("GET", `/${id}/detalle`),
@@ -655,8 +663,12 @@ export const apiSorteos = {
     /** Grupos del sorteo: guarda la selección completa sin publicar. */
     cambiarGrupos: (id: string, grupos: string[]) => llamar<CambiosGrupos>("PUT", `/${id}/grupos`, { grupos }),
     /** Publica ahora SOLO en los grupos nuevos (pendientes) de un sorteo ya publicado. */
-    publicarGruposNuevos: (id: string) => llamar<ResultadoGruposNuevos>("POST", `/${id}/grupos/publicar`),
-    reintentarGrupo: (id: string, grupoId: string) => llamar<Sorteo>("POST", `/${id}/grupos/reintentar`, { grupo_id: grupoId }),
+    /** `imagen`: captura de la tabla del sorteo (capturaSorteo.tsx); se guarda y se publica con ella. */
+    publicarGruposNuevos: (id: string, imagen?: CapturaSorteo) =>
+        llamar<ResultadoGruposNuevos>("POST", `/${id}/grupos/publicar`, imagen ? { imagen: imagen.imagen, huella: imagen.huella } : {}),
+    /** `imagen`: captura nueva de la tabla; ese destino se publica en el momento con ella. */
+    reintentarGrupo: (id: string, grupoId: string, imagen?: CapturaSorteo) =>
+        llamar<Sorteo>("POST", `/${id}/grupos/reintentar`, { grupo_id: grupoId, ...(imagen ? { imagen: imagen.imagen, huella: imagen.huella } : {}) }),
     grupos: () => llamar<GrupoAutorizado[]>("GET", "/grupos"),
     plantillas: () => llamar<Plantilla[]>("GET", "/plantillas"),
     crearPlantilla: (nombre: string, config: ConfigSorteo) => llamar<Plantilla>("POST", "/plantillas", { nombre, config }),

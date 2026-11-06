@@ -41,6 +41,8 @@ require("./analitica/retencion").iniciarRetencion();
 app.use("/tablas/compartir", express.json({ limit: "6mb" }));
 // «Publicar ahora» lleva la MISMA captura del panel (sorteos/servicio.js la valida igual).
 app.use(/^\/sorteos\/[^/]+\/publicar-ahora$/, express.json({ limit: "6mb" }));
+// Sorteo programado: la misma captura al confirmar y al reintentar un grupo.
+app.use(/^\/sorteos\/[^/]+\/(confirmar|grupos\/reintentar|grupos\/publicar)$/, express.json({ limit: "6mb" }));
 
 app.use(express.json());
 

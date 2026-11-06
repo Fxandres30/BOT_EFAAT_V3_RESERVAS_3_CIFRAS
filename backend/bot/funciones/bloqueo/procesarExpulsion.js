@@ -58,10 +58,14 @@ function dependenciasReales() {
     const propiedadSesion = require("../../../services/baileys/propiedadSesion");
     const { evaluarGrupo } = require("../grupos/politicaGrupos");
     const { registrarIntentoExpulsion } = require("./bloqueadosRepo");
+    const { resolverIdentidadExistente } = require("../usuarios/obtenerUsuarioGlobal");
 
     return {
         repo,
         registrarIntento: registrarIntentoExpulsion,
+        // Solo lectura de "usuarios" (mismo cruce que el reingreso,
+        // bloqueoParticipantesGrupo.js): nunca escribe nada.
+        resolverIdentidad: resolverIdentidadExistente,
         // Require diferido: manager -> socket -> listeners -> este módulo.
         obtenerSocket: usuarioId => require("../../../services/baileys/manager").getSocketActivoDe(usuarioId),
         puedeActuar: sock => propiedadSesion.puedeActuar(sock),
@@ -71,6 +75,34 @@ function dependenciasReales() {
         expulsionesReales: expulsionesRealesConfirmadas,
         ahora: () => new Date()
     };
+
+}
+
+// El bloqueo solo tiene teléfono o solo LID y el grupo expone el otro tipo
+// de identificador: se completa el que falta con "usuarios" (solo lectura,
+// mismo cruce que el reingreso). Nunca sustituye un dato que el bloqueo ya
+// tiene y, ante un conflicto de identidad, no completa nada.
+async function completarIdentidad(bloqueado, deps) {
+
+    if (typeof deps.resolverIdentidad !== "function") return null;
+    if (!!bloqueado.telefono === !!bloqueado.lid) return null; // ya tiene ambos, o ninguno
+
+    try {
+
+        const { conflicto, usuario } = await deps.resolverIdentidad({ telefono: bloqueado.telefono || null, lid: bloqueado.lid || null });
+
+        if (conflicto || !usuario) return null;
+
+        const telefono = bloqueado.telefono || usuario.telefono || null;
+        const lid = bloqueado.lid || usuario.lid || null;
+
+        if (telefono === (bloqueado.telefono || null) && lid === (bloqueado.lid || null)) return null;
+
+        return { ...bloqueado, telefono, lid };
+
+    } catch {
+        return null;
+    }
 
 }
 
@@ -101,14 +133,16 @@ async function procesarTarea({ tarea, sock, deps, config, instancia = INSTANCIA 
     const usuarioId = tarea.usuario_id;
     const grupoId = tarea.grupo_id;
 
-    const cerrar = async (estado, { error = null, campos = {}, conexion = false, registrar = true } = {}) => {
+    // reintentar: un estado normalmente final que esta vez sí debe volver a
+    // intentarse (identidad no comparable todavía, ver paso 5).
+    const cerrar = async (estado, { error = null, campos = {}, conexion = false, registrar = true, reintentar = false } = {}) => {
 
         let proximo = null;
         let errorFinal = error;
 
         if (estado === "sesion_desconectada") {
             proximo = ahora;
-        } else if (repo.REINTENTABLES_AUTO.includes(estado)) {
+        } else if (repo.REINTENTABLES_AUTO.includes(estado) || reintentar) {
             // Mientras siga bloqueado nunca se abandona: agotados los
             // reintentos rápidos, sigue a ritmo lento (esperaMaxMs).
             if ((tarea.intentos || 0) < config.maxIntentos) {
@@ -185,7 +219,20 @@ async function procesarTarea({ tarea, sock, deps, config, instancia = INSTANCIA 
     if (participantes.length === 0) return cerrar("error_whatsapp", { error: "WhatsApp devolvió el grupo sin participantes" });
 
     // 5. identificar (excluyendo siempre a la propia cuenta conectada).
-    const loc = identidad.localizarParticipante(participantes, bloqueado, { excluir: identidad.idsDeCuenta(sock) });
+    const excluir = identidad.idsDeCuenta(sock);
+    let loc = identidad.localizarParticipante(participantes, bloqueado, { excluir });
+
+    // 5b. el grupo no expone el tipo de identificador que tiene el bloqueo
+    // (p. ej. bloqueo solo con LID y grupo que solo muestra teléfonos): se
+    // completa con "usuarios" y se vuelve a comparar. Solo como segundo
+    // intento, para no cambiar ningún caso que ya se resolvía.
+    if (loc.estado === "no_verificable") {
+        const completo = await completarIdentidad(bloqueado, deps);
+        if (completo) {
+            const segundo = identidad.localizarParticipante(participantes, completo, { excluir });
+            if (segundo.estado !== "no_verificable") loc = segundo.estado === "encontrado" ? { ...segundo, criterio: `${segundo.criterio}_usuarios` } : segundo;
+        }
+    }
 
     if (loc.estado === "ausente") {
 
@@ -199,6 +246,13 @@ async function procesarTarea({ tarea, sock, deps, config, instancia = INSTANCIA 
         return cerrar("ya_no_estaba", { error: nota, campos: verificada });
 
     }
+
+    // No comparable todavía (no es una contradicción): mismo estado visible
+    // «identidad dudosa», pero con reintento automático — la lista de
+    // participantes o "usuarios" pueden completarse más adelante. Una
+    // ambigüedad real (dos candidatos, LID contra teléfono) sigue siendo
+    // final: no se expulsa y no se reintenta solo.
+    if (loc.estado === "no_verificable") return cerrar("identidad_ambigua", { error: loc.motivo, reintentar: true });
 
     if (loc.estado !== "encontrado") return cerrar("identidad_ambigua", { error: loc.motivo });
 

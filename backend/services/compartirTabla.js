@@ -303,41 +303,35 @@ async function compartirTabla({ evento, sock, idempotencia = null }) {
         return { enviado: false, motivo: "texto_no_disponible" };
     }
 
-    const ejecutar = async () => {
-
-        const precio = Number(evento.valor);
-
-        const imagen = await capturarImagenTabla(precio, evento.usuario_id, evento.id ?? null);
-
-        await sendImage({ sock, jid: evento.grupo_id, image: imagen, caption: texto });
-
-        return { enviado: true };
-
-    };
+    // ENVÍO ÚNICO (06/11): el mismo núcleo que «Compartir» y el publicador
+    // (compartirEnGrupos: ExecutionGuard + sendImage). Se conservan las
+    // claves de siempre: la tabla inicial usa la suya (<sesión>:INITIAL_TABLE,
+    // así nada ya enviado se repite) y la llamada manual heredada una nueva
+    // en cada pulsación (antes no se registraba: se reenviaba cada vez, y así
+    // sigue). La imagen se genera DENTRO del guard, como antes: si falla, el
+    // intento queda registrado y el Scheduler no vuelve a probar en cada ciclo.
+    const precio = Number(evento.valor);
+    const idem = idempotencia
+        ? { clave: () => idempotencia.claveIdempotencia, eventSessionId: idempotencia.eventSessionId, tipoAccion: idempotencia.tipoAccion || "INITIAL_TABLE" }
+        : { clave: () => `TABLA_COMPARTIR:${evento.usuario_id}:${precio}:manual-${crypto.randomUUID()}:${evento.grupo_id}`, tipoAccion: "TABLA_COMPARTIR" };
 
     try {
 
-        if (!idempotencia) {
-            return await ejecutar();
-        }
-
-        const resultado = await executionGuard.ejecutarUnaVez({
-
-            claveIdempotencia: idempotencia.claveIdempotencia,
-            eventSessionId: idempotencia.eventSessionId,
-            grupoId: evento.grupo_id,
-            usuarioId: evento.usuario_id,
-            tipoAccion: idempotencia.tipoAccion || "INITIAL_TABLE",
-
-            ejecutar
-
+        const r = await compartirEnGrupos({
+            evento,
+            sock,
+            grupos: [{ grupo_id: evento.grupo_id }],
+            caption: texto,
+            imagen: () => capturarImagenTabla(precio, evento.usuario_id, evento.id ?? null),
+            idempotencia: idem
         });
 
-        if (resultado.ejecutada) {
-            return { enviado: true };
-        }
-
-        return { enviado: false, motivo: resultado.motivo };
+        const envio = r.ok ? r.resultados[0] : null;
+        if (envio?.estado === "enviado") return { enviado: true };
+        if (!envio) return { enviado: false, motivo: r.motivo || "error_envio" };
+        // Sin clave propia (llamada manual) un fallo es «error_envio», como antes.
+        if (!idempotencia && envio.motivo === "fallo_ejecucion") return { enviado: false, motivo: "error_envio", error: envio.error };
+        return { enviado: false, motivo: envio.motivo };
 
     } catch (err) {
 
@@ -369,13 +363,33 @@ async function compartirTabla({ evento, sock, idempotencia = null }) {
 //     impide su envío. Los grupos no empezados quedan «cancelado».
 //   - alIniciar(g) / alTerminar(resultado): progreso real, grupo a grupo.
 // Sin `control` el comportamiento es el de siempre.
+//
+// NÚCLEO ÚNICO DE ENVÍO (06/11): también lo usa compartirTabla() (tabla
+// inicial del Scheduler y la llamada manual heredada). Para ella, dos
+// opciones (sin ellas, nada cambia):
+//   - `imagen` puede ser una función async que devuelve el PNG: se ejecuta
+//     DENTRO del ExecutionGuard la primera vez que hace falta (una captura
+//     fallida queda registrada como intento fallido de esa clave).
+//   - `idempotencia`: { clave(g), eventSessionId?, tipoAccion } sustituye a
+//     la clave TABLA_COMPARTIR de la solicitud (p. ej. <sesión>:INITIAL_TABLE).
 const ENVIO_CANCELADO = Object.freeze(Object.assign(new Error("Envío cancelado antes de llegar a WhatsApp."), { cancelado: true }));
 
-async function compartirEnGrupos({ evento, sock, grupos, caption, solicitudId, imagen, control = null }) {
+async function compartirEnGrupos({ evento, sock, grupos, caption, solicitudId, imagen, control = null, idempotencia = null }) {
 
     if (!evento?.valor || !evento.usuario_id) return { ok: false, motivo: "evento_invalido", resultados: [] };
     if (!sock) return { ok: false, motivo: "sin_sesion_activa", resultados: [] };
-    if (!Buffer.isBuffer(imagen) || !imagen.length) return { ok: false, motivo: "imagen_invalida", resultados: [] };
+    const imagenPerezosa = typeof imagen === "function";
+    if (!imagenPerezosa && (!Buffer.isBuffer(imagen) || !imagen.length)) return { ok: false, motivo: "imagen_invalida", resultados: [] };
+
+    // Imagen perezosa: una sola generación para todos los grupos.
+    let pendiente = null;
+    const obtenerImagen = () => {
+        pendiente = pendiente || Promise.resolve().then(imagen).then(png => {
+            if (!Buffer.isBuffer(png) || !png.length) throw new Error("No se obtuvo una imagen PNG válida de la tabla.");
+            return png;
+        });
+        return pendiente;
+    };
 
     const resultados = [];
     const anotar = (r) => {
@@ -394,17 +408,19 @@ async function compartirEnGrupos({ evento, sock, grupos, caption, solicitudId, i
 
         try {
 
+            // Última comprobación de cancelación, en el mismo turno que la
+            // llamada a WhatsApp: tras ella el envío ya no se interrumpe.
+            const enviar = (png) => {
+                if (control?.cancelado?.()) throw ENVIO_CANCELADO;
+                return sendImage({ sock, jid: g.grupo_id, image: png, caption });
+            };
             const r = await executionGuard.ejecutarUnaVez({
-                claveIdempotencia: `TABLA_COMPARTIR:${evento.usuario_id}:${Number(evento.valor)}:${solicitudId}:${g.grupo_id}`,
+                claveIdempotencia: idempotencia ? idempotencia.clave(g) : `TABLA_COMPARTIR:${evento.usuario_id}:${Number(evento.valor)}:${solicitudId}:${g.grupo_id}`,
+                ...(idempotencia?.eventSessionId ? { eventSessionId: idempotencia.eventSessionId } : {}),
                 grupoId: g.grupo_id,
                 usuarioId: evento.usuario_id,
-                tipoAccion: "TABLA_COMPARTIR",
-                // Última comprobación, en el mismo turno que la llamada a
-                // WhatsApp: tras ella el envío ya no se interrumpe.
-                ejecutar: () => {
-                    if (control?.cancelado?.()) throw ENVIO_CANCELADO;
-                    return sendImage({ sock, jid: g.grupo_id, image: imagen, caption });
-                }
+                tipoAccion: idempotencia?.tipoAccion || "TABLA_COMPARTIR",
+                ejecutar: imagenPerezosa ? async () => enviar(await obtenerImagen()) : () => enviar(imagen)
             });
 
             const motivo = r.ejecutada ? "ejecutada" : r.motivo;

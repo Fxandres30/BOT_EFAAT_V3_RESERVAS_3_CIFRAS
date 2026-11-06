@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Sparkles, Workflow } from "lucide-react";
 
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -83,6 +83,40 @@ export default function MensajesPage() {
     const [errorCarga, setErrorCarga] = useState<string | null>(null);
 
     const [plantillaSeleccionada, setPlantillaSeleccionada] = useState<PlantillaMensaje | null>(null);
+
+    // Cambios sin guardar del editor abierto: al cambiar de plantilla o de
+    // tipo se pide confirmación para no perderlos (ni mezclarlos con otra).
+    const cambiosPendientesRef = useRef(false);
+    const marcarCambiosPendientes = useCallback((hay: boolean) => { cambiosPendientesRef.current = hay; }, []);
+
+    function confirmarDescarte(): boolean {
+        if (!cambiosPendientesRef.current) return true;
+        const ok = confirm("Tienes cambios sin guardar en esta plantilla. ¿Quieres descartarlos?");
+        if (ok) cambiosPendientesRef.current = false;
+        return ok;
+    }
+
+    useEffect(() => {
+        function avisar(e: BeforeUnloadEvent) {
+            if (!cambiosPendientesRef.current) return;
+            e.preventDefault();
+            e.returnValue = "";
+        }
+        window.addEventListener("beforeunload", avisar);
+        return () => window.removeEventListener("beforeunload", avisar);
+    }, []);
+
+    function seleccionarPlantilla(p: PlantillaMensaje) {
+        if (p.id === plantillaSeleccionada?.id) return;
+        if (!confirmarDescarte()) return;
+        setPlantillaSeleccionada(p);
+    }
+
+    function seleccionarTipo(tipo: TipoMensaje) {
+        if (tipo.id === tipoSeleccionado.id) return;
+        if (!confirmarDescarte()) return;
+        setTipoSeleccionado(tipo);
+    }
 
     // Se vuelve true recién cuando la inicialización global (150 = 10x15)
     // ya se decidió — hasta entonces no se carga ningún tipo individual,
@@ -334,15 +368,30 @@ export default function MensajesPage() {
 
     }, [tipoSeleccionado.id, usuarioId, inicializacionLista]);
 
+    // Actualiza la fila en la lista. Solo refresca la plantilla abierta si
+    // es la misma: activar/desactivar OTRA plantilla ya no cambia la que se
+    // está editando (antes la seleccionaba y descartaba lo no guardado).
     function actualizarListaLocal(actualizada: PlantillaMensaje) {
 
         setPlantillas((prev) => prev.map((p) => (p.id === actualizada.id ? actualizada : p)));
-        setPlantillaSeleccionada(actualizada);
+        setPlantillaSeleccionada((actual) => (actual?.id === actualizada.id ? actualizada : actual));
 
     }
 
+    // Nueva plantilla creada desde la lista (Nueva / Duplicar): se agrega y
+    // se abre, pidiendo confirmación si hay cambios sin guardar.
     function agregarNuevaLocal(nueva: PlantillaMensaje) {
 
+        setPlantillas((prev) => [...prev, nueva]);
+        if (confirmarDescarte()) setPlantillaSeleccionada(nueva);
+
+    }
+
+    // «Guardar como nueva» desde el editor: el contenido ya viaja en la
+    // copia, así que se abre directamente.
+    function agregarGuardadaComoNueva(nueva: PlantillaMensaje) {
+
+        cambiosPendientesRef.current = false;
         setPlantillas((prev) => [...prev, nueva]);
         setPlantillaSeleccionada(nueva);
 
@@ -382,7 +431,7 @@ export default function MensajesPage() {
 
             <PageHeader
                 title="Mensajes"
-                description="Respuestas que EFAAT puede enviar. Cada tipo de resultado puede tener varias plantillas: fija, aleatoria o por rotación. EFAAT calcula las reservas y la disponibilidad de la misma forma; esto solo cambia la redacción."
+                description="Elige una situación, escribe el mensaje y mira al instante cómo lo recibirá el cliente. Cambiar el texto no cambia cómo EFAAT calcula reservas, pagos o disponibilidad."
                 actions={
                     <Button variant="secondary" size="sm" leftIcon={<Workflow size={14} />} onClick={() => abrirActivadores(null)}>
                         Activadores y acciones
@@ -479,7 +528,7 @@ export default function MensajesPage() {
                                             tipoSeleccionado.id === tipo.id ? styles.railItemActive : "",
                                             !tipo.soportado ? styles.railItemFuturo : ""
                                         ].join(" ")}
-                                        onClick={() => setTipoSeleccionado(tipo)}
+                                        onClick={() => seleccionarTipo(tipo)}
                                     >
                                         <span className={styles.railItemName}>
                                             {tipo.icono} {tipo.nombre}
@@ -534,14 +583,15 @@ export default function MensajesPage() {
 
                     ) : (
 
-                        <div className={styles.contenido}>
-
-                            <div className={styles.contenidoCol}>
+                        <>
 
                                 <div className={styles.typeHeader}>
-                                    <h2 className={styles.typeTitle}>
-                                        {tipoSeleccionado.icono} {tipoSeleccionado.nombre}
-                                    </h2>
+                                    <div className={styles.typeHeaderText}>
+                                        <h2 className={styles.typeTitle}>
+                                            {tipoSeleccionado.icono} {tipoSeleccionado.nombre}
+                                        </h2>
+                                        <p className={styles.typeDesc}>{tipoSeleccionado.descripcion}</p>
+                                    </div>
                                     <div className={styles.typeHeaderRight}>
                                         {entradaParaTipoRespuesta(tipoSeleccionado.id) && (
                                             <Button
@@ -590,6 +640,10 @@ export default function MensajesPage() {
                                     </p>
                                 )}
 
+                        <div className={styles.contenido}>
+
+                            <div className={styles.contenidoCol}>
+
                                 {tipoSeleccionado.id === "inicio_dia" ? (
 
                                     <p className={styles.note}>
@@ -623,14 +677,14 @@ export default function MensajesPage() {
                                     plantillas={plantillas}
                                     seleccionada={plantillaSeleccionada}
                                     usuarioId={usuarioId}
-                                    onSeleccionar={setPlantillaSeleccionada}
+                                    onSeleccionar={seleccionarPlantilla}
                                     onCambiada={actualizarListaLocal}
                                     onDuplicada={agregarNuevaLocal}
                                     onEliminada={quitarLocal}
                                     onCreada={agregarNuevaLocal}
                                     agruparPorEstado={esModalidadNumerosPagos(tipoSeleccionado.id)}
                                     modoFijo={configSeleccion?.modo_seleccion === "fijo"}
-                                    onReorganizada={() => cargarTipo(tipoSeleccionado, usuarioId)}
+                                    onReorganizada={() => { if (confirmarDescarte()) cargarTipo(tipoSeleccionado, usuarioId); }}
                                 />
 
                             </div>
@@ -643,12 +697,15 @@ export default function MensajesPage() {
                                     usuarioId={usuarioId}
                                     plantilla={plantillaSeleccionada}
                                     onGuardada={actualizarListaLocal}
-                                    onGuardadaComoNueva={agregarNuevaLocal}
+                                    onGuardadaComoNueva={agregarGuardadaComoNueva}
+                                    onCambiosPendientes={marcarCambiosPendientes}
                                 />
 
                             )}
 
                         </div>
+
+                        </>
 
                     )}
 

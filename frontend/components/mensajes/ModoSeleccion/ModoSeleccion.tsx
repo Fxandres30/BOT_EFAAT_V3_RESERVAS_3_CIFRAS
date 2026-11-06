@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Pin, Dices, RotateCw } from "lucide-react";
 
-import { Tabs } from "@/components/ui/Tabs";
 import { Select } from "@/components/ui/Select";
 
 import { PlantillaMensaje } from "@/services/mensajes/plantillas";
@@ -13,6 +12,12 @@ import {
 } from "@/services/mensajes/configuracionSeleccion";
 
 import styles from "./ModoSeleccion.module.css";
+
+const MODOS: { valor: TipoModo; titulo: string; explicacion: string; icono: React.ReactNode }[] = [
+    { valor: "fijo", titulo: "Fija", explicacion: "Siempre se enviará esta plantilla.", icono: <Pin size={15} aria-hidden="true" /> },
+    { valor: "aleatorio", titulo: "Aleatoria", explicacion: "EFAAT elegirá una de las plantillas habilitadas.", icono: <Dices size={15} aria-hidden="true" /> },
+    { valor: "rotacion", titulo: "Rotación", explicacion: "EFAAT alternará entre las plantillas habilitadas.", icono: <RotateCw size={15} aria-hidden="true" /> }
+];
 
 interface Props {
     usuarioId: string;
@@ -70,18 +75,24 @@ export default function ModoSeleccion({
 
         <div className={styles.wrap}>
 
-            <span className={styles.label}>Modo de respuesta</span>
+            <span className={styles.label} id={`modo-${tipoId}`}>¿Qué plantilla se envía?</span>
 
-            <Tabs
-                aria-label="Modo de respuesta"
-                value={modo}
-                onValueChange={cambiarModo}
-                items={[
-                    { value: "fijo", label: "Fija", icon: <Pin size={13} />, disabled: guardando },
-                    { value: "aleatorio", label: "Aleatoria", icon: <Dices size={13} />, disabled: guardando },
-                    { value: "rotacion", label: "Rotación", icon: <RotateCw size={13} />, disabled: guardando }
-                ]}
-            />
+            <div className={styles.opciones} role="radiogroup" aria-labelledby={`modo-${tipoId}`}>
+                {MODOS.map((m) => (
+                    <button
+                        key={m.valor}
+                        type="button"
+                        role="radio"
+                        aria-checked={modo === m.valor}
+                        disabled={guardando}
+                        className={`${styles.opcion} ${modo === m.valor ? styles.opcionActiva : ""}`}
+                        onClick={() => modo !== m.valor && cambiarModo(m.valor)}
+                    >
+                        <span className={styles.opcionTitulo}>{m.icono} {m.titulo}</span>
+                        <span className={styles.opcionTexto}>{m.explicacion}</span>
+                    </button>
+                ))}
+            </div>
 
             {modo === "fijo" && (
 
@@ -100,8 +111,8 @@ export default function ModoSeleccion({
                     </Select>
 
                     <p className={styles.nota}>
-                        Solo esta plantilla se usará mientras el modo sea fijo. Las demás pueden
-                        seguir habilitadas, pero no se usarán.
+                        Solo esta plantilla se enviará. Las demás siguen guardadas y no se usan
+                        mientras el modo sea «Fija».
                     </p>
 
                 </div>
@@ -112,7 +123,7 @@ export default function ModoSeleccion({
 
                 <div className={styles.detalle}>
                     <p className={styles.nota}>
-                        Se elegirá aleatoriamente entre las plantillas habilitadas.
+                        Cada respuesta usa al azar una de las plantillas marcadas como activas.
                     </p>
                     <p className={styles.contador}>Plantillas disponibles: {habilitadas.length}</p>
                 </div>
@@ -123,7 +134,7 @@ export default function ModoSeleccion({
 
                 <div className={styles.detalle}>
                     <p className={styles.nota}>
-                        Las plantillas habilitadas se utilizarán una por una, en orden.
+                        Las plantillas activas se usan una por una, en orden.
                     </p>
                     <p className={styles.contador}>Plantillas disponibles: {habilitadas.length}</p>
                 </div>

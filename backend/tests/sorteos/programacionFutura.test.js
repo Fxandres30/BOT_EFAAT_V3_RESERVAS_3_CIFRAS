@@ -366,51 +366,53 @@ prueba("R1. mismo precio sin reiniciar: la tabla se conserva como está; se avis
     assert.strictEqual(instantanea(), antes, "revisar no toca nada");
 });
 
-prueba("R2. mismo precio con «Reiniciar tabla»: hoy no toca nada, se confirma «al publicar» y se reinicia al publicar", async () => {
+// UN SORTEO POR PRECIO (01/11): el sorteo actual del MISMO precio lo
+// reemplaza la publicación; con «Reiniciar» se reemplaza justo antes del
+// reinicio. Ya no se espera a que cierre por su hora (antes la vista previa
+// lo difería o lo bloqueaba: «No se puede reiniciar la tabla»).
+prueba("R2. mismo precio con «Reiniciar tabla»: hoy no toca nada, se confirma «al publicar»; al publicar reemplaza el actual y reinicia (sin esperar a que cierre)", async () => {
     escenario();
     const actualActivo = () => actualDb().activo !== false;
     rpcReinicio({ protegido: actualActivo });
     const c = await servicio.crearSorteo(A, entrada({ valor: 5000, tabla: { reiniciar: true } }));
     const v = await servicio.vistaPrevia(A, c.data.id);
     assert.deepStrictEqual(v.data.bloqueos, [], JSON.stringify(v.data.bloqueos));
-    assert.strictEqual(v.data.reinicio.diferido, true);
-    assert.strictEqual(v.data.estado_publicacion, "programado");
-    assert.ok(v.data.avisos.some(a => /se reiniciará al publicar/.test(a)));
+    assert.ok(!v.data.reinicio.diferido && v.data.reinicio.posible && v.data.reinicio.al_publicar);
+    assert.deepStrictEqual(v.data.reinicio.reemplaza.map(x => x.identidad), ["actual"]);
+    assert.ok(v.data.avisos.some(a => /se reemplaza/.test(a) && /se archivan/.test(a)), JSON.stringify(v.data.avisos));
 
     assert.strictEqual((await servicio.confirmar(A, c.data.id, { version: 1, confirmacion: true })).motivo, "confirmacion_reinicio_requerida");
     const antes = instantanea();
-    const conf = await servicio.confirmar(A, c.data.id, { version: 1, confirmacion: true, reinicio: { confirmado: true, huella: null, diferido: true } });
+    const conf = await servicio.confirmar(A, c.data.id, { version: 1, confirmacion: true, reinicio: { confirmado: true } });
     assert.ok(conf.ok, JSON.stringify(conf));
     assert.strictEqual(sorteoDb(c.data.id).config.tabla.reiniciar_al_publicar, true);
-    assert.strictEqual(instantanea(), antes, "hoy no se reinicia nada");
+    assert.strictEqual(instantanea(), antes, "hoy no se reinicia ni se cierra nada");
     assert.ok(rpc.llamadas.every(l => l.args.p_aplicar === false));
 
-    // Al publicar con el anterior TODAVÍA abierto: espera, sin reiniciar.
+    // Al publicar con el anterior TODAVÍA abierto: se reemplaza, se reinicia
+    // UNA vez (con la huella de ese momento) y se publica.
     const d = deps();
     await publicador.tick(sock(), { ahora: EN_PUBLICACION, deps: d.d });
-    assert.ok(rpc.llamadas.every(l => l.args.p_aplicar === false));
-    assert.ok(/^En espera: /.test(grupoDe(c.data.id, "g1@g.us").ultimo_error));
-    assert.strictEqual(d.enviados.length, 0);
-
-    // Cerró: se reinicia UNA vez (con la huella de ese momento) y se publica.
-    Object.assign(actualDb(), { activo: false, estado: "cerrado" });
-    await publicador.tick(sock(), { ahora: new Date("2026-10-22T15:00:00Z"), deps: d.d });
+    assert.strictEqual(actualDb().activo, false, "reemplazado");
     const aplicadas = rpc.llamadas.filter(l => l.args.p_aplicar === true);
     assert.strictEqual(aplicadas.length, 1);
     assert.deepStrictEqual([aplicadas[0].args.p_usuario, aplicadas[0].args.p_tabla, aplicadas[0].args.p_huella], [A, T5K, "h2"]);
     assert.ok(sorteoDb(c.data.id).config.tabla.reiniciado_en);
-    assert.strictEqual(grupoDe(c.data.id, "g1@g.us").estado, "publicado");
-    await publicador.tick(sock(), { ahora: new Date("2026-10-22T15:01:00Z"), deps: d.d });
+    assert.strictEqual(grupoDe(c.data.id, "g1@g.us").estado, "publicado", grupoDe(c.data.id, "g1@g.us").ultimo_error);
+    await publicador.tick(sock(), { ahora: new Date(EN_PUBLICACION.getTime() + 60000), deps: d.d });
     assert.strictEqual(rpc.llamadas.filter(l => l.args.p_aplicar === true).length, 1, "no se reinicia dos veces");
 });
 
-prueba("R3. el reinicio NO se difiere si el sorteo actual seguirá abierto al publicar", async () => {
+// Un sorteo activo de OTRO precio que comparte la tabla física no se
+// reemplaza: si sigue abierto al publicar, el reinicio no se difiere.
+prueba("R3. el reinicio NO se difiere si el sorteo actual (de OTRO precio) seguirá abierto al publicar", async () => {
     escenario();
-    Object.assign(actualDb(), { fecha_evento: "2026-10-22", hora_cierre: "20:00" });
+    Object.assign(actualDb(), { fecha_evento: "2026-10-22", hora_cierre: "20:00", valor: "10000" });
     rpcReinicio({ protegido: () => true });
     const c = await servicio.crearSorteo(A, entrada({ valor: 5000, tabla: { reiniciar: true } }));
     const v = await servicio.vistaPrevia(A, c.data.id);
     assert.ok(!v.data.reinicio.diferido);
+    assert.ok(!v.data.reinicio.reemplaza);
     assert.ok(v.data.bloqueos.some(b => /No se puede reiniciar la tabla/.test(b)));
 });
 

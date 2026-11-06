@@ -222,3 +222,80 @@ export async function guardarConfiguracion(usuarioId: string, grupoId: string, c
         .single();
 
 }
+
+// ==========================================================================
+// Centro de Automatizaciones — guardado protegido y en lote.
+// ==========================================================================
+
+export type ResultadoGuardado =
+    | { ok: true; config: AutomationConfig }
+    | { ok: false; conflicto: true }
+    | { ok: false; conflicto: false; mensaje: string };
+
+// Guarda SOLO las columnas indicadas y solo si la fila no cambió desde que
+// se leyó (misma actualizado_en). Si otra pestaña, otra persona o la página
+// de cada grupo guardó antes, no se pisa: se devuelve conflicto.
+export async function guardarSiNoCambio(usuarioId: string, grupoId: string, actualizadoEnLeido: string, cambios: Partial<AutomationConfig>): Promise<ResultadoGuardado> {
+
+    const { data, error } = await supabase
+        .from("automation_configs")
+        .update({ ...cambios, actualizado_en: new Date().toISOString() })
+        .eq("usuario_id", usuarioId)
+        .eq("grupo_id", grupoId)
+        .eq("actualizado_en", actualizadoEnLeido)
+        .select();
+
+    if (error) return { ok: false, conflicto: false, mensaje: error.message };
+
+    const filas = (data || []) as AutomationConfig[];
+
+    if (filas.length === 0) return { ok: false, conflicto: true };
+
+    return { ok: true, config: filas[0] };
+
+}
+
+// Versión vigente (actualizado_en) de varios grupos, leída justo antes de
+// una operación en lote.
+export async function leerVersiones(usuarioId: string, grupoIds: string[]): Promise<{ data: Record<string, string> | null; error: string | null }> {
+
+    if (grupoIds.length === 0) return { data: {}, error: null };
+
+    const { data, error } = await supabase
+        .from("automation_configs")
+        .select("grupo_id, actualizado_en")
+        .eq("usuario_id", usuarioId)
+        .in("grupo_id", grupoIds);
+
+    if (error) return { data: null, error: error.message };
+
+    return {
+        data: Object.fromEntries(((data || []) as { grupo_id: string; actualizado_en: string }[]).map((f) => [f.grupo_id, f.actualizado_en])),
+        error: null
+    };
+
+}
+
+// Los mismos cambios a varios grupos en UNA sola sentencia (un único
+// INSERT … ON CONFLICT DO UPDATE en Postgres): o se aplican a todos o a
+// ninguno. Solo toca las columnas de `cambios`; el resto de cada grupo se
+// conserva.
+export async function aplicarAVarios(usuarioId: string, grupoIds: string[], cambios: Partial<AutomationConfig>): Promise<{ data: AutomationConfig[] | null; error: string | null }> {
+
+    if (grupoIds.length === 0) return { data: [], error: null };
+
+    const ahora = new Date().toISOString();
+
+    const { data, error } = await supabase
+        .from("automation_configs")
+        .upsert(
+            grupoIds.map((grupoId) => ({ usuario_id: usuarioId, grupo_id: grupoId, ...cambios, actualizado_en: ahora })),
+            { onConflict: "usuario_id,grupo_id" }
+        )
+        .select();
+
+    if (error) return { data: null, error: error.message };
+
+    return { data: (data || []) as AutomationConfig[], error: null };
+
+}

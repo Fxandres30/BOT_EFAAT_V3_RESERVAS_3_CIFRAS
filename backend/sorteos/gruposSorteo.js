@@ -210,15 +210,18 @@ function resumen(sorteo) {
     return { sorteo_id: sorteo.id, estado: sorteo.estado, publicados: cuenta("publicado"), pendientes: cuenta("pendiente") + cuenta("publicando"), fallidos: cuenta("fallido"), en_revision: cuenta("requiere_revision"), grupos };
 }
 
-// imagen: captura PNG (Buffer) que el panel hizo de la tabla, opcional; sin
-// ella el publicador la captura en el servidor como siempre.
+// imagen: captura PNG que el panel hizo de la tabla (Buffer ya validado
+// desde «Compartir», o data URL desde «Editar»), opcional. Se guarda como LA
+// imagen del sorteo (capturaProgramada.js) con la huella de la tabla de
+// ESTE momento (o la enviada, que debe coincidir); el publicador la usa como
+// en cualquier publicación. Sin ella, la ya guardada si la tabla no cambió.
 // Opcionales (operaciones de «Compartir», 04/11 — no cambian qué se publica
 // ni cuándo):
 //   - anuncio: { texto, activo } instantánea del mensaje aprobado para ESTA
 //     operación (sale de la misma fuente, destinosCompartir.textoParaCompartir);
 //     así una edición posterior no cambia una publicación ya en curso.
 //   - observar: { alPreparar(grupoId), alEnviar(grupoId) } progreso real.
-async function publicarGruposNuevos(usuarioId, sorteoId, { imagen = null, anuncio = null, observar = null } = {}) {
+async function publicarGruposNuevos(usuarioId, sorteoId, { imagen = null, huella = null, anuncio = null, observar = null } = {}) {
 
     const actual = await repo.obtenerSorteo(usuarioId, sorteoId);
     if (!actual.ok) return actual;
@@ -236,6 +239,22 @@ async function publicarGruposNuevos(usuarioId, sorteoId, { imagen = null, anunci
     if (!sock) return falla("sin_sesion_activa");
     if (!deps.puedeActuar(sock)) return falla("sesion_no_disponible");
 
+    if (imagen) {
+        const capturas = require("./capturaProgramada");
+        const png = Buffer.isBuffer(imagen) ? imagen : require("../services/destinosCompartir").imagenPng(imagen);
+        if (!png) return falla("imagen_invalida", { mensaje: "La imagen de la tabla no es un PNG válido: no se publicó nada." });
+        const actualHuella = await capturas.huellaActual(sorteo);
+        if (huella && huella !== actualHuella) {
+            return falla("tabla_cambiada", { mensaje: "La tabla cambió mientras preparabas la publicación (reservas o pagos nuevos). Vuelve a intentarlo para capturar la imagen actual." });
+        }
+        try {
+            await capturas.guardar(sorteoId, { version: Number(sorteo.confirmado_version), huella: actualHuella, png, origen: "grupos_nuevos" });
+        } catch (err) {
+            console.error("❌ [GRUPOS DEL SORTEO] no se pudo guardar la imagen:", err?.message);
+            return falla("error_imagen", { mensaje: "No se pudo guardar la imagen de la tabla en el servidor: no se publicó nada. Inténtalo de nuevo." });
+        }
+    }
+
     // El sorteo vuelve a «publicando» para que el publicador lo tome; al
     // terminar, finalizarSorteo deja su estado real.
     if (sorteo.estado !== "publicando") {
@@ -244,10 +263,6 @@ async function publicarGruposNuevos(usuarioId, sorteoId, { imagen = null, anunci
 
     const publicador = require("./publicador");
     let d = deps.publicadorDeps;
-    if (imagen) {
-        const base = d || publicador.dependenciasReales();
-        d = { ...base, capturarImagen: (precio, uid, eventoId, contexto) => (contexto?.sorteoId === sorteoId ? imagen : base.capturarImagen(precio, uid, eventoId, contexto)) };
-    }
     if (anuncio || observar) {
         const base = d || publicador.dependenciasReales();
         const avisar = (fn, grupoId) => { try { fn?.(grupoId); } catch { /* solo progreso */ } };

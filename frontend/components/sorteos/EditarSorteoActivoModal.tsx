@@ -5,7 +5,8 @@ import { Lock, Plus, Trash2 } from "lucide-react";
 
 import { Modal, Button, Input, Select, IconButton, Badge } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
-import { apiSorteos, describirError, type CambiosGrupos, type CuentaPago, type ErrorCampo, type GrupoAutorizado, type ResultadoGruposNuevos, type SorteoActivo, type SorteoEnGrupos } from "@/services/sorteos/apiSorteos";
+import { apiSorteos, describirError, type CambiosGrupos, type CuentaPago, type ErrorCampo, type GrupoAutorizado, type ResultadoGruposNuevos, type SorteoActivo, type SorteoEnGrupos, type VistaPrevia } from "@/services/sorteos/apiSorteos";
+import { useCapturaSorteo } from "./capturaSorteo";
 import { BotonesSorteo, ConfirmarAccionSorteo, type AccionPendiente } from "./AccionesSorteo";
 import { listarDisenos } from "@/services/tablas/disenos";
 import { TABLA_DISENO_PRESETS } from "@/services/tablas/disenoDefaults";
@@ -68,6 +69,10 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
     const [cambiosGrupos, setCambiosGrupos] = useState<{ sorteo: SorteoActivo; cambios: CambiosGrupos } | null>(null);
     const [publicandoNuevos, setPublicandoNuevos] = useState(false);
     const [publicacionNuevos, setPublicacionNuevos] = useState<ResultadoGruposNuevos | null>(null);
+    // Imagen para los grupos nuevos: la captura única de un sorteo
+    // (capturaSorteo.tsx), con la tabla de este momento.
+    const [vistaCaptura, setVistaCaptura] = useState<VistaPrevia | null>(null);
+    const capturaNuevos = useCapturaSorteo(vistaCaptura);
     // Sorteo detectado en WhatsApp: pasarlo a gestionarse desde el panel
     // (misma identidad, tabla y reservas) para poder agregar grupos.
     const [vincular, setVincular] = useState<{ cuentas: CuentaPago[]; sel: string[]; enviando: boolean; error: string | null } | null>(null);
@@ -219,11 +224,24 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
 
     }
 
+    // Con grupos por publicar se prepara la imagen (vista previa del sorteo).
+    const programacionId = cambiosGrupos && cambiosGrupos.cambios.por_publicar > 0 ? sorteo?.sorteo_programado_id || null : null;
+    useEffect(() => {
+        if (!programacionId) return;
+        let vigente = true;
+        apiSorteos.vistaPrevia(programacionId).then(r => {
+            if (!vigente) return;
+            if (r.ok) setVistaCaptura(r.data);
+            else setError(`No se pudo preparar la imagen de la tabla: ${describirError(r)}`);
+        });
+        return () => { vigente = false; };
+    }, [programacionId]);
+
     async function publicarNuevos() {
-        if (!cambiosGrupos || !sorteo?.sorteo_programado_id || publicandoNuevos) return;
+        if (!cambiosGrupos || !sorteo?.sorteo_programado_id || publicandoNuevos || !capturaNuevos.captura) return;
         setPublicandoNuevos(true);
         setError(null);
-        const r = await apiSorteos.publicarGruposNuevos(sorteo.sorteo_programado_id);
+        const r = await apiSorteos.publicarGruposNuevos(sorteo.sorteo_programado_id, capturaNuevos.captura);
         setPublicandoNuevos(false);
         if (!r.ok) { setError(r.mensaje || describirError(r)); return; }
         setPublicacionNuevos(r.data);
@@ -245,7 +263,10 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
                     {cambiosGrupos ? (
                         <>
                             {cambiosGrupos.cambios.por_publicar > 0 && !publicacionNuevos && (
-                                <Button onClick={publicarNuevos} loading={publicandoNuevos} loadingText="Publicando…">Publicar en los grupos nuevos</Button>
+                                <Button onClick={publicarNuevos} loading={publicandoNuevos} loadingText="Publicando…" disabled={!capturaNuevos.captura}
+                                    title={capturaNuevos.imagen.tipo === "error" ? capturaNuevos.imagen.mensaje : capturaNuevos.captura ? undefined : "Preparando la imagen de la tabla…"}>
+                                    Publicar en los grupos nuevos
+                                </Button>
                             )}
                             <Button variant={cambiosGrupos.cambios.por_publicar > 0 && !publicacionNuevos ? "secondary" : "primary"} disabled={publicandoNuevos} onClick={() => onGuardado?.(cambiosGrupos.sorteo)}>Listo</Button>
                         </>
@@ -255,6 +276,14 @@ export default function EditarSorteoActivoModal({ eventoId, onClose, onGuardado 
                 </>
             }
         >
+            {/* Copia oculta de la tabla para la imagen de los grupos nuevos. */}
+            {capturaNuevos.copiaOculta}
+            {capturaNuevos.imagen.tipo === "error" && programacionId && !publicacionNuevos && (
+                <p className={styles.error} role="alert">
+                    {capturaNuevos.imagen.mensaje} Sin imagen no se publica.{" "}
+                    <Button size="sm" variant="secondary" onClick={capturaNuevos.reintentar}>Volver a probar</Button>
+                </p>
+            )}
             {carga.tipo === "cargando" ? (
                 <p className={styles.ayuda} role="status">Cargando el sorteo activo…</p>
             ) : carga.tipo === "error" ? (

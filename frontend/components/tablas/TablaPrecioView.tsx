@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { flushSync } from "react-dom";
 import Link from "next/link";
 import { Loader2, AlertTriangle, ArrowLeft, Palette, LibraryBig, Filter } from "lucide-react";
 
@@ -23,7 +22,9 @@ import EditorDisenoModal from "./EditorDisenoModal";
 import BibliotecaDisenosModal from "./BibliotecaDisenosModal";
 import { estadoEfectivo } from "./estadoVisual";
 import { FILTROS_HISTORIAL_VACIOS, numerosCoincidentes, type FiltrosHistorial } from "./historialDatos";
-import { capturarTabla } from "@/services/tablas/capturarTabla";
+import { useGeneradorImagenTabla } from "./capturaTabla";
+import { numerosDeFilas } from "@/services/tablas/huellaTabla";
+import { medirPerfilCaptura } from "@/services/tablas/perfilCaptura";
 import type { EventoActivo } from "./types";
 import type { TablaDiseno } from "./disenoTypes";
 import type { OperacionLote } from "@/services/tablas/pagoLote";
@@ -128,7 +129,8 @@ export default function TablaPrecioView({ precio }: Props) {
     const [personalizarAbierto, setPersonalizarAbierto] = useState(false);
     const [bibliotecaAbierta, setBibliotecaAbierta] = useState(false);
 
-    // El `div` de la tabla visible: «Compartir» lo captura tal cual.
+    // El `div` de la cuadrícula visible: «Compartir» toma de su tarjeta el
+    // ancho de la imagen (la imagen se genera con la copia limpia).
     const tablaRef = useRef<HTMLDivElement>(null);
     const [disenoEnEdicion, setDisenoEnEdicion] = useState<TablaDiseno | null>(null);
 
@@ -163,16 +165,21 @@ export default function TablaPrecioView({ precio }: Props) {
     const [accionRapida, setAccionRapida] = useState<{ operacion: Exclude<OperacionLote, "reservar">; numero: string } | null>(null);
     const [detalle, setDetalle] = useState<string | null>(null);
 
-    // Mientras «Compartir» captura la tabla, sin marcas de selección: la
-    // imagen que reciben los grupos es siempre la cuadrícula limpia.
-    const [capturando, setCapturando] = useState(false);
-    async function capturarSinSeleccion() {
-        flushSync(() => setCapturando(true));
-        try {
-            return await capturarTabla(tablaRef.current);
-        } finally {
-            setCapturando(false);
-        }
+    // «Compartir»: la imagen sale del GENERADOR ÚNICO (capturaTabla.tsx), el
+    // mismo de las publicaciones de sorteos: la tabla COMPLETA con sus
+    // estados reales, sin filtros de «Historial de números», sin atenuado y
+    // sin marcas de selección (la cuadrícula interactiva no se fotografía).
+    // Mismo diseño de esta tabla y mismo ancho que la tarjeta visible.
+    const generadorImagen = useGeneradorImagenTabla();
+    async function capturarTablaCompleta() {
+        const tarjeta = tablaRef.current?.parentElement;
+        const ancho = tarjeta?.offsetWidth || medirPerfilCaptura().contenido;
+        const { imagen } = await generadorImagen.generar({
+            numeros: numerosDeFilas(numeros.map(n => ({ numero: n.numero, estado: estadoEfectivo(n) }))),
+            diseno,
+            anchoContenido: ancho
+        });
+        return imagen;
     }
 
     // Auditoría, archivo y movimientos completos: al abrir «Historial de
@@ -284,7 +291,7 @@ export default function TablaPrecioView({ precio }: Props) {
                 usuarioId={usuarioId}
                 onRevisarReinicio={revisarReinicio}
                 onReiniciar={reiniciar}
-                capturarTabla={capturarSinSeleccion}
+                capturarTabla={capturarTablaCompleta}
                 onActualizar={recargar}
                 segundaFila={
                     <>
@@ -342,7 +349,7 @@ export default function TablaPrecioView({ precio }: Props) {
             <ConSeleccion seleccion={seleccion}>{(sel) => (
             <Grid
                 contenedorRef={tablaRef}
-                seleccion={sel.activo && !capturando ? sel.conjunto : null}
+                seleccion={sel.activo ? sel.conjunto : null}
                 onAlternarSeleccion={seleccion.alternar}
                 detalle={detalle}
                 onDetalleChange={setDetalle}
@@ -457,6 +464,9 @@ export default function TablaPrecioView({ precio }: Props) {
                     }}
                 />
             )}
+
+            {/* Copia limpia que fotografía «Compartir» (generador único); fixed: no ocupa sitio. */}
+            {generadorImagen.copiaOculta}
 
         </div>
 

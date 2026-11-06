@@ -403,9 +403,10 @@ prueba("13. Formato no admitido: si la captura no devuelve una imagen, no se env
     }
 });
 
-prueba("14. Con la captura del panel (capturarTabla de «Compartir»): se envía ESA imagen tal cual y el servidor no genera otra", async () => {
+prueba("14. Con la captura del panel (capturarTabla de «Compartir»): se guarda como LA imagen del sorteo y se envía tal cual; el servidor no genera otra", async () => {
     escenario();
-    usarDeps();
+    // La imagen real del publicador: la guardada del sorteo (capturaProgramada.js).
+    usarDeps({ capturarImagen: publicador.dependenciasReales().capturarImagen });
     const png = Buffer.alloc(48);
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png, 0);
     png.writeUInt32BE(13, 8); png.write("IHDR", 12, "ascii"); png.writeUInt32BE(1408, 16); png.writeUInt32BE(1408, 20);

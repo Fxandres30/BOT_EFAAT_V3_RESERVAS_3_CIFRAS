@@ -26,3 +26,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+
+# Imágenes de sorteos programados guardadas por el backend (sorteos/capturaProgramada.js)
+backend/data/capturas-sorteos/

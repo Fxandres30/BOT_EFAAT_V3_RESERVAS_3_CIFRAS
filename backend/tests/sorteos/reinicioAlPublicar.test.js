@@ -313,10 +313,12 @@ prueba("S2. pago EN PROCESO antes de publicar: no se reinicia ni se publica", as
     assert.ok(/pago en proceso/.test(grupoDe(s.id).ultimo_error), grupoDe(s.id).ultimo_error);
 });
 
-prueba("S3. el sorteo anterior volvió a estar ACTIVO: se espera sin tocar nada; al cerrar, reinicia y publica", async () => {
+// De OTRO precio ($10.000, misma tabla física): la publicación no lo
+// reemplaza, así que se espera. Del MISMO precio se reemplaza (S5).
+prueba("S3. un sorteo ACTIVO de OTRO precio ocupa la tabla: se espera sin tocar nada; al cerrar, reinicia y publica", async () => {
     escenario();
     const s = await programar(A, entrada({ tabla: { reiniciar: true } }), { confirmado: true });
-    Object.assign(fake.tablas.eventos_bot.find(e => e.id === "ev-ant-a"), { activo: true, estado: "abierto" });
+    Object.assign(fake.tablas.eventos_bot.find(e => e.id === "ev-ant-a"), { activo: true, estado: "abierto", valor: "10000" });
     const antes = filasDe(A);
     const { d, enviados } = deps();
     await tick(A, seg(30), d);
@@ -346,6 +348,51 @@ prueba("S4. una reserva entra ENTRE la revisión y la escritura: la 030 no hace 
     assert.strictEqual(fake.tablas.reservas_archivo.length, 0);
     assert.strictEqual(enviados.length, 0);
     assert.strictEqual(grupoDe(s.id).estado, "requiere_revision");
+});
+
+// UN SORTEO POR PRECIO: el activo del MISMO precio lo reemplaza la propia
+// publicación; con «Reiniciar» se reemplaza ANTES del reinicio (antes la
+// publicación esperaba sin fin a que cerrara por su hora).
+prueba("S5. el sorteo ACTIVO del MISMO precio: el ciclo anticipado no lo cierra; al publicar se reemplaza, se archiva y se publica", async () => {
+    escenario();
+    Object.assign(fake.tablas.eventos_bot.find(e => e.id === "ev-ant-a"), { activo: true, estado: "abierto", fecha_evento: "2026-10-22" });
+    const s = await programar(A, entrada({ tabla: { reiniciar: true } }), { confirmado: true });
+    const { d, enviados } = deps();
+    const antes = filasDe(A);
+    await tick(A, seg(-45), d);
+    assert.strictEqual(fake.tablas.eventos_bot.find(e => e.id === "ev-ant-a").activo, true, "no se cierra antes de su hora");
+    assert.strictEqual(filasDe(A), antes);
+    assert.strictEqual(aplicadas().length, 0);
+    await tick(A, seg(30), d);
+    const ant = fake.tablas.eventos_bot.find(e => e.id === "ev-ant-a");
+    assert.strictEqual(ant.activo, false);
+    assert.ok(/^sustituido por el sorteo/.test(ant.cierre_motivo), ant.cierre_motivo);
+    assert.strictEqual(aplicadas().length, 1);
+    assert.strictEqual(fake.tablas.reservas_archivo.length, 5, "3 pagados + 2 reservados en el respaldo");
+    assert.strictEqual(fake.tablas.reservas_archivo.filter(x => x.estado === "pagado").length, 3);
+    assert.strictEqual(grupoDe(s.id).estado, "publicado", grupoDe(s.id).ultimo_error);
+    assert.strictEqual(enviados.length, 1);
+    // B no se ve afectado.
+    assert.strictEqual(fake.tablas[T5K].filter(f => f.usuario_id === B && f.estado === "reservado").length, 2);
+});
+
+prueba("S6. reemplazo hecho pero la 030 rechaza la escritura (tabla_cambio): se DESHACE el reemplazo y no se publica", async () => {
+    escenario();
+    Object.assign(fake.tablas.eventos_bot.find(e => e.id === "ev-ant-a"), { activo: true, estado: "abierto", fecha_evento: "2026-10-22" });
+    const s = await programar(A, entrada({ tabla: { reiniciar: true } }), { confirmado: true });
+    rpc.antesDeAplicar = () => Object.assign(fake.tablas[T5K].find(f => f.usuario_id === A && f.numero === "70"), { estado: "reservado", identidad_evento_real: "anterior-a" });
+    const { d, enviados } = deps();
+    await tick(A, seg(30), d);
+    assert.strictEqual(fake.tablas.eventos_bot.find(e => e.id === "ev-ant-a").activo, true, "el sorteo anterior vuelve a estar activo");
+    assert.strictEqual(fake.tablas.reservas_archivo.length, 0, "nada archivado");
+    assert.strictEqual(fake.tablas[T5K].filter(f => f.usuario_id === A && f.estado !== "libre").length, 6, "nada liberado");
+    assert.strictEqual(enviados.length, 0);
+    assert.ok(/la tabla cambió/.test(grupoDe(s.id).ultimo_error), grupoDe(s.id).ultimo_error);
+    // Siguiente ciclo: se vuelve a decidir con la tabla nueva y se completa.
+    await tick(A, seg(90), d);
+    assert.strictEqual(fake.tablas.reservas_archivo.length, 6);
+    assert.strictEqual(grupoDe(s.id).estado, "publicado", grupoDe(s.id).ultimo_error);
+    assert.strictEqual(enviados.length, 1);
 });
 
 // ------------------------------------------------------- I. reintentos ---

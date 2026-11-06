@@ -74,13 +74,17 @@ const sock = {
         return { key: { id: `msg-${enviados.length}` } };
     }
 };
+// Chromium del servidor: no debe usarse nunca.
 let capturasServidor = 0;
+require(r("services/compartirTabla.js")).capturarImagenTabla = async () => { capturasServidor++; throw new Error("Falta FRONTEND_URL (simulado)"); };
+process.env.EFAAT_CAPTURAS_DIR = require("fs").mkdtempSync(require("path").join(require("os").tmpdir(), "efaat-capturas-e2e-inst-"));
 servicio.instantaneo._socketDe = (u) => (u === A ? sock : null);
 servicio.instantaneo._deps = {
     supabase: require(r("lib/supabase.js")),
     guardarEvento, consultarEventoDelSorteo, abrirGrupo, ejecutarUnaVez, actualizarEvento,
     puedeActuar: () => true,
-    capturarImagen: async () => { capturasServidor++; return PNG; },
+    // La imagen REAL del publicador: la guardada del sorteo (capturaProgramada.js).
+    capturarImagen: require(r("sorteos/publicador.js")).dependenciasReales().capturarImagen,
     textoParaCompartir: destinos.textoParaCompartir,
     compartirEnGrupos,
     sendMessage: async () => { throw new Error("el anuncio nunca sale como texto"); }
@@ -211,6 +215,10 @@ async function main() {
         await captura(page, "instantaneo_destino_error");
         jidQueFalla = null;
         await pulsar(page, "Reintentar ahora");
+        // Abre la vista previa del destino: captura nueva de la tabla y publica.
+        await esperarTexto(page, "Reintentar en «Grupo Prueba Tres»");
+        await page.waitForFunction(() => { const img = document.querySelector('img[alt="Imagen de la tabla que se compartirá por WhatsApp"]'); return img && img.complete && img.naturalWidth > 0; }, { timeout: 60000 });
+        await pulsar(page, "Publicar ahora en «Grupo Prueba Tres»");
         await esperarTexto(page, "Publicado en Grupo Prueba Tres.");
         assert.deepStrictEqual([aGrupo("g1@g.us"), aGrupo("g2@g.us"), aGrupo("g3@g.us")], [antes[0], antes[1], antes[2] + 1], "solo el destino fallido recibe la publicación");
         const final = t.sorteos_programados.find(x => x.id === creado.data.id);

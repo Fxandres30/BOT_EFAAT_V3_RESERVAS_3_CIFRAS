@@ -36,6 +36,8 @@ const ESTADO_HTTP = {
     confirmacion_reinicio_requerida: 400,
     error_imagen: 502,
     imagen_invalida: 400,
+    // La tabla cambió entre la vista previa y la confirmación (capturaProgramada.js).
+    tabla_cambiada: 409,
     // Grupos de un sorteo (gruposSorteo.js).
     grupos_invalidos: 400,
     sin_grupos: 400,
@@ -163,7 +165,7 @@ router.post("/:id/archivar", conId(async (req, res) => responder(res, await serv
 // PUT guarda la selección completa { grupos: [...] } SIN publicar; POST
 // /grupos/publicar publica ahora solo en los grupos nuevos (pendientes).
 router.put("/:id/grupos", conId(async (req, res) => responder(res, await require("../sorteos/gruposSorteo").cambiarGrupos(req.usuarioId, req.params.id, req.body?.grupos, { origen: "panel" }))));
-router.post("/:id/grupos/publicar", conId(async (req, res) => responder(res, await require("../sorteos/gruposSorteo").publicarGruposNuevos(req.usuarioId, req.params.id))));
-router.post("/:id/grupos/reintentar", conId(async (req, res) => responder(res, await servicio.reintentarGrupo(req.usuarioId, req.params.id, String(req.body?.grupo_id || "")))));
+router.post("/:id/grupos/publicar", conId(async (req, res) => responder(res, await require("../sorteos/gruposSorteo").publicarGruposNuevos(req.usuarioId, req.params.id, { imagen: typeof req.body?.imagen === "string" ? req.body.imagen : null, huella: typeof req.body?.huella === "string" ? req.body.huella : null }))));
+router.post("/:id/grupos/reintentar", conId(async (req, res) => responder(res, await servicio.reintentarGrupo(req.usuarioId, req.params.id, String(req.body?.grupo_id || ""), { imagen: req.body?.imagen, huella: req.body?.huella }))));
 
 module.exports = router;

@@ -194,10 +194,14 @@ await prueba("editor: casillas con datoVisible, sin rellenar con valores por def
     const editor = fs.readFileSync(path.join(FRONT, "components/mensajes/EditorMensaje/EditorMensaje.tsx"), "utf8");
     assert.ok(editor.includes("checked={datoVisible(variables as Record<string, boolean>, v.mostrarCampo)}"));
     assert.ok(editor.includes("checked={variables.emojis !== false}"));
-    assert.strictEqual((editor.match(/plantilla\.variables \|\| \{\}/g) || []).length, 2);
+    // Rediseño del editor: se monta con key={plantilla.id}, así que solo el
+    // estado inicial lee lo guardado (ya no hay efecto de reinicio).
+    assert.strictEqual((editor.match(/plantilla\.variables \|\| \{\}/g) || []).length, 1);
     assert.ok(!editor.includes("valoresPorDefectoVariables"));
     // La vista previa recibe las MISMAS casillas que se guardan.
-    assert.strictEqual((editor.match(/variables as Record<string, boolean>, variablesDinamicas\)/g) || []).length, 3);
+    // Rediseño: una sola llamada, compartida por los casos «1 número» y «varios».
+    assert.strictEqual((editor.match(/variables as Record<string, boolean>, variablesDinamicas\)/g) || []).length, 1);
+    assert.strictEqual((editor.match(/aplicarPlantillaPreview\(/g) || []).length, 1);
 });
 
 console.log(`\n${ok} pruebas OK`);

@@ -434,6 +434,16 @@ async function evaluarPublicacionInicialTabla(evento, eventSession, sock, opcion
 
 }
 
+// Interruptor maestro del grupo, vigente AHORA (no solo al abrir el ciclo):
+// si el administrador apaga la automatización a mitad de un evento, desde
+// el siguiente tick no sale ningún envío nuevo. (La autorización del grupo
+// se sigue comprobando solo al abrir el ciclo, como antes.)
+function motivoSinPermiso(config) {
+
+    return !config || config.activo !== true ? "automatizacion_desactivada" : null;
+
+}
+
 // ==========================================================================
 // REMINDER_MESSAGE
 // ==========================================================================
@@ -448,6 +458,8 @@ async function evaluarRecordatorios(evento, eventSession, sock, opciones = {}) {
     const config = await automationConfigRepo.obtenerConfiguracion(evento.usuario_id, evento.grupo_id);
 
     if (!config || !config.recordatorios || typeof config.recordatorios !== "object") return;
+
+    const sinPermiso = motivoSinPermiso(config);
 
     const horaCierre = eventSession.datos_evento_snapshot?.hora_cierre || evento.hora_cierre;
 
@@ -498,6 +510,25 @@ async function evaluarRecordatorios(evento, eventSession, sock, opciones = {}) {
         // Vence un recordatorio general: solo si el sorteo no tiene los
         // suyos (prioridad sorteo > grupo). Si no, ni se envía ni se registra.
         if (opciones.recordatoriosDelGrupo && !(await opciones.recordatoriosDelGrupo())) return;
+
+        // Automatización apagada cuando llegó su momento: se registra como
+        // omitido con su motivo. Así no se envía ahora ni sale tarde, en
+        // ráfaga, si se vuelve a encender.
+        if (sinPermiso) {
+
+            await executionGuard.ejecutarUnaVez({
+                claveIdempotencia,
+                eventSessionId: eventSession.id,
+                grupoId: evento.grupo_id,
+                usuarioId: evento.usuario_id,
+                tipoAccion,
+                ejecutar: async () => ({ omitido: true, motivo: sinPermiso })
+            });
+
+            console.log(`🤖 [AUTOMATION] ${tipoAccion} omitido (${sinPermiso}) para event_session ${eventSession.id}.`);
+            continue;
+
+        }
 
         if (!decision) {
             decision = eventRules.decidirRecordatoriosSegunEstado(await leerEstadoParaRecordatorios(evento, evento.grupo_id));
@@ -557,6 +588,10 @@ async function evaluarActualizacion(evento, eventSession, sock, opciones = {}) {
     const config = await automationConfigRepo.obtenerConfiguracion(evento.usuario_id, evento.grupo_id);
 
     if (!config || !config.mensaje_actualizacion || config.mensaje_actualizacion.activo !== true) return;
+
+    // Sin registrar nada: la actualización depende del movimiento en vivo y
+    // se vuelve a evaluar en cuanto la automatización se encienda.
+    if (motivoSinPermiso(config)) return;
 
     const cooldownMinutos = Number.isFinite(config.cooldown_minutos) ? config.cooldown_minutos : 20;
     const umbral = Number.isFinite(config.umbral_reservas) ? config.umbral_reservas : 10;
@@ -637,6 +672,16 @@ async function ejecutarCierre(evento, eventSession, sock, origen = { fuentes: { 
     else if (delSorteo) console.log(`🤖 [AUTOMATION] ciclo ${eventSession.id}: el cierre lo anuncia el aviso propio del sorteo.`);
 
     let enviarCierre = Boolean(config && config.mensaje_cierre && config.mensaje_cierre.activo === true);
+
+    // Automatización apagada: el ciclo se cierra igual (el cierre real ya
+    // ocurrió), pero sin aviso de la automatización.
+    if (enviarCierre) {
+        const sinPermiso = motivoSinPermiso(config);
+        if (sinPermiso) {
+            console.log(`🤖 [AUTOMATION] ciclo ${eventSession.id}: sin mensaje de cierre (${sinPermiso}).`);
+            enviarCierre = false;
+        }
+    }
 
     // Nunca dos avisos de cierre para el mismo evento y grupo: si el del
     // sorteo (u otro ciclo de este evento) ya se gestionó, no se envía.

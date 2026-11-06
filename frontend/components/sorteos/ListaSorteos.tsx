@@ -25,6 +25,9 @@ interface Props {
     onDetalle: (id: string) => void;
     onEliminar: (sorteo: SorteoGestionado) => void;
     onActualizado: () => void;
+    /** Programado: «Reintentar» abre la vista previa para capturar la tabla
+     *  de nuevo y publicar ese grupo (VistaPreviaModal con `reintento`). */
+    onReintentar?: (sorteoId: string, grupo: { grupoId: string; nombre: string | null }) => void;
     /** Lista de archivados: textos del estado vacío. */
     archivados?: boolean;
     /** Estado vacío propio (p. ej. la lista de sorteos instantáneos). */
@@ -34,7 +37,7 @@ interface Props {
 // Cada tarjeta muestra los tres estados (programación, operativo y por
 // grupo) y SOLO las acciones que el backend permite en ese estado; el
 // backend las vuelve a validar.
-export default function ListaSorteos({ sorteos, onVistaPrevia, onEditar, onDetalle, onEliminar, onActualizado, archivados = false, vacio }: Props) {
+export default function ListaSorteos({ sorteos, onVistaPrevia, onEditar, onDetalle, onEliminar, onActualizado, onReintentar, archivados = false, vacio }: Props) {
 
     const [ocupado, setOcupado] = useState<string | null>(null);
     const [mensaje, setMensaje] = useState<string | null>(null);
@@ -115,6 +118,11 @@ export default function ListaSorteos({ sorteos, onVistaPrevia, onEditar, onDetal
                                         {gr.puede_reintentar && (
                                             <Button size="sm" variant="secondary" loading={ocupado === `${s.id}:${gr.grupo_id}`} disabled={!!ocupado}
                                                 onClick={() => {
+                                                    // Con imagen nueva de la tabla (el modal avisa y confirma).
+                                                    if (onReintentar) {
+                                                        onReintentar(s.id, { grupoId: gr.grupo_id, nombre: gr.nombre || null });
+                                                        return;
+                                                    }
                                                     const aviso = instantaneo
                                                         ? `Se publicará ahora solo en «${gr.nombre || gr.grupo_id}»; los destinos ya publicados no se tocan. Si el anuncio ya llegó a ese grupo, reintentar lo publicaría de nuevo. ¿Publicar ahora en este destino?`
                                                         : "Revisa primero el grupo en WhatsApp: si el anuncio ya llegó, reintentar lo publicaría de nuevo. ¿Reintentar?";

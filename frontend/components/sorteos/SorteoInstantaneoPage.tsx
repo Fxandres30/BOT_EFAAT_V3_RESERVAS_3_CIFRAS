@@ -34,6 +34,8 @@ export default function SorteoInstantaneoPage() {
     const [aviso, setAviso] = useState<string | null>(null);
     const [formulario, setFormulario] = useState<{ abierto: boolean; sorteoId: string | null }>({ abierto: params?.get("nuevo") === "1", sorteoId: null });
     const [vistaPrevia, setVistaPrevia] = useState<string | null>(null);
+    // «Reintentar ahora» un destino: vista previa con captura nueva de la tabla.
+    const [reintento, setReintento] = useState<{ sorteoId: string; grupoId: string; nombre: string | null } | null>(null);
     const [detalle, setDetalle] = useState<string | null>(null);
     const [eliminando, setEliminando] = useState<SorteoGestionado | null>(null);
 
@@ -96,6 +98,7 @@ export default function SorteoInstantaneoPage() {
                     onDetalle={setDetalle}
                     onEliminar={s => { setAviso(null); setEliminando(s); }}
                     onActualizado={cargar}
+                    onReintentar={(sorteoId, g) => setReintento({ sorteoId, ...g })}
                 />
             )}
 
@@ -129,6 +132,16 @@ export default function SorteoInstantaneoPage() {
                 onClose={() => { setVistaPrevia(null); cargar(); }}
                 onConfirmado={() => { setVistaPrevia(null); cargar(); }}
             />
+
+            {reintento && (
+                <VistaPreviaModal
+                    key={`reintento-${reintento.sorteoId}-${reintento.grupoId}`}
+                    sorteoId={reintento.sorteoId}
+                    reintento={{ grupoId: reintento.grupoId, nombre: reintento.nombre }}
+                    onClose={() => { setReintento(null); cargar(); }}
+                    onConfirmado={() => { setReintento(null); cargar(); }}
+                />
+            )}
 
         </div>
     );
