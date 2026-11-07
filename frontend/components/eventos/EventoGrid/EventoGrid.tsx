@@ -5,11 +5,14 @@ import Link from "next/link";
 import { ChevronDown } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Button } from "@/components/ui/Button";
+import { formatHora12 } from "@/lib/formatHora";
 
 import EventoCard from "../EventoCard/EventoCard";
 import EventoTresCifrasCard from "../EventoTresCifrasCard/EventoTresCifrasCard";
 import ResultadoCard from "../ResultadoCard/ResultadoCard";
 import { obtenerEventos } from "@/services/eventos/obtenerEventos";
+import { esVisible } from "@/lib/visibilidad/funcionalidades";
 import { apiSorteos, describirError, type SorteoEnGrupos } from "@/services/sorteos/apiSorteos";
 import EditarSorteoActivoModal from "@/components/sorteos/EditarSorteoActivoModal";
 import AdministrarEventoModal from "../AdministrarEventoModal";
@@ -17,7 +20,7 @@ import { administrableDe, origenDe, origenesPorEvento, sorteoPorEvento, type Ori
 import { agruparEventos, type EventoCompartido } from "../agruparEventos";
 
 import type { Evento } from "../types";
-import { MODALIDADES, faseDe, modalidadDe, type Fase, type Modalidad } from "../modalidad";
+import { MODALIDADES, faseDe, infoModalidad, modalidadDe, type Fase, type Modalidad } from "../modalidad";
 
 import styles from "./EventoGrid.module.css";
 
@@ -67,6 +70,43 @@ function PorModalidad({ items, palabra, vacio }: { items: EventoClasificado[]; p
                 );
             })}
         </div>
+    );
+}
+
+function fechaCorta(iso?: string) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : "—";
+}
+
+// Con Resultados oculta: solo el acceso a administrar (reabrir / eliminar)
+// los finalizados que el backend aún ofrece (GET /sorteos/eventos, ventana
+// de 30 días). Sin ganador, filtros ni «Ver resultado»: eso es Resultados.
+function FinalizadosAdministrables({ items }: { items: EventoClasificado[] }) {
+    return (
+        <details className={styles.seccion}>
+            <summary className={styles.seccionTitulo}>
+                <ChevronDown size={18} className={styles.chevron} aria-hidden="true" />
+                Finalizados recientes <span className={styles.contador}>{items.length}</span>
+            </summary>
+            <p className={styles.nota}>Sorteos terminados que todavía puedes reabrir o eliminar (hasta 30 días después).</p>
+            {items.length === 0 ? (
+                <p className={styles.vacio}>No hay sorteos finalizados que se puedan administrar.</p>
+            ) : (
+                <ul className={styles.listaFinalizados}>
+                    {items.map((i) => (
+                        <li key={i.evento.clave} className={styles.filaFinalizado}>
+                            <span className={styles.filaTexto}>
+                                <span className={styles.filaNombre}>{i.evento.nombre_evento || "Sorteo sin nombre"}</span>
+                                <span className={styles.filaDato}>
+                                    {fechaCorta(i.evento.fecha_evento)} · {i.evento.hora_fin ? formatHora12(i.evento.hora_fin) : "—"} · {infoModalidad(i.modalidad).titulo}
+                                </span>
+                            </span>
+                            <Button variant="secondary" size="sm" onClick={i.onAdministrar ?? undefined}>Administrar sorteo</Button>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </details>
     );
 }
 
@@ -166,6 +206,7 @@ export default function EventoGrid() {
         .filter((i) => i.fase === "finalizado")
         .filter((i) => filtro === "todos" || i.modalidad === filtro);
     const totalResultados = items.filter((i) => i.fase === "finalizado").length;
+    const finalizadosAdministrables = items.filter((i) => i.fase === "finalizado" && i.onAdministrar);
 
     return (
         <>
@@ -211,6 +252,9 @@ export default function EventoGrid() {
                 </p>
             </details>
 
+            {/* Resultados: oculta en el lanzamiento (lib/visibilidad/funcionalidades.ts).
+                Los datos y ResultadoCard se conservan intactos. */}
+            {esVisible("resultados") && (
             <details className={styles.seccion} open>
                 <summary className={styles.seccionTitulo}>
                     <ChevronDown size={18} className={styles.chevron} aria-hidden="true" />
@@ -239,6 +283,10 @@ export default function EventoGrid() {
                     </div>
                 )}
             </details>
+            )}
+
+            {/* Resultados oculta: la administración de finalizados sigue visible aparte. */}
+            {!esVisible("resultados") && <FinalizadosAdministrables items={finalizadosAdministrables} />}
 
             {administrando && (
                 <AdministrarEventoModal

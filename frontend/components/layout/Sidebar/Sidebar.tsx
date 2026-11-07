@@ -27,6 +27,7 @@ import "./Sidebar.css";
 
 import { getUser } from "@/services/auth/getUser";
 import { logout } from "@/services/auth/logout";
+import { soloVisibles, type IdFuncionalidad } from "@/lib/visibilidad/funcionalidades";
 
 interface SidebarProps {
   open: boolean;
@@ -42,6 +43,8 @@ export interface NavItem {
   label: string;
   icon: LucideIcon;
   seccion: SeccionNav;
+  /** Visibilidad controlada en lib/visibilidad/funcionalidades.ts. */
+  funcionalidad?: IdFuncionalidad;
 }
 
 // Mismas rutas y etiquetas que antes, salvo "Chats" -> "Contactos": pasa a
@@ -62,12 +65,14 @@ export const NAV: NavItem[] = [
   { href: "/sorteo-instantaneo", label: "Publicar ahora", icon: Zap, seccion: "Sorteos" },
   { href: "/loterias", label: "Calendario de loterías", icon: CalendarDays, seccion: "Sorteos" },
   { href: "/automatizacion", label: "Automatización", icon: Bot, seccion: "Control" },
-  { href: "/lector-pagos", label: "Lector de pagos", icon: ScanLine, seccion: "Control" },
-  { href: "/bloqueados", label: "Bloqueados", icon: ShieldBan, seccion: "Control" },
+  { href: "/lector-pagos", label: "Lector de pagos", icon: ScanLine, seccion: "Control", funcionalidad: "lector-pagos" },
+  { href: "/bloqueados", label: "Bloqueados", icon: ShieldBan, seccion: "Control", funcionalidad: "bloqueados" },
 ];
 
-// Entradas de NAV agrupadas por sección, en el mismo orden.
-const SECCIONES = NAV.reduce<{ seccion: SeccionNav; items: NavItem[] }[]>((grupos, item) => {
+// Entradas VISIBLES de NAV agrupadas por sección, en el mismo orden. NAV
+// conserva todas: la barra superior sigue titulando una página oculta
+// abierta por su dirección (docs/FEATURE_VISIBILITY_REGISTER.md).
+const SECCIONES = soloVisibles(NAV).reduce<{ seccion: SeccionNav; items: NavItem[] }[]>((grupos, item) => {
   const ultimo = grupos[grupos.length - 1];
   if (ultimo && ultimo.seccion === item.seccion) ultimo.items.push(item);
   else grupos.push({ seccion: item.seccion, items: [item] });

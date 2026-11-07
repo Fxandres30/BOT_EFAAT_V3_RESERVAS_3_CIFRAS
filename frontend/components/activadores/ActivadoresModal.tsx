@@ -25,6 +25,7 @@ import {
     estadoDeTipo
 } from "@/services/activadores/estadoActivadores";
 import { TIPOS_MENSAJE } from "@/services/mensajes/tiposMensaje";
+import { rutaVisible } from "@/lib/visibilidad/funcionalidades";
 
 import styles from "./ActivadoresModal.module.css";
 
@@ -47,6 +48,20 @@ const NOMBRE_TIPO: Record<string, string> = Object.fromEntries(TIPOS_MENSAJE.map
 
 const TODOS = "todos";
 
+// Funcionalidades ocultas (lib/visibilidad/funcionalidades.ts): sin enlaces a
+// sus páginas, y una entrada que solo se gestionaba allí no se muestra. El
+// catálogo original queda intacto.
+const CATALOGO = CATALOGO_ACTIVADORES
+    .map((m) => ({
+        ...m,
+        entradas: m.entradas.flatMap((e) => {
+            if (!e.panel?.length) return [e];
+            const panel = e.panel.filter((p) => rutaVisible(p.ruta));
+            return panel.length ? [{ ...e, panel }] : [];
+        })
+    }))
+    .filter((m) => m.entradas.length > 0);
+
 // Las rutas de archivos del catálogo (e.codigo, a.fuente) siguen ahí para su
 // prueba de verificación, pero no se muestran. De «lee»/«escribe» solo se
 // enseñan los datos descritos en lenguaje del cliente («tabla de números»);
@@ -60,7 +75,7 @@ function esDatoLegible(dato: string) {
 // Busca la entrada del catálogo que usa un tipo de respuesta del panel de
 // Mensajes (para abrir el modal directamente en ella).
 export function entradaParaTipoRespuesta(tipoId: string): string | null {
-    for (const modulo of CATALOGO_ACTIVADORES) {
+    for (const modulo of CATALOGO) {
         const entrada = modulo.entradas.find((e) => e.plantillas?.includes(tipoId));
         if (entrada) return entrada.id;
     }
@@ -140,7 +155,7 @@ function Contenido({ usuarioId, enfocarId, onNavegar }: { usuarioId: string; enf
 
     }, [enfocarId]);
 
-    const modulosVisibles = useMemo(() => CATALOGO_ACTIVADORES
+    const modulosVisibles = useMemo(() => CATALOGO
         .filter((m) => modulo === TODOS || m.id === modulo)
         .map((m) => ({
             ...m,
@@ -149,7 +164,7 @@ function Contenido({ usuarioId, enfocarId, onNavegar }: { usuarioId: string; enf
         .filter((m) => m.entradas.length > 0), [modulo, filtro, estadoFiltro]);
 
     const totales = useMemo(() => {
-        const todas = CATALOGO_ACTIVADORES.flatMap((m) => m.entradas);
+        const todas = CATALOGO.flatMap((m) => m.entradas);
         return {
             total: todas.length,
             conflicto: todas.filter((e) => e.estado === "con_conflicto").length,
@@ -178,7 +193,7 @@ function Contenido({ usuarioId, enfocarId, onNavegar }: { usuarioId: string; enf
                     </div>
                     <Select aria-label="Módulo" value={modulo} onChange={(e) => setModulo(e.target.value)}>
                         <option value={TODOS}>Todos los módulos</option>
-                        {CATALOGO_ACTIVADORES.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                        {CATALOGO.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
                     </Select>
                     <Select aria-label="Estado" value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)}>
                         <option value={TODOS}>Todos los estados</option>

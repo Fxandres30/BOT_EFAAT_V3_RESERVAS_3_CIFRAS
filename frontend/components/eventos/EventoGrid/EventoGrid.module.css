@@ -234,3 +234,54 @@ details[open] > summary > .chevron { transform: rotate(0deg); }
   background: var(--efaat-error-soft);
   color: var(--efaat-error);
 }
+
+/* Finalizados recientes (con Resultados oculta): solo el acceso a administrar. */
+.nota {
+  margin: 0 0 10px;
+  color: var(--efaat-text-secondary);
+  font-size: var(--efaat-text-sm);
+}
+
+.listaFinalizados {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.filaFinalizado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-surface);
+}
+
+.filaTexto {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.filaNombre {
+  font-weight: var(--efaat-weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filaDato {
+  color: var(--efaat-text-secondary);
+  font-size: var(--efaat-text-sm);
+}
+
+@media (max-width: 640px) {
+  .filaFinalizado {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

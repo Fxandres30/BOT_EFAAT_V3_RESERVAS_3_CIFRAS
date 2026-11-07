@@ -7,6 +7,8 @@
 | Documento | Para qué |
 |---|---|
 | [RIESGOS_Y_DECISIONES.md](RIESGOS_Y_DECISIONES.md) | Migraciones (estado observado), riesgos abiertos y decisiones que esperan autorización |
+| [LAUNCH_VISIBILITY.md](LAUNCH_VISIBILITY.md) | Qué se muestra y qué está oculto en el lanzamiento comercial, motivos e historial |
+| [FEATURE_VISIBILITY_REGISTER.md](FEATURE_VISIBILITY_REGISTER.md) | Registro de cada funcionalidad oculta: archivos, estado, qué falta y cómo reactivarla |
 | [pruebas/LINEA_BASE.md](pruebas/LINEA_BASE.md) | Cómo ejecutar `npm test` de forma segura, línea base y caracterizaciones C1–C5 |
 
 ## Arquitectura

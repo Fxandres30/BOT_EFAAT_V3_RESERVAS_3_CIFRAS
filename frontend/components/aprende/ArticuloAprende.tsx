@@ -3,6 +3,7 @@ import { ArrowLeft, Clock, FileQuestion } from "lucide-react";
 
 import { EmptyState, PageHeader } from "@/components/ui";
 import { articuloPorSlug, categoriaPorId } from "@/lib/aprende/articulos";
+import { rutaVisible } from "@/lib/visibilidad/funcionalidades";
 
 import ContenidoArticulo from "./ContenidoArticulo";
 import IconoCategoria from "./IconoCategoria";
@@ -51,7 +52,7 @@ export default function ArticuloAprende({ slug }: { slug: string }) {
             <ContenidoArticulo articulo={articulo} />
 
             <div className={styles.acciones} style={{ marginTop: 24 }}>
-                {articulo.seccion && (
+                {articulo.seccion && rutaVisible(articulo.seccion.href) && (
                     <Link href={articulo.seccion.href} prefetch={false} className={styles.enlace}>{articulo.seccion.texto}</Link>
                 )}
                 <Link href="/aprende" prefetch={false} className={styles.enlace}>Volver al centro de aprendizaje</Link>

@@ -86,7 +86,7 @@ export const ARTICULOS: Articulo[] = [
             "«Reservas»: abre la tabla de números de cada precio, con su historial.",
             "«Automatización»: autoriza los grupos donde trabaja EFAAT y configura la automatización de cada uno.",
             "«Mi cuenta» (abajo, junto a tu correo): tus datos, tu contraseña y el contacto con soporte.",
-            "Las demás opciones (Mensajes, Variables globales, Contactos, Eventos, Sorteos programados, Calendario de loterías, Lector de pagos y Bloqueados) tendrán su propia guía en este centro."
+            "Las demás opciones (Mensajes, Variables globales, Contactos, Eventos, Sorteos programados, Calendario de loterías) tendrán su propia guía en este centro."
         ],
         estados: [],
         errores: [

@@ -912,7 +912,10 @@ export const CATALOGO_ACTIVADORES: ModuloCatalogo[] = [
                 lee: ["bloqueados", "usuarios"],
                 escribe: ["bloqueo_intentos"],
                 codigo: [{ archivo: "backend/bot/funciones/bloqueo/bloqueoParticipantesGrupo.js", simbolo: "procesarIngresoParticipante" }, { archivo: "backend/bot/events/groups.js", simbolo: "registerGroups" }],
-                panel: [{ pagina: "Bloqueados", ruta: "/bloqueados", que: "Lista de bloqueados." }],
+                panel: [
+                    { pagina: "Bloqueados", ruta: "/bloqueados", que: "Lista de bloqueados." },
+                    { pagina: "Contactos", ruta: "/contactos", que: "Bloquear o desbloquear desde el perfil del contacto." }
+                ],
                 edicion: { nivel: "mixto", detalle: "La lista se edita en el panel; la regla es fija." }
             },
             {

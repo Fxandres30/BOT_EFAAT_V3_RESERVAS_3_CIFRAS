@@ -21,8 +21,10 @@ Inventario F1-C, 06/11/2026. Solo describe: no cambia ninguna ruta ni ningún te
 | Sorteos | Publicar ahora | `/sorteo-instantaneo` |
 | Sorteos | Calendario de loterías | `/loterias` |
 | Control | Automatización | `/automatizacion` |
-| Control | Lector de pagos | `/lector-pagos` |
-| Control | Bloqueados | `/bloqueados` |
+| Control | Lector de pagos | `/lector-pagos` — **oculta en el menú** (07/11/2026) |
+| Control | Bloqueados | `/bloqueados` — **oculta en el menú** (07/11/2026) |
+
+Las entradas marcadas con `funcionalidad` en `NAV` se dibujan solo si `lib/visibilidad/funcionalidades.ts` las tiene visibles; sus rutas siguen abriéndose por dirección. Registro: [../FEATURE_VISIBILITY_REGISTER.md](../FEATURE_VISIBILITY_REGISTER.md).
 
 ## Navegaciones secundarias
 

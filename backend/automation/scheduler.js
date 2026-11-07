@@ -262,9 +262,12 @@ async function evaluarInicioDiaPorGrupo({ configuracion, usuarioId, ahora, sock 
     // engine.js::enviarMensajeProgramado con "sin mensajes disponibles").
     const plantillas = await plantillasMensajeRepo.obtenerPlantillasHabilitadas(usuarioId, "inicio_dia");
 
+    const fecha = eventRules.obtenerFechaISO(ahora);
+
     if (plantillas.length === 0) {
 
         console.log(`🤖 [AUTOMATION] Inicio del día: sin plantillas habilitadas para el grupo ${configuracion.grupo_id} — no se envía nada.`);
+        await compararInicioDiaEnSombra({ usuarioId, grupoId: configuracion.grupo_id, fecha, candidatasActuales: [], actual: { enviado: false, estado: "sin_plantillas" } });
         return;
 
     }
@@ -272,11 +275,14 @@ async function evaluarInicioDiaPorGrupo({ configuracion, usuarioId, ahora, sock 
     // Selección aleatoria entre las activas — una sola, nunca varias
     // (mismo criterio simple ya usado por automation/messageSelector.js:
     // Math.random() sobre el arreglo ya filtrado, sin un motor de modos
-    // aparte, porque esta categoría solo pidió "aleatorio").
-    const plantilla = plantillas[Math.floor(Math.random() * plantillas.length)];
+    // aparte, porque esta categoría solo pidió "aleatorio"). El azar se
+    // guarda (O2) solo para dárselo igual a la comparación en sombra: sigue
+    // siendo UNA llamada a Math.random y la misma fórmula.
+    const azar = Math.random();
+    const plantilla = plantillas[Math.floor(azar * plantillas.length)];
 
-    const fecha = eventRules.obtenerFechaISO(ahora);
     const claveIdempotencia = `${configuracion.grupo_id}:DAILY_START_MESSAGE:${fecha}`;
+    let textoActual = null;
 
     const resultado = await executionGuard.ejecutarUnaVez({
 
@@ -293,6 +299,7 @@ async function evaluarInicioDiaPorGrupo({ configuracion, usuarioId, ahora, sock 
             // resuelven a "" si no hay uno en contexto, nunca inventado.
             const contextoGlobal = construirContextoGlobal({});
             const texto = resolverTexto(plantilla.contenido, contextoGlobal);
+            textoActual = texto;
 
             await sendMessage({ sock, jid: configuracion.grupo_id, text: texto });
 
@@ -312,6 +319,29 @@ async function evaluarInicioDiaPorGrupo({ configuracion, usuarioId, ahora, sock 
 
     }
 
+    // O2 — comparación en SOMBRA, después de todo lo anterior. Solo cuando el
+    // motor decidió el contenido (envió, o WhatsApp falló al enviar); si la
+    // clave del día ya estaba resuelta no hay nada que comparar.
+    if (resultado.ejecutada || resultado.motivo === "fallo_ejecucion") {
+        await compararInicioDiaEnSombra({
+            usuarioId, grupoId: configuracion.grupo_id, fecha, azar,
+            candidatasActuales: plantillas.map(p => p.id),
+            actual: { enviado: true, estado: resultado.ejecutada ? "enviado" : "fallo_envio", texto: textoActual, plantillaId: plantilla.id }
+        });
+    }
+
+}
+
+// FASE O2: compara Inicio del día con el orquestador central EN SOMBRA
+// (automation/sombraInicioDia.js). No hace nada salvo con
+// MENSAJES_ORQUESTADOR_INICIO_DIA=shadow; nunca envía, nunca consume claves y
+// NUNCA lanza: un fallo aquí no afecta al envío, que ya ocurrió.
+async function compararInicioDiaEnSombra(datos) {
+    try {
+        await require("./sombraInicioDia").compararInicioDiaEnSombra(datos);
+    } catch (error) {
+        console.error("⚠️ [MENSAJES SOMBRA] inicio_dia: comparación omitida:", error?.message);
+    }
 }
 
 async function procesarEventSession(eventSession, sock, opciones = {}) {

@@ -15,6 +15,7 @@ import {
     categoriaPorId,
     type Articulo
 } from "@/lib/aprende/articulos";
+import { rutaVisible } from "@/lib/visibilidad/funcionalidades";
 
 import IconoCategoria from "./IconoCategoria";
 import styles from "./Aprende.module.css";
@@ -59,7 +60,8 @@ export default function CentroAprendizaje() {
     const buscando = consulta.trim().length > 0;
 
     const primeros = articulosDe(PRIMEROS_PASOS);
-    const categorias = CATEGORIAS.filter(c => c.id !== PRIMEROS_PASOS);
+    // Sin las guías de funcionalidades ocultas (lib/visibilidad/funcionalidades.ts).
+    const categorias = CATEGORIAS.filter(c => c.id !== PRIMEROS_PASOS && (!c.seccion || rutaVisible(c.seccion.href)));
 
     return (
 
