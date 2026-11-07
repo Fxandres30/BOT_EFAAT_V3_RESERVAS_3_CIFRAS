@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { ConfigRecordatorios, guardarConfiguracion } from "@/services/automatizacion/automationConfigs";
 
-import { Switch, SelectorCategoria, BarraGuardar } from "./compartido";
+import { Switch, SelectorCategoria, BarraGuardar, EnlaceBiblioteca } from "./compartido";
 import styles from "../ConfiguracionGrupo.module.css";
 
 interface Props {
@@ -80,7 +80,7 @@ export default function SeccionRecordatorios({ usuarioId, grupoId, inicial, onGu
         setGuardando(false);
 
         if (errorGuardar || !data) {
-            setError(`No se pudo guardar (${errorGuardar?.message || "error desconocido"}).`);
+            setError("No se pudo guardar. Inténtalo de nuevo en unos segundos.");
             return;
         }
 
@@ -96,8 +96,9 @@ export default function SeccionRecordatorios({ usuarioId, grupoId, inicial, onGu
             <h2 className={styles.sectionTitle}><Bell size={15} /> Recordatorios</h2>
 
             <p className={styles.nota}>
-                Cada recordatorio se calcula sobre la hora de cierre REAL del evento detectado
-                (evento.hora_cierre − offset) — nunca una hora fija guardada aquí.
+                Cada recordatorio sale los minutos indicados antes de la hora de cierre del sorteo,
+                una sola vez por sorteo.{" "}
+                <EnlaceBiblioteca tipo="REMINDER_MESSAGE" categoria={null} texto="Ver los mensajes de recordatorio" />
             </p>
 
             <div className={styles.recordatorios}>
@@ -116,6 +117,8 @@ export default function SeccionRecordatorios({ usuarioId, grupoId, inicial, onGu
                         />
                         <div style={{ minWidth: 160 }}>
                             <SelectorCategoria
+                                tipo="REMINDER_MESSAGE"
+                                mostrarEnlace={false}
                                 valor={cfg.categoria}
                                 onChange={(categoria) => actualizar(offset, { categoria })}
                             />

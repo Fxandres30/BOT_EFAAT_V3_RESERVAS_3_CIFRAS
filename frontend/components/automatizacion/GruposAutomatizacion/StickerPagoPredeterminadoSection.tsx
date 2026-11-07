@@ -125,8 +125,7 @@ export default function StickerPagoPredeterminadoSection({ usuarioId, onEstado }
                         <Sticker size={18} /> Sticker de confirmación de pagos
                     </h2>
                     <p className={styles.descripcion}>
-                        Cuando apruebas un pago, EFAAT responde con este sticker en el grupo. Aquí ves el que está en uso,
-                        lo cambias o lo desactivas, y administras los que ya guardaste.
+                        Cuando apruebas un pago, EFAAT responde con este sticker en el grupo.
                     </p>
                 </div>
             </div>
@@ -200,6 +199,11 @@ export default function StickerPagoPredeterminadoSection({ usuarioId, onEstado }
                 </div>
 
             </div>
+
+            <details className={styles.plegable}>
+                <summary>
+                    Stickers guardados{biblioteca.disponible && !biblioteca.cargando ? ` (${galeria.length})` : ""} y cómo funciona
+                </summary>
 
             <div className={styles.niveles}>
                 <div className={styles.nivel}>
@@ -343,6 +347,8 @@ export default function StickerPagoPredeterminadoSection({ usuarioId, onEstado }
                 </section>
 
             )}
+
+            </details>
 
             <Modal
                 open={modalDesactivarAbierto}

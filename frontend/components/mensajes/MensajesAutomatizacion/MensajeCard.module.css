@@ -51,7 +51,40 @@
   padding-top: 2px;
 }
 
-.acciones > * {
-  flex: 1;
-  min-width: 92px;
+.acciones {
+  align-items: center;
+}
+
+.nombre {
+  min-width: 0;
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Eliminar: acción secundaria, discreta, al final de la fila. */
+.eliminar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  font-size: var(--efaat-text-xs);
+  font-weight: var(--efaat-weight-medium);
+  color: var(--efaat-text-muted);
+  cursor: pointer;
+}
+
+.eliminar:hover:not(:disabled) {
+  color: var(--efaat-error-strong);
+}
+
+.eliminar:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

@@ -325,3 +325,40 @@
   line-height: 1.5;
   color: var(--efaat-text-secondary);
 }
+
+/* Explicación y galería plegables: el panel queda compacto arriba de Grupos. */
+.plegable {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.plegable > summary {
+  cursor: pointer;
+  width: fit-content;
+  font-size: var(--efaat-text-xs);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-primary);
+}
+
+.plegable[open] > summary {
+  margin-bottom: 12px;
+}
+
+.panel {
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.titulo {
+  font-size: var(--efaat-text-md);
+}
+
+.actual {
+  padding: 10px 12px;
+}
+
+.actualVista {
+  width: 72px;
+  height: 72px;
+}

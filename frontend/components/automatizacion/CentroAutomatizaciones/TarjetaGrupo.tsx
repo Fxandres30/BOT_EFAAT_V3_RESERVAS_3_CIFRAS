@@ -1,16 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, CalendarPlus, Copy, History, Settings2, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, ArrowRight, CalendarPlus, Copy, History, Settings2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
-import type { BadgeTone } from "@/components/ui/Badge";
-import { formatHora12 } from "@/lib/formatHora";
-import { formatearHace, formatearMomento, formatearRestante } from "@/services/automatizacion/estadoProgramacion";
+import { formatearHace, formatearMomento } from "@/services/automatizacion/estadoProgramacion";
+import { estadoTipos, motivoSinEnvio, puedeEnviarFila, tieneErrorEnvio } from "@/services/automatizacion/vistaGrupos";
 
-import { estadoTipos } from "@/services/automatizacion/vistaGrupos";
-
-import { TIPOS_VISIBLES } from "../compartido/estados";
+import { AUTORIZACION, CONEXION, TIPOS_VISIBLES, horaLegible, restanteCorto } from "../compartido/estados";
 import type { FilaGrupo } from "./filaGrupo";
 import styles from "./CentroAutomatizaciones.module.css";
 
@@ -29,14 +26,6 @@ interface Props {
     onDuplicar: () => void;
 }
 
-const CONEXION: Record<FilaGrupo["conexion"], { texto: string; tono: BadgeTone }> = {
-    conectado: { texto: "Conectado", tono: "success" },
-    no_visto: { texto: "No aparece en WhatsApp", tono: "error" },
-    sin_sesion: { texto: "Sin WhatsApp conectado", tono: "error" },
-    no_verificable: { texto: "Conexión sin verificar", tono: "warning" },
-    comprobando: { texto: "Comprobando…", tono: "neutral" }
-};
-
 export default function TarjetaGrupo({ fila, ahora, seleccionada, cambiandoActivo, onSeleccionar, onAlternarActivo, onEditar, onHistorial, onDuplicar }: Props) {
 
     const { config, evento, cierre, horaCierre, resumen } = fila;
@@ -44,6 +33,8 @@ export default function TarjetaGrupo({ fila, ahora, seleccionada, cambiandoActiv
     const conexion = CONEXION[fila.conexion];
     const restante = cierre ? cierre.getTime() - ahora.getTime() : null;
     const tipos = estadoTipos(config);
+    const envia = puedeEnviarFila(fila);
+    const motivo = activo && envia === false ? motivoSinEnvio(fila.conexion, fila.autorizado) : null;
 
     return (
 
@@ -62,63 +53,56 @@ export default function TarjetaGrupo({ fila, ahora, seleccionada, cambiandoActiv
                 <div className={styles.cardTitulo}>
                     <span className={styles.cardNombre} title={fila.nombre}>{fila.nombre}</span>
                     <div className={styles.badges}>
-                        <Badge tone={conexion.tono} size="sm" dot>{conexion.texto}</Badge>
-                        <Badge tone={activo ? "success" : "neutral"} size="sm">
-                            {activo ? "Automatización activa" : "Automatización desactivada"}
-                        </Badge>
-                        {fila.autorizado === false && <Badge tone="warning" size="sm">Grupo no autorizado</Badge>}
+                        <Badge tone={conexion.tono} size="sm" dot title={conexion.explicacion}>{conexion.texto}</Badge>
+                        {fila.autorizado === false && <Badge tone={AUTORIZACION.no_autorizado.tono} size="sm">No autorizado</Badge>}
+                        {motivo
+                            ? <Badge tone="warning" size="sm" title={motivo}>Activa · no envía</Badge>
+                            : <Badge tone={activo ? "primary" : "neutral"} size="sm">{activo ? "Automatización activa" : "Automatización pausada"}</Badge>}
                     </div>
                 </div>
 
-                <button
-                    type="button"
-                    role="switch"
-                    aria-checked={activo}
-                    aria-label={activo ? `Desactivar la automatización de ${fila.nombre}` : `Activar la automatización de ${fila.nombre}`}
-                    title={activo ? "Desactivar automatización" : "Activar automatización"}
-                    className={`${styles.switch} ${activo ? styles.switchOn : ""}`}
-                    disabled={cambiandoActivo}
-                    onClick={onAlternarActivo}
-                />
-
             </div>
+
+            {motivo && (
+                <p className={styles.alerta}><AlertTriangle size={14} /> {motivo} Mientras tanto no saldrá ningún mensaje automático.</p>
+            )}
 
             {!fila.datosDisponibles ? (
 
                 <div className={styles.evento}>
-                    <span className={styles.eventoNombre}>Estado del evento no disponible</span>
+                    <span className={styles.eventoNombre}>Sorteo no disponible</span>
                     <span className={styles.eventoCierre}>No pudimos consultarlo; no se muestra ningún estado de envío.</span>
                 </div>
 
             ) : !evento ? (
 
                 <div className={styles.evento}>
-                    <span className={styles.eventoNombre}>Sin evento activo</span>
+                    <span className={styles.eventoNombre}>Sin sorteo en curso</span>
                     <span className={styles.eventoCierre}>Los mensajes se programan cuando se detecte el próximo sorteo en el grupo.</span>
                 </div>
 
             ) : (
 
                 <div className={styles.evento}>
-                    <span className={styles.eventoNombre}>Evento activo · {evento.nombre_evento || "Sorteo sin nombre"}</span>
+                    <span className={styles.eventoNombre}>Sorteo: {evento.nombre_evento || "sin nombre"}</span>
                     <span className={styles.eventoCierre}>
                         {cierre ? (
                             <>
                                 Cierre {formatearMomento(cierre, ahora)} ·{" "}
                                 {restante !== null && restante > 0
-                                    ? <strong>faltan {formatearRestante(restante)}</strong>
-                                    : <strong>hora de cierre alcanzada</strong>}
+                                    ? <strong>faltan {restanteCorto(restante)}</strong>
+                                    : <strong>cierre alcanzado</strong>}
                             </>
                         ) : horaCierre ? (
-                            <>Cierre {formatHora12(horaCierre)} · fecha no confirmada</>
+                            <>Cierre {horaLegible(horaCierre)} · fecha no confirmada</>
                         ) : (
                             <>Sin hora de cierre registrada</>
                         )}
                     </span>
-                    {!fila.ciclo && <span className={styles.eventoCierre}>La automatización no está en marcha para este evento.</span>}
+                    {!fila.ciclo && <span className={styles.eventoCierre}>La automatización no está en marcha para este sorteo.</span>}
                     {fila.ciclo && fila.ciclo.estado !== "abierto" && (
                         <span className={styles.eventoCierre}>
-                            {fila.ciclo.estado === "pendiente" ? "Esperando la apertura del grupo." : "El evento se está cerrando."}
+                            {fila.ciclo.estado === "pendiente" ? "Esperando la apertura del grupo." : "El sorteo se está cerrando."}
                         </span>
                     )}
                 </div>
@@ -128,14 +112,14 @@ export default function TarjetaGrupo({ fila, ahora, seleccionada, cambiandoActiv
             {fila.sesionNoActiva && (
                 <p className={styles.alerta}>
                     <AlertTriangle size={14} />
-                    El evento es de una sesión de WhatsApp que no está activa: sus mensajes no saldrán mientras no lo esté.
+                    El sorteo está en un WhatsApp que no está en servicio: sus mensajes no saldrán mientras no lo esté.
                 </p>
             )}
 
             <div className={styles.tiposFila} aria-label="Mensajes automáticos de este grupo">
                 {TIPOS_VISIBLES.map((t) => (
-                    <span key={t.clave} className={`${styles.tipoChip} ${tipos[t.clave] ? styles.tipoChipOn : ""}`} title={tipos[t.clave] ? "Activo" : "Pausado"}>
-                        {t.texto}
+                    <span key={t.clave} className={`${styles.tipoChip} ${tipos[t.clave] ? styles.tipoChipOn : ""}`}>
+                        {t.texto} · {tipos[t.clave] ? "activo" : "pausado"}
                     </span>
                 ))}
             </div>
@@ -146,17 +130,18 @@ export default function TarjetaGrupo({ fila, ahora, seleccionada, cambiandoActiv
                     <dd>
                         {fila.recordatorios.length === 0
                             ? "Ninguno"
-                            : `${fila.recordatorios.filter((r) => r.activo).length} activos de ${fila.recordatorios.length}`}
+                            : `${fila.recordatorios.filter((r) => r.activo).length} de ${fila.recordatorios.length} activos`}
                     </dd>
                 </div>
                 <div className={styles.dato}>
-                    <dt>Próximo mensaje</dt>
+                    <dt>Próximo envío</dt>
                     <dd>
                         {!activo
                             ? "En pausa"
-                            : resumen.proximo && resumen.proximo.restanteMs !== null
-                                ? `${resumen.proximo.offset} min antes · en ${formatearRestante(resumen.proximo.restanteMs)}`
-                                : evento ? "Ninguno pendiente" : "Sin evento"}
+                            : motivo ? "No saldrá"
+                                : resumen.proximo && resumen.proximo.restanteMs !== null
+                                    ? `Recordatorio en ${restanteCorto(resumen.proximo.restanteMs)}`
+                                    : evento ? "Ninguno pendiente" : "Sin sorteo"}
                     </dd>
                 </div>
                 <div className={styles.dato}>
@@ -164,47 +149,57 @@ export default function TarjetaGrupo({ fila, ahora, seleccionada, cambiandoActiv
                     <dd>
                         {resumen.ultimoEnviado
                             ? `${resumen.ultimoEnviado.tipo} · ${formatearHace(resumen.ultimoEnviado.en, ahora)}`
-                            : evento ? "Ninguno en este evento" : "—"}
+                            : evento ? "Ninguno en este sorteo" : "—"}
                     </dd>
                 </div>
                 <div className={styles.dato}>
                     <dt>Tabla inicial</dt>
                     <dd>
                         {config.publicacion_inicial_tabla?.activo
-                            ? `Activa · ${formatHora12(config.publicacion_inicial_tabla.hora)}`
-                            : "Desactivada"}
+                            ? `Activa · ${horaLegible(config.publicacion_inicial_tabla.hora)}`
+                            : "Pausada"}
                     </dd>
                 </div>
             </dl>
 
-            {fila.recordatorios.some((r) => r.resultado.estado === "error") && (
+            {tieneErrorEnvio(fila) && (
                 <p className={styles.alertaError}>
-                    <AlertTriangle size={14} /> Hubo un error de envío en este evento. Revisa el historial.
+                    <AlertTriangle size={14} /> Hubo un error de envío en este sorteo. Revisa la actividad.
                 </p>
             )}
 
             <div className={styles.cardPie}>
                 <div className={styles.cardAcciones}>
                     <button type="button" className={styles.accionPrincipal} onClick={() => onEditar("general")}>
-                        <Settings2 size={13} /> Editar
+                        <Settings2 size={13} /> Configurar
                     </button>
-                    <button type="button" className={styles.accion} onClick={() => onEditar("programaciones")} title="Agregar programación">
+                    <button type="button" className={styles.accion} onClick={() => onEditar("programaciones")} title="Programar recordatorios">
                         <CalendarPlus size={13} /> Programar
                     </button>
-                    <button type="button" className={styles.accion} onClick={onHistorial} title="Consultar historial">
-                        <History size={13} /> Historial
+                    <button type="button" className={styles.accion} onClick={onHistorial}>
+                        <History size={13} /> Actividad
                     </button>
-                    <button type="button" className={styles.accion} onClick={onDuplicar} title="Copiar esta configuración a otros grupos">
-                        <Copy size={13} /> Duplicar
-                    </button>
-                    <Link
-                        href={`/automatizacion/grupos/${encodeURIComponent(config.grupo_id)}`}
-                        prefetch={false}
-                        className={styles.accion}
-                        title="Detalles del grupo: inicio del día, apertura y sticker de pago"
-                    >
-                        <SlidersHorizontal size={13} /> Detalles
-                    </Link>
+                </div>
+                <div className={styles.pieSecundario}>
+                    <label className={styles.interruptorTexto}>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={activo}
+                            className={`${styles.switch} ${activo ? styles.switchOn : ""}`}
+                            disabled={cambiandoActivo}
+                            onClick={onAlternarActivo}
+                        />
+                        {activo ? "Automatización activa" : "Automatización pausada"}
+                    </label>
+                    <span className={styles.enlacesPie}>
+                        <button type="button" className={styles.enlaceBiblioteca} onClick={onDuplicar} title="Copiar esta configuración a otros grupos">
+                            <Copy size={12} /> Copiar
+                        </button>
+                        <Link href={`/automatizacion/grupos/${encodeURIComponent(config.grupo_id)}`} prefetch={false} className={styles.enlaceBiblioteca}>
+                            Detalles <ArrowRight size={12} />
+                        </Link>
+                    </span>
                 </div>
             </div>
 

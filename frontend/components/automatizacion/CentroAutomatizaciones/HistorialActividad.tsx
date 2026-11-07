@@ -114,7 +114,7 @@ export default function HistorialActividad({ usuarioId, filas, grupoInicial, aho
 
             {!estado || estado === "en_curso" ? (
                 <div className={styles.bloque}>
-                    <span className={styles.etiqueta}>Programados en el evento actual</span>
+                    <span className={styles.etiqueta}>Programados en el sorteo actual</span>
                     {proximos.length === 0 ? (
                         <p className={styles.nota}>No hay mensajes programados pendientes{grupo ? " en este grupo" : ""}.</p>
                     ) : (
@@ -190,7 +190,7 @@ export default function HistorialActividad({ usuarioId, filas, grupoInicial, aho
             <p className={styles.nota}>
                 Se muestran los {limite} registros más recientes del filtro elegido. «Enviado» significa que WhatsApp aceptó el
                 mensaje; el sistema no confirma entrega ni lectura. No existe un estado «cancelado»: lo que no se envió por las
-                reglas (grupo cerrado, sin números libres, automatización desactivada) aparece como «Omitido».
+                reglas (grupo cerrado, sin números libres, automatización pausada) aparece como «Omitido».
             </p>
 
         </div>

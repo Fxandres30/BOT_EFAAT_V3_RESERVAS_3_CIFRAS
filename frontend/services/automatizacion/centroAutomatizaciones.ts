@@ -305,7 +305,7 @@ export function estadoHistorial(accion: Pick<AccionRegistrada, "estado" | "detal
 }
 
 const MOTIVOS: Record<string, string> = {
-    automatizacion_desactivada: "La automatización del grupo estaba desactivada.",
+    automatizacion_desactivada: "La automatización del grupo estaba pausada.",
     grupo_cerrado: "El grupo ya estaba cerrado.",
     sin_disponibles: "No quedaban números libres.",
     sin_disponibles_ni_pendientes: "No quedaban números libres ni pagos pendientes."

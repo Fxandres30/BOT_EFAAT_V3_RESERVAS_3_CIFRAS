@@ -41,7 +41,7 @@ export default function SeccionApertura({ usuarioId, grupoId, inicial, onGuardad
         setGuardando(false);
 
         if (errorGuardar || !data) {
-            setError(`No se pudo guardar (${errorGuardar?.message || "error desconocido"}).`);
+            setError("No se pudo guardar. Inténtalo de nuevo en unos segundos.");
             return;
         }
 
@@ -57,19 +57,18 @@ export default function SeccionApertura({ usuarioId, grupoId, inicial, onGuardad
             <h2 className={styles.sectionTitle}><Rocket size={15} /> Apertura</h2>
 
             <p className={styles.nota}>
-                Se envía justo después de que el grupo real se abre (abrirGrupo, sin cambios) —
-                la apertura real del grupo nunca depende de este interruptor, solo si además se
-                envía un mensaje de texto.
+                Mensaje que EFAAT envía al abrir el grupo para un sorteo. Este interruptor solo
+                decide si se envía el mensaje; no cambia cuándo ni cómo se abre el grupo.
             </p>
 
             <div className={styles.actionRow} style={{ borderTop: "none" }}>
-                <span className={styles.actionLabel}>Activada</span>
+                <span className={styles.actionLabel}>Enviar mensaje de apertura</span>
                 <Switch on={valor.activo} label="Apertura" onClick={() => setValor({ ...valor, activo: !valor.activo })} />
             </div>
 
             <div className={styles.msgRow} style={{ borderTop: "none" }}>
                 <span className={styles.actionLabel}>Mensaje de la biblioteca</span>
-                <SelectorCategoria valor={valor.categoria} onChange={(categoria) => setValor({ ...valor, categoria })} />
+                <SelectorCategoria tipo="OPEN_MESSAGE" valor={valor.categoria} onChange={(categoria) => setValor({ ...valor, categoria })} />
             </div>
 
             <BarraGuardar guardando={guardando} guardadoOk={guardadoOk} error={error} onGuardar={guardar} />

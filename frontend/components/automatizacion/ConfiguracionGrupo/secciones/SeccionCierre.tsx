@@ -38,7 +38,7 @@ export default function SeccionCierre({ usuarioId, grupoId, inicial, onGuardado 
         setGuardando(false);
 
         if (errorGuardar || !data) {
-            setError(`No se pudo guardar (${errorGuardar?.message || "error desconocido"}).`);
+            setError("No se pudo guardar. Inténtalo de nuevo en unos segundos.");
             return;
         }
 
@@ -54,19 +54,18 @@ export default function SeccionCierre({ usuarioId, grupoId, inicial, onGuardado 
             <h2 className={styles.sectionTitle}><Lock size={15} /> Cierre</h2>
 
             <p className={styles.nota}>
-                El momento real del cierre nunca lo decide esta configuración — lo sigue
-                decidiendo el sistema de cierre existente (evaluarEvento/verificarHoraCierre,
-                sin cambios). Esto solo controla si, además, se envía un mensaje de aviso.
+                Mensaje que EFAAT envía cuando el sorteo cierra. Este interruptor solo decide si
+                se envía el aviso; la hora de cierre siempre sale del sorteo.
             </p>
 
             <div className={styles.actionRow} style={{ borderTop: "none" }}>
-                <span className={styles.actionLabel}>Activado</span>
+                <span className={styles.actionLabel}>Enviar mensaje de cierre</span>
                 <Switch on={valor.activo} label="Cierre" onClick={() => setValor({ ...valor, activo: !valor.activo })} />
             </div>
 
             <div className={styles.msgRow} style={{ borderTop: "none" }}>
                 <span className={styles.actionLabel}>Mensaje de la biblioteca</span>
-                <SelectorCategoria valor={valor.categoria} onChange={(categoria) => setValor({ ...valor, categoria })} />
+                <SelectorCategoria tipo="CLOSE_MESSAGE" valor={valor.categoria} onChange={(categoria) => setValor({ ...valor, categoria })} />
             </div>
 
             <BarraGuardar guardando={guardando} guardadoOk={guardadoOk} error={error} onGuardar={guardar} />

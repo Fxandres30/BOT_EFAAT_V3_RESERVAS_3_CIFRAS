@@ -21,6 +21,7 @@ import { cargarSeguimiento, SeguimientoProgramacion } from "@/services/automatiz
 import { contarEnviosRecientes } from "@/services/automatizacion/historialAutomatizacion";
 import { formatearMomento, frescuraDatos } from "@/services/automatizacion/estadoProgramacion";
 import { FiltrosCentro, filtrarFilas } from "@/services/automatizacion/centroAutomatizaciones";
+import { puedeEnviarFila } from "@/services/automatizacion/vistaGrupos";
 
 import AutomatizacionHeader from "../AutomatizacionNav/AutomatizacionHeader";
 import TarjetaGrupo, { SeccionEditor } from "./TarjetaGrupo";
@@ -277,7 +278,7 @@ export default function CentroAutomatizaciones() {
             reemplazarConfigs(data);
             avisar.ok(activo
                 ? `Automatización activada en ${data.length} grupo${data.length === 1 ? "" : "s"}.`
-                : `Automatización desactivada en ${data.length} grupo${data.length === 1 ? "" : "s"}. No saldrán envíos nuevos.`);
+                : `Automatización pausada en ${data.length} grupo${data.length === 1 ? "" : "s"}. No saldrán envíos nuevos.`);
             return true;
 
         } finally {
@@ -339,6 +340,10 @@ export default function CentroAutomatizaciones() {
     const conectados = filas.filter((f) => f.conexion === "conectado").length;
     const activas = filas.filter((f) => f.config.activo).length;
     const programados = filas.reduce((n, f) => n + f.programadosActivos, 0);
+    // Activas que de verdad pueden enviar (autorizadas y conectadas): mismo
+    // criterio que el Resumen. null mientras se comprueba la conexión.
+    const capacidad = filas.filter((f) => f.config.activo).map(puedeEnviarFila);
+    const operativas = capacidad.some((c) => c === null) ? null : capacidad.filter((c) => c === true).length;
     const pendientes = filas.reduce((n, f) => n + f.pendientes, 0);
     const frescura = frescuraDatos(ultimaCarga, falloCarga, ahora);
 
@@ -381,12 +386,16 @@ export default function CentroAutomatizaciones() {
                 <>
 
                     <div className={styles.kpis}>
-                        <StatCard label="Grupos" value={filas.length} />
-                        <StatCard label="Conectados" value={conexionLista ? conectados : "…"} tone={conexionLista && conectados < filas.length ? "warning" : "success"} hint={conexionLista ? undefined : "Comprobando"} />
-                        <StatCard label="Activas" value={activas} tone="primary" />
-                        <StatCard label="Pausadas" value={filas.length - activas} />
-                        <StatCard label="Mensajes programados" value={programados} hint="Activos en grupos activos" />
-                        <StatCard label="Pendientes" value={seguimiento ? pendientes : "—"} hint="En el evento actual" />
+                        <StatCard label="Grupos configurados" value={filas.length} hint={conexionLista ? `${conectados} conectado${conectados === 1 ? "" : "s"}` : "Comprobando conexión"} />
+                        <StatCard
+                            label="Activas"
+                            value={operativas ?? "…"}
+                            tone="primary"
+                            hint={operativas === null ? "Comprobando tu WhatsApp" : activas - operativas > 0 ? `Pueden enviar · ${activas - operativas} más sin poder enviar` : "Automatizaciones que pueden enviar"}
+                        />
+                        <StatCard label="En pausa" value={filas.length - activas} hint="Automatizaciones pausadas" />
+                        <StatCard label="Mensajes programados" value={programados} hint="Recordatorios activos" />
+                        <StatCard label="Próximos envíos" value={seguimiento ? pendientes : "—"} hint="En los sorteos en curso" />
                         <StatCard label="Envíos 24 h" value={envios24h ?? "—"} tone="success" hint={envios24h === null ? "No disponible" : "Aceptados por WhatsApp"} />
                     </div>
 
@@ -459,7 +468,7 @@ export default function CentroAutomatizaciones() {
                                 </div>
                             </div>
 
-                            <div className={styles.filaControl}>
+                            {vista === "grupos" && <div className={styles.filaControl}>
                                 <label className={styles.seleccionarTodo}>
                                     <input
                                         type="checkbox"
@@ -473,13 +482,13 @@ export default function CentroAutomatizaciones() {
                                     <button type="button" className={styles.accion} onClick={() => setCambioActivo({ grupos: filas, activo: true })} disabled={activas === filas.length}>
                                         Activar todas
                                     </button>
-                                    <button type="button" className={`${styles.accion} ${styles.accionPeligro}`} onClick={() => setCambioActivo({ grupos: filas, activo: false })} disabled={activas === 0}>
+                                    <button type="button" className={styles.accion} onClick={() => setCambioActivo({ grupos: filas, activo: false })} disabled={activas === 0}>
                                         Pausar todas
                                     </button>
                                 </div>
-                            </div>
+                            </div>}
 
-                            {seleccionadas.length > 0 && (
+                            {vista === "grupos" && seleccionadas.length > 0 && (
                                 <div className={styles.lote} role="region" aria-label="Acciones sobre los grupos seleccionados">
                                     <span className={styles.loteTexto}>{seleccionadas.length} seleccionado{seleccionadas.length === 1 ? "" : "s"}</span>
                                     <button type="button" className={styles.loteBoton} onClick={() => setCambioActivo({ grupos: seleccionadas, activo: true })}>Activar</button>
@@ -600,7 +609,7 @@ export default function CentroAutomatizaciones() {
                                 <p className={styles.alerta}>
                                     <AlertTriangle size={14} />
                                     No saldrán recordatorios, actualizaciones, tabla inicial ni cierre nuevos en estos grupos. Lo ya enviado se
-                                    conserva. {conEvento.length > 0 && `${conEvento.length} tiene${conEvento.length === 1 ? "" : "n"} un evento en marcha: sus recordatorios que venzan durante la pausa quedarán omitidos.`}
+                                    conserva. {conEvento.length > 0 && `${conEvento.length} tiene${conEvento.length === 1 ? "" : "n"} un sorteo en marcha: sus recordatorios que venzan durante la pausa quedarán omitidos.`}
                                 </p>
                             )}
                             {cambioActivo.activo && sinAutorizar.length > 0 && (

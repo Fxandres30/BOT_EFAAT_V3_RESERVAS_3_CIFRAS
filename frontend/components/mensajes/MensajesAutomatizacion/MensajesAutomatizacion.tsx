@@ -7,16 +7,16 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Modal } from "@/components/ui/Modal";
 
 import {
-    AutomationMessage,
-    FiltrosMensajes,
-    listarMensajes,
-    alternarActivo,
-    duplicarMensaje,
-    eliminarMensaje
-} from "@/services/automatizacion/mensajesAutomation";
-import { TIPOS_AUTOMATIZACION, CATEGORIAS_AUTOMATIZACION } from "@/services/automatizacion/tiposCategorias";
+    ElementoBiblioteca,
+    listarBiblioteca,
+    alternarElemento,
+    duplicarElemento,
+    eliminarElemento
+} from "@/services/mensajes/bibliotecaAutomatizacionDatos";
+import { FiltrosBiblioteca, TIPOS_BIBLIOTECA, esTipoBiblioteca, resumen } from "@/services/mensajes/bibliotecaAutomatizacion";
 import { cargarMensajesEjemplo } from "@/services/automatizacion/mensajesEjemplo";
 
 import MensajeCard from "./MensajeCard";
@@ -24,33 +24,37 @@ import MensajeModal from "./MensajeModal";
 
 import styles from "./MensajesAutomatizacion.module.css";
 
-// Biblioteca central de los mensajes de automatización (automation_messages:
-// apertura, recordatorio, actualización y cierre). Antes vivía en
-// Automatización → Mensajes; ahora es la ÚNICA pantalla que administra su
-// contenido. Automatización solo elige qué mensajes usa cada envío.
-// Mismos servicios y mismas reglas (RLS de 007): los globales de EFAAT no
-// se editan, se duplican como copia propia.
+// Biblioteca central de los mensajes de automatización: Inicio del día,
+// Apertura, Recordatorio, Actualización y Cierre. Es la ÚNICA pantalla que
+// administra su contenido; Automatización decide dónde, cuándo y con qué
+// condiciones se envían.
+//
+// Dos fuentes, sin mover datos (services/mensajes/bibliotecaAutomatizacion*):
+//   automation_messages (los cuatro tipos de envío; propios y «De EFAAT»)
+//   plantillas_mensaje tipo «inicio_dia» (lo que lee el Inicio del día).
+// Sin categorías: los mensajes se organizan por su situación de envío. La
+// categoría guardada en automation_messages se conserva intacta.
 
 interface Props {
     usuarioId: string;
     tipoInicial?: string | null;
+    // Los enlaces antiguos (?categoria=) siguen funcionando: se ignora.
     categoriaInicial?: string | null;
 }
 
-export default function MensajesAutomatizacion({ usuarioId, tipoInicial, categoriaInicial }: Props) {
+export default function MensajesAutomatizacion({ usuarioId, tipoInicial }: Props) {
 
-    const [filtroTipo, setFiltroTipo] = useState(() => (TIPOS_AUTOMATIZACION.some((t) => t.id === tipoInicial) ? tipoInicial as string : ""));
-    const [filtroCategoria, setFiltroCategoria] = useState(() => (CATEGORIAS_AUTOMATIZACION.some((c) => c.id === categoriaInicial) ? categoriaInicial as string : ""));
-    const [filtroEstado, setFiltroEstado] = useState<FiltrosMensajes["estado"]>("todos");
+    const [filtroTipo, setFiltroTipo] = useState(() => (esTipoBiblioteca(tipoInicial) ? tipoInicial as string : ""));
+    const [filtroEstado, setFiltroEstado] = useState<NonNullable<FiltrosBiblioteca["estado"]>>("todos");
     const [recarga, setRecarga] = useState(0);
 
     // La lista vale para la combinación de filtros con la que se pidió
     // (sin setState síncrono en el efecto): mientras llega la nueva, se
     // muestra «Cargando…».
-    const clave = `${usuarioId}|${filtroTipo}|${filtroCategoria}|${filtroEstado}|${recarga}`;
-    const [cargada, setCargada] = useState<{ clave: string; mensajes: AutomationMessage[]; error: string | null } | null>(null);
+    const clave = `${usuarioId}|${filtroTipo}|${filtroEstado}|${recarga}`;
+    const [cargada, setCargada] = useState<{ clave: string; mensajes: ElementoBiblioteca[]; error: string | null } | null>(null);
 
-    const [modal, setModal] = useState<"nuevo" | AutomationMessage | null>(null);
+    const [modal, setModal] = useState<"nuevo" | ElementoBiblioteca | null>(null);
     const [procesando, setProcesando] = useState<string | null>(null);
 
     const [cargandoEjemplos, setCargandoEjemplos] = useState(false);
@@ -60,78 +64,77 @@ export default function MensajesAutomatizacion({ usuarioId, tipoInicial, categor
 
         let vigente = true;
 
-        listarMensajes(usuarioId, {
-            tipo: filtroTipo || undefined,
-            categoria: filtroCategoria || undefined,
-            estado: filtroEstado
-        }).then(({ data, error: errorCarga }) => {
+        listarBiblioteca(usuarioId, { tipo: filtroTipo || undefined, estado: filtroEstado }).then(({ data, error: errorCarga }) => {
             if (!vigente) return;
             setCargada({
                 clave,
-                mensajes: errorCarga ? [] : ((data as AutomationMessage[]) || []),
-                error: errorCarga ? `No se pudieron cargar los mensajes (${errorCarga.message}).` : null
+                mensajes: data || [],
+                error: errorCarga ? `No se pudieron cargar los mensajes. ${errorCarga}.` : null
             });
         });
 
         return () => { vigente = false; };
 
-    }, [clave, usuarioId, filtroTipo, filtroCategoria, filtroEstado]);
+    }, [clave, usuarioId, filtroTipo, filtroEstado]);
 
     const cargando = cargada?.clave !== clave;
     const mensajes = !cargando && cargada ? cargada.mensajes : [];
     const error = !cargando && cargada ? cargada.error : null;
 
-    function setMensajes(cambio: (prev: AutomationMessage[]) => AutomationMessage[]) {
+    function setMensajes(cambio: (prev: ElementoBiblioteca[]) => ElementoBiblioteca[]) {
         setCargada((prev) => (prev ? { ...prev, mensajes: cambio(prev.mensajes) } : prev));
     }
 
-    async function alternar(m: AutomationMessage) {
+    async function alternar(m: ElementoBiblioteca) {
 
-        if (m.usuario_id !== usuarioId) return; // ajeno/global — sin controles
+        if (m.usuario_id !== usuarioId) return; // de EFAAT — sin controles
 
-        setProcesando(m.id);
+        setProcesando(m.clave);
 
-        const { data, error: errorAlt } = await alternarActivo(m.id, !m.activo);
+        const { data } = await alternarElemento(m, !m.activo);
 
         setProcesando(null);
 
-        if (!errorAlt && data) {
-            setMensajes((prev) => prev.map((x) => (x.id === m.id ? (data as AutomationMessage) : x)));
+        if (data) {
+            setMensajes((prev) => prev.map((x) => (x.clave === m.clave ? data : x)));
         }
 
     }
 
-    async function duplicar(m: AutomationMessage) {
+    async function duplicar(m: ElementoBiblioteca) {
 
         if (!usuarioId) return;
 
-        setProcesando(m.id);
+        setProcesando(m.clave);
 
-        const { data, error: errorDup } = await duplicarMensaje(usuarioId, m);
+        const { data } = await duplicarElemento(usuarioId, m);
 
         setProcesando(null);
 
-        if (!errorDup && data) {
-            setMensajes((prev) => [data as AutomationMessage, ...prev]);
+        if (data) {
+            setMensajes((prev) => [data, ...prev]);
         }
 
     }
 
-    async function eliminar(m: AutomationMessage) {
+    // Eliminar pide confirmación en un diálogo propio (no se borra al primer clic).
+    const [porEliminar, setPorEliminar] = useState<ElementoBiblioteca | null>(null);
+
+    async function eliminar(m: ElementoBiblioteca) {
 
         if (m.usuario_id !== usuarioId) return;
 
-        if (!confirm(`¿Eliminar el mensaje "${m.nombre_interno}"?`)) return;
+        setProcesando(m.clave);
 
-        setProcesando(m.id);
-
-        const { error: errorDel } = await eliminarMensaje(m.id);
+        const { error: errorDel } = await eliminarElemento(m);
 
         setProcesando(null);
 
         if (!errorDel) {
-            setMensajes((prev) => prev.filter((x) => x.id !== m.id));
+            setMensajes((prev) => prev.filter((x) => x.clave !== m.clave));
         }
+
+        setPorEliminar(null);
 
     }
 
@@ -161,14 +164,14 @@ export default function MensajesAutomatizacion({ usuarioId, tipoInicial, categor
 
     }
 
-    function alGuardado(m: AutomationMessage) {
+    function alGuardado(m: ElementoBiblioteca) {
 
         setMensajes((prev) => {
 
-            const existe = prev.some((x) => x.id === m.id);
+            const existe = prev.some((x) => x.clave === m.clave);
 
             if (existe) {
-                return prev.map((x) => (x.id === m.id ? m : x));
+                return prev.map((x) => (x.clave === m.clave ? m : x));
             }
 
             return [m, ...prev];
@@ -179,16 +182,15 @@ export default function MensajesAutomatizacion({ usuarioId, tipoInicial, categor
 
     }
 
-    const activos = mensajes.filter((m) => m.activo).length;
+    const cuenta = resumen(mensajes);
 
     return (
 
         <div className={styles.page}>
 
-
                     <SectionHeader
                         title="Mensajes de automatización"
-                        description="Textos que EFAAT envía solo en tus grupos: apertura, recordatorios, actualizaciones y cierre. En Automatización eliges cuándo se envían y qué mensajes de aquí usa cada envío; de los activos del tipo (o de la categoría elegida) se escoge uno al azar."
+                        description="Textos que EFAAT envía solo en tus grupos: inicio del día, apertura, recordatorios, actualizaciones y cierre. Aquí se escriben; en Automatización eliges dónde y cuándo se envían. De los mensajes activos de cada tipo se escoge uno al azar."
                         actions={
                             <div className={styles.headerActions}>
                                 <Button
@@ -210,8 +212,8 @@ export default function MensajesAutomatizacion({ usuarioId, tipoInicial, categor
 
                     {!cargando && (
                         <p className={styles.summary}>
-                            {mensajes.length} mensaje{mensajes.length === 1 ? "" : "s"} · {activos} activo{activos === 1 ? "" : "s"} ·{" "}
-                            {mensajes.length - activos} inactivo{mensajes.length - activos === 1 ? "" : "s"}
+                            {cuenta.total} mensaje{cuenta.total === 1 ? "" : "s"} · {cuenta.activos} activo{cuenta.activos === 1 ? "" : "s"} ·{" "}
+                            {cuenta.inactivos} inactivo{cuenta.inactivos === 1 ? "" : "s"}
                         </p>
                     )}
 
@@ -219,22 +221,15 @@ export default function MensajesAutomatizacion({ usuarioId, tipoInicial, categor
 
                         <Select label="Tipo" value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)}>
                             <option value="">Todos</option>
-                            {TIPOS_AUTOMATIZACION.map((t) => (
+                            {TIPOS_BIBLIOTECA.map((t) => (
                                 <option key={t.id} value={t.id}>{t.label}</option>
-                            ))}
-                        </Select>
-
-                        <Select label="Categoría" value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
-                            <option value="">Todas</option>
-                            {CATEGORIAS_AUTOMATIZACION.map((c) => (
-                                <option key={c.id} value={c.id}>{c.label}</option>
                             ))}
                         </Select>
 
                         <Select
                             label="Estado"
                             value={filtroEstado}
-                            onChange={(e) => setFiltroEstado(e.target.value as FiltrosMensajes["estado"])}
+                            onChange={(e) => setFiltroEstado(e.target.value as NonNullable<FiltrosBiblioteca["estado"]>)}
                         >
                             <option value="todos">Todos</option>
                             <option value="activos">Activos</option>
@@ -268,14 +263,14 @@ export default function MensajesAutomatizacion({ usuarioId, tipoInicial, categor
                             {mensajes.map((m) => (
 
                                 <MensajeCard
-                                    key={m.id}
+                                    key={m.clave}
                                     mensaje={m}
                                     esPropio={m.usuario_id === usuarioId}
-                                    procesando={procesando === m.id}
+                                    procesando={procesando === m.clave}
                                     onEditar={() => setModal(m)}
                                     onDuplicar={() => duplicar(m)}
                                     onAlternar={() => alternar(m)}
-                                    onEliminar={() => eliminar(m)}
+                                    onEliminar={() => setPorEliminar(m)}
                                 />
 
                             ))}
@@ -284,11 +279,26 @@ export default function MensajesAutomatizacion({ usuarioId, tipoInicial, categor
 
                     )}
 
+            <Modal
+                open={!!porEliminar}
+                size="sm"
+                onClose={() => { if (!procesando) setPorEliminar(null); }}
+                title="¿Eliminar este mensaje?"
+                description={porEliminar ? `«${porEliminar.nombre}» dejará de usarse en tus envíos automáticos. Esta acción no se puede deshacer; si solo quieres dejar de usarlo, desactívalo.` : undefined}
+                footer={
+                    <>
+                        <Button variant="ghost" size="sm" onClick={() => setPorEliminar(null)} disabled={!!procesando}>Cancelar</Button>
+                        <Button variant="danger" size="sm" loading={!!procesando} onClick={() => porEliminar && eliminar(porEliminar)}>Eliminar</Button>
+                    </>
+                }
+            />
+
             {modal && (
 
                 <MensajeModal
                     usuarioId={usuarioId}
                     mensaje={modal === "nuevo" ? null : modal}
+                    tipoInicial={filtroTipo || null}
                     onClose={() => setModal(null)}
                     onGuardado={alGuardado}
                 />

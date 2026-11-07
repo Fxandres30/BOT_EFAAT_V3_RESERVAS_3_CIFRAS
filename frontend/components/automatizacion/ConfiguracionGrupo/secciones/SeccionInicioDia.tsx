@@ -52,7 +52,7 @@ export default function SeccionInicioDia({ usuarioId, grupoId, inicial, onGuarda
         setGuardando(false);
 
         if (errorGuardar || !data) {
-            setError(`No se pudo guardar (${errorGuardar?.message || "error desconocido"}).`);
+            setError("No se pudo guardar. Inténtalo de nuevo en unos segundos.");
             return;
         }
 
@@ -68,9 +68,8 @@ export default function SeccionInicioDia({ usuarioId, grupoId, inicial, onGuarda
             <h2 className={styles.sectionTitle}><Sunrise size={15} /> Inicio del día</h2>
 
             <p className={styles.nota}>
-                Mensaje de saludo automático, independiente del ciclo del evento — no crea ni
-                depende de ninguna reserva/evento detectado. Se envía como máximo una vez por día
-                por grupo.
+                Saludo automático que se envía como máximo una vez al día en este grupo, aunque
+                no haya un sorteo en curso.
             </p>
 
             <label className={styles.checkRow}>
@@ -79,7 +78,7 @@ export default function SeccionInicioDia({ usuarioId, grupoId, inicial, onGuarda
                     checked={valor.activo}
                     onChange={(e) => setValor({ ...valor, activo: e.target.checked })}
                 />
-                {valor.activo ? "Activado" : "Desactivado"}
+                Enviar el saludo de inicio del día
             </label>
 
             <div className={styles.grid2} style={{ marginTop: 12 }}>
@@ -105,12 +104,11 @@ export default function SeccionInicioDia({ usuarioId, grupoId, inicial, onGuarda
             </div>
 
             <p className={styles.nota}>
-                El texto se elige al azar entre las plantillas habilitadas del tipo{" "}
+                El texto se elige al azar entre las plantillas activas de{" "}
                 <strong>Inicio del día</strong> en{" "}
-                <Link href="/mensajes" className={styles.back} style={{ display: "inline" }}>Mensajes</Link>.
-                Como este mensaje se envía antes de que se detecte el sorteo del día, variables
-                como el nombre del evento o el premio normalmente aparecerán vacías en el texto —
-                nunca se inventa un dato que todavía no existe.
+                <Link href="/mensajes?vista=automatizacion&tipo=inicio_dia" target="_blank" rel="noopener noreferrer" className={styles.enlaceBiblioteca}>Mensajes → Mensajes de automatización</Link>.
+                Como sale antes de que se detecte el sorteo del día, los datos del sorteo (nombre,
+                premio) pueden quedar vacíos en el texto.
             </p>
 
             <BarraGuardar guardando={guardando} guardadoOk={guardadoOk} error={error} onGuardar={guardar} />

@@ -163,7 +163,7 @@ export function claveRecordatorio(eventSessionId: string, offset: number): strin
 }
 
 const ETIQUETAS: Record<EstadoRecordatorio, string> = {
-    desactivado: "Desactivado",
+    desactivado: "Pausado",
     pausado: "En pausa",
     sin_evento: "No programado",
     sin_hora: "Sin hora de cierre",
@@ -182,7 +182,7 @@ const ETIQUETAS: Record<EstadoRecordatorio, string> = {
 // Motivos de omisión que escribe eventRules.decidirRecordatoriosSegunEstado
 // (detalle.resultado.motivo). Uno desconocido se muestra genérico.
 const MOTIVOS_OMISION: Record<string, string> = {
-    automatizacion_desactivada: "la automatización del grupo estaba desactivada",
+    automatizacion_desactivada: "la automatización del grupo estaba pausada",
     grupo_cerrado: "el grupo ya estaba cerrado",
     sin_disponibles: "no quedaban números libres",
     sin_disponibles_ni_pendientes: "no quedaban números libres ni pagos pendientes"
@@ -282,15 +282,15 @@ export function estadoRecordatorio({ offset, activo, cierre, cicloAbierto, accio
     if (!activo) return base("desactivado");
 
     if (!automatizacionActiva) {
-        return base("pausado", { motivo: "La automatización del grupo está desactivada: no se enviará mientras siga así." });
+        return base("pausado", { motivo: "La automatización del grupo está pausada: no se enviará mientras siga así." });
     }
 
     if (!cicloAbierto) {
-        return base("sin_evento", { motivo: "No hay un evento con la automatización en marcha en este grupo." });
+        return base("sin_evento", { motivo: "No hay un sorteo con la automatización en marcha en este grupo." });
     }
 
     if (!cierre) {
-        return base("sin_hora", { motivo: "El evento no tiene una fecha y hora de cierre válidas." });
+        return base("sin_hora", { motivo: "El sorteo no tiene una fecha y hora de cierre válidas." });
     }
 
     const momento = new Date(cierre.getTime() - offset * 60000);

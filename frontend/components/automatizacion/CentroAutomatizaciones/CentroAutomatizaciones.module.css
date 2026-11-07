@@ -1031,3 +1031,68 @@
   color: var(--efaat-text-secondary);
   overflow-wrap: anywhere;
 }
+
+/* --------------------------------------------- correcciones finales --- */
+
+/* Seis indicadores sin tarjeta huérfana: 6 · 3 · 2 columnas. */
+.kpis {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+@media (max-width: 1180px) {
+  .kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.cardPie {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.pieSecundario {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.interruptorTexto {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--efaat-text-xs);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-text);
+  cursor: pointer;
+}
+
+.enlacesPie {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+button.enlaceBiblioteca {
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.tipoChip {
+  white-space: nowrap;
+}
+
+.motivoTipo {
+  display: block;
+  font-size: var(--efaat-text-2xs);
+  color: var(--efaat-warning-strong);
+}

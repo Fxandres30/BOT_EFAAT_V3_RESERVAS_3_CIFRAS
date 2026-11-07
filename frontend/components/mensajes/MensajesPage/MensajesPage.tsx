@@ -43,7 +43,10 @@ import MensajesAutomatizacion from "../MensajesAutomatizacion/MensajesAutomatiza
 
 import styles from "./MensajesPage.module.css";
 
-const CATEGORIAS: TipoMensaje["categoria"][] = ["Reservas", "Consultas", "Automatización", "Futuro"];
+// «Automatización» (Inicio del día) ya no se lista aquí: se administra en la
+// pestaña «Mensajes de automatización», junto a apertura, recordatorios,
+// actualizaciones y cierre. Sus plantillas siguen en plantillas_mensaje.
+const CATEGORIAS: TipoMensaje["categoria"][] = ["Reservas", "Consultas", "Futuro"];
 
 // Grupo visual propio, mostrado después de "Reservas": los tipos de
 // números y pagos salen de "Consultas" para encontrarlos juntos (su
@@ -75,10 +78,13 @@ const TIPO_REACCIONES = "reacciones_reserva";
 
 // Dos bibliotecas en una sola pantalla:
 //   «Respuestas a clientes»       plantillas_mensaje (lo que EFAAT responde)
-//   «Mensajes de automatización»  automation_messages (lo que EFAAT envía
-//                                 solo: apertura, recordatorios, etc.)
-// ?vista=automatizacion (&tipo=, &categoria=) abre la segunda; así enlazan
-// Automatización y la ruta antigua /automatizacion/mensajes.
+//   «Mensajes de automatización»  lo que EFAAT envía solo: inicio del día
+//                                 (plantillas_mensaje) y apertura,
+//                                 recordatorios, actualización y cierre
+//                                 (automation_messages)
+// ?vista=automatizacion (&tipo=) abre la segunda; así enlazan Automatización
+// y la ruta antigua /automatizacion/mensajes. &categoria= se acepta y se
+// ignora (enlaces antiguos).
 type VistaMensajes = "respuestas" | "automatizacion";
 
 const VISTAS_MENSAJES: { value: VistaMensajes; label: string }[] = [

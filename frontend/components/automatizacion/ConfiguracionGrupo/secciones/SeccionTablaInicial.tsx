@@ -47,7 +47,7 @@ export default function SeccionTablaInicial({ usuarioId, grupoId, inicial, onGua
         setGuardando(false);
 
         if (errorGuardar || !data) {
-            setError(`No se pudo guardar (${errorGuardar?.message || "error desconocido"}).`);
+            setError("No se pudo guardar. Inténtalo de nuevo en unos segundos.");
             return;
         }
 
@@ -68,7 +68,7 @@ export default function SeccionTablaInicial({ usuarioId, grupoId, inicial, onGua
                     checked={valor.activo}
                     onChange={(e) => setValor({ ...valor, activo: e.target.checked })}
                 />
-                {valor.activo ? "Activada" : "Desactivada"}
+                Publicar la tabla al empezar el sorteo
             </label>
 
             <div className={styles.grid2} style={{ marginTop: 12 }}>
@@ -94,13 +94,12 @@ export default function SeccionTablaInicial({ usuarioId, grupoId, inicial, onGua
             </div>
 
             <p className={styles.nota}>
-                La hora indica cuándo se intenta publicar la primera tabla. La imagen y los
-                números siempre salen del evento real detectado (mismo Compartir real del botón
-                manual del panel de Tablas).
+                A partir de esta hora se publica la tabla del sorteo, una vez por sorteo. Usa la
+                misma imagen y los mismos números que «Compartir» en Reservas.
             </p>
             <p className={styles.nota}>
-                Si el evento todavía no ha sido detectado, no se envía nada. Cuando el evento
-                aparezca después de la hora programada, se publicará si todavía no se ha realizado.
+                Si todavía no hay sorteo, no se envía nada. Si el sorteo aparece después de esa
+                hora, la tabla se publica en ese momento.
             </p>
 
             <BarraGuardar guardando={guardando} guardadoOk={guardadoOk} error={error} onGuardar={guardar} />

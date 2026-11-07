@@ -11,7 +11,6 @@ import type { BadgeTone } from "@/components/ui/Badge";
 import { Tabs } from "@/components/ui/Tabs";
 import { Aviso, avisar } from "@/components/ui/Avisos";
 import { useAccion } from "@/hooks/useAccion";
-import { formatHora12 } from "@/lib/formatHora";
 
 import {
     AutomationConfig,
@@ -41,6 +40,7 @@ import {
 
 import type { FilaGrupo } from "./filaGrupo";
 import type { SeccionEditor } from "./TarjetaGrupo";
+import { horaLegible } from "../compartido/estados";
 import styles from "./CentroAutomatizaciones.module.css";
 
 interface Props {
@@ -361,7 +361,7 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
                     <div className={styles.filaControl}>
                         <span className={styles.etiqueta}>Automatización de este grupo</span>
                         <span className={styles.switchFila}>
-                            {borrador.activo ? "Activa" : "Desactivada"}
+                            {borrador.activo ? "Activa" : "Pausada"}
                             <Interruptor on={borrador.activo} label="Automatización del grupo" onClick={() => cambiar("activo", !borrador.activo)} />
                         </span>
                     </div>
@@ -369,20 +369,20 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
                         <p className={styles.alerta}>
                             <AlertTriangle size={14} />
                             Al guardar, este grupo no enviará recordatorios, actualizaciones, tabla inicial ni cierre nuevos
-                            mientras siga desactivado. Lo ya enviado se conserva en el historial. Los recordatorios cuyo momento
+                            mientras siga en pausa. Lo ya enviado se conserva en la actividad. Los recordatorios cuyo momento
                             llegue durante la pausa quedan como «omitidos» y no se envían después.
                         </p>
                     )}
                     <p className={styles.nota}>
                         La apertura y el inicio del día se configuran en{" "}
-                        <Link href={`/automatizacion/grupos/${encodeURIComponent(fila.config.grupo_id)}`} prefetch={false}>Detalles del grupo</Link>.
+                        <Link href={`/automatizacion/grupos/${encodeURIComponent(fila.config.grupo_id)}`} prefetch={false} className={styles.enlaceBiblioteca}>Detalles del grupo →</Link>
                     </p>
                     {fila.autorizado === false && (
                         <p className={styles.alerta}>
                             <AlertTriangle size={14} />
                             <span>
                                 El grupo no está autorizado: la automatización no abrirá ciclos aquí hasta autorizarlo en{" "}
-                                <Link href="/automatizacion/grupos" prefetch={false}>Grupos</Link>.
+                                <Link href="/automatizacion/grupos" prefetch={false} className={styles.enlaceBiblioteca}>Grupos</Link>.
                             </span>
                         </p>
                     )}
@@ -402,7 +402,7 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
                         </dd>
                     </div>
                     <div className={styles.dato}>
-                        <dt>Evento detectado</dt>
+                        <dt>Sorteo en curso</dt>
                         <dd>{!fila.datosDisponibles ? "No disponible" : fila.evento ? fila.evento.nombre_evento || "Sorteo sin nombre" : "Sin evento activo"}</dd>
                     </div>
                     <div className={styles.dato}>
@@ -410,7 +410,7 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
                         <dd>
                             {fila.cierre
                                 ? formatearMomento(fila.cierre, ahora)
-                                : fila.horaCierre ? `${formatHora12(fila.horaCierre)} · fecha no confirmada` : "—"}
+                                : fila.horaCierre ? `${horaLegible(fila.horaCierre)} · fecha no confirmada` : "—"}
                         </dd>
                     </div>
                     <div className={styles.dato}>
@@ -420,7 +420,7 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
                 </dl>
 
                 <p className={styles.nota}>
-                    La hora de cierre y los datos del sorteo salen siempre del evento real detectado. Esta pantalla no los
+                    La hora de cierre y los datos del sorteo salen siempre del anuncio detectado en el grupo. Esta pantalla no los
                     cambia ni puede cancelar, mover o modificar un sorteo.
                 </p>
 
@@ -524,13 +524,13 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
                                     </p>
                                 )}
                                 {cfg.activo && borrador.activo && yaPaso && !accion && (
-                                    <p className={styles.textoAviso}>Su momento ya pasó en el evento actual: al guardar se enviará en el próximo minuto.</p>
+                                    <p className={styles.textoAviso}>Su momento ya pasó en el sorteo actual: al guardar se enviará en el próximo minuto.</p>
                                 )}
                                 {accion && !original && (
-                                    <p className={styles.nota}>Esta anticipación ya se registró en el evento actual: no se repetirá.</p>
+                                    <p className={styles.nota}>Esta anticipación ya se registró en el sorteo actual: no se repetirá.</p>
                                 )}
                                 {!cfg.activo && original?.activo && (
-                                    <p className={styles.nota}>Desactivada: no se harán nuevos envíos de esta programación mientras siga así.</p>
+                                    <p className={styles.nota}>Pausada: no se harán nuevos envíos de esta programación mientras siga así.</p>
                                 )}
                             </div>
 
@@ -575,10 +575,10 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
         const estadoTabla = !fila.datosDisponibles
             ? "No disponible"
             : !fila.evento
-                ? "Sin evento activo"
+                ? "Sin sorteo en curso"
                 : accion
-                    ? accion.estado === "ok" ? "Publicada en este evento" : accion.estado === "error" ? "Error al publicar en este evento" : "Publicándose"
-                    : tabla.activo && borrador.activo ? "Pendiente para este evento" : "No se publicará en este evento";
+                    ? accion.estado === "ok" ? "Publicada en este sorteo" : accion.estado === "error" ? "Error al publicar en este sorteo" : "Publicándose"
+                    : tabla.activo && borrador.activo ? "Pendiente para este sorteo" : "No se publicará en este sorteo";
 
         return (
 
@@ -586,7 +586,7 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
 
                 <div className={styles.bloque}>
                     <div className={styles.filaControl}>
-                        <span className={styles.etiqueta}>Publicar la tabla al iniciar el evento</span>
+                        <span className={styles.etiqueta}>Publicar la tabla al empezar el sorteo</span>
                         <Interruptor
                             on={tabla.activo}
                             label="Tabla inicial"
@@ -625,8 +625,8 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
                     </div>
 
                     <p className={styles.nota}>
-                        Se publica una vez por evento, a partir de esta hora, cuando hay un evento abierto con su tabla. Si el
-                        evento se detecta después de la hora, se publica en ese momento. Usa la misma imagen y el mismo texto que
+                        Se publica una vez por sorteo, a partir de esta hora, cuando hay un sorteo abierto con su tabla. Si el
+                        sorteo se detecta después de la hora, se publica en ese momento. Usa la misma imagen y el mismo texto que
                         «Compartir» en Tablas (ese texto no se edita aquí).
                     </p>
                 </div>
@@ -714,7 +714,7 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
                         <SelectorCategoria valor={cierre.categoria} label="Mensajes de cierre que se usan" onChange={(categoria) => cambiar("mensaje_cierre", { ...cierre, categoria })} />
                     </div>
                     <p className={styles.nota}>
-                        Se envía cuando el sistema confirma el cierre real del evento, salvo que el sorteo tenga su propio aviso de
+                        Se envía cuando se confirma el cierre real del sorteo, salvo que el sorteo tenga su propio aviso de
                         cierre (nunca se envían dos).
                     </p>
                     <EnlaceBiblioteca tipo="CLOSE_MESSAGE" categoria={cierre.categoria}>Ver estos mensajes en la biblioteca</EnlaceBiblioteca>

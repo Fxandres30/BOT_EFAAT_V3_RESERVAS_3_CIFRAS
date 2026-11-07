@@ -5,11 +5,11 @@ import { Bell, Lock, Pencil, RefreshCw, Rocket, TableProperties, type LucideIcon
 
 import { Badge } from "@/components/ui/Badge";
 
-import { formatHora12 } from "@/lib/formatHora";
-import { formatearRestante } from "@/services/automatizacion/estadoProgramacion";
 import { listarProgramaciones } from "@/services/automatizacion/centroAutomatizaciones";
 import { nombreCategoria } from "@/services/automatizacion/tiposCategorias";
-import { estadoTipos } from "@/services/automatizacion/vistaGrupos";
+import { estadoTipos, motivoSinEnvio, puedeEnviarFila } from "@/services/automatizacion/vistaGrupos";
+
+import { horaLegible, restanteCorto } from "../compartido/estados";
 
 import type { FilaGrupo } from "./filaGrupo";
 import type { SeccionEditor } from "./TarjetaGrupo";
@@ -68,7 +68,7 @@ export default function VistaPorTipo({ filas, onEditar }: Props) {
                     fila: f,
                     activo: activos.length > 0,
                     detalle: activos.length === 0 ? "Ninguno activo" : activos.map((p) => `${p.minutos} min`).join(" · ") + " antes del cierre",
-                    extra: f.config.activo && f.resumen.proximo?.restanteMs != null ? `Siguiente en ${formatearRestante(f.resumen.proximo.restanteMs)}` : null
+                    extra: f.config.activo && f.resumen.proximo?.restanteMs != null ? `siguiente en ${restanteCorto(f.resumen.proximo.restanteMs)}` : null
                 };
             })
         },
@@ -102,7 +102,7 @@ export default function VistaPorTipo({ filas, onEditar }: Props) {
             filas: filas.map((f) => ({
                 fila: f,
                 activo: estadoTipos(f.config).tablaInicial,
-                detalle: f.config.publicacion_inicial_tabla?.activo ? `A partir de las ${formatHora12(f.config.publicacion_inicial_tabla.hora)}` : "No se publica"
+                detalle: f.config.publicacion_inicial_tabla?.activo ? `A partir de las ${horaLegible(f.config.publicacion_inicial_tabla.hora)}` : "No se publica"
             }))
         }
     ];
@@ -114,7 +114,7 @@ export default function VistaPorTipo({ filas, onEditar }: Props) {
             {bloques.map((b) => {
 
                 const Icono = b.icono;
-                const activos = b.filas.filter((x) => x.activo && x.fila.config.activo).length;
+                const activos = b.filas.filter((x) => x.activo).length;
 
                 return (
 
@@ -126,21 +126,29 @@ export default function VistaPorTipo({ filas, onEditar }: Props) {
                                 <h3 id={`tipo-${b.id}`} className={styles.tipoPanelTitulo}>{b.titulo}</h3>
                                 <p className={styles.tipoPanelDescripcion}>{b.descripcion}</p>
                             </div>
-                            <Badge size="sm" tone={activos > 0 ? "success" : "neutral"}>{activos} de {b.filas.length} activos</Badge>
+                            <Badge size="sm" tone={activos > 0 ? "success" : "neutral"}>{activos} de {b.filas.length} activo{b.filas.length === 1 ? "" : "s"}</Badge>
                         </header>
 
                         <ul className={styles.tipoLista}>
                             {b.filas.map(({ fila, activo, detalle, extra }) => {
 
+                                // Siempre el estado PROPIO de este tipo de mensaje; la
+                                // pausa general del grupo y la falta de envío se
+                                // indican aparte, sin taparlo.
                                 const pausadoGeneral = !fila.config.activo;
-                                const tono = pausadoGeneral ? "neutral" : activo ? "success" : "neutral";
-                                const texto = pausadoGeneral ? "Grupo en pausa" : activo ? "Activo" : "Pausado";
+                                const motivo = !pausadoGeneral && activo && puedeEnviarFila(fila) === false
+                                    ? motivoSinEnvio(fila.conexion, fila.autorizado)
+                                    : null;
+                                const tono = activo ? (pausadoGeneral || motivo ? "warning" : "success") : "neutral";
+                                const texto = activo ? "Activo" : "Pausado";
 
                                 return (
                                     <li key={fila.config.grupo_id} className={styles.tipoItem}>
                                         <span className={styles.tipoItemPrincipal}>
                                             <span className={styles.tipoItemNombre} title={fila.nombre}>{fila.nombre}</span>
                                             <span className={styles.tipoItemDetalle}>{detalle}{extra ? ` · ${extra}` : ""}</span>
+                                            {pausadoGeneral && <span className={styles.motivoTipo}>Automatización del grupo pausada: no se envía hasta reactivarla.</span>}
+                                            {motivo && <span className={styles.motivoTipo}>{motivo} No se envía.</span>}
                                         </span>
                                         <Badge size="sm" tone={tono} dot>{texto}</Badge>
                                         {b.seccion === "detalles" ? (

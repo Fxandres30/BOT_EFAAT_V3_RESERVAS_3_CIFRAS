@@ -189,7 +189,7 @@ prueba("estadoHistorial distingue enviado, omitido, fallido, en curso y sin conf
 });
 
 prueba("motivoHistorial traduce el motivo nuevo de la automatización desactivada", () => {
-    assert.match(C.motivoHistorial({ detalle: { resultado: { omitido: true, motivo: "automatizacion_desactivada" } } }), /desactivada/);
+    assert.match(C.motivoHistorial({ detalle: { resultado: { omitido: true, motivo: "automatizacion_desactivada" } } }), /pausada/);
     assert.strictEqual(C.motivoHistorial({ detalle: { mensaje: "socket cerrado" } }), "socket cerrado");
     assert.strictEqual(C.motivoHistorial({ detalle: null }), null);
 });
@@ -234,7 +234,7 @@ prueba("lo registrado manda: un omitido por automatización desactivada muestra 
         accion: { id: "a", event_session_id: "c", tipo_accion: "REMINDER_30M", estado: "ok", ejecutado_en: null, finalizado_en: null, detalle: { resultado: { omitido: true, motivo: "automatizacion_desactivada" } } }
     });
     assert.strictEqual(r.estado, "omitido");
-    assert.match(r.motivo, /desactivada/);
+    assert.match(r.motivo, /pausada/);
 });
 
 console.log(`\nTOTAL: ${total}  ✅ PASA: ${total - fallidas}  ❌ FALLA: ${fallidas}`);

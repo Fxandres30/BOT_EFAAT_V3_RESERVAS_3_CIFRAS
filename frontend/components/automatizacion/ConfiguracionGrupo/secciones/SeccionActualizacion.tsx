@@ -44,7 +44,7 @@ export default function SeccionActualizacion({ usuarioId, grupoId, inicialMensaj
         setGuardando(false);
 
         if (errorGuardar || !data) {
-            setError(`No se pudo guardar (${errorGuardar?.message || "error desconocido"}).`);
+            setError("No se pudo guardar. Inténtalo de nuevo en unos segundos.");
             return;
         }
 
@@ -57,7 +57,7 @@ export default function SeccionActualizacion({ usuarioId, grupoId, inicialMensaj
 
         <section className={styles.section}>
 
-            <h2 className={styles.sectionTitle}><RefreshCw size={15} /> Actualización</h2>
+            <h2 className={styles.sectionTitle}><RefreshCw size={15} /> Actualizaciones</h2>
 
             <p className={styles.nota}>
                 Se envía cuando entran suficientes reservas nuevas seguidas, respetando el
@@ -65,20 +65,20 @@ export default function SeccionActualizacion({ usuarioId, grupoId, inicialMensaj
             </p>
 
             <div className={styles.actionRow} style={{ borderTop: "none" }}>
-                <span className={styles.actionLabel}>Activada</span>
+                <span className={styles.actionLabel}>Enviar avisos de movimiento</span>
                 <Switch on={mensaje.activo} label="Actualización" onClick={() => setMensaje({ ...mensaje, activo: !mensaje.activo })} />
             </div>
 
             <div className={styles.grid2} style={{ marginTop: 12 }}>
                 <Input
-                    label="Umbral (reservas nuevas)"
+                    label="Enviar cada (reservas nuevas)"
                     type="number"
                     min={1}
                     value={umbral}
                     onChange={(e) => setUmbral(Number(e.target.value) || 1)}
                 />
                 <Input
-                    label="Espera entre avisos (minutos)"
+                    label="Espera mínima entre avisos (minutos)"
                     type="number"
                     min={1}
                     value={cooldown}
@@ -88,7 +88,7 @@ export default function SeccionActualizacion({ usuarioId, grupoId, inicialMensaj
 
             <div className={styles.msgRow}>
                 <span className={styles.actionLabel}>Mensaje de la biblioteca</span>
-                <SelectorCategoria valor={mensaje.categoria} onChange={(categoria) => setMensaje({ ...mensaje, categoria })} />
+                <SelectorCategoria tipo="UPDATE_MESSAGE" valor={mensaje.categoria} onChange={(categoria) => setMensaje({ ...mensaje, categoria })} />
             </div>
 
             <BarraGuardar guardando={guardando} guardadoOk={guardadoOk} error={error} onGuardar={guardar} />

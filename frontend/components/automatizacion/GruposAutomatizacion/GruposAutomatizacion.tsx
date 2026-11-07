@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, Plus, RefreshCw, Search, Sticker } from "lucide-react";
+import { AlertTriangle, Plus, RefreshCw, Search } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -29,7 +29,7 @@ import TarjetaGrupoAutomatizacion from "./TarjetaGrupoAutomatizacion";
 import styles from "../compartido/Automatizacion.module.css";
 
 const FILTROS: { id: FiltroGrupos; texto: string }[] = [
-    { id: "todos", texto: "Todos" },
+    { id: "todos", texto: "Todos los grupos" },
     { id: "autorizados", texto: "Autorizados" },
     { id: "por_autorizar", texto: "Por autorizar" },
     { id: "sin_conexion", texto: "Sin conexión" },
@@ -173,17 +173,14 @@ export default function GruposAutomatizacion() {
                 title="Grupos"
                 description="Autoriza tus grupos de WhatsApp, revisa su conexión y activa o pausa su automatización. Cada grupo muestra qué mensajes automáticos tiene y cuándo sale el siguiente."
                 actions={usuarioId && (
-                    <>
+                    <div className={styles.accionesCabecera}>
                         <Button size="sm" variant="secondary" onClick={() => estado.recargar()} loading={estado.actualizando} disabled={estado.actualizando}>
                             <RefreshCw size={13} /> Actualizar
-                        </Button>
-                        <Button size="sm" variant="secondary" onClick={() => document.getElementById("sticker-pago")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-                            <Sticker size={13} /> Sticker de pagos
                         </Button>
                         <Button size="sm" onClick={() => setModalAutorizar(true)}>
                             <Plus size={13} /> Autorizar grupo
                         </Button>
-                    </>
+                    </div>
                 )}
             />
 
@@ -242,6 +239,8 @@ export default function GruposAutomatizacion() {
                             </div>
                         </details>
                     </section>
+
+                    <StickerPagoPredeterminadoSection usuarioId={usuarioId} onEstado={setStickerEstado} />
 
                     <div className={styles.toolbar}>
                         <div className={styles.chips} role="tablist" aria-label="Filtrar grupos">
@@ -308,8 +307,6 @@ export default function GruposAutomatizacion() {
 
                     )}
 
-                    <StickerPagoPredeterminadoSection usuarioId={usuarioId} onEstado={setStickerEstado} />
-
                 </>
 
             )}
@@ -317,7 +314,8 @@ export default function GruposAutomatizacion() {
             {modalAutorizar && usuarioId && (
                 <AutorizarGrupoModal
                     usuarioId={usuarioId}
-                    gruposYaAutorizados={autorizados.map((g) => g.grupo_id)}
+                    gruposYaAutorizados={autorizados.filter((g) => g.activo).map((g) => g.grupo_id)}
+                    gruposPausados={autorizados.filter((g) => !g.activo).map((g) => g.grupo_id)}
                     onClose={() => setModalAutorizar(false)}
                     onAutorizado={alAutorizado}
                 />

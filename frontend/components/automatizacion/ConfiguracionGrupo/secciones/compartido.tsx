@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ExternalLink } from "lucide-react";
 
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
@@ -35,14 +36,27 @@ export function Dot({ on }: { on: boolean }) {
 
 // Elige qué mensajes de la biblioteca central (/mensajes) usa la acción:
 // cualquiera de su tipo o solo los de una categoría. El contenido de los
-// mensajes nunca se edita en Automatización.
-export function SelectorCategoria({ valor, onChange }: { valor: string | null; onChange: (v: string | null) => void }) {
+// mensajes nunca se edita en Automatización. El enlace abre la biblioteca
+// ya filtrada por el tipo (y la categoría) de esta acción.
+export function enlaceBiblioteca(tipo: string, categoria: string | null): string {
+    const q = new URLSearchParams({ vista: "automatizacion", tipo });
+    if (categoria) q.set("categoria", categoria);
+    return `/mensajes?${q.toString()}`;
+}
 
-    const enlace = valor ? `/mensajes?vista=automatizacion&categoria=${encodeURIComponent(valor)}` : "/mensajes?vista=automatizacion";
+export function EnlaceBiblioteca({ tipo, categoria, texto = "Ver o editar estos mensajes en Mensajes" }: { tipo: string; categoria: string | null; texto?: string }) {
+    return (
+        <Link href={enlaceBiblioteca(tipo, categoria)} target="_blank" rel="noopener noreferrer" prefetch={false} className={styles.enlaceBiblioteca}>
+            {texto} <ExternalLink size={12} aria-hidden="true" />
+        </Link>
+    );
+}
+
+export function SelectorCategoria({ tipo, valor, onChange, mostrarEnlace = true }: { tipo: string; valor: string | null; onChange: (v: string | null) => void; mostrarEnlace?: boolean }) {
 
     return (
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
             <Select
                 value={valor || ""}
                 onChange={(e) => onChange(e.target.value || null)}
@@ -53,9 +67,7 @@ export function SelectorCategoria({ valor, onChange }: { valor: string | null; o
                     <option key={c.id} value={c.id}>Solo «{c.label}»</option>
                 ))}
             </Select>
-            <Link href={enlace} target="_blank" rel="noopener noreferrer" prefetch={false} className={styles.back} style={{ display: "inline-flex" }}>
-                Ver o editar estos mensajes en Mensajes
-            </Link>
+            {mostrarEnlace && <EnlaceBiblioteca tipo={tipo} categoria={valor} />}
         </div>
 
     );

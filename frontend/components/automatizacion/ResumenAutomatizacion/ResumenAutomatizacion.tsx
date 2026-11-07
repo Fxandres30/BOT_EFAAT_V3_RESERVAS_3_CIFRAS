@@ -7,13 +7,13 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 
-import { formatHora12 } from "@/lib/formatHora";
-import { formatearMomento, formatearRestante } from "@/services/automatizacion/estadoProgramacion";
+import { formatearMomento } from "@/services/automatizacion/estadoProgramacion";
 import { avisosAutomatizacion, proximosEnvios, resumirVista } from "@/services/automatizacion/vistaGrupos";
 
 import AutomatizacionHeader from "../AutomatizacionNav/AutomatizacionHeader";
 import { useEstadoAutomatizacion } from "../compartido/useEstadoAutomatizacion";
 import StickerPagoResumen from "../compartido/StickerPagoResumen";
+import { horaLegible, restanteCorto } from "../compartido/estados";
 import styles from "../compartido/Automatizacion.module.css";
 
 // Resumen de Automatización: solo indicadores reales (autorizaciones,
@@ -63,7 +63,7 @@ export default function ResumenAutomatizacion() {
                         <p className={styles.avisoError}><AlertTriangle size={15} /> <span className={styles.avisoTexto}>{error}</span></p>
                     )}
 
-                    <div className={styles.kpis}>
+                    <div className={styles.kpis6}>
                         <StatCard
                             label="Grupos autorizados"
                             value={resumen.autorizados}
@@ -78,17 +78,21 @@ export default function ResumenAutomatizacion() {
                             hint={resumen.autorizadosConectados === null ? "Comprobando tu WhatsApp" : `de ${resumen.autorizados} autorizados · ${resumen.visiblesEnWhatsApp} visibles en tu WhatsApp`}
                         />
                         <StatCard
-                            label="Automatizaciones activas"
-                            value={resumen.activas}
-                            tone={resumen.activas > 0 ? "primary" : "default"}
+                            label="Activas"
+                            value={resumen.operativas ?? "…"}
+                            tone={resumen.operativas ? "primary" : "default"}
                             icon={<PlayCircle size={16} />}
-                            hint="Grupos que envían mensajes automáticos"
+                            hint={resumen.operativas === null
+                                ? "Comprobando tu WhatsApp"
+                                : resumen.activasSinEnvio
+                                    ? `Pueden enviar · ${resumen.activasSinEnvio} más activa${resumen.activasSinEnvio === 1 ? "" : "s"} sin poder enviar`
+                                    : "Automatizaciones que pueden enviar"}
                         />
                         <StatCard
-                            label="Automatizaciones pausadas"
+                            label="En pausa"
                             value={resumen.pausadas}
                             icon={<PauseCircle size={16} />}
-                            hint="Su configuración se conserva"
+                            hint="Automatizaciones pausadas; su configuración se conserva"
                         />
                         <StatCard
                             label="Mensajes programados"
@@ -103,7 +107,7 @@ export default function ResumenAutomatizacion() {
                             icon={<Send size={16} />}
                             hint={resumen.pendientes === null
                                 ? seguimientoFallo ? "No pudimos consultar los envíos" : "Consultando…"
-                                : proximos[0] ? `El siguiente en ${formatearRestante(proximos[0].restanteMs)}` : "Pendientes en los sorteos en curso"}
+                                : proximos[0] ? `El siguiente en ${restanteCorto(proximos[0].restanteMs)}` : "Pendientes en los sorteos en curso"}
                         />
                     </div>
 
@@ -164,7 +168,7 @@ export default function ResumenAutomatizacion() {
                                                         Recordatorio {p.offset} min antes del cierre{p.momento ? ` · ${formatearMomento(p.momento, ahora)}` : ""}
                                                     </span>
                                                 </span>
-                                                <span className={styles.listaValor}>en {formatearRestante(p.restanteMs)}</span>
+                                                <span className={styles.listaValor}>en {restanteCorto(p.restanteMs)}</span>
                                             </li>
                                         ))}
                                     </ul>
@@ -192,12 +196,12 @@ export default function ResumenAutomatizacion() {
                                                 <li key={f.config.grupo_id} className={styles.listaFila}>
                                                     <span className={styles.listaPrincipal}>
                                                         <span className={styles.listaNombre}>{f.evento?.nombre_evento || "Sorteo sin nombre"}</span>
-                                                        <span className={styles.listaDetalle}>{f.nombre}{f.config.activo ? "" : " · automatización pausada"}</span>
+                                                        <span className={styles.listaDetalle}>{f.nombre}{f.config.activo ? "" : " · Automatización pausada"}</span>
                                                     </span>
                                                     <span className={styles.listaValor}>
                                                         {f.cierre
-                                                            ? f.cierre.getTime() > ahora.getTime() ? `cierra en ${formatearRestante(f.cierre.getTime() - ahora.getTime())}` : "cierre alcanzado"
-                                                            : f.horaCierre ? `cierra ${formatHora12(f.horaCierre)}` : "sin hora de cierre"}
+                                                            ? f.cierre.getTime() > ahora.getTime() ? `cierra en ${restanteCorto(f.cierre.getTime() - ahora.getTime())}` : "cierre alcanzado"
+                                                            : f.horaCierre ? `cierra ${horaLegible(f.horaCierre)}` : "sin hora de cierre"}
                                                     </span>
                                                 </li>
                                             ))}

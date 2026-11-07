@@ -68,3 +68,37 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Formulario + vista previa de WhatsApp, como en «Respuestas a clientes». */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.vista {
+  position: sticky;
+  top: 0;
+}
+
+.variable {
+  padding: 3px 8px;
+  border-radius: var(--efaat-radius-pill);
+  border: 1px solid var(--efaat-primary-border);
+  background: var(--efaat-primary-soft);
+  color: var(--efaat-blue-800);
+  font-size: var(--efaat-text-2xs);
+  font-weight: var(--efaat-weight-semibold);
+  cursor: pointer;
+}
+
+.variable:hover {
+  border-color: var(--efaat-primary);
+}
