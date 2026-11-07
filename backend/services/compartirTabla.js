@@ -392,6 +392,7 @@ async function compartirEnGrupos({ evento, sock, grupos, caption, solicitudId, i
     };
 
     const resultados = [];
+    const clavesUsadas = {};
     const anotar = (r) => {
         resultados.push(r);
         try { control?.alTerminar?.(r); } catch { /* el progreso nunca corta el envío */ }
@@ -414,8 +415,10 @@ async function compartirEnGrupos({ evento, sock, grupos, caption, solicitudId, i
                 if (control?.cancelado?.()) throw ENVIO_CANCELADO;
                 return sendImage({ sock, jid: g.grupo_id, image: png, caption });
             };
+            const clave = idempotencia ? idempotencia.clave(g) : `TABLA_COMPARTIR:${evento.usuario_id}:${Number(evento.valor)}:${solicitudId}:${g.grupo_id}`;
+            clavesUsadas[g.grupo_id] = clave; // O5: la comparación en sombra usa ESTA clave (nunca la recalcula)
             const r = await executionGuard.ejecutarUnaVez({
-                claveIdempotencia: idempotencia ? idempotencia.clave(g) : `TABLA_COMPARTIR:${evento.usuario_id}:${Number(evento.valor)}:${solicitudId}:${g.grupo_id}`,
+                claveIdempotencia: clave,
                 ...(idempotencia?.eventSessionId ? { eventSessionId: idempotencia.eventSessionId } : {}),
                 grupoId: g.grupo_id,
                 usuarioId: evento.usuario_id,
@@ -439,8 +442,24 @@ async function compartirEnGrupos({ evento, sock, grupos, caption, solicitudId, i
 
     }
 
+    // FASE O5 — comparación en SOMBRA del texto, después de todos los envíos.
+    // Sin imagen, sin Chromium, sin envíos; nunca lanza.
+    await compararCompartirEnSombra({ evento, sock, grupos, caption, solicitudId, idempotencia, resultados, clavesUsadas });
+
     return { ok: true, resultados };
 
+}
+
+// FASE O5: compara «Compartir»/publicación con el orquestador central EN
+// SOMBRA (services/sombraCompartir.js). No hace nada salvo con
+// MENSAJES_ORQUESTADOR_COMPARTIR / _SORTEO = shadow. Nunca genera la imagen,
+// nunca envía y NUNCA lanza: un fallo aquí no afecta a lo ya enviado.
+async function compararCompartirEnSombra(datos) {
+    try {
+        await require("./sombraCompartir").compararCompartirEnSombra(datos);
+    } catch (error) {
+        console.error("⚠️ [MENSAJES SOMBRA] compartir: comparación omitida:", error?.message);
+    }
 }
 
 module.exports = {

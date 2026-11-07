@@ -212,3 +212,17 @@ En `frontend/lib/visibilidad/funcionalidades.ts`, `bloqueados.visible: true`.
 - **Acceso por dirección**: `/lector-pagos` y `/bloqueados` abren para cualquier usuario con sesión que escriba la dirección. La barra superior las titula («Control › …») aunque no estén en el menú.
 - **Botón deshabilitado ya existente, no relacionado**: «Ver tabla de reservas» en las tarjetas de sorteos de 3 cifras (`EventoTresCifrasCard.tsx`) aparece deshabilitado («Falta la tabla de reservas 000–999 para esta modalidad»). No se modificó.
 - La auditoría de navegación se hizo sobre el código y con pruebas automáticas; falta el recorrido manual con una sesión real.
+
+---
+
+## Candidatas propuestas (sin autorizar, Fase 3 — 07/11/2026)
+
+No están ocultas. Detalle y motivos en [LAUNCH_READINESS_AUDIT.md](LAUNCH_READINESS_AUDIT.md) §8.
+
+| Candidata | Motivo resumido |
+|---|---|
+| C1 · Catálogo «Activadores y acciones» (botón en Mensajes) | Muestra estados internos («Con conflicto conocido», «Sin efecto», «Sin uso») |
+| C2 · Modalidad 3 cifras (Eventos, formulario de sorteos, tarjetas) | Sin tabla 000–999: opciones y botones deshabilitados |
+| C3 · Mi cuenta › Pagos y renovaciones | Sin datos: solo «No registrado» |
+| C4 · Categorías de Aprende sin guías | 8 tarjetas «Guía en preparación» |
+| C5 · Variables globales (menú) | Concepto avanzado para clientes nuevos |

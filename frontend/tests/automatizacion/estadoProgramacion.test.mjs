@@ -233,8 +233,8 @@ prueba("nombreAccion traduce los tipos reales del backend", () => {
 prueba("nombre del grupo: primer nombre real; nunca el identificador @g.us", () => {
     assert.strictEqual(E.resolverNombreGrupo(null, "  Rifas Diarias ", "Otro"), "Rifas Diarias");
     assert.strictEqual(E.resolverNombreGrupo("Vivo", "Viejo"), "Vivo");
-    assert.strictEqual(E.resolverNombreGrupo("120363421290339105@g.us", ""), "Grupo sin nombre disponible");
-    assert.strictEqual(E.resolverNombreGrupo(), "Grupo sin nombre disponible");
+    assert.strictEqual(E.resolverNombreGrupo("120363421290339105@g.us", ""), "Nombre desconocido");
+    assert.strictEqual(E.resolverNombreGrupo(), "Nombre desconocido");
 });
 
 prueba("conexión: solo una sesión que respondió con el grupo prueba «conectado»", () => {

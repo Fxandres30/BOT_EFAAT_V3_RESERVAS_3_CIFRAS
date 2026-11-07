@@ -63,7 +63,9 @@ Pie del menú: Mi cuenta, Aprende a usar EFAAT (sin las guías de las funcionali
 
 ## Historial de cambios
 
+Nuevas candidatas a ocultamiento (sin autorizar): [LAUNCH_READINESS_AUDIT.md](LAUNCH_READINESS_AUDIT.md) §8.
+
 | Fecha | Cambio | Estado |
 |---|---|---|
-| 07/11/2026 | Fase 1: control central `lib/visibilidad/funcionalidades.ts`. Se ocultan Resultados (Eventos), Lector de pagos y Bloqueados (menú). | Local, sin commit ni despliegue |
-| 07/11/2026 | Fase 2: «Finalizados recientes» recupera «Administrar sorteo» de los finalizados; `rutaVisible` oculta las guías de Aprende y los enlaces del catálogo de activadores a páginas ocultas; la expulsión de bloqueados remite a Contactos. | Local, sin commit ni despliegue |
+| 07/11/2026 | Fase 1: control central `lib/visibilidad/funcionalidades.ts`. Se ocultan Resultados (Eventos), Lector de pagos y Bloqueados (menú). | En `ab7da28d` (commit y push del usuario, 07/11 13:09) |
+| 07/11/2026 | Fase 2: «Finalizados recientes» recupera «Administrar sorteo» de los finalizados; `rutaVisible` oculta las guías de Aprende y los enlaces del catálogo de activadores a páginas ocultas; la expulsión de bloqueados remite a Contactos. | En `ab7da28d` (commit y push del usuario, 07/11 13:09) |

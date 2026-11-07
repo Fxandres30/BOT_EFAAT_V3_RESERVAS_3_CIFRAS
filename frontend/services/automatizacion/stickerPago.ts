@@ -150,3 +150,22 @@ export async function desactivarStickerPago(usuarioId: string, grupoId: string |
         : await query.is("grupo_id", null).select().maybeSingle();
 
 }
+
+// Solo lectura: grupos de la cuenta con sticker ESPECÍFICO guardado (Nivel
+// 2). Lo usa el panel para mostrar qué sticker usa cada grupo; la prioridad
+// real (específico > predeterminado) la sigue resolviendo el backend.
+export async function listarGruposConStickerPropio(usuarioId: string) {
+
+    const { data, error } = await supabase
+        .from("configuracion_stickers_pago")
+        .select("grupo_id, sticker_sha256")
+        .eq("usuario_id", usuarioId)
+        .not("grupo_id", "is", null)
+        .not("sticker_sha256", "is", null);
+
+    return {
+        data: error ? null : new Set(((data || []) as { grupo_id: string }[]).map((f) => f.grupo_id)),
+        error: error ? error.message : null
+    };
+
+}

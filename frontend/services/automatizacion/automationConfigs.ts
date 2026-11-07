@@ -207,10 +207,29 @@ export async function listarConfiguraciones(usuarioId: string) {
 // cuál de los dos casos es.
 export async function guardarConfiguracion(usuarioId: string, grupoId: string, cambios: Partial<AutomationConfig>) {
 
+    // Abrir un grupo ya NO crea su configuración: se crea en el primer
+    // guardado que confirma el usuario. Si todavía no existe, se inserta
+    // completa (los mismos valores por defecto que antes se guardaban al
+    // abrir la pantalla) más el cambio, para que ninguna columna quede
+    // vacía. Si existe, solo se envían las columnas cambiadas, como siempre.
+    const existente = await supabase
+        .from("automation_configs")
+        .select("id")
+        .eq("usuario_id", usuarioId)
+        .eq("grupo_id", grupoId)
+        .maybeSingle();
+
+    if (existente.error) {
+        return { data: null, error: existente.error };
+    }
+
+    const base = existente.data ? {} : configuracionPorDefecto(usuarioId, grupoId);
+
     return await supabase
         .from("automation_configs")
         .upsert(
             {
+                ...base,
                 usuario_id: usuarioId,
                 grupo_id: grupoId,
                 ...cambios,

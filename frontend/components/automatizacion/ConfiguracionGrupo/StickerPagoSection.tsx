@@ -135,7 +135,7 @@ export default function StickerPagoSection({ usuarioId, grupoId }: Props) {
                         <Badge tone="primary" dot>Sticker predeterminado</Badge>
                     </div>
 
-                    <p className={styles.nota}>Este grupo utiliza el sticker general del tenant.</p>
+                    <p className={styles.nota}>Este grupo usa el sticker predeterminado de tu cuenta.</p>
 
                     <div className={styles.stickerButtons}>
                         <Button

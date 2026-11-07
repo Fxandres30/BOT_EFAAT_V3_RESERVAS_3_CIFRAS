@@ -16,20 +16,37 @@
 
 const messagesRepo = require("./repo/messages");
 
-// seleccionarMensaje({ usuarioId, grupoId, tipo, categoria? }) -> mensaje | null
-async function seleccionarMensaje({ usuarioId, grupoId, tipo, categoria = null }) {
+// seleccionarMensaje({ usuarioId, grupoId, tipo, categoria? }, opciones?) -> mensaje | null
+//
+// opciones (FASE O3, opcionales; sin ellas el comportamiento es EXACTAMENTE
+// el de siempre):
+//   observar(foto)  recibe la foto de la selección — { activosIds,
+//                   ultimoLeido, ultimoId, azar, elegidoId } — para que la
+//                   comparación en sombra use el MISMO último uso (leído aquí,
+//                   ANTES de que el motor registre el nuevo) y el mismo azar.
+//                   Solo observa: un fallo suyo se ignora.
+async function seleccionarMensaje({ usuarioId, grupoId, tipo, categoria = null }, opciones = {}) {
+
+    const observar = (foto) => {
+        if (typeof opciones.observar !== "function") return;
+        try { opciones.observar(foto); } catch { /* solo observa */ }
+    };
 
     const activos = await messagesRepo.obtenerMensajesActivos({ usuarioId, tipo, categoria });
 
     if (!activos.length) {
+        observar({ activosIds: [], ultimoLeido: false, ultimoId: null, azar: null, elegidoId: null });
         return null;
     }
 
     let candidatos = activos;
+    let ultimoLeido = false;
+    let ultimoId = null;
 
     if (activos.length > 1) {
 
-        const ultimoId = await messagesRepo.obtenerUltimoMensajeUsado({ usuarioId, grupoId, tipo });
+        ultimoId = await messagesRepo.obtenerUltimoMensajeUsado({ usuarioId, grupoId, tipo });
+        ultimoLeido = true;
 
         if (ultimoId) {
 
@@ -46,7 +63,10 @@ async function seleccionarMensaje({ usuarioId, grupoId, tipo, categoria = null }
 
     }
 
-    const indice = Math.floor(Math.random() * candidatos.length);
+    const azar = Math.random();
+    const indice = Math.floor(azar * candidatos.length);
+
+    observar({ activosIds: activos.map(m => m.id), ultimoLeido, ultimoId, azar, elegidoId: candidatos[indice]?.id ?? null });
 
     return candidatos[indice];
 

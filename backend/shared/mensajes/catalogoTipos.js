@@ -76,6 +76,11 @@ const TIPOS = Object.freeze([
     respuesta("disponibilidad", "Disponibilidad", "Números disponibles"),
     respuesta("disponibilidad_agotada", "Disponibilidad", "Sorteo agotado"),
 
+    // Respuesta SIN tipo de presentación (calcularTipoPresentacion = null:
+    // error técnico, reserva sin nada ocupado que informar…): solo el
+    // mensaje fijo del motor, sin interruptor ni plantillas (FASE O4).
+    respuesta("respuesta_fija", "Sistema", "Respuesta con el mensaje fijo del motor", "ninguno", { seleccion: "ninguna" }),
+
     // ------------------------------------- respuestas que EFAAT nunca envía
     ...["mensaje_no_entendido", "numero_invalido", "evento_no_disponible", "solicitud_ambigua", "otro_determinista"]
         .map(id => respuesta(id, "Futuro", id, "fijo", { soportado: false })),

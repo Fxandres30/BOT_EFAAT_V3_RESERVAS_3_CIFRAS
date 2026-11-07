@@ -181,6 +181,10 @@ async function enviarMensajeProgramado({
             return { enviado: false, motivo: "sin_event_session" };
         }
 
+        // FASE O3: foto de la selección (último uso leído ANTES de registrar
+        // el nuevo, y el azar) para la comparación en sombra. Solo observa.
+        let fotoSeleccion = null;
+
         const mensaje = await messageSelector.seleccionarMensaje({
 
             usuarioId: evento.usuario_id,
@@ -188,11 +192,14 @@ async function enviarMensajeProgramado({
             tipo,
             categoria
 
-        });
+        }, { observar: (foto) => { fotoSeleccion = foto; } });
+
+        const sombra = { evento, eventSession, tipo, categoria, claveIdempotencia, tipoAccion, variablesExtra };
 
         if (!mensaje) {
 
             console.log(`🤖 [AUTOMATION] sin mensajes ${tipo} activos disponibles — no se envía nada.`);
+            await compararAutomatizacionEnSombra({ ...sombra, foto: fotoSeleccion, actual: { enviado: false, estado: "sin_mensajes_disponibles" } });
             return { enviado: false, motivo: "sin_mensajes_disponibles" };
 
         }
@@ -207,6 +214,7 @@ async function enviarMensajeProgramado({
             // una variable que el evento real no tiene, NO se envía —
             // nunca se inventa el valor faltante.
             console.error(`⚠️ [AUTOMATION] ${tipo} ${mensaje.id} tiene variables sin resolver (${resuelto.faltantes.join(", ")}) — no se envía.`);
+            await compararAutomatizacionEnSombra({ ...sombra, foto: fotoSeleccion, variables, actual: { enviado: false, estado: "variable_faltante", plantillaId: mensaje.id, faltantes: resuelto.faltantes } });
             return { enviado: false, motivo: "variable_faltante", faltantes: resuelto.faltantes };
 
         }
@@ -254,6 +262,15 @@ async function enviarMensajeProgramado({
 
         });
 
+        // FASE O3 — comparación en SOMBRA solo cuando el motor decidió el
+        // contenido (envió, o el envío falló). Clave ya resuelta: nada que comparar.
+        if (resultado.ejecutada || resultado.motivo === "fallo_ejecucion") {
+            await compararAutomatizacionEnSombra({
+                ...sombra, foto: fotoSeleccion, variables, usoRegistrado: resultado.ejecutada === true,
+                actual: { enviado: true, estado: resultado.ejecutada ? "enviado" : "fallo_envio", texto: resuelto.texto, plantillaId: mensaje.id }
+            });
+        }
+
         if (resultado.ejecutada) {
 
             console.log(`🤖 [AUTOMATION] ${tipo} enviado:`, mensaje.id);
@@ -274,6 +291,18 @@ async function enviarMensajeProgramado({
 
     }
 
+}
+
+// FASE O3: compara la automatización con el orquestador central EN SOMBRA
+// (automation/sombraAutomatizacion.js). No hace nada salvo con
+// MENSAJES_ORQUESTADOR_AUTOMATIZACION=shadow; nunca envía, nunca consume
+// claves ni registra usos, y NUNCA lanza: un fallo aquí no afecta al envío.
+async function compararAutomatizacionEnSombra(datos) {
+    try {
+        await require("./sombraAutomatizacion").compararAutomatizacionEnSombra(datos);
+    } catch (error) {
+        console.error("⚠️ [MENSAJES SOMBRA] automatizacion: comparación omitida:", error?.message);
+    }
 }
 
 // ==========================================================================

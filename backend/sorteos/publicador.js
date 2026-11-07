@@ -499,6 +499,19 @@ async function enviarUnaVez({ deps, sock, sorteo, grupoId, sufijo, tipoAccion, t
     });
 }
 
+// FASE O5: compara recordatorios y aviso de cierre con el orquestador central
+// EN SOMBRA (sorteos/sombraSorteos.js). Solo cuando el motor decidió el
+// contenido (envió o falló el envío); clave ya resuelta = nada que comparar.
+// No hace nada salvo con MENSAJES_ORQUESTADOR_SORTEO=shadow y NUNCA lanza.
+async function compararSorteoEnSombra(datos) {
+    if (!(datos.r?.ejecutada || datos.r?.motivo === "fallo_ejecucion")) return;
+    try {
+        await require("./sombraSorteos").compararSorteoEnSombra(datos);
+    } catch (error) {
+        console.error("⚠️ [MENSAJES SOMBRA] sorteo: comparación omitida:", error?.message);
+    }
+}
+
 async function procesarPublicados({ sock, deps, ahora }) {
 
     const usuarioId = sock.context.usuarioId;
@@ -574,6 +587,7 @@ async function procesarPublicados({ sock, deps, ahora }) {
                     const { texto } = mensajeRecordatorio(sorteo.config, rec, sorteo.cuentas_snapshot, { fecha });
                     const r = await enviarUnaVez({ deps, sock, sorteo, grupoId: g.grupo_id, sufijo: `recordatorio:${rec.minutos_antes_cierre}`, tipoAccion: "SORTEO_RECORDATORIO", texto });
                     envios.push({ tipo: "recordatorio", grupo: g.grupo_id, ejecutada: r.ejecutada, motivo: r.motivo || null });
+                    await compararSorteoEnSombra({ deps, sock, sorteo, grupoId: g.grupo_id, tipo: "sorteo_recordatorio", sufijo: `recordatorio:${rec.minutos_antes_cierre}`, tipoAccion: "SORTEO_RECORDATORIO", minutos: rec.minutos_antes_cierre, fecha, texto, r });
 
                 }
 
@@ -604,6 +618,7 @@ async function procesarPublicados({ sock, deps, ahora }) {
                 const { texto } = mensajeAvisoCierre(sorteo.config, sorteo.cuentas_snapshot, { fecha });
                 const r = await enviarUnaVez({ deps, sock, sorteo, grupoId: g.grupo_id, sufijo: sufijoAviso, tipoAccion: "SORTEO_AVISO_CIERRE", texto });
                 envios.push({ tipo: "aviso_cierre", grupo: g.grupo_id, ejecutada: r.ejecutada, motivo: r.motivo || null });
+                await compararSorteoEnSombra({ deps, sock, sorteo, grupoId: g.grupo_id, tipo: "sorteo_aviso_cierre", sufijo: sufijoAviso, tipoAccion: "SORTEO_AVISO_CIERRE", fecha, texto, r });
 
             }
 

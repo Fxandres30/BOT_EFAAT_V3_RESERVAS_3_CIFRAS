@@ -2,7 +2,11 @@
 // Nunca decide negocio, nunca consulta Supabase: solo recibe datos ya
 // leídos y devuelve cuál plantilla usar (o ninguna, para caer al
 // comportamiento de fallback existente).
-function seleccionarPlantilla(config, habilitadas) {
+//
+// aleatorio (FASE O4, opcional): fuente del azar. Por defecto Math.random,
+// exactamente como siempre; el llamador puede pasar una función que lo
+// registre para dárselo igual a la comparación en sombra.
+function seleccionarPlantilla(config, habilitadas, aleatorio = Math.random) {
 
     if (!Array.isArray(habilitadas) || habilitadas.length === 0) {
         return { plantilla: null, nuevoIndiceRotacion: null };
@@ -36,7 +40,7 @@ function seleccionarPlantilla(config, habilitadas) {
     }
 
     // aleatorio (modo por defecto)
-    const indiceAleatorio = Math.floor(Math.random() * habilitadas.length);
+    const indiceAleatorio = Math.floor(aleatorio() * habilitadas.length);
 
     return { plantilla: habilitadas[indiceAleatorio], nuevoIndiceRotacion: null };
 

@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { AlertTriangle, Plus, RefreshCw, Search } from "lucide-react";
 
-import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Tabs } from "@/components/ui/Tabs";
@@ -22,11 +22,12 @@ import { contarEnviosRecientes } from "@/services/automatizacion/historialAutoma
 import { formatearMomento, frescuraDatos } from "@/services/automatizacion/estadoProgramacion";
 import { FiltrosCentro, filtrarFilas } from "@/services/automatizacion/centroAutomatizaciones";
 
-import AutomatizacionNav from "../AutomatizacionNav/AutomatizacionNav";
+import AutomatizacionHeader from "../AutomatizacionNav/AutomatizacionHeader";
 import TarjetaGrupo, { SeccionEditor } from "./TarjetaGrupo";
 import EditorAutomatizacion from "./EditorAutomatizacion";
 import DuplicarConfiguracion from "./DuplicarConfiguracion";
 import HistorialActividad from "./HistorialActividad";
+import VistaPorTipo from "./VistaPorTipo";
 import { FilaGrupo, construirFila } from "./filaGrupo";
 import styles from "./CentroAutomatizaciones.module.css";
 
@@ -34,7 +35,15 @@ import styles from "./CentroAutomatizaciones.module.css";
 // de WhatsApp consulta cada sesión en vivo: solo al entrar y con «Actualizar».
 const REFRESCO_MS = 60000;
 
-type Vista = "grupos" | "actividad";
+type Vista = "grupos" | "tipos" | "actividad";
+
+const VISTAS: { value: Vista; label: string }[] = [
+    { value: "grupos", label: "Por grupo" },
+    { value: "tipos", label: "Por tipo de mensaje" },
+    { value: "actividad", label: "Actividad" }
+];
+
+const SECCIONES_URL: SeccionEditor[] = ["general", "programaciones", "tabla", "reglas"];
 
 interface CambioActivo {
     grupos: FilaGrupo[];
@@ -44,6 +53,14 @@ interface CambioActivo {
 const FILTROS_INICIALES: FiltrosCentro = { texto: "", conexion: "todos", automatizacion: "todos", evento: "todos" };
 
 export default function CentroAutomatizaciones() {
+
+    // Enlaces directos desde Resumen y Grupos:
+    //   ?vista=actividad&grupo=<id>   historial de un grupo
+    //   ?grupo=<id>&editar=<sección>  abre el editor de ese grupo
+    const params = useSearchParams();
+    const vistaUrl = params.get("vista");
+    const grupoUrl = params.get("grupo");
+    const editarUrl = params.get("editar") as SeccionEditor | null;
 
     const [usuarioId, setUsuarioId] = useState<string | null>(null);
     const [cargando, setCargando] = useState(true);
@@ -60,12 +77,13 @@ export default function CentroAutomatizaciones() {
     const [actualizando, setActualizando] = useState(false);
     const [ahora, setAhora] = useState(() => new Date());
 
-    const [vista, setVista] = useState<Vista>("grupos");
-    const [grupoHistorial, setGrupoHistorial] = useState<string | null>(null);
+    const [vista, setVista] = useState<Vista>(() => (VISTAS.some((v) => v.value === vistaUrl) ? vistaUrl as Vista : "grupos"));
+    const [grupoHistorial, setGrupoHistorial] = useState<string | null>(() => (vistaUrl === "actividad" ? grupoUrl : null));
     const [filtros, setFiltros] = useState<FiltrosCentro>(FILTROS_INICIALES);
     const [seleccion, setSeleccion] = useState<Set<string>>(() => new Set());
 
-    const [editor, setEditor] = useState<{ grupoId: string; seccion: SeccionEditor } | null>(null);
+    const [editor, setEditor] = useState<{ grupoId: string; seccion: SeccionEditor } | null>(() =>
+        grupoUrl && editarUrl && SECCIONES_URL.includes(editarUrl) ? { grupoId: grupoUrl, seccion: editarUrl } : null);
     const [duplicar, setDuplicar] = useState<{ origen: string; destinos: string[] } | null>(null);
     const [cambioActivo, setCambioActivo] = useState<CambioActivo | null>(null);
     const [cambiando, setCambiando] = useState<Set<string>>(() => new Set());
@@ -333,13 +351,10 @@ export default function CentroAutomatizaciones() {
 
         <div className={styles.page}>
 
-            <PageHeader
-                eyebrow="Automatización"
-                title="Centro de automatizaciones"
-                description="Administra los grupos, mensajes, horarios y reglas de automatización desde un solo lugar."
+            <AutomatizacionHeader
+                title="Centro de control"
+                description="Revisa y ajusta cuándo sale cada mensaje automático: aperturas, recordatorios, actualizaciones, cierres y tabla inicial, grupo por grupo o por tipo. Los textos se eligen de la biblioteca de Mensajes."
             />
-
-            <AutomatizacionNav />
 
             {cargando ? (
 
@@ -369,7 +384,7 @@ export default function CentroAutomatizaciones() {
                         <StatCard label="Grupos" value={filas.length} />
                         <StatCard label="Conectados" value={conexionLista ? conectados : "…"} tone={conexionLista && conectados < filas.length ? "warning" : "success"} hint={conexionLista ? undefined : "Comprobando"} />
                         <StatCard label="Activas" value={activas} tone="primary" />
-                        <StatCard label="Desactivadas" value={filas.length - activas} />
+                        <StatCard label="Pausadas" value={filas.length - activas} />
                         <StatCard label="Mensajes programados" value={programados} hint="Activos en grupos activos" />
                         <StatCard label="Pendientes" value={seguimiento ? pendientes : "—"} hint="En el evento actual" />
                         <StatCard label="Envíos 24 h" value={envios24h ?? "—"} tone="success" hint={envios24h === null ? "No disponible" : "Aceptados por WhatsApp"} />
@@ -377,9 +392,9 @@ export default function CentroAutomatizaciones() {
 
                     <div className={styles.vistas}>
                         <Tabs
-                            items={[{ value: "grupos", label: "Grupos" }, { value: "actividad", label: "Actividad" }]}
+                            items={VISTAS}
                             value={vista}
-                            onValueChange={(v) => { setVista(v as Vista); if (v === "grupos") setGrupoHistorial(null); }}
+                            onValueChange={(v) => { setVista(v as Vista); if (v !== "actividad") setGrupoHistorial(null); }}
                             aria-label="Vista"
                         />
                         <span className={styles.estadoCarga}>
@@ -425,14 +440,14 @@ export default function CentroAutomatizaciones() {
                                     <option value="desconectado">Desconectados</option>
                                 </select>
                                 <select className={styles.filtro} value={filtros.automatizacion} onChange={(e) => setFiltros({ ...filtros, automatizacion: e.target.value as FiltrosCentro["automatizacion"] })} aria-label="Automatización">
-                                    <option value="todos">Activas y desactivadas</option>
+                                    <option value="todos">Activas y pausadas</option>
                                     <option value="activa">Activas</option>
-                                    <option value="desactivada">Desactivadas</option>
+                                    <option value="desactivada">Pausadas</option>
                                 </select>
                                 <select className={styles.filtro} value={filtros.evento} onChange={(e) => setFiltros({ ...filtros, evento: e.target.value as FiltrosCentro["evento"] })} aria-label="Evento">
-                                    <option value="todos">Con y sin evento</option>
-                                    <option value="con_evento">Con evento activo</option>
-                                    <option value="sin_evento">Sin evento activo</option>
+                                    <option value="todos">Con y sin sorteo</option>
+                                    <option value="con_evento">Con sorteo en curso</option>
+                                    <option value="sin_evento">Sin sorteo en curso</option>
                                 </select>
                                 <div className={styles.toolbarAcciones}>
                                     <Button size="sm" variant="secondary" onClick={() => actualizarTodo.ejecutar()} loading={actualizarTodo.procesando} disabled={actualizarTodo.procesando}>
@@ -459,7 +474,7 @@ export default function CentroAutomatizaciones() {
                                         Activar todas
                                     </button>
                                     <button type="button" className={`${styles.accion} ${styles.accionPeligro}`} onClick={() => setCambioActivo({ grupos: filas, activo: false })} disabled={activas === 0}>
-                                        Desactivar todas
+                                        Pausar todas
                                     </button>
                                 </div>
                             </div>
@@ -468,7 +483,7 @@ export default function CentroAutomatizaciones() {
                                 <div className={styles.lote} role="region" aria-label="Acciones sobre los grupos seleccionados">
                                     <span className={styles.loteTexto}>{seleccionadas.length} seleccionado{seleccionadas.length === 1 ? "" : "s"}</span>
                                     <button type="button" className={styles.loteBoton} onClick={() => setCambioActivo({ grupos: seleccionadas, activo: true })}>Activar</button>
-                                    <button type="button" className={styles.loteBoton} onClick={() => setCambioActivo({ grupos: seleccionadas, activo: false })}>Desactivar</button>
+                                    <button type="button" className={styles.loteBoton} onClick={() => setCambioActivo({ grupos: seleccionadas, activo: false })}>Pausar</button>
                                     <select
                                         className={styles.loteBoton}
                                         value=""
@@ -482,7 +497,16 @@ export default function CentroAutomatizaciones() {
                                 </div>
                             )}
 
-                            {visibles.length === 0 ? (
+                            {vista === "tipos" ? (
+                                visibles.length === 0 ? (
+                                    <EmptyState
+                                        title="Ningún grupo coincide con los filtros"
+                                        action={<Button size="sm" variant="secondary" onClick={() => setFiltros(FILTROS_INICIALES)}>Limpiar filtros</Button>}
+                                    />
+                                ) : (
+                                    <VistaPorTipo filas={visibles} onEditar={(grupoId, seccion) => setEditor({ grupoId, seccion })} />
+                                )
+                            ) : visibles.length === 0 ? (
                                 <EmptyState
                                     title="Ningún grupo coincide con los filtros"
                                     action={<Button size="sm" variant="secondary" onClick={() => setFiltros(FILTROS_INICIALES)}>Limpiar filtros</Button>}
@@ -550,7 +574,7 @@ export default function CentroAutomatizaciones() {
                         size="sm"
                         onClose={() => setCambioActivo(null)}
                         bloquearCierre={confirmarCambio.procesando}
-                        title={cambioActivo.activo ? "Activar automatización" : "Desactivar automatización"}
+                        title={cambioActivo.activo ? "Activar automatización" : "Pausar automatización"}
                         footer={
                             <div className={styles.botonesPie}>
                                 <Button variant="ghost" size="sm" onClick={() => setCambioActivo(null)} disabled={confirmarCambio.procesando}>Cancelar</Button>
@@ -561,14 +585,14 @@ export default function CentroAutomatizaciones() {
                                     loading={confirmarCambio.procesando}
                                     disabled={afectados.length === 0 || confirmarCambio.procesando}
                                 >
-                                    {cambioActivo.activo ? "Activar" : "Desactivar"} en {afectados.length} grupo{afectados.length === 1 ? "" : "s"}
+                                    {cambioActivo.activo ? "Activar" : "Pausar"} en {afectados.length} grupo{afectados.length === 1 ? "" : "s"}
                                 </Button>
                             </div>
                         }
                     >
                         <div className={styles.seccion}>
                             {afectados.length === 0 ? (
-                                <p className={styles.nota}>Todos los grupos elegidos ya están {cambioActivo.activo ? "activos" : "desactivados"}.</p>
+                                <p className={styles.nota}>Todos los grupos elegidos ya están {cambioActivo.activo ? "activos" : "en pausa"}.</p>
                             ) : (
                                 <ul className={styles.listaGrupos}>{afectados.map((f) => <li key={f.config.grupo_id}>{f.nombre}</li>)}</ul>
                             )}

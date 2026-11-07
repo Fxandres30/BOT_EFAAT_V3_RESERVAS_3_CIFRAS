@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Sparkles, Workflow } from "lucide-react";
 
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
+import { Tabs } from "@/components/ui/Tabs";
 import ActivadoresModal, { entradaParaTipoRespuesta } from "@/components/activadores/ActivadoresModal";
 
 import { getUser } from "@/services/auth/getUser";
@@ -37,6 +39,7 @@ import {
 import ListaPlantillas from "../ListaPlantillas/ListaPlantillas";
 import EditorMensaje from "../EditorMensaje/EditorMensaje";
 import ModoSeleccion from "../ModoSeleccion/ModoSeleccion";
+import MensajesAutomatizacion from "../MensajesAutomatizacion/MensajesAutomatizacion";
 
 import styles from "./MensajesPage.module.css";
 
@@ -70,7 +73,31 @@ const GRUPOS_RAIL: { titulo: string; tipos: TipoMensaje[] }[] = CATEGORIAS.flatM
 // en bot/funciones/reservas/reaccionReserva.js. Sin fila = activado.
 const TIPO_REACCIONES = "reacciones_reserva";
 
+// Dos bibliotecas en una sola pantalla:
+//   «Respuestas a clientes»       plantillas_mensaje (lo que EFAAT responde)
+//   «Mensajes de automatización»  automation_messages (lo que EFAAT envía
+//                                 solo: apertura, recordatorios, etc.)
+// ?vista=automatizacion (&tipo=, &categoria=) abre la segunda; así enlazan
+// Automatización y la ruta antigua /automatizacion/mensajes.
+type VistaMensajes = "respuestas" | "automatizacion";
+
+const VISTAS_MENSAJES: { value: VistaMensajes; label: string }[] = [
+    { value: "respuestas", label: "Respuestas a clientes" },
+    { value: "automatizacion", label: "Mensajes de automatización" }
+];
+
 export default function MensajesPage() {
+
+    const params = useSearchParams();
+    const router = useRouter();
+    const pathname = usePathname();
+    const vista: VistaMensajes = params.get("vista") === "automatizacion" ? "automatizacion" : "respuestas";
+
+    function cambiarVista(nueva: string) {
+        if (nueva === vista) return;
+        if (nueva === "automatizacion" && !confirmarDescarte()) return;
+        router.replace(nueva === "automatizacion" ? `${pathname}?vista=automatizacion` : pathname, { scroll: false });
+    }
 
     const [usuarioId, setUsuarioId] = useState<string | null>(null);
     const [cargandoUsuario, setCargandoUsuario] = useState(true);
@@ -419,6 +446,30 @@ export default function MensajesPage() {
         return <div className={styles.state}>Debes iniciar sesión para configurar mensajes.</div>;
     }
 
+    const selectorVista = (
+        <div style={{ margin: "4px 0 16px" }}>
+            <Tabs items={VISTAS_MENSAJES} value={vista} onValueChange={cambiarVista} aria-label="Biblioteca de mensajes" />
+        </div>
+    );
+
+    if (vista === "automatizacion") {
+        return (
+            <div className={styles.page}>
+                <PageHeader
+                    title="Mensajes"
+                    description="La biblioteca central de textos de EFAAT. Aquí se escriben y administran todos los mensajes; Automatización solo decide cuándo se envían."
+                />
+                {selectorVista}
+                <MensajesAutomatizacion
+                    key={`${params.get("tipo") ?? ""}|${params.get("categoria") ?? ""}`}
+                    usuarioId={usuarioId}
+                    tipoInicial={params.get("tipo")}
+                    categoriaInicial={params.get("categoria")}
+                />
+            </div>
+        );
+    }
+
     if (!inicializacionLista) {
         return <div className={styles.state}>Inicializando plantillas…</div>;
     }
@@ -438,6 +489,8 @@ export default function MensajesPage() {
                     </Button>
                 }
             />
+
+            {selectorVista}
 
             <ActivadoresModal
                 open={activadoresAbierto}

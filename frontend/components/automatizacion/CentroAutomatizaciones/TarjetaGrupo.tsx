@@ -1,17 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, CalendarPlus, Copy, History, MessageSquareText, Settings2, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, CalendarPlus, Copy, History, Settings2, SlidersHorizontal } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
 import type { BadgeTone } from "@/components/ui/Badge";
 import { formatHora12 } from "@/lib/formatHora";
 import { formatearHace, formatearMomento, formatearRestante } from "@/services/automatizacion/estadoProgramacion";
 
+import { estadoTipos } from "@/services/automatizacion/vistaGrupos";
+
+import { TIPOS_VISIBLES } from "../compartido/estados";
 import type { FilaGrupo } from "./filaGrupo";
 import styles from "./CentroAutomatizaciones.module.css";
 
-export type SeccionEditor = "general" | "programaciones" | "mensajes" | "tabla" | "reglas";
+// Sin sección «mensajes»: el contenido se administra solo en /mensajes.
+export type SeccionEditor = "general" | "programaciones" | "tabla" | "reglas";
 
 interface Props {
     fila: FilaGrupo;
@@ -39,6 +43,7 @@ export default function TarjetaGrupo({ fila, ahora, seleccionada, cambiandoActiv
     const activo = config.activo === true;
     const conexion = CONEXION[fila.conexion];
     const restante = cierre ? cierre.getTime() - ahora.getTime() : null;
+    const tipos = estadoTipos(config);
 
     return (
 
@@ -127,6 +132,14 @@ export default function TarjetaGrupo({ fila, ahora, seleccionada, cambiandoActiv
                 </p>
             )}
 
+            <div className={styles.tiposFila} aria-label="Mensajes automáticos de este grupo">
+                {TIPOS_VISIBLES.map((t) => (
+                    <span key={t.clave} className={`${styles.tipoChip} ${tipos[t.clave] ? styles.tipoChipOn : ""}`} title={tipos[t.clave] ? "Activo" : "Pausado"}>
+                        {t.texto}
+                    </span>
+                ))}
+            </div>
+
             <dl className={styles.datos}>
                 <div className={styles.dato}>
                     <dt>Programados</dt>
@@ -177,9 +190,6 @@ export default function TarjetaGrupo({ fila, ahora, seleccionada, cambiandoActiv
                     </button>
                     <button type="button" className={styles.accion} onClick={() => onEditar("programaciones")} title="Agregar programación">
                         <CalendarPlus size={13} /> Programar
-                    </button>
-                    <button type="button" className={styles.accion} onClick={() => onEditar("mensajes")} title="Administrar mensajes">
-                        <MessageSquareText size={13} /> Mensajes
                     </button>
                     <button type="button" className={styles.accion} onClick={onHistorial} title="Consultar historial">
                         <History size={13} /> Historial

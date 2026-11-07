@@ -52,9 +52,15 @@ prueba("AI1 el núcleo solo importa archivos de su propia carpeta y módulos pro
 // Puntos de integración AUTORIZADOS, fase por fase. Cualquier otro archivo
 // de producción que importe el núcleo hace fallar esta prueba.
 //   O2: Inicio del día en modo sombra.
-const INTEGRACIONES_AUTORIZADAS = ["automation/sombraInicioDia.js"];
+//   O3: automatización (apertura, recordatorio, actualización, cierre) en sombra.
+//   O4: respuestas a reservas y consultas en sombra.
+//   O5: sorteos programados, «Compartir»/publicación y reacciones en sombra.
+const INTEGRACIONES_AUTORIZADAS = [
+    "automation/sombraAutomatizacion.js", "automation/sombraInicioDia.js", "bot/ai/sombraRespuestas.js",
+    "bot/funciones/reservas/sombraReacciones.js", "services/sombraCompartir.js", "sorteos/sombraSorteos.js"
+];
 
-prueba("AI2 solo los puntos de integración autorizados importan shared/mensajes (O2: Inicio del día en sombra)", () => {
+prueba("AI2 solo los puntos de integración autorizados importan shared/mensajes (O2–O5)", () => {
     const produccion = archivos(RAIZ, p => p.endsWith(".js") && !p.startsWith(NUCLEO) && !path.basename(p).startsWith("_"));
     const conectados = produccion.filter(f => /shared[\\/]+mensajes|shared\/mensajes/.test(fs.readFileSync(f, "utf8")));
     assert.deepStrictEqual(conectados.map(f => path.relative(RAIZ, f).split(path.sep).join("/")).sort(), INTEGRACIONES_AUTORIZADAS);

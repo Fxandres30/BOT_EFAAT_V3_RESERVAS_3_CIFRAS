@@ -364,7 +364,7 @@ export function resumirEnvios(recordatorios: ResultadoRecordatorio[], acciones: 
 
 // ------------------------------------------------------ grupo y conexión ---
 
-export const SIN_NOMBRE = "Grupo sin nombre disponible";
+export const SIN_NOMBRE = "Nombre desconocido";
 
 // Primer nombre real disponible, en orden de fiabilidad: WhatsApp en vivo,
 // el registrado con el evento, el último visto en mensajes. Nunca se

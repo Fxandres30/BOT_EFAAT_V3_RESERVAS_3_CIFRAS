@@ -875,3 +875,159 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------------------------------------------- enlace a la biblioteca --- */
+
+.enlaceBiblioteca {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--efaat-text-xs);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-primary);
+  text-decoration: none;
+}
+
+.enlaceBiblioteca:hover {
+  text-decoration: underline;
+}
+
+/* ------------------------------------------- tipos en la tarjeta --- */
+
+.tiposFila {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tipoChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: var(--efaat-radius-pill);
+  border: 1px solid var(--efaat-border-subtle);
+  font-size: var(--efaat-text-2xs);
+  font-weight: var(--efaat-weight-medium);
+  color: var(--efaat-text-muted);
+  background: var(--efaat-surface);
+}
+
+.tipoChip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--efaat-border-strong);
+}
+
+.tipoChipOn {
+  color: var(--efaat-success-strong);
+  border-color: var(--efaat-success-border);
+  background: var(--efaat-success-soft);
+}
+
+.tipoChipOn::before {
+  background: var(--efaat-success);
+}
+
+/* --------------------------------------------- vista por tipo --- */
+
+.porTipo {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 420px) {
+  .porTipo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.tipoPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+  border-radius: var(--efaat-radius-card);
+  min-width: 0;
+}
+
+.tipoPanelCabecera {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.tipoPanelIcono {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-primary-soft);
+  color: var(--efaat-primary);
+}
+
+.tipoPanelTexto {
+  flex: 1;
+  min-width: 0;
+}
+
+.tipoPanelTitulo {
+  margin: 0;
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-ink);
+}
+
+.tipoPanelDescripcion {
+  margin: 2px 0 0;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+  line-height: 1.4;
+}
+
+.tipoLista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tipoItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--efaat-border-subtle);
+  min-width: 0;
+}
+
+.tipoItemPrincipal {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tipoItemNombre {
+  font-size: var(--efaat-text-sm);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tipoItemDetalle {
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-text-secondary);
+  overflow-wrap: anywhere;
+}

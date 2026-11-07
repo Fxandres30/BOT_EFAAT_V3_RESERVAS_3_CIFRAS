@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { EmptyState } from "@/components/ui/EmptyState";
 
-import { getUser } from "@/services/auth/getUser";
 import {
     AutomationMessage,
     FiltrosMensajes,
@@ -20,23 +19,36 @@ import {
 import { TIPOS_AUTOMATIZACION, CATEGORIAS_AUTOMATIZACION } from "@/services/automatizacion/tiposCategorias";
 import { cargarMensajesEjemplo } from "@/services/automatizacion/mensajesEjemplo";
 
-import AutomatizacionHeader from "../AutomatizacionNav/AutomatizacionHeader";
-import MensajeCard from "../MensajeCard/MensajeCard";
-import MensajeModal from "../MensajeModal/MensajeModal";
+import MensajeCard from "./MensajeCard";
+import MensajeModal from "./MensajeModal";
 
-import styles from "./CentroMensajes.module.css";
+import styles from "./MensajesAutomatizacion.module.css";
 
-export default function CentroMensajes() {
+// Biblioteca central de los mensajes de automatización (automation_messages:
+// apertura, recordatorio, actualización y cierre). Antes vivía en
+// Automatización → Mensajes; ahora es la ÚNICA pantalla que administra su
+// contenido. Automatización solo elige qué mensajes usa cada envío.
+// Mismos servicios y mismas reglas (RLS de 007): los globales de EFAAT no
+// se editan, se duplican como copia propia.
 
-    const [usuarioId, setUsuarioId] = useState<string | null>(null);
-    const [cargando, setCargando] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+interface Props {
+    usuarioId: string;
+    tipoInicial?: string | null;
+    categoriaInicial?: string | null;
+}
 
-    const [mensajes, setMensajes] = useState<AutomationMessage[]>([]);
+export default function MensajesAutomatizacion({ usuarioId, tipoInicial, categoriaInicial }: Props) {
 
-    const [filtroTipo, setFiltroTipo] = useState("");
-    const [filtroCategoria, setFiltroCategoria] = useState("");
+    const [filtroTipo, setFiltroTipo] = useState(() => (TIPOS_AUTOMATIZACION.some((t) => t.id === tipoInicial) ? tipoInicial as string : ""));
+    const [filtroCategoria, setFiltroCategoria] = useState(() => (CATEGORIAS_AUTOMATIZACION.some((c) => c.id === categoriaInicial) ? categoriaInicial as string : ""));
     const [filtroEstado, setFiltroEstado] = useState<FiltrosMensajes["estado"]>("todos");
+    const [recarga, setRecarga] = useState(0);
+
+    // La lista vale para la combinación de filtros con la que se pidió
+    // (sin setState síncrono en el efecto): mientras llega la nueva, se
+    // muestra «Cargando…».
+    const clave = `${usuarioId}|${filtroTipo}|${filtroCategoria}|${filtroEstado}|${recarga}`;
+    const [cargada, setCargada] = useState<{ clave: string; mensajes: AutomationMessage[]; error: string | null } | null>(null);
 
     const [modal, setModal] = useState<"nuevo" | AutomationMessage | null>(null);
     const [procesando, setProcesando] = useState<string | null>(null);
@@ -44,58 +56,34 @@ export default function CentroMensajes() {
     const [cargandoEjemplos, setCargandoEjemplos] = useState(false);
     const [avisoEjemplos, setAvisoEjemplos] = useState<string | null>(null);
 
-    async function cargar(uid: string) {
+    useEffect(() => {
 
-        setCargando(true);
-        setError(null);
+        let vigente = true;
 
-        const { data, error: errorCarga } = await listarMensajes(uid, {
+        listarMensajes(usuarioId, {
             tipo: filtroTipo || undefined,
             categoria: filtroCategoria || undefined,
             estado: filtroEstado
+        }).then(({ data, error: errorCarga }) => {
+            if (!vigente) return;
+            setCargada({
+                clave,
+                mensajes: errorCarga ? [] : ((data as AutomationMessage[]) || []),
+                error: errorCarga ? `No se pudieron cargar los mensajes (${errorCarga.message}).` : null
+            });
         });
 
-        if (errorCarga) {
-            setError(`No se pudieron cargar los mensajes (${errorCarga.message}).`);
-            setMensajes([]);
-        } else {
-            setMensajes((data as AutomationMessage[]) || []);
-        }
+        return () => { vigente = false; };
 
-        setCargando(false);
+    }, [clave, usuarioId, filtroTipo, filtroCategoria, filtroEstado]);
 
+    const cargando = cargada?.clave !== clave;
+    const mensajes = !cargando && cargada ? cargada.mensajes : [];
+    const error = !cargando && cargada ? cargada.error : null;
+
+    function setMensajes(cambio: (prev: AutomationMessage[]) => AutomationMessage[]) {
+        setCargada((prev) => (prev ? { ...prev, mensajes: cambio(prev.mensajes) } : prev));
     }
-
-    useEffect(() => {
-
-        async function iniciar() {
-
-            const { data } = await getUser();
-            const uid = data.user?.id || null;
-
-            setUsuarioId(uid);
-
-            if (uid) {
-                await cargar(uid);
-            } else {
-                setCargando(false);
-            }
-
-        }
-
-        iniciar();
-
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    useEffect(() => {
-
-        if (usuarioId) {
-            cargar(usuarioId);
-        }
-
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filtroTipo, filtroCategoria, filtroEstado]);
 
     async function alternar(m: AutomationMessage) {
 
@@ -169,7 +157,7 @@ export default function CentroMensajes() {
         }
 
         setAvisoEjemplos(`${resultado.cantidadTotal} mensajes de ejemplo disponibles.`);
-        await cargar(usuarioId);
+        setRecarga((n) => n + 1);
 
     }
 
@@ -197,19 +185,10 @@ export default function CentroMensajes() {
 
         <div className={styles.page}>
 
-            <AutomatizacionHeader />
-
-            {!usuarioId && !cargando ? (
-
-                <div className={styles.state}>Debes iniciar sesión para administrar mensajes.</div>
-
-            ) : (
-
-                <>
 
                     <SectionHeader
-                        title="Centro de mensajes"
-                        description="El pool de mensajes que usan REMINDER/UPDATE/CLOSE/OPEN — globales y los tuyos propios."
+                        title="Mensajes de automatización"
+                        description="Textos que EFAAT envía solo en tus grupos: apertura, recordatorios, actualizaciones y cierre. En Automatización eliges cuándo se envían y qué mensajes de aquí usa cada envío; de los activos del tipo (o de la categoría elegida) se escoge uno al azar."
                         actions={
                             <div className={styles.headerActions}>
                                 <Button
@@ -305,11 +284,7 @@ export default function CentroMensajes() {
 
                     )}
 
-                </>
-
-            )}
-
-            {modal && usuarioId && (
+            {modal && (
 
                 <MensajeModal
                     usuarioId={usuarioId}

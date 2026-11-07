@@ -209,3 +209,119 @@
   font-size: 11px;
   line-height: 1.35;
 }
+
+/* ------------------------------------------------ sección destacada --- */
+
+.panel {
+  scroll-margin-top: 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border-radius: var(--efaat-radius-card);
+  border: 1px solid var(--efaat-primary-border);
+  background: linear-gradient(180deg, var(--efaat-primary-soft) 0%, var(--efaat-surface) 140px);
+  box-shadow: var(--efaat-shadow-xs);
+}
+
+.cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.titulo {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--efaat-text-lg);
+  font-weight: var(--efaat-weight-semibold);
+  color: var(--efaat-ink);
+}
+
+.descripcion {
+  margin: 4px 0 0;
+  max-width: 72ch;
+  font-size: var(--efaat-text-xs);
+  line-height: 1.5;
+  color: var(--efaat-text-secondary);
+}
+
+.actual {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 14px;
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border);
+}
+
+.actualVista {
+  width: 104px;
+  height: 104px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--efaat-radius-card);
+  background: var(--efaat-surface-sunken);
+  color: var(--efaat-text-muted);
+  overflow: hidden;
+}
+
+.actualVista img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.actualTexto {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.niveles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.nivel {
+  padding: 10px 12px;
+  border-radius: var(--efaat-radius-control);
+  background: var(--efaat-surface);
+  border: 1px solid var(--efaat-border-subtle);
+  font-size: var(--efaat-text-xs);
+  line-height: 1.45;
+  color: var(--efaat-text-secondary);
+}
+
+.nivel strong {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--efaat-text);
+}
+
+.error {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--efaat-text-xs);
+  color: var(--efaat-error-strong);
+}
+
+.texto {
+  margin: 0;
+  font-size: var(--efaat-text-xs);
+  line-height: 1.5;
+  color: var(--efaat-text-secondary);
+}

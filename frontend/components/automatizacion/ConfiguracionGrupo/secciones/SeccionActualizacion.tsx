@@ -87,7 +87,7 @@ export default function SeccionActualizacion({ usuarioId, grupoId, inicialMensaj
             </div>
 
             <div className={styles.msgRow}>
-                <span className={styles.actionLabel}>Categoría de mensaje</span>
+                <span className={styles.actionLabel}>Mensaje de la biblioteca</span>
                 <SelectorCategoria valor={mensaje.categoria} onChange={(categoria) => setMensaje({ ...mensaje, categoria })} />
             </div>
 

@@ -82,6 +82,8 @@ async function responderResultado(ctx) {
 
             console.log("[RESPONSE] tipo de respuesta desactivado, silencio →", tipoPresentacion);
 
+            await compararRespuestaEnSombra({ ctx, resultado, tipoPresentacion, foto: { habilitada: false }, actual: { enviado: false, estado: "interruptor_apagado" } });
+
             return false;
 
         }
@@ -135,6 +137,15 @@ async function responderResultado(ctx) {
     let habilitadas = [];
     let variablesDinamicas = [];
 
+    // FASE O4 — foto de la decisión para la comparación en sombra. Solo se
+    // registran valores que este motor ya calcula; no cambian nada.
+    let azarSeleccion = null;
+    let habilitadasIds = null;
+    let rotacionCalculada = null;
+    let variablesUsadas = null;
+    let iaIntentada = false;
+    let configLeida = null;
+
     if (puedeUsarPlantillas) {
 
         [config, habilitadas, variablesDinamicas] = await Promise.all([
@@ -142,6 +153,10 @@ async function responderResultado(ctx) {
             obtenerPlantillasHabilitadas(tipoPresentacion, usuarioId),
             obtenerVariablesActivas(usuarioId)
         ]);
+
+        // FASE O4: copia de la configuración TAL COMO SE LEYÓ (antes de que
+        // actualizarRotacion la avance), para la comparación en sombra.
+        configLeida = config ? { modo_seleccion: config.modo_seleccion, plantilla_fija_id: config.plantilla_fija_id, rotacion_indice: config.rotacion_indice } : null;
 
         // Una plantilla de agotado que (por error) lista
         // {{numeros_disponibles}} enviaría una lista vacía: no participa.
@@ -157,11 +172,17 @@ async function responderResultado(ctx) {
             .map(normalizarVariableDinamica)
             .filter(Boolean);
 
-        const { plantilla, nuevoIndiceRotacion } = seleccionarPlantilla(config, habilitadas);
+        // FASE O4: el azar se registra (misma única llamada a Math.random) solo
+        // para dárselo igual a la comparación en sombra.
+        const { plantilla, nuevoIndiceRotacion } = seleccionarPlantilla(config, habilitadas, () => (azarSeleccion = Math.random()));
+
+        habilitadasIds = (habilitadas || []).map(p => p.id);
+        rotacionCalculada = nuevoIndiceRotacion;
 
         if (plantilla?.contenido) {
 
             const variables = construirVariables(ctx, resultado, catalogoExtra);
+            variablesUsadas = variables;
 
             const resultadoPlantilla = aplicarPlantilla(
                 plantilla.contenido,
@@ -208,6 +229,8 @@ async function responderResultado(ctx) {
 
     if (!plantillaUtilizada && !esAgotado && !esConsultaDeEstado && !esErrorTecnico && !sinIA) {
 
+        iaIntentada = true;
+
         try {
 
             const contexto = construirContextoReserva(ctx);
@@ -249,6 +272,8 @@ async function responderResultado(ctx) {
         fallbackUtilizado: !plantillaUtilizada && !iaUtilizada
     });
 
+    let enviado = false;
+
     try {
 
         await sendMessage({
@@ -262,7 +287,7 @@ async function responderResultado(ctx) {
 
         console.log("[RESPONSE] envío exitoso →", ctx.chat.remoteJid);
 
-        return true;
+        enviado = true;
 
     }
 
@@ -270,12 +295,52 @@ async function responderResultado(ctx) {
 
         console.log("[RESPONSE] envío con error →", error.message);
 
-        return false;
-
     }
+
+    // FASE O4 — comparación en SOMBRA, después del envío real. Nunca lanza.
+    await compararRespuestaEnSombra({
+        ctx, resultado, tipoPresentacion,
+        foto: {
+            habilitada: true,
+            banderas: { esAgotado, esConsultaDeEstado, esErrorTecnico, soloMensajeFijo, sinIA, esPreguntaPuntualDePago, puedeUsarPlantillas },
+            config: configLeida,
+            habilitadasIds,
+            azar: azarSeleccion,
+            nuevoIndiceRotacion: plantillaUtilizada ? rotacionCalculada : null,
+            variables: variablesUsadas
+        },
+        actual: {
+            enviado: true,
+            estado: enviado ? "enviado" : "fallo_envio",
+            texto,
+            plantillaId,
+            fuente: plantillaUtilizada ? "plantilla" : iaUtilizada ? "ia" : "fijo",
+            iaIntentada
+        }
+    });
+
+    return enviado;
 
 }
 
+// FASE O4: compara la respuesta con el orquestador central EN SOMBRA
+// (bot/ai/sombraRespuestas.js). No hace nada salvo con
+// MENSAJES_ORQUESTADOR_RESPUESTA=shadow; nunca envía, nunca llama a la IA,
+// nunca avanza rotaciones y NUNCA lanza: un fallo aquí no afecta a la
+// respuesta, que ya salió.
+async function compararRespuestaEnSombra(datos) {
+    try {
+        await require("./sombraRespuestas").compararRespuestaEnSombra(datos);
+    } catch (error) {
+        console.error("⚠️ [MENSAJES SOMBRA] respuesta: comparación omitida:", error?.message);
+    }
+}
+
 module.exports = {
-    responderResultado
+    responderResultado,
+    // Reglas de filtrado reutilizadas por la comparación en sombra (O4).
+    usaListaDeDisponibles,
+    usaMontos,
+    TIPOS_SIN_IA,
+    TIPOS_ESTADO_NUMEROS
 };

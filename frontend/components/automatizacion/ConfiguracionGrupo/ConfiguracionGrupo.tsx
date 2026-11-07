@@ -2,13 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, Sunrise, Hourglass, Rocket, TableProperties, Bell, RefreshCw, Lock, Trophy, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Sunrise, Rocket, TableProperties, Bell, RefreshCw, Lock, AlertTriangle, Info } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
-import { StatusBadge } from "@/components/ui/Badge";
-import { Tabs } from "@/components/ui/Tabs";
-
-import { formatHora12 } from "@/lib/formatHora";
+import { Badge } from "@/components/ui/Badge";
+import { avisar } from "@/components/ui/Avisos";
 
 import { getUser } from "@/services/auth/getUser";
 import {
@@ -22,17 +20,19 @@ import {
 import { listarGruposAutorizados, autorizarGrupo, GrupoAutorizado } from "@/services/automatizacion/gruposAutorizados";
 import { obtenerGruposConversacion } from "@/services/chats/obtenerGruposConversacion";
 import { obtenerGruposDisponibles } from "@/services/automatizacion/gruposDisponibles";
+import { normalizarGrupoId } from "@/services/automatizacion/mergeGrupos";
+import { conexionVista, estadoAutorizacion, ConexionVista } from "@/services/automatizacion/vistaGrupos";
 
 import AutomatizacionHeader from "../AutomatizacionNav/AutomatizacionHeader";
+import { AUTORIZACION, CONEXION, horaLegible } from "../compartido/estados";
 import StickerPagoSection from "./StickerPagoSection";
-import { Dot, Switch } from "./secciones/compartido";
+import { Switch } from "./secciones/compartido";
 import SeccionInicioDia from "./secciones/SeccionInicioDia";
 import SeccionApertura from "./secciones/SeccionApertura";
 import SeccionTablaInicial from "./secciones/SeccionTablaInicial";
 import SeccionRecordatorios from "./secciones/SeccionRecordatorios";
 import SeccionActualizacion from "./secciones/SeccionActualizacion";
 import SeccionCierre from "./secciones/SeccionCierre";
-import SeccionProximamente from "./secciones/SeccionProximamente";
 
 import styles from "./ConfiguracionGrupo.module.css";
 
@@ -44,21 +44,20 @@ type Estado = "cargando" | "sin-sesion" | "listo" | "error" | "no-encontrado";
 
 type TipoConfig = Omit<AutomationConfig, "id" | "creado_en" | "actualizado_en">;
 
-// Estructura conceptual pedida — CADA acción es su propia pestaña, con su
-// propio guardado (ver secciones/*). Esta pantalla (el detalle de UN
-// grupo) sigue siendo donde vive la CONFIGURACIÓN; la AUTORIZACIÓN
-// (¿puede este grupo operar automatización, sí/no?) sigue viviendo
-// exclusivamente en /automatizacion/grupos — sin cambios aquí.
-const TABS = [
-    { value: "inicio_dia", label: "Inicio del día", icon: <Sunrise size={13} /> },
-    { value: "aviso_apertura", label: "Aviso de apertura", icon: <Hourglass size={13} /> },
-    { value: "apertura", label: "Apertura", icon: <Rocket size={13} /> },
-    { value: "tabla_inicial", label: "Tabla inicial", icon: <TableProperties size={13} /> },
-    { value: "recordatorios", label: "Recordatorios", icon: <Bell size={13} /> },
-    { value: "actualizacion", label: "Actualización", icon: <RefreshCw size={13} /> },
-    { value: "cierre", label: "Cierre", icon: <Lock size={13} /> },
-    { value: "resultado", label: "Resultado", icon: <Trophy size={13} /> }
-];
+// Cada tipo de mensaje es su propia sección, con su propio guardado. Solo
+// se muestran las que tienen funcionalidad real (las «Próximamente» se
+// retiraron de la navegación). Navegación en cuadrícula: todas visibles,
+// también en móvil.
+const SECCIONES = [
+    { value: "apertura", label: "Apertura", icon: Rocket },
+    { value: "recordatorios", label: "Recordatorios", icon: Bell },
+    { value: "actualizacion", label: "Actualizaciones", icon: RefreshCw },
+    { value: "cierre", label: "Cierre", icon: Lock },
+    { value: "tabla_inicial", label: "Tabla inicial", icon: TableProperties },
+    { value: "inicio_dia", label: "Inicio del día", icon: Sunrise }
+] as const;
+
+type Seccion = typeof SECCIONES[number]["value"];
 
 export default function ConfiguracionGrupo({ grupoId }: Props) {
 
@@ -68,10 +67,15 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
 
     const [nombreGrupo, setNombreGrupo] = useState<string | null>(null);
     const [autorizacion, setAutorizacion] = useState<GrupoAutorizado | null>(null);
+    const [conexion, setConexion] = useState<ConexionVista>("comprobando");
 
     const [config, setConfig] = useState<TipoConfig | null>(null);
-    const [tabActiva, setTabActiva] = useState("inicio_dia");
+    // false = el grupo todavía no tiene automatización guardada. Se crea en
+    // el primer guardado que confirme el usuario (guardarConfiguracion).
+    const [guardada, setGuardada] = useState(true);
+    const [seccion, setSeccion] = useState<Seccion>("apertura");
     const [guardandoActivo, setGuardandoActivo] = useState(false);
+    const [autorizando, setAutorizando] = useState(false);
 
     useEffect(() => {
 
@@ -95,53 +99,33 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
             ]);
 
             if (configRes.error) {
-                setError(`No se pudo cargar la configuración (${configRes.error.message}).`);
+                setError("No pudimos cargar la configuración de este grupo. Intenta de nuevo en unos minutos.");
                 setEstado("error");
                 return;
             }
 
-            const propia = (autorizadosRes.data || []).find((g: GrupoAutorizado) => g.grupo_id === grupoId) || null;
+            const propia = (autorizadosRes.data || []).find((g: GrupoAutorizado) => normalizarGrupoId(g.grupo_id) === grupoId) || null;
 
-            // Prioridad: grupo REAL de la sesión conectada > histórico de
-            // mensajes_grupos_sorteos > el JID crudo (ver GruposAutomatizacion).
-            const real = disponiblesRes.flatMap((s) => s.grupos).find((g) => g.id === grupoId);
+            // Prioridad del nombre: WhatsApp en vivo > último nombre registrado.
+            const real = disponiblesRes.flatMap((s) => s.grupos).find((g) => normalizarGrupoId(g.id) === grupoId);
             const conocido = conocidosRes.data.find((g) => g.grupo_id === grupoId);
+            const existente = configRes.data as AutomationConfig | null;
 
-            if (!propia && !real && !conocido) {
+            if (!propia && !real && !conocido && !existente) {
                 setEstado("no-encontrado");
                 return;
             }
 
             setAutorizacion(propia);
             setNombreGrupo(real?.nombre || conocido?.grupo_nombre || null);
+            setConexion(conexionVista(!!real, disponiblesRes));
 
-            let base = (configRes.data as AutomationConfig | null);
+            // Sin fila todavía: se muestran los valores por defecto SIN
+            // guardarlos. Nada se escribe hasta que el usuario guarda.
+            const base: TipoConfig = existente ? { ...existente } : configuracionPorDefecto(uid, grupoId);
+            setGuardada(!!existente);
 
-            if (!base) {
-
-                // Grupo sin fila todavía: se materializa UNA vez con los
-                // defaults completos (mismo objeto que ya se usaba como
-                // estado inicial antes de esta fase) — necesario para que,
-                // a partir de ahora, cada sección pueda guardar solo SU
-                // propia columna sin dejar el resto en blanco/NULL en un
-                // INSERT. Nunca se sobreescribe una fila que ya existía.
-                const defecto = configuracionPorDefecto(uid, grupoId);
-                const { data: creada, error: errorCrear } = await guardarConfiguracion(uid, grupoId, defecto);
-
-                if (errorCrear || !creada) {
-                    setError(`No se pudo inicializar la configuración (${errorCrear?.message || "error desconocido"}).`);
-                    setEstado("error");
-                    return;
-                }
-
-                base = creada as AutomationConfig;
-
-            }
-
-            // Filas viejas (creadas antes de las migraciones 009/"Inicio del
-            // día") pueden traer estos campos como "{}" — se normalizan a
-            // los mismos defaults que vería un grupo nuevo, nunca "todo
-            // vacío" sin explicación.
+            // Filas viejas pueden traer estos campos como "{}".
             base.publicacion_inicial_tabla = normalizarPublicacionInicialTabla(base.publicacion_inicial_tabla);
             base.mensaje_inicio_dia = normalizarInicioDia(base.mensaje_inicio_dia);
 
@@ -154,22 +138,26 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
 
     }, [grupoId]);
 
-    async function autorizarSiHaceFalta() {
+    async function autorizar() {
 
         if (!usuarioId) return;
 
+        setAutorizando(true);
         const { data, error: errorAutorizar } = await autorizarGrupo(usuarioId, grupoId);
+        setAutorizando(false);
 
-        if (!errorAutorizar && data) {
-            setAutorizacion(data as GrupoAutorizado);
+        if (errorAutorizar || !data) {
+            avisar.error("No se pudo autorizar el grupo. Intenta de nuevo.");
+            return;
         }
+
+        setAutorizacion(data as GrupoAutorizado);
+        avisar.ok("Grupo autorizado.");
 
     }
 
-    // Interruptor MAESTRO del grupo — distinto de las 8 acciones (ninguna
-    // funciona si este está apagado, sin importar su propia configuración).
-    // Se guarda al instante, igual que ya hacen otros interruptores
-    // simples del panel (alternarGrupoAutorizado, alternarTipoHabilitado).
+    // Interruptor general del grupo: pausa o reactiva todos sus mensajes
+    // automáticos. Se guarda al instante (acción confirmada por el usuario).
     async function alternarActivo() {
 
         if (!usuarioId || !config) return;
@@ -177,15 +165,24 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
         const nuevo = !config.activo;
 
         setGuardandoActivo(true);
-
         const { data, error: errorGuardar } = await guardarConfiguracion(usuarioId, grupoId, { activo: nuevo });
-
         setGuardandoActivo(false);
 
-        if (!errorGuardar && data) {
-            setConfig((prev) => (prev ? { ...prev, activo: nuevo } : prev));
+        if (errorGuardar || !data) {
+            avisar.error("No se pudo cambiar la automatización. Intenta de nuevo.");
+            return;
         }
 
+        setConfig((prev) => (prev ? { ...prev, activo: nuevo } : prev));
+        setGuardada(true);
+        avisar.ok(nuevo ? "Automatización activada." : "Automatización pausada. No saldrán mensajes automáticos nuevos.");
+
+    }
+
+    // Cualquier sección que guarda crea la configuración si no existía.
+    function alGuardar<K extends keyof TipoConfig>(cambios: Pick<TipoConfig, K> | Partial<TipoConfig>) {
+        setConfig((prev) => (prev ? { ...prev, ...cambios } : prev));
+        setGuardada(true);
     }
 
     if (estado === "cargando") {
@@ -196,65 +193,81 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
         return <div className={styles.state}>Debes iniciar sesión.</div>;
     }
 
-    if (estado === "error" || !config || !usuarioId) {
-        return <div className={styles.state}>{error}</div>;
-    }
-
     if (estado === "no-encontrado") {
         return (
             <div className={styles.page}>
-                <AutomatizacionHeader />
-                <div className={styles.state}>
-                    <p className={styles.title}>Grupo no encontrado</p>
-                    <p className={styles.nota}>
-                        Este grupo ya no está disponible en la sesión de WhatsApp conectada.
-                    </p>
-                    <Link href="/automatizacion/grupos" className={styles.back}>
-                        <ChevronLeft size={13} /> Volver a grupos
-                    </Link>
-                </div>
+                <AutomatizacionHeader title="Grupo no encontrado" description="Este grupo no aparece en tu WhatsApp ni tiene autorización o configuración guardada." />
+                <Link href="/automatizacion/grupos" className={styles.back}>
+                    <ChevronLeft size={13} /> Volver a Grupos
+                </Link>
             </div>
         );
     }
 
-    const aperturaActiva = config.mensaje_apertura?.activo !== false;
-    const algunRecordatorioActivo = Object.values(config.recordatorios).some((c) => c.activo);
+    if (estado === "error" || !config || !usuarioId) {
+        return <div className={styles.state}>{error}</div>;
+    }
+
+    const estadoAut = estadoAutorizacion(autorizacion);
+    const conexionInfo = CONEXION[conexion];
+    const autorizacionInfo = AUTORIZACION[estadoAut];
+    const algunRecordatorioActivo = Object.values(config.recordatorios || {}).some((c) => c?.activo);
+
+    const resumen: { seccion: Seccion; texto: string; valor: string; on: boolean }[] = [
+        { seccion: "apertura", texto: "Apertura", valor: config.mensaje_apertura?.activo !== false ? "Activa" : "Pausada", on: config.mensaje_apertura?.activo !== false },
+        { seccion: "recordatorios", texto: "Recordatorios", valor: algunRecordatorioActivo ? "Activos" : "Pausados", on: algunRecordatorioActivo },
+        { seccion: "actualizacion", texto: "Actualizaciones", valor: config.mensaje_actualizacion?.activo ? "Activas" : "Pausadas", on: config.mensaje_actualizacion?.activo === true },
+        { seccion: "cierre", texto: "Cierre", valor: config.mensaje_cierre?.activo ? "Activo" : "Pausado", on: config.mensaje_cierre?.activo === true },
+        { seccion: "tabla_inicial", texto: "Tabla inicial", valor: config.publicacion_inicial_tabla.activo ? horaLegible(config.publicacion_inicial_tabla.hora) : "Pausada", on: config.publicacion_inicial_tabla.activo },
+        { seccion: "inicio_dia", texto: "Inicio del día", valor: config.mensaje_inicio_dia.activo ? horaLegible(config.mensaje_inicio_dia.hora) : "Pausado", on: config.mensaje_inicio_dia.activo }
+    ];
 
     return (
 
         <div className={styles.page}>
 
-            <AutomatizacionHeader />
+            <AutomatizacionHeader
+                title={nombreGrupo || "Nombre desconocido"}
+                description="Configura qué mensajes automáticos recibe este grupo y cuándo. Los textos se eligen de la biblioteca de Mensajes; los datos del sorteo salen del anuncio detectado en el grupo."
+            />
 
             <div className={styles.header}>
-
-                <div>
-                    <Link href="/automatizacion/grupos" className={styles.back}>
-                        <ChevronLeft size={13} /> Grupos
-                    </Link>
-                    <h1 className={styles.title}>{nombreGrupo || grupoId}</h1>
-                    <p className={styles.jidLabel}>ID de WhatsApp</p>
-                    <p className={styles.jid}>{grupoId}</p>
+                <Link href="/automatizacion/grupos" className={styles.back}>
+                    <ChevronLeft size={13} /> Volver a Grupos
+                </Link>
+                <div className={styles.estadoGrupo}>
+                    <Badge size="sm" tone={conexionInfo.tono} dot title={conexionInfo.explicacion}>{conexionInfo.texto}</Badge>
+                    <Badge size="sm" tone={autorizacionInfo.tono} title={autorizacionInfo.explicacion}>{autorizacionInfo.texto}</Badge>
+                    <Badge size="sm" tone={!guardada ? "neutral" : config.activo ? "primary" : "neutral"}>
+                        {!guardada ? "Sin configurar" : config.activo ? "Automatización activa" : "Automatización pausada"}
+                    </Badge>
                 </div>
-
-                <StatusBadge
-                    status={config.activo ? "active" : "inactive"}
-                    label={config.activo ? "Activa" : "Inactiva"}
-                />
-
             </div>
 
-            {!autorizacion && (
+            <details className={styles.avanzado}>
+                <summary>Detalles avanzados</summary>
+                <p>ID de WhatsApp: <span className={styles.jid}>{grupoId}</span></p>
+            </details>
+
+            {estadoAut !== "autorizado" && (
                 <div className={styles.aviso}>
                     <span>
-                        Este grupo todavía no está en <strong>grupos_autorizados</strong> — la
-                        automatización nunca operará aquí hasta autorizarlo (ver la pantalla
-                        Grupos, que es la única que decide esto).
+                        {estadoAut === "pausada"
+                            ? "La autorización de este grupo está pausada: EFAAT no le enviará mensajes automáticos hasta que la reactives."
+                            : "Este grupo no está autorizado: EFAAT no le enviará mensajes automáticos hasta que lo autorices. Puedes preparar su configuración desde ya."}
+                        {(conexion === "no_visto" || conexion === "sin_sesion") && " Además, ahora no aparece en tu WhatsApp: autorizarlo no lo conecta."}
                     </span>
-                    <Button size="sm" variant="secondary" onClick={autorizarSiHaceFalta}>
-                        Autorizar ahora
+                    <Button size="sm" variant="secondary" onClick={autorizar} loading={autorizando} disabled={autorizando}>
+                        {estadoAut === "pausada" ? "Reactivar autorización" : "Autorizar"}
                     </Button>
                 </div>
+            )}
+
+            {!guardada && (
+                <p className={styles.notaInfo}>
+                    <Info size={14} aria-hidden="true" />
+                    Este grupo todavía no tiene automatización guardada. Ves los valores iniciales; se guardará cuando pulses «Guardar» en una sección o actives la automatización.
+                </p>
             )}
 
             {error && (
@@ -263,145 +276,95 @@ export default function ConfiguracionGrupo({ grupoId }: Props) {
                 </p>
             )}
 
-            <div className={styles.resumen}>
-                <div className={styles.resumenItem}>
-                    <span className={styles.resumenLabel}>Inicio del día</span>
-                    <span className={styles.resumenValue}>
-                        {config.mensaje_inicio_dia.activo
-                            ? formatHora12(config.mensaje_inicio_dia.hora)
-                            : <Dot on={false} />}
-                    </span>
-                </div>
-                <div className={styles.resumenItem}>
-                    <span className={styles.resumenLabel}>Apertura</span>
-                    <span className={styles.resumenValue}><Dot on={aperturaActiva} /></span>
-                </div>
-                <div className={styles.resumenItem}>
-                    <span className={styles.resumenLabel}>Tabla inicial</span>
-                    <span className={styles.resumenValue}>
-                        {config.publicacion_inicial_tabla.activo
-                            ? formatHora12(config.publicacion_inicial_tabla.hora)
-                            : <Dot on={false} />}
-                    </span>
-                </div>
-                <div className={styles.resumenItem}>
-                    <span className={styles.resumenLabel}>Recordatorios</span>
-                    <span className={styles.resumenValue}><Dot on={algunRecordatorioActivo} /></span>
-                </div>
-                <div className={styles.resumenItem}>
-                    <span className={styles.resumenLabel}>Actualización</span>
-                    <span className={styles.resumenValue}><Dot on={config.mensaje_actualizacion.activo} /></span>
-                </div>
-                <div className={styles.resumenItem}>
-                    <span className={styles.resumenLabel}>Cierre</span>
-                    <span className={styles.resumenValue}><Dot on={config.mensaje_cierre.activo} /></span>
-                </div>
-            </div>
-
-            <StickerPagoSection usuarioId={usuarioId} grupoId={grupoId} />
-
             <section className={styles.section}>
-                <h2 className={styles.sectionTitle}>Automatización</h2>
 
                 <div className={styles.actionRow} style={{ borderTop: "none" }}>
                     <span className={styles.actionLabel}>
-                        Automatización activa para este grupo
-                        {guardandoActivo && " (guardando…)"}
+                        Mensajes automáticos de este grupo
+                        <span className={styles.actionHint}>
+                            {config.activo && guardada
+                                ? "Activos: cada tipo de mensaje sale según su propia configuración."
+                                : "En pausa: no sale ningún mensaje automático. La configuración de cada tipo se conserva."}
+                            {guardandoActivo && " Guardando…"}
+                        </span>
                     </span>
-                    <Switch on={config.activo} label="Automatización activa" onClick={alternarActivo} />
+                    <span className={styles.switchConTexto}>
+                        {config.activo && guardada ? "Activa" : "Pausada"}
+                        <Switch on={config.activo && guardada} label="Mensajes automáticos de este grupo" onClick={alternarActivo} />
+                    </span>
                 </div>
 
-                <p className={styles.nota}>
-                    El nombre, valor, premios, hora de cierre y demás datos del sorteo SIEMPRE
-                    vienen del evento real detectado (Automation Engine, sin cambios). Este
-                    interruptor es el único que afecta a TODAS las acciones de abajo a la vez —
-                    cada una, además, tiene su propio interruptor independiente en su pestaña.
-                </p>
+                <div className={styles.resumenTipos}>
+                    {resumen.map((r) => (
+                        <button
+                            key={r.seccion}
+                            type="button"
+                            className={`${styles.resumenTipo} ${seccion === r.seccion ? styles.resumenTipoActivo : ""}`}
+                            onClick={() => setSeccion(r.seccion)}
+                        >
+                            <span className={styles.resumenLabel}>{r.texto}</span>
+                            <span className={`${styles.resumenEstado} ${r.on ? styles.resumenEstadoOn : ""}`}>{r.valor}</span>
+                        </button>
+                    ))}
+                </div>
+
             </section>
 
-            <Tabs
-                items={TABS}
-                value={tabActiva}
-                onValueChange={setTabActiva}
-                aria-label="Configuración por acción"
-                fullWidth
-            />
+            <nav className={styles.secciones} aria-label="Tipos de mensaje">
+                {SECCIONES.map((s) => {
+                    const Icono = s.icon;
+                    return (
+                        <button
+                            key={s.value}
+                            type="button"
+                            aria-current={seccion === s.value ? "true" : undefined}
+                            className={`${styles.seccionBoton} ${seccion === s.value ? styles.seccionBotonActivo : ""}`}
+                            onClick={() => setSeccion(s.value)}
+                        >
+                            <Icono size={14} aria-hidden="true" /> {s.label}
+                        </button>
+                    );
+                })}
+            </nav>
 
-            <div style={{ marginTop: 12 }}>
+            <div>
 
-                {tabActiva === "inicio_dia" && (
-                    <SeccionInicioDia
-                        usuarioId={usuarioId}
-                        grupoId={grupoId}
-                        inicial={config.mensaje_inicio_dia}
-                        onGuardado={(nuevo) => setConfig((prev) => (prev ? { ...prev, mensaje_inicio_dia: nuevo } : prev))}
-                    />
+                {seccion === "inicio_dia" && (
+                    <SeccionInicioDia usuarioId={usuarioId} grupoId={grupoId} inicial={config.mensaje_inicio_dia}
+                        onGuardado={(nuevo) => alGuardar({ mensaje_inicio_dia: nuevo })} />
                 )}
 
-                {tabActiva === "aviso_apertura" && (
-                    <SeccionProximamente
-                        icon={Hourglass}
-                        titulo="Aviso de apertura"
-                        descripcion="Un mensaje de cuenta regresiva antes de la apertura real del grupo."
-                    />
+                {seccion === "apertura" && (
+                    <SeccionApertura usuarioId={usuarioId} grupoId={grupoId} inicial={config.mensaje_apertura}
+                        onGuardado={(nuevo) => alGuardar({ mensaje_apertura: nuevo })} />
                 )}
 
-                {tabActiva === "apertura" && (
-                    <SeccionApertura
-                        usuarioId={usuarioId}
-                        grupoId={grupoId}
-                        inicial={config.mensaje_apertura}
-                        onGuardado={(nuevo) => setConfig((prev) => (prev ? { ...prev, mensaje_apertura: nuevo } : prev))}
-                    />
+                {seccion === "tabla_inicial" && (
+                    <SeccionTablaInicial usuarioId={usuarioId} grupoId={grupoId} inicial={config.publicacion_inicial_tabla}
+                        onGuardado={(nuevo) => alGuardar({ publicacion_inicial_tabla: nuevo })} />
                 )}
 
-                {tabActiva === "tabla_inicial" && (
-                    <SeccionTablaInicial
-                        usuarioId={usuarioId}
-                        grupoId={grupoId}
-                        inicial={config.publicacion_inicial_tabla}
-                        onGuardado={(nuevo) => setConfig((prev) => (prev ? { ...prev, publicacion_inicial_tabla: nuevo } : prev))}
-                    />
+                {seccion === "recordatorios" && (
+                    <SeccionRecordatorios usuarioId={usuarioId} grupoId={grupoId} inicial={config.recordatorios}
+                        onGuardado={(nuevo) => alGuardar({ recordatorios: nuevo })} />
                 )}
 
-                {tabActiva === "recordatorios" && (
-                    <SeccionRecordatorios
-                        usuarioId={usuarioId}
-                        grupoId={grupoId}
-                        inicial={config.recordatorios}
-                        onGuardado={(nuevo) => setConfig((prev) => (prev ? { ...prev, recordatorios: nuevo } : prev))}
-                    />
-                )}
-
-                {tabActiva === "actualizacion" && (
-                    <SeccionActualizacion
-                        usuarioId={usuarioId}
-                        grupoId={grupoId}
+                {seccion === "actualizacion" && (
+                    <SeccionActualizacion usuarioId={usuarioId} grupoId={grupoId}
                         inicialMensaje={config.mensaje_actualizacion}
                         inicialUmbral={config.umbral_reservas}
                         inicialCooldown={config.cooldown_minutos}
-                        onGuardado={(cambios) => setConfig((prev) => (prev ? { ...prev, ...cambios } : prev))}
-                    />
+                        onGuardado={(cambios) => alGuardar(cambios)} />
                 )}
 
-                {tabActiva === "cierre" && (
-                    <SeccionCierre
-                        usuarioId={usuarioId}
-                        grupoId={grupoId}
-                        inicial={config.mensaje_cierre}
-                        onGuardado={(nuevo) => setConfig((prev) => (prev ? { ...prev, mensaje_cierre: nuevo } : prev))}
-                    />
-                )}
-
-                {tabActiva === "resultado" && (
-                    <SeccionProximamente
-                        icon={Trophy}
-                        titulo="Resultado"
-                        descripcion="Anuncio del número/ganador del sorteo."
-                    />
+                {seccion === "cierre" && (
+                    <SeccionCierre usuarioId={usuarioId} grupoId={grupoId} inicial={config.mensaje_cierre}
+                        onGuardado={(nuevo) => alGuardar({ mensaje_cierre: nuevo })} />
                 )}
 
             </div>
+
+            <StickerPagoSection usuarioId={usuarioId} grupoId={grupoId} />
 
         </div>
 

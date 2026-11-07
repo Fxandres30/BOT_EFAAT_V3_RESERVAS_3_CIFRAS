@@ -52,6 +52,21 @@ function decidirReaccion({ solicitados, resultado, reservados = [] }) {
 // valor conocido; sin ninguno, ACTIVADO (comportamiento de hoy).
 const cache = new Map();   // usuarioId -> { activado, hasta }
 
+// Lectura del interruptor SIN caché (única consulta; la usan la caché de
+// arriba y, en O5, la comparación en sombra, que no debe tocar la caché).
+// Sin fila = ACTIVADO. Lanza si la consulta falla.
+async function leerInterruptorReacciones(usuarioId) {
+    const supabase = require("../../../lib/supabase");
+    const { data, error } = await supabase
+        .from("configuracion_seleccion_mensajes")
+        .select("habilitada")
+        .eq("usuario_id", usuarioId)
+        .eq("tipo_respuesta", TIPO_INTERRUPTOR)
+        .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? data.habilitada !== false : true;
+}
+
 function ttlMs() {
     const v = Number(process.env.REACCIONES_CACHE_MS);
     return Number.isFinite(v) && v >= 0 ? v : 30000;
@@ -67,15 +82,7 @@ async function reaccionesActivadas(usuarioId, { ahora = Date.now() } = {}) {
     let activado = guardado ? guardado.activado : true;
 
     try {
-        const supabase = require("../../../lib/supabase");
-        const { data, error } = await supabase
-            .from("configuracion_seleccion_mensajes")
-            .select("habilitada")
-            .eq("usuario_id", usuarioId)
-            .eq("tipo_respuesta", TIPO_INTERRUPTOR)
-            .maybeSingle();
-        if (error) throw new Error(error.message);
-        activado = data ? data.habilitada !== false : true;
+        activado = await leerInterruptorReacciones(usuarioId);
     } catch (error) {
         console.log("⚠️ [REACCIONES] no se pudo leer el interruptor; se usa el último valor conocido:", error?.message || error);
     }
@@ -98,15 +105,27 @@ function claveMensaje(key) {
 // normal del bot sigue igual. Devuelve true si se envió.
 async function reaccionarAlMensaje({ ctx, emoji, enviar }) {
 
-    if (!emoji || !ctx?.message?.key || ctx.message.key.fromMe || !ctx.chat?.esGrupo) return false;
+    const r = await reaccionarConMotivo({ ctx, emoji, enviar });
+
+    // FASE O5 — comparación en SOMBRA (nunca reacciona ni marca nada).
+    await compararReaccionEnSombra({ ctx, emoji, resultado: r });
+
+    return r.ok;
+
+}
+
+// Mismo flujo de siempre; además del resultado devuelve el motivo (O5).
+async function reaccionarConMotivo({ ctx, emoji, enviar }) {
+
+    if (!emoji || !ctx?.message?.key || ctx.message.key.fromMe || !ctx.chat?.esGrupo) return { ok: false, motivo: "no_aplica" };
 
     const clave = claveMensaje(ctx.message.key);
 
-    if (!clave || reaccionados.has(clave)) return false;
+    if (!clave || reaccionados.has(clave)) return { ok: false, motivo: "ya_reaccionado" };
 
     // Desactivado en el panel: ninguna reacción. La respuesta de texto y la
     // reserva ya ocurrieron igual que siempre.
-    if (!(await reaccionesActivadas(ctx.session?.usuarioId || null))) return false;
+    if (!(await reaccionesActivadas(ctx.session?.usuarioId || null))) return { ok: false, motivo: "interruptor_apagado" };
 
     reaccionados.add(clave);
     if (reaccionados.size > LIMITE) reaccionados.delete(reaccionados.values().next().value);
@@ -119,16 +138,29 @@ async function reaccionarAlMensaje({ ctx, emoji, enviar }) {
 
         console.log("[RESPONSE] reacción enviada →", emoji);
 
-        return true;
+        return { ok: true, motivo: "enviada" };
 
     } catch (error) {
 
         console.log("⚠️ [RESPONSE] no se pudo enviar la reacción (la respuesta ya salió):", error?.message || error);
 
-        return false;
+        return { ok: false, motivo: "fallo_envio" };
 
     }
 
+}
+
+// FASE O5: compara la reacción con el orquestador central EN SOMBRA
+// (sombraReacciones.js). Solo cuando el motor llegó a decidir (enviada,
+// fallo de envío o interruptor apagado). No hace nada salvo con
+// MENSAJES_ORQUESTADOR_REACCION=shadow y NUNCA lanza.
+async function compararReaccionEnSombra(datos) {
+    if (!["enviada", "fallo_envio", "interruptor_apagado"].includes(datos.resultado?.motivo)) return;
+    try {
+        await require("./sombraReacciones").compararReaccionEnSombra(datos);
+    } catch (error) {
+        console.error("⚠️ [MENSAJES SOMBRA] reaccion: comparación omitida:", error?.message);
+    }
 }
 
 module.exports = {
@@ -138,5 +170,6 @@ module.exports = {
     REACCION_TODOS_OCUPADOS,
     TIPO_INTERRUPTOR,
     reaccionesActivadas,
+    leerInterruptorReacciones,
     _reiniciar: () => { reaccionados.clear(); cache.clear(); }
 };

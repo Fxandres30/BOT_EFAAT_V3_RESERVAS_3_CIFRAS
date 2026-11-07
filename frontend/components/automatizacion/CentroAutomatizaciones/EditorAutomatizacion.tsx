@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { AlertTriangle, Copy, MessageSquareText, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Copy, ExternalLink, Plus, Trash2 } from "lucide-react";
 
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -39,7 +39,6 @@ import {
     validarUmbral
 } from "@/services/automatizacion/centroAutomatizaciones";
 
-import MensajesCategoria from "./MensajesCategoria";
 import type { FilaGrupo } from "./filaGrupo";
 import type { SeccionEditor } from "./TarjetaGrupo";
 import styles from "./CentroAutomatizaciones.module.css";
@@ -54,13 +53,30 @@ interface Props {
     onHistorial: () => void;
 }
 
+// El contenido de los mensajes NO se edita aquí: vive solo en la biblioteca
+// central (/mensajes → «Mensajes de automatización»). Aquí solo se elige
+// qué mensajes de esa biblioteca usa cada envío.
 const SECCIONES: { value: SeccionEditor; label: string }[] = [
     { value: "general", label: "General" },
-    { value: "programaciones", label: "Programaciones" },
-    { value: "mensajes", label: "Mensajes" },
-    { value: "tabla", label: "Tabla inicial" },
-    { value: "reglas", label: "Reglas" }
+    { value: "programaciones", label: "Recordatorios" },
+    { value: "reglas", label: "Actualizaciones y cierre" },
+    { value: "tabla", label: "Tabla inicial" }
 ];
+
+// Enlace a la biblioteca central, filtrada por tipo y categoría.
+export function enlaceBiblioteca(tipo: string, categoria: string | null): string {
+    const q = new URLSearchParams({ vista: "automatizacion", tipo });
+    if (categoria) q.set("categoria", categoria);
+    return `/mensajes?${q.toString()}`;
+}
+
+function EnlaceBiblioteca({ tipo, categoria, children }: { tipo: string; categoria: string | null; children: ReactNode }) {
+    return (
+        <Link href={enlaceBiblioteca(tipo, categoria)} target="_blank" rel="noopener noreferrer" prefetch={false} className={styles.enlaceBiblioteca}>
+            {children} <ExternalLink size={12} aria-hidden="true" />
+        </Link>
+    );
+}
 
 const TONO_ESTADO: Record<EstadoRecordatorio, BadgeTone> = {
     desactivado: "neutral",
@@ -109,13 +125,22 @@ function Interruptor({ on, onClick, label, disabled }: { on: boolean; onClick: (
     );
 }
 
+// Elige QUÉ mensajes de la biblioteca central usa un envío: cualquiera de
+// su tipo o solo los de una categoría (el backend elige uno al azar entre
+// los activos — messageSelector.js, sin cambios).
 function SelectorCategoria({ valor, onChange, label }: { valor: string | null; onChange: (v: string | null) => void; label: string }) {
     return (
         <select className={styles.selectCorto} value={valor || ""} onChange={(e) => onChange(e.target.value || null)} aria-label={label}>
-            <option value="">Cualquier categoría</option>
-            {CATEGORIAS_AUTOMATIZACION.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+            <option value="">Cualquier mensaje activo</option>
+            {CATEGORIAS_AUTOMATIZACION.map((c) => <option key={c.id} value={c.id}>Solo «{c.label}»</option>)}
         </select>
     );
+}
+
+function textoActivos(cuenta: Record<string, number> | undefined, categoria: string | null): string | null {
+    if (!cuenta) return null;
+    const n = categoria ? cuenta[categoria] || 0 : cuenta["*"] || 0;
+    return n === 0 ? "Sin mensajes activos" : `${n} mensaje${n === 1 ? "" : "s"} activo${n === 1 ? "" : "s"}`;
 }
 
 export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, ahora, onClose, onGuardado, onHistorial }: Props) {
@@ -125,7 +150,6 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
     const [base, setBase] = useState<AutomationConfig>(() => borradorDe(fila.config));
     const [borrador, setBorrador] = useState<AutomationConfig>(() => borradorDe(fila.config));
     const [seccion, setSeccion] = useState<SeccionEditor>(seccionInicial);
-    const [mensajesFiltro, setMensajesFiltro] = useState<{ tipo: string; categoria: string | null }>({ tipo: "REMINDER_MESSAGE", categoria: null });
 
     const [minutosEditando, setMinutosEditando] = useState<Record<string, string>>({});
     const [erroresMinutos, setErroresMinutos] = useState<Record<string, string>>({});
@@ -137,7 +161,9 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
     const [pidiendoCierre, setPidiendoCierre] = useState(false);
     const [guardadoOk, setGuardadoOk] = useState(false);
 
-    const [activosPorCategoria, setActivosPorCategoria] = useState<Record<string, number> | null>(null);
+    // tipo -> (categoría | "*") -> mensajes activos en la biblioteca central.
+    const [activosPorTipo, setActivosPorTipo] = useState<Record<string, Record<string, number>> | null>(null);
+    const activosPorCategoria = activosPorTipo ? activosPorTipo.REMINDER_MESSAGE || { "*": 0 } : null;
 
     const guardar = useAccion(async () => {
 
@@ -151,21 +177,23 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
 
     const recargar = useAccion(async () => obtenerConfiguracion(usuarioId, base.grupo_id));
 
-    // Mensajes activos de recordatorio por categoría (para avisar cuando una
-    // programación no tendría ningún texto que enviar).
+    // Mensajes activos de la biblioteca por tipo y categoría (solo lectura):
+    // muestra cuántos textos puede usar cada envío y avisa si no tendría
+    // ninguno que enviar.
     useEffect(() => {
 
         let vigente = true;
 
-        listarMensajes(usuarioId, { tipo: "REMINDER_MESSAGE", estado: "activos" }).then(({ data, error }) => {
+        listarMensajes(usuarioId, { estado: "activos" }).then(({ data, error }) => {
             if (!vigente || error) return;
-            const cuenta: Record<string, number> = { "*": 0 };
+            const cuenta: Record<string, Record<string, number>> = {};
             for (const m of (data as AutomationMessage[]) || []) {
-                cuenta["*"] += 1;
+                const porTipo = (cuenta[m.tipo] ||= { "*": 0 });
+                porTipo["*"] += 1;
                 const c = m.categoria ?? "";
-                cuenta[c] = (cuenta[c] || 0) + 1;
+                porTipo[c] = (porTipo[c] || 0) + 1;
             }
-            setActivosPorCategoria(cuenta);
+            setActivosPorTipo(cuenta);
         });
 
         return () => { vigente = false; };
@@ -318,11 +346,6 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
         onClose();
     }
 
-    function irAMensajes(tipo: string, categoria: string | null) {
-        setMensajesFiltro({ tipo, categoria });
-        setSeccion("mensajes");
-    }
-
     // ------------------------------------------------------- secciones ---
 
     const restante = fila.cierre ? fila.cierre.getTime() - ahora.getTime() : null;
@@ -350,6 +373,10 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
                             llegue durante la pausa quedan como «omitidos» y no se envían después.
                         </p>
                     )}
+                    <p className={styles.nota}>
+                        La apertura y el inicio del día se configuran en{" "}
+                        <Link href={`/automatizacion/grupos/${encodeURIComponent(fila.config.grupo_id)}`} prefetch={false}>Detalles del grupo</Link>.
+                    </p>
                     {fila.autorizado === false && (
                         <p className={styles.alerta}>
                             <AlertTriangle size={14} />
@@ -410,8 +437,9 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
             <div className={styles.seccion}>
 
                 <p className={styles.nota}>
-                    Cada programación envía un mensaje los minutos indicados antes del cierre real del evento. Se envía una
-                    sola vez por evento.
+                    Cada recordatorio sale los minutos indicados antes del cierre real del sorteo, una sola vez por sorteo.
+                    Elige qué mensajes de la biblioteca usa; los textos se escriben en{" "}
+                    <EnlaceBiblioteca tipo="REMINDER_MESSAGE" categoria={null}>Mensajes</EnlaceBiblioteca>.
                 </p>
 
                 {programaciones.length === 0 && <p className={styles.nota}>Sin programaciones todavía.</p>}
@@ -468,9 +496,17 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
                             </div>
 
                             <div className={styles.programacionAcciones}>
-                                <button type="button" className={styles.iconoBoton} title="Ver mensajes de esta categoría" aria-label="Ver mensajes" onClick={() => irAMensajes("REMINDER_MESSAGE", cfg.categoria)}>
-                                    <MessageSquareText size={14} />
-                                </button>
+                                <Link
+                                    href={enlaceBiblioteca("REMINDER_MESSAGE", cfg.categoria)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    prefetch={false}
+                                    className={styles.iconoBoton}
+                                    title="Ver estos mensajes en la biblioteca (Mensajes)"
+                                    aria-label="Ver mensajes en la biblioteca"
+                                >
+                                    <ExternalLink size={14} />
+                                </Link>
                                 <button type="button" className={styles.iconoBoton} title="Duplicar" aria-label="Duplicar programación" onClick={() => duplicarProgramacion(minutos, clave)}>
                                     <Copy size={14} />
                                 </button>
@@ -622,12 +658,15 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
 
                 <div className={styles.bloque}>
                     <div className={styles.filaControl}>
-                        <span className={styles.etiqueta}>Avisos de movimiento (actualización)</span>
+                        <span className={styles.etiqueta}>Actualizaciones (avisos de movimiento)</span>
                         <Interruptor on={act.activo} label="Avisos de movimiento" onClick={() => cambiar("mensaje_actualizacion", { ...act, activo: !act.activo })} />
                     </div>
                     <div className={styles.filaControl}>
-                        <span className={styles.nota}>Categoría del mensaje</span>
-                        <SelectorCategoria valor={act.categoria} label="Categoría de la actualización" onChange={(categoria) => cambiar("mensaje_actualizacion", { ...act, categoria })} />
+                        <span className={styles.nota}>
+                            Mensaje de la biblioteca
+                            {textoActivos(activosPorTipo?.UPDATE_MESSAGE, act.categoria) && <> · {textoActivos(activosPorTipo?.UPDATE_MESSAGE, act.categoria)}</>}
+                        </span>
+                        <SelectorCategoria valor={act.categoria} label="Mensajes de actualización que se usan" onChange={(categoria) => cambiar("mensaje_actualizacion", { ...act, categoria })} />
                     </div>
                     <div className={styles.filaControl}>
                         <span className={styles.nota}>Enviar cuando haya al menos estas reservas nuevas</span>
@@ -659,7 +698,7 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
                         Solo se envía con números libres y el grupo abierto. Las reservas nuevas se cuentan desde el último aviso
                         (o desde la apertura).
                     </p>
-                    <Button size="sm" variant="ghost" onClick={() => irAMensajes("UPDATE_MESSAGE", act.categoria)}>Ver mensajes de actualización</Button>
+                    <EnlaceBiblioteca tipo="UPDATE_MESSAGE" categoria={act.categoria}>Ver estos mensajes en la biblioteca</EnlaceBiblioteca>
                 </div>
 
                 <div className={styles.bloque}>
@@ -668,14 +707,17 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
                         <Interruptor on={cierre.activo} label="Mensaje de cierre" onClick={() => cambiar("mensaje_cierre", { ...cierre, activo: !cierre.activo })} />
                     </div>
                     <div className={styles.filaControl}>
-                        <span className={styles.nota}>Categoría del mensaje</span>
-                        <SelectorCategoria valor={cierre.categoria} label="Categoría del cierre" onChange={(categoria) => cambiar("mensaje_cierre", { ...cierre, categoria })} />
+                        <span className={styles.nota}>
+                            Mensaje de la biblioteca
+                            {textoActivos(activosPorTipo?.CLOSE_MESSAGE, cierre.categoria) && <> · {textoActivos(activosPorTipo?.CLOSE_MESSAGE, cierre.categoria)}</>}
+                        </span>
+                        <SelectorCategoria valor={cierre.categoria} label="Mensajes de cierre que se usan" onChange={(categoria) => cambiar("mensaje_cierre", { ...cierre, categoria })} />
                     </div>
                     <p className={styles.nota}>
                         Se envía cuando el sistema confirma el cierre real del evento, salvo que el sorteo tenga su propio aviso de
                         cierre (nunca se envían dos).
                     </p>
-                    <Button size="sm" variant="ghost" onClick={() => irAMensajes("CLOSE_MESSAGE", cierre.categoria)}>Ver mensajes de cierre</Button>
+                    <EnlaceBiblioteca tipo="CLOSE_MESSAGE" categoria={cierre.categoria}>Ver estos mensajes en la biblioteca</EnlaceBiblioteca>
                 </div>
 
             </div>
@@ -685,8 +727,6 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
     }
 
     // ----------------------------------------------------------- render ---
-
-    const enMensajes = seccion === "mensajes";
 
     return (
 
@@ -701,7 +741,7 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
                 <div className={styles.pieEditor}>
                     {sucio || minutosEnEdicion
                         ? <span className={styles.sinGuardar}>Cambios sin guardar</span>
-                        : <span className={styles.nota}>{guardadoOk ? "Todo guardado." : enMensajes ? "Los mensajes se guardan uno a uno." : "Sin cambios."}</span>}
+                        : <span className={styles.nota}>{guardadoOk ? "Todo guardado." : "Sin cambios."}</span>}
                     <div className={styles.botonesPie}>
                         <Button variant="ghost" size="sm" onClick={pedirCierre} disabled={guardar.procesando}>Cerrar</Button>
                         <Button size="sm" onClick={onGuardar} loading={guardar.procesando} disabled={!sucio || bloqueoGuardar || guardar.procesando || conflicto}>
@@ -732,16 +772,13 @@ export default function EditorAutomatizacion({ usuarioId, fila, seccionInicial, 
                 {guardar.error && <Aviso tono="error">{guardar.error}</Aviso>}
 
                 {erroresReglas.length > 0 && seccion !== "reglas" && seccion !== "tabla" && (
-                    <Aviso tono="aviso">Hay datos por corregir en «Reglas» o «Tabla inicial» antes de guardar.</Aviso>
+                    <Aviso tono="aviso">Hay datos por corregir en «Actualizaciones y cierre» o «Tabla inicial» antes de guardar.</Aviso>
                 )}
 
                 <Tabs items={SECCIONES} value={seccion} onValueChange={(v) => setSeccion(v as SeccionEditor)} aria-label="Secciones de la configuración" />
 
                 {seccion === "general" && seccionGeneral()}
                 {seccion === "programaciones" && seccionProgramaciones()}
-                {seccion === "mensajes" && (
-                    <MensajesCategoria key={`${mensajesFiltro.tipo}|${mensajesFiltro.categoria ?? ""}`} usuarioId={usuarioId} tipoInicial={mensajesFiltro.tipo} categoriaInicial={mensajesFiltro.categoria} />
-                )}
                 {seccion === "tabla" && seccionTabla()}
                 {seccion === "reglas" && seccionReglas()}
 

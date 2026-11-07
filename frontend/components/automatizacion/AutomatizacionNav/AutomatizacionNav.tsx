@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, Mail, Clock, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Users, SlidersHorizontal, type LucideIcon } from "lucide-react";
 
 import styles from "./AutomatizacionNav.module.css";
 
@@ -13,13 +13,13 @@ interface Tab {
     exacto: boolean;
 }
 
-// Mismas rutas y significado que antes — solo cambia la presentación
-// (emoji -> Lucide).
+// Tres secciones. El contenido de los mensajes ya no se administra aquí:
+// vive solo en la biblioteca central /mensajes (la ruta antigua
+// /automatizacion/mensajes redirige allí).
 const TABS: Tab[] = [
     { href: "/automatizacion", label: "Resumen", icon: LayoutDashboard, exacto: true },
     { href: "/automatizacion/grupos", label: "Grupos", icon: Users, exacto: false },
-    { href: "/automatizacion/mensajes", label: "Mensajes", icon: Mail, exacto: false },
-    { href: "/automatizacion/programacion", label: "Centro de control", icon: Clock, exacto: false }
+    { href: "/automatizacion/programacion", label: "Centro de control", icon: SlidersHorizontal, exacto: false }
 ];
 
 export default function AutomatizacionNav() {

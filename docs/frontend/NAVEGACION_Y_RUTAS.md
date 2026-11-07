@@ -30,7 +30,7 @@ Las entradas marcadas con `funcionalidad` en `NAV` se dibujan solo si `lib/visib
 
 | Componente | Pestañas |
 |---|---|
-| `components/automatizacion/AutomatizacionNav` | Resumen `/automatizacion` · Grupos `/automatizacion/grupos` · Mensajes `/automatizacion/mensajes` · Centro de control `/automatizacion/programacion` |
+| `components/automatizacion/AutomatizacionNav` | Resumen `/automatizacion` · Grupos `/automatizacion/grupos` · Centro de control `/automatizacion/programacion` (la antigua `/automatizacion/mensajes` redirige a `/mensajes?vista=automatizacion`, donde vive la biblioteca de mensajes de automatización) |
 | `components/cuenta/CuentaNav` | Mi perfil `/mi-cuenta` · Mi suscripción `/mi-cuenta/suscripcion` · Mis grupos `/mi-cuenta/grupos` · Pagos y renovaciones `/mi-cuenta/pagos` · Ayuda y soporte `/mi-cuenta/ayuda` |
 
 ## Todas las páginas (`frontend/app/**/page.tsx`)

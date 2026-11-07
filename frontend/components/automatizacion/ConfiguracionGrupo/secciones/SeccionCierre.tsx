@@ -65,7 +65,7 @@ export default function SeccionCierre({ usuarioId, grupoId, inicial, onGuardado 
             </div>
 
             <div className={styles.msgRow} style={{ borderTop: "none" }}>
-                <span className={styles.actionLabel}>Categoría de mensaje</span>
+                <span className={styles.actionLabel}>Mensaje de la biblioteca</span>
                 <SelectorCategoria valor={valor.categoria} onChange={(categoria) => setValor({ ...valor, categoria })} />
             </div>
 

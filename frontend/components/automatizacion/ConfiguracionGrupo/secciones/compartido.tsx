@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/Badge";
@@ -31,19 +33,30 @@ export function Dot({ on }: { on: boolean }) {
     );
 }
 
+// Elige qué mensajes de la biblioteca central (/mensajes) usa la acción:
+// cualquiera de su tipo o solo los de una categoría. El contenido de los
+// mensajes nunca se edita en Automatización.
 export function SelectorCategoria({ valor, onChange }: { valor: string | null; onChange: (v: string | null) => void }) {
+
+    const enlace = valor ? `/mensajes?vista=automatizacion&categoria=${encodeURIComponent(valor)}` : "/mensajes?vista=automatizacion";
 
     return (
 
-        <Select
-            value={valor || ""}
-            onChange={(e) => onChange(e.target.value || null)}
-        >
-            <option value="">Sin categoría (cualquiera)</option>
-            {CATEGORIAS_AUTOMATIZACION.map((c) => (
-                <option key={c.id} value={c.id}>{c.label}</option>
-            ))}
-        </Select>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <Select
+                value={valor || ""}
+                onChange={(e) => onChange(e.target.value || null)}
+                aria-label="Mensajes de la biblioteca que se usan"
+            >
+                <option value="">Cualquier mensaje activo</option>
+                {CATEGORIAS_AUTOMATIZACION.map((c) => (
+                    <option key={c.id} value={c.id}>Solo «{c.label}»</option>
+                ))}
+            </Select>
+            <Link href={enlace} target="_blank" rel="noopener noreferrer" prefetch={false} className={styles.back} style={{ display: "inline-flex" }}>
+                Ver o editar estos mensajes en Mensajes
+            </Link>
+        </div>
 
     );
 
