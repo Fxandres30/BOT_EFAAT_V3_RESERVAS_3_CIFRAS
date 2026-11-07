@@ -164,7 +164,8 @@ prueba("BT13 cada origen se guarda en su propia tabla con los servicios de siemp
 });
 
 prueba("BT14 «Respuestas a clientes» ya no lista Inicio del día; Automatización enlaza a la biblioteca filtrada", () => {
-    assert.ok(/const CATEGORIAS: TipoMensaje\["categoria"\]\[\] = \["Reservas", "Consultas", "Futuro"\]/.test(leer("components/mensajes/MensajesPage/MensajesPage.tsx")));
+    const categorias = leer("components/mensajes/MensajesPage/MensajesPage.tsx").match(/const CATEGORIAS: TipoMensaje\["categoria"\]\[\] = (.*);/)?.[1] || "";
+    assert.ok(categorias.startsWith('["Reservas", "Consultas"') && !categorias.includes("Automatización"), categorias);
     assert.ok(leer("components/automatizacion/ConfiguracionGrupo/secciones/SeccionInicioDia.tsx").includes("/mensajes?vista=automatizacion&tipo=inicio_dia"));
 });
 

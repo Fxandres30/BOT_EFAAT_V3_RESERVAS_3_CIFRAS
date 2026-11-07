@@ -38,12 +38,14 @@ Pie del menú: Mi cuenta, Aprende a usar EFAAT (sin las guías de las funcionali
 | Resultados | Oculta + pendiente | Eventos → sección «Resultados» | No guarda número ganador; «Ver resultado» siempre deshabilitado | Administración de finalizados en «Finalizados recientes» |
 | Lector de pagos | Oculta + pendiente; acceso administrativo | Menú → Control; Aprende; catálogo de activadores | Sin terminar: panel informativo, vinculación de marcador, backend solo ingesta (P1) | `/lector-pagos` por dirección; endpoints `/pagos/*` |
 | Bloqueados | Oculta; acceso administrativo | Menú → Control; Aprende; enlace del catálogo de activadores | Simplificar el menú; expulsión real con pendientes de activación | `/bloqueados` por dirección; bloquear/desbloquear en Contactos |
+| Bloque «Futuro» de Mensajes (Mensaje no entendido, Número inválido, Evento no disponible, Solicitud ambigua, Otros resultados) | Oculta + pendiente | Mensajes → Respuestas a clientes → grupo «Futuro» | EFAAT nunca envía esas respuestas: configurarlas no cambia nada | Nada (no tienen función) |
 
 ## Pendientes (para poder reactivar)
 
 - **Resultados**: estructura para el número ganador (requiere migración autorizada) y registro del resultado.
 - **Lector de pagos**: vinculación real del teléfono, vista de movimientos, asociación con reservas, verificación del APK.
 - **Bloqueados**: confirmar el modo de expulsión en el servidor y probar la expulsión real.
+- **Bloque «Futuro» de Mensajes**: que el bot detecte y responda esas situaciones.
 
 ## Decisiones
 
@@ -69,3 +71,4 @@ Nuevas candidatas a ocultamiento (sin autorizar): [LAUNCH_READINESS_AUDIT.md](LA
 |---|---|---|
 | 07/11/2026 | Fase 1: control central `lib/visibilidad/funcionalidades.ts`. Se ocultan Resultados (Eventos), Lector de pagos y Bloqueados (menú). | En `ab7da28d` (commit y push del usuario, 07/11 13:09) |
 | 07/11/2026 | Fase 2: «Finalizados recientes» recupera «Administrar sorteo» de los finalizados; `rutaVisible` oculta las guías de Aprende y los enlaces del catálogo de activadores a páginas ocultas; la expulsión de bloqueados remite a Contactos. | En `ab7da28d` (commit y push del usuario, 07/11 13:09) |
+| 07/11/2026 | Se oculta el bloque «Futuro» de Mensajes → Respuestas a clientes (`mensajes-futuro`): encabezado, contenedor y sus cinco tipos sin función. | Local, sin commit |

@@ -14,7 +14,7 @@
 // documentos. No poner condiciones de visibilidad sueltas en los componentes.
 // ==========================================================================
 
-export type IdFuncionalidad = "resultados" | "lector-pagos" | "bloqueados";
+export type IdFuncionalidad = "resultados" | "lector-pagos" | "bloqueados" | "mensajes-futuro";
 
 export interface Funcionalidad {
     nombre: string;
@@ -29,7 +29,9 @@ export const FUNCIONALIDADES: Record<IdFuncionalidad, Funcionalidad> = {
     // Ocultas para el lanzamiento comercial (07/11/2026).
     resultados: { nombre: "Resultados", ubicacion: "Eventos → sección «Resultados»", visible: false },
     "lector-pagos": { nombre: "Lector de pagos", ubicacion: "Menú lateral → Control", visible: false, rutas: ["/lector-pagos"] },
-    bloqueados: { nombre: "Bloqueados", ubicacion: "Menú lateral → Control", visible: false, rutas: ["/bloqueados"] }
+    bloqueados: { nombre: "Bloqueados", ubicacion: "Menú lateral → Control", visible: false, rutas: ["/bloqueados"] },
+    // Tipos de respuesta que EFAAT todavía no envía (07/11/2026).
+    "mensajes-futuro": { nombre: "Bloque «Futuro» de Mensajes", ubicacion: "Mensajes → Respuestas a clientes → bloque «Futuro» de la lista de tipos", visible: false }
 };
 
 export function esVisible(id: IdFuncionalidad): boolean {

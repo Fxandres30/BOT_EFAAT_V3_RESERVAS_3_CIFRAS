@@ -12,7 +12,8 @@ Fuente única: `frontend/lib/visibilidad/funcionalidades.ts`.
 export const FUNCIONALIDADES = {
     resultados:     { nombre: "Resultados",      ubicacion: "...", visible: false },
     "lector-pagos": { nombre: "Lector de pagos", ubicacion: "...", visible: false },
-    bloqueados:     { nombre: "Bloqueados",      ubicacion: "...", visible: false }
+    bloqueados:     { nombre: "Bloqueados",      ubicacion: "...", visible: false },
+    "mensajes-futuro": { nombre: "Bloque «Futuro» de Mensajes", ubicacion: "...", visible: false }
 };
 ```
 
@@ -30,6 +31,7 @@ Puntos de la interfaz controlados hoy:
 | `frontend/components/eventos/EventoGrid/EventoGrid.tsx` | La sección «Resultados» está envuelta en `esVisible("resultados") && (...)`. Con Resultados oculta se muestra en su lugar «Finalizados recientes» (`!esVisible("resultados")`), solo con el acceso a administrar. |
 | `frontend/components/aprende/CentroAprendizaje.tsx` | Las categorías cuya `seccion.href` no pasa `rutaVisible` no se muestran (Lector de pagos, Bloqueados). El contenido sigue en `lib/aprende/articulos.ts`. |
 | `frontend/components/aprende/ArticuloAprende.tsx` | El enlace «Abrir …» de un artículo solo aparece si su ruta pasa `rutaVisible` (hoy ningún artículo apunta a una página oculta; es una protección). |
+| `frontend/components/mensajes/MensajesPage/MensajesPage.tsx` | La lista de grupos del rail de «Respuestas a clientes» (`CATEGORIAS`) incluye «Futuro» solo si `esVisible("mensajes-futuro")`. Oculto, no se dibuja el grupo entero (encabezado, contenedor y sus cinco tipos), sin hueco. |
 | `frontend/components/activadores/ActivadoresModal.tsx` (catálogo «Activadores y acciones», abierto desde Mensajes) | Deriva `CATALOGO` de `CATALOGO_ACTIVADORES`: quita los enlaces `panel` a páginas ocultas, y omite una entrada si todos sus enlaces eran a páginas ocultas (hoy solo «Lector de pagos (app Android)»). El catálogo original no cambia. |
 
 ## Clasificación actual
@@ -41,6 +43,7 @@ Puntos de la interfaz controlados hoy:
 | Lector de pagos | Oculta + pendiente | Solo por acceso administrativo: escribir `/lector-pagos` |
 | Bloqueados (pantalla de lista) | Oculta | Por acceso administrativo: escribir `/bloqueados` |
 | Bloquear / desbloquear un contacto | Visible | Contactos → perfil del contacto |
+| Bloque «Futuro» de Mensajes (5 tipos que EFAAT no envía) | Oculta + pendiente | Ninguno: no tienen función todavía |
 
 «Acceso administrativo» significa que la página existe y abre escribiendo su dirección, pero ninguna pantalla la enlaza. No es un permiso: cualquier usuario con sesión que conozca la dirección puede abrirla.
 
@@ -203,6 +206,45 @@ En `frontend/lib/visibilidad/funcionalidades.ts`, `bloqueados.visible: true`.
 **Pruebas antes de reactivar**
 - `npm test --prefix frontend` y `npm test --prefix backend` (pruebas de bloqueo/expulsión).
 - Manual: la entrada aparece en «Control», la lista carga, desbloquear funciona, el estado de expulsión coincide con el grupo real.
+
+---
+
+## `mensajes-futuro` — Bloque «Futuro» de Mensajes
+
+| Campo | Valor |
+|---|---|
+| Estado de visibilidad | **Oculta** |
+| Incorporada al registro | 07/11/2026 |
+| Ubicación | **Mensajes** (`/mensajes`) → pestaña «Respuestas a clientes» → último grupo de la lista de tipos, «Futuro» |
+| Motivo | Lanzamiento comercial: los cinco tipos del bloque no tienen función (EFAAT nunca envía esas respuestas) y configurarlos no cambia nada |
+
+**Elementos ocultos** (el grupo completo: encabezado «Futuro», contenedor y sus cinco tipos)
+- Mensaje no entendido (`mensaje_no_entendido`)
+- Número inválido (`numero_invalido`)
+- Evento no disponible (`evento_no_disponible`)
+- Solicitud ambigua (`solicitud_ambigua`)
+- Otros resultados (`otro_determinista`)
+
+**Componentes y archivos**
+- `frontend/components/mensajes/MensajesPage/MensajesPage.tsx`: `CATEGORIAS` añade «Futuro» solo con `esVisible("mensajes-futuro")`. Como el rail se construye a partir de esa lista, el grupo no se dibuja y no queda espacio vacío.
+- Definición de los cinco tipos (sin cambios): `frontend/services/mensajes/tiposMensaje.ts` (`categoria: "Futuro"`, `soportado: false`).
+
+**Lo que sigue igual**
+- Los tipos siguen definidos en `tiposMensaje.ts`, en el catálogo del orquestador (`backend/shared/mensajes/catalogoTipos.js`, `soportado: false`) y en el catálogo «Activadores y acciones» (entrada «Tipos de respuesta sin uso»).
+- Las plantillas que existieran de esos tipos en `plantillas_mensaje` no se tocan. El bot nunca genera esos tipos, así que no hay ningún efecto en las respuestas.
+
+**Estado actual de desarrollo**
+- Comprobado en el código (07/11/2026): `calcularTipoPresentacion` (backend) nunca produce estos tipos; en el panel aparecían marcados como «Futuro» y sin interruptor.
+
+**Qué falta para terminarla**
+1. Que el bot genere de verdad esas situaciones (detectar mensaje no entendido, número inválido, etc.) y las responda con sus plantillas.
+
+**Cómo volver a mostrarla**
+En `frontend/lib/visibilidad/funcionalidades.ts`, `"mensajes-futuro".visible: true`. El grupo «Futuro» vuelve a aparecer solo al final del rail.
+
+**Pruebas antes de reactivar**
+- `npm test --prefix frontend` (prueba de visibilidad: ajustar la expectativa del rail) y `npm run build --prefix frontend`.
+- Manual: el grupo aparece al final de «Respuestas a clientes» con sus cinco tipos.
 
 ---
 

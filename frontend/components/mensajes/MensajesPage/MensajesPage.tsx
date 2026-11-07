@@ -40,13 +40,17 @@ import ListaPlantillas from "../ListaPlantillas/ListaPlantillas";
 import EditorMensaje from "../EditorMensaje/EditorMensaje";
 import ModoSeleccion from "../ModoSeleccion/ModoSeleccion";
 import MensajesAutomatizacion from "../MensajesAutomatizacion/MensajesAutomatizacion";
+import { esVisible } from "@/lib/visibilidad/funcionalidades";
 
 import styles from "./MensajesPage.module.css";
 
 // «Automatización» (Inicio del día) ya no se lista aquí: se administra en la
 // pestaña «Mensajes de automatización», junto a apertura, recordatorios,
 // actualizaciones y cierre. Sus plantillas siguen en plantillas_mensaje.
-const CATEGORIAS: TipoMensaje["categoria"][] = ["Reservas", "Consultas", "Futuro"];
+// «Futuro» (tipos que EFAAT todavía no envía) se muestra solo si el registro
+// central de visibilidad lo permite: oculto, no se dibuja el grupo entero
+// (encabezado, contenedor y sus cinco tipos), sin dejar hueco.
+const CATEGORIAS: TipoMensaje["categoria"][] = ["Reservas", "Consultas", ...(esVisible("mensajes-futuro") ? (["Futuro"] as const) : [])];
 
 // Grupo visual propio, mostrado después de "Reservas": los tipos de
 // números y pagos salen de "Consultas" para encontrarlos juntos (su

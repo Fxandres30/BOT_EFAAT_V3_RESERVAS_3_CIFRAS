@@ -47,9 +47,9 @@ function navDelMenu() {
 const pruebas = [];
 const prueba = (n, fn) => pruebas.push({ n, fn });
 
-prueba("fuente única: las tres funcionalidades autorizadas están ocultas y solo ellas", () => {
-    assert.deepStrictEqual(Object.keys(V.FUNCIONALIDADES).sort(), ["bloqueados", "lector-pagos", "resultados"]);
-    for (const id of ["resultados", "lector-pagos", "bloqueados"]) assert.strictEqual(V.esVisible(id), false, id);
+prueba("fuente única: las cuatro funcionalidades autorizadas están ocultas y solo ellas", () => {
+    assert.deepStrictEqual(Object.keys(V.FUNCIONALIDADES).sort(), ["bloqueados", "lector-pagos", "mensajes-futuro", "resultados"]);
+    for (const id of ["resultados", "lector-pagos", "bloqueados", "mensajes-futuro"]) assert.strictEqual(V.esVisible(id), false, id);
     assert.strictEqual(V.esVisible("no-registrada"), true, "lo no registrado sigue visible");
 });
 
@@ -161,6 +161,19 @@ prueba("nada eliminado: páginas, componentes, servicios y rutas API conservados
     ]) assert.ok(existe(r), r);
     // Bloquear/desbloquear desde el perfil del contacto no depende del menú.
     assert.match(leer("components/contactos/PerfilContacto/PerfilContacto.tsx"), /crearBloqueo, desbloquear/);
+});
+
+prueba("Mensajes: el bloque «Futuro» completo se oculta con esVisible; Reservas y Consultas intactos; los cinco tipos siguen definidos", () => {
+    const pagina = leer("components/mensajes/MensajesPage/MensajesPage.tsx");
+    assert.match(pagina, /import \{ esVisible \} from "@\/lib\/visibilidad\/funcionalidades"/);
+    assert.match(pagina, /const CATEGORIAS: TipoMensaje\["categoria"\]\[\] = \["Reservas", "Consultas", \.\.\.\(esVisible\("mensajes-futuro"\) \? \(\["Futuro"\] as const\) : \[\]\)\];/);
+    // El rail se construye SOLO a partir de CATEGORIAS: sin «Futuro» no se dibuja el grupo (ni encabezado ni contenedor).
+    assert.match(pagina, /const GRUPOS_RAIL[\s\S]*?CATEGORIAS\.flatMap/);
+    assert.match(pagina, /\{GRUPOS_RAIL\.map\(\(grupo\) => \(/);
+    const tipos = leer("services/mensajes/tiposMensaje.ts");
+    for (const id of ["mensaje_no_entendido", "numero_invalido", "evento_no_disponible", "solicitud_ambigua", "otro_determinista"]) {
+        assert.ok(new RegExp(`id: "${id}",\\s*categoria: "Futuro"`).test(tipos), `${id} sigue definido como «Futuro»`);
+    }
 });
 
 prueba("registro: cada funcionalidad declarada está en ambos documentos", () => {
