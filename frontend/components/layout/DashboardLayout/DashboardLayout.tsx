@@ -10,6 +10,7 @@ import Topbar from "../Topbar/Topbar";
 import { useSesion } from "@/hooks/useSesion";
 import PantallaCarga from "@/components/auth/PantallaCarga";
 import { inicializarCliente } from "@/services/tablas/inicializarCliente";
+import { loginConVolver } from "@/lib/navegacion";
 
 interface Props{
 
@@ -26,8 +27,10 @@ export default function DashboardLayout({
     const [sidebarOpen,setSidebarOpen]=useState(false);
 
     // Guardia de sesión: toda página privada usa este layout. Sin sesión de
-    // Supabase Auth -> /login. Mientras se comprueba no se muestra nada del
-    // área privada.
+    // Supabase Auth -> /login, conservando la página pedida (?volver=) para
+    // regresar a ella tras iniciar sesión. Mientras se comprueba no se
+    // muestra nada del área privada. useSesion es compartido: la pantalla de
+    // carga solo aparece en el arranque, no al cambiar de sección.
     const sesion=useSesion();
     const router=useRouter();
 
@@ -35,7 +38,7 @@ export default function DashboardLayout({
 
         if(sesion==="sin_sesion"){
 
-            router.replace("/login");
+            router.replace(loginConVolver(window.location.pathname+window.location.search+window.location.hash));
 
         }
 

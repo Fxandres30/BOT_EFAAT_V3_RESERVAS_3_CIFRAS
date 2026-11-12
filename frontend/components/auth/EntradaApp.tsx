@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { useSesion } from "@/hooks/useSesion";
+import { RUTA_INICIO } from "@/lib/navegacion";
 import PantallaCarga from "./PantallaCarga";
 
 // Punto de entrada de la aplicación instalada (start_url del manifest).
@@ -17,7 +18,7 @@ export default function EntradaApp() {
   const sesion = useSesion();
 
   useEffect(() => {
-    if (sesion === "con_sesion") router.replace("/sesiones");
+    if (sesion === "con_sesion") router.replace(RUTA_INICIO);
     else if (sesion === "sin_sesion") router.replace("/login");
   }, [sesion, router]);
 

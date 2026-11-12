@@ -16,6 +16,7 @@ const PUERTO_SUPABASE = 54398;
 const PUERTO_PANEL = 3101;
 const PANEL = `http://127.0.0.1:${PUERTO_PANEL}`;
 const CLAVE = "sb-127-auth-token";
+const CONTRASENA = "Clave-E2e-Segura-2026";
 
 // token -> usuario. Tokens revocados: /user responde session_not_found.
 const usuarios = new Map([
@@ -54,7 +55,13 @@ function arrancarSupabaseFalso() {
             let cuerpo = "";
             req.on("data", c => { cuerpo += c; });
             req.on("end", () => {
-                const { refresh_token } = JSON.parse(cuerpo || "{}");
+                const { refresh_token, email, password } = JSON.parse(cuerpo || "{}");
+                // Inicio de sesión con contraseña (grant_type=password).
+                if (/grant_type=password/.test(req.url)) {
+                    const tok = [...usuarios].find(([, u]) => u.email === email)?.[0];
+                    if (!tok || password !== CONTRASENA) { res.writeHead(400); return res.end(JSON.stringify({ code: 400, error_code: "invalid_credentials", msg: "Invalid login credentials" })); }
+                    return res.end(JSON.stringify(sesionDe(tok)));
+                }
                 const nuevo = renovaciones.get(refresh_token);
                 if (!nuevo) { res.writeHead(400); return res.end(JSON.stringify({ code: 400, error_code: "refresh_token_not_found", msg: "Invalid Refresh Token: Refresh Token Not Found" })); }
                 res.end(JSON.stringify(sesionDe(nuevo)));
@@ -154,10 +161,13 @@ async function main() {
             const t0 = Date.now();
             try { await fn(); resultados.push(["OK", nombre, Date.now() - t0]); }
             catch (e) { resultados.push(["FALLO", nombre, Date.now() - t0, e.message]); }
+            // Progreso en vivo (una línea por caso).
+            const [estado, , ms, error] = resultados[resultados.length - 1];
+            console.log(`  ${estado.padEnd(5)} ${nombre} (${ms} ms)${error ? ` → ${error}` : ""}`);
         }
 
         // Precalentar compilación de las rutas (next dev compila bajo demanda).
-        for (const r of ["/app", "/login", "/register", "/sesiones", "/tablas", "/"]) await fetch(PANEL + r).catch(() => {});
+        for (const r of ["/app", "/login", "/register", "/sesiones", "/tablas", "/eventos", "/mensajes", "/mi-cuenta", "/"]) await fetch(PANEL + r).catch(() => {});
 
         await caso("Manifest: start_url /app, scope /", async () => {
             const m = await (await fetch(`${PANEL}/manifest.webmanifest`)).json();
@@ -173,10 +183,10 @@ async function main() {
             }
         });
 
-        await caso("/app con sesión válida → /sesiones directo (sin landing ni login)", async () => {
+        await caso("/app con sesión válida → /tablas (Reservas) directo (sin landing ni login)", async () => {
             const page = await nuevaPagina({ sesion: sesionDe("tok-a"), instalada: true });
             await page.goto(`${PANEL}/app`);
-            await asentarEn(page, "/sesiones");
+            await asentarEn(page, "/tablas");
             const pasos = page.rutas.slice(page.rutas.indexOf("/app"));
             assert.ok(!pasos.includes("/login") && !pasos.includes("/"), `pasó por: ${pasos.join(" → ")}`);
             assert.ok(await visible(page, ".layout"), "panel no visible");
@@ -191,13 +201,13 @@ async function main() {
             await page.browserContext().close();
         });
 
-        await caso("Sesión expirada con renovación válida → token renovado y /sesiones", async () => {
+        await caso("Sesión expirada con renovación válida → token renovado y /tablas", async () => {
             renovaciones.set("r-tok-a", "tok-a");
             const caducada = { ...sesionDe("tok-a", { caducada: true }), access_token: "tok-viejo" };
             const page = await nuevaPagina({ sesion: caducada, instalada: true });
             const antes = peticiones.length;
             await page.goto(`${PANEL}/app`);
-            await asentarEn(page, "/sesiones");
+            await asentarEn(page, "/tablas");
             assert.ok(peticiones.slice(antes).some(p => p.ruta === "/auth/v1/token"), "no se pidió renovación");
             assert.strictEqual(await tokenGuardado(page), "tok-a");
             renovaciones.delete("r-tok-a");
@@ -227,17 +237,17 @@ async function main() {
             await page.browserContext().close();
         });
 
-        await caso("/login con sesión activa → /sesiones", async () => {
+        await caso("/login con sesión activa → /tablas", async () => {
             const page = await nuevaPagina({ sesion: sesionDe("tok-a") });
             await page.goto(`${PANEL}/login`);
-            await asentarEn(page, "/sesiones");
+            await asentarEn(page, "/tablas");
             await page.browserContext().close();
         });
 
-        await caso("/register con sesión activa → /sesiones", async () => {
+        await caso("/register con sesión activa → /tablas", async () => {
             const page = await nuevaPagina({ sesion: sesionDe("tok-a") });
             await page.goto(`${PANEL}/register`);
-            await asentarEn(page, "/sesiones");
+            await asentarEn(page, "/tablas");
             await page.browserContext().close();
         });
 
@@ -258,10 +268,10 @@ async function main() {
             await page.browserContext().close();
         });
 
-        await caso("Landing dentro de la app instalada CON sesión (instalación antigua start_url /) → /sesiones", async () => {
+        await caso("Landing dentro de la app instalada CON sesión (instalación antigua start_url /) → /tablas", async () => {
             const page = await nuevaPagina({ sesion: sesionDe("tok-a"), instalada: true });
             await page.goto(`${PANEL}/`);
-            await asentarEn(page, "/sesiones");
+            await asentarEn(page, "/tablas");
             await page.browserContext().close();
         });
 
@@ -276,27 +286,29 @@ async function main() {
         await caso("Recarga y navegación del panel conservan la sesión", async () => {
             const page = await nuevaPagina({ sesion: sesionDe("tok-a"), instalada: true });
             await page.goto(`${PANEL}/app`);
+            await asentarEn(page, "/tablas");
+            await page.reload();
+            await asentarEn(page, "/tablas");
+            await page.goto(`${PANEL}/sesiones`);
             await asentarEn(page, "/sesiones");
             await page.reload();
             await asentarEn(page, "/sesiones");
-            await page.goto(`${PANEL}/tablas`);
-            await asentarEn(page, "/tablas");
             await page.goto(`${PANEL}/mi-cuenta`);
             await asentarEn(page, "/mi-cuenta");
             assert.strictEqual(await tokenGuardado(page), "tok-a");
             await page.browserContext().close();
         });
 
-        await caso("Cierre y reapertura (contexto nuevo con el mismo almacenamiento) → directo a /sesiones", async () => {
+        await caso("Cierre y reapertura (contexto nuevo con el mismo almacenamiento) → directo a /tablas", async () => {
             // Simula cerrar la app: se cierra la página y se abre otra en el mismo contexto.
             const page = await nuevaPagina({ sesion: sesionDe("tok-a"), instalada: true });
             await page.goto(`${PANEL}/app`);
-            await asentarEn(page, "/sesiones");
+            await asentarEn(page, "/tablas");
             const ctx = page.browserContext();
             await page.close();
             const otra = await ctx.newPage();
             await otra.goto(`${PANEL}/app`);
-            await otra.waitForFunction(() => location.pathname === "/sesiones", { timeout: 90000 });
+            await otra.waitForFunction(() => location.pathname === "/tablas", { timeout: 90000 });
             await ctx.close();
         });
 
@@ -305,7 +317,7 @@ async function main() {
             const b = await nuevaPagina({ sesion: sesionDe("tok-b"), instalada: true });
             const antes = peticiones.length;
             await Promise.all([a.goto(`${PANEL}/app`), b.goto(`${PANEL}/app`)]);
-            await Promise.all([asentarEn(a, "/sesiones"), asentarEn(b, "/sesiones")]);
+            await Promise.all([asentarEn(a, "/tablas"), asentarEn(b, "/tablas")]);
             assert.strictEqual(await tokenGuardado(a), "tok-a");
             assert.strictEqual(await tokenGuardado(b), "tok-b");
             const usuarioDe = (p) => p.evaluate(async (k) => {
@@ -318,6 +330,146 @@ async function main() {
             assert.ok(nuevas.some(p => p.token === "tok-a") && nuevas.some(p => p.token === "tok-b"), "faltan peticiones con el token de cada usuario");
             await a.browserContext().close();
             await b.browserContext().close();
+        });
+
+
+        // ---- 12/11: sesión global, Reservas como inicio y ?volver= ----
+
+        // Cuenta las veces que aparece la pantalla de carga global.
+        const vigilarCarga = (page) => page.evaluate(() => {
+            window.__cargaVista = 0;
+            const sel = '[role="status"] > img[src="/icons/icon-192.png"]';
+            new MutationObserver(() => { if (document.querySelector(sel)) window.__cargaVista++; })
+                .observe(document.body, { childList: true, subtree: true });
+        });
+        // Navegación del cliente (Link del menú), no recarga.
+        const clicMenu = (page, href) => page.evaluate((h) => document.querySelector(`a.sidebar__item[href="${h}"]`).click(), href);
+        async function entrarConContrasena(page, email, clave) {
+            await page.waitForSelector("form.login-card");
+            await page.type('input[type="email"]', email);
+            await page.type('input[autocomplete="current-password"]', clave);
+            await page.click("button.login-button");
+        }
+
+        await caso("Cambiar de sección desde el menú NO muestra la pantalla de carga global", async () => {
+            const page = await nuevaPagina({ sesion: sesionDe("tok-a") });
+            await page.goto(`${PANEL}/tablas`);
+            await asentarEn(page, "/tablas");
+            await page.waitForSelector("a.sidebar__item");
+            await vigilarCarga(page);
+            for (const destino of ["/eventos", "/mensajes", "/sesiones", "/tablas"]) {
+                await clicMenu(page, destino);
+                await page.waitForFunction((d) => location.pathname === d, { timeout: 90000 }, destino);
+                await page.waitForSelector(".layout");
+            }
+            await esperar(1500);
+            assert.strictEqual(await page.evaluate(() => window.__cargaVista), 0, "apareció PantallaCarga al navegar");
+            assert.ok(await page.evaluate(() => window.__cargaVista !== undefined), "hubo recarga completa (se perdió el vigilante)");
+            assert.ok(!page.rutas.includes("/login"), "pasó por /login");
+            assert.strictEqual(await tokenGuardado(page), "tok-a");
+            await page.browserContext().close();
+        });
+
+        await caso("Renovación de token durante el uso → sin pantalla de carga ni salida", async () => {
+            renovaciones.set("r-tok-a", "tok-a");
+            const page = await nuevaPagina({ sesion: sesionDe("tok-a") });
+            await page.goto(`${PANEL}/tablas`);
+            await asentarEn(page, "/tablas");
+            await page.waitForSelector("a.sidebar__item");
+            await vigilarCarga(page);
+            const antes = peticiones.length;
+            // El token caduca dentro de la ventana de renovación de supabase-js.
+            await page.evaluate((k) => {
+                const s = JSON.parse(localStorage.getItem(k));
+                s.expires_at = Math.floor(Date.now() / 1000) + 5;
+                localStorage.setItem(k, JSON.stringify(s));
+            }, CLAVE);
+            await clicMenu(page, "/eventos");
+            await page.waitForFunction(() => location.pathname === "/eventos", { timeout: 90000 });
+            await esperar(3000);
+            assert.ok(peticiones.slice(antes).some((p) => p.ruta === "/auth/v1/token"), "no hubo renovación");
+            assert.strictEqual(await page.evaluate(() => window.__cargaVista), 0, "apareció PantallaCarga al renovar");
+            assert.strictEqual(new URL(page.url()).pathname, "/eventos");
+            renovaciones.delete("r-tok-a");
+            await page.browserContext().close();
+        });
+
+        await caso("Enlace directo sin sesión → /login?volver=… y tras iniciar sesión vuelve a esa página", async () => {
+            const page = await nuevaPagina();
+            await page.goto(`${PANEL}/eventos?sorteo=abc`);
+            await page.waitForFunction(() => location.pathname === "/login", { timeout: 90000 });
+            assert.strictEqual(new URL(page.url()).searchParams.get("volver"), "/eventos?sorteo=abc");
+            assert.ok(!(await visible(page, ".layout")), "se mostró el panel sin sesión");
+            await entrarConContrasena(page, "cliente.a@e2e.test", CONTRASENA);
+            await page.waitForFunction(() => location.pathname === "/eventos", { timeout: 90000 });
+            await esperar(2000);
+            const fin = new URL(page.url());
+            assert.strictEqual(fin.pathname + fin.search, "/eventos?sorteo=abc");
+            assert.strictEqual(await tokenGuardado(page), "tok-a");
+            await page.browserContext().close();
+        });
+
+        await caso("Iniciar sesión sin ?volver → /tablas (Reservas)", async () => {
+            const page = await nuevaPagina();
+            await page.goto(`${PANEL}/login`);
+            await entrarConContrasena(page, "cliente.b@e2e.test", CONTRASENA);
+            await asentarEn(page, "/tablas");
+            assert.strictEqual(await tokenGuardado(page), "tok-b");
+            await page.browserContext().close();
+        });
+
+        await caso("Contraseña incorrecta con ?volver → se queda en /login sin sesión", async () => {
+            const page = await nuevaPagina();
+            await page.goto(`${PANEL}/login?volver=%2Feventos`);
+            await entrarConContrasena(page, "cliente.a@e2e.test", "mala");
+            await esperar(3000);
+            assert.strictEqual(new URL(page.url()).pathname, "/login");
+            assert.strictEqual(await tokenGuardado(page), null);
+            await page.browserContext().close();
+        });
+
+        await caso("?volver malicioso o de autenticación → /tablas (nunca sale del sitio)", async () => {
+            for (const malo of ["//evil.com", "https://evil.com", "/\\evil.com", "/login", "/app", "/tablas/../login", "javascript:alert(1)"]) {
+                const page = await nuevaPagina({ sesion: sesionDe("tok-a") });
+                await page.goto(`${PANEL}/login?volver=${encodeURIComponent(malo)}`);
+                await asentarEn(page, "/tablas");
+                assert.strictEqual(new URL(page.url()).origin, PANEL, `salió del sitio con ${malo}`);
+                await page.browserContext().close();
+            }
+        });
+
+        await caso("Cerrar sesión → /login, sesión borrada y el panel deja de ser accesible", async () => {
+            const page = await nuevaPagina({ sesion: sesionDe("tok-a") });
+            await page.goto(`${PANEL}/tablas`);
+            await asentarEn(page, "/tablas");
+            await page.waitForSelector(".sidebar__logout");
+            await page.evaluate(() => document.querySelector(".sidebar__logout").click());
+            await page.waitForFunction(() => location.pathname === "/login", { timeout: 90000 });
+            await page.waitForSelector("form.login-card");
+            assert.strictEqual(await tokenGuardado(page), null);
+            await page.goto(`${PANEL}/mensajes`);
+            await page.waitForFunction(() => location.pathname === "/login", { timeout: 90000 });
+            assert.strictEqual(new URL(page.url()).searchParams.get("volver"), "/mensajes");
+            assert.ok(!(await visible(page, ".layout")), "panel visible tras cerrar sesión");
+            await page.browserContext().close();
+        });
+
+        await caso("Cambio de cuenta (A → B en el mismo navegador) → solo la cuenta B y sin instantánea de A", async () => {
+            const A = usuarios.get("tok-a").id;
+            const page = await nuevaPagina({ sesion: sesionDe("tok-a") });
+            await page.goto(`${PANEL}/tablas`);
+            await asentarEn(page, "/tablas");
+            await page.waitForFunction(() => document.querySelector(".sidebar__email")?.textContent === "cliente.a@e2e.test", { timeout: 90000 });
+            // Instantánea del índice de A (como la deja Reservas).
+            await page.evaluate((a) => localStorage.setItem(`efaat:indice-reservas:v1:${a}`, "{}"), A);
+            // Otra pestaña cambia la sesión guardada a la cuenta B.
+            await page.evaluate((k, v) => localStorage.setItem(k, v), CLAVE, JSON.stringify(sesionDe("tok-b")));
+            await page.reload();
+            await page.waitForFunction(() => document.querySelector(".sidebar__email")?.textContent === "cliente.b@e2e.test", { timeout: 90000 });
+            assert.strictEqual(await tokenGuardado(page), "tok-b");
+            const restos = await page.evaluate((a) => Object.keys(localStorage).filter((k) => k.includes(a)), A);
+            assert.deepStrictEqual(restos, [], `quedó la instantánea de A: ${restos}`);
+            await page.browserContext().close();
         });
 
     } finally {

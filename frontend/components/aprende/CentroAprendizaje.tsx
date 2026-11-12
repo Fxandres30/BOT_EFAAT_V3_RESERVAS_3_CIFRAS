@@ -16,6 +16,7 @@ import {
     type Articulo
 } from "@/lib/aprende/articulos";
 import { rutaVisible } from "@/lib/visibilidad/funcionalidades";
+import { RUTA_INICIO } from "@/lib/navegacion";
 
 import IconoCategoria from "./IconoCategoria";
 import styles from "./Aprende.module.css";
@@ -38,7 +39,7 @@ function TarjetaArticulo({ articulo, conCategoria = false }: { articulo: Articul
     );
 }
 
-// Vuelve a la pantalla anterior del panel; si se entró directo, a Sesiones.
+// Vuelve a la pantalla anterior del panel; si se entró directo, a la de inicio (Reservas).
 export function BotonVolverPanel() {
     const router = useRouter();
     return (
@@ -46,7 +47,7 @@ export function BotonVolverPanel() {
             variant="secondary"
             size="sm"
             leftIcon={<ArrowLeft size={14} />}
-            onClick={() => (window.history.length > 1 ? router.back() : router.push("/sesiones"))}
+            onClick={() => (window.history.length > 1 ? router.back() : router.push(RUTA_INICIO))}
         >
             Volver al panel
         </Button>

@@ -58,7 +58,8 @@ prueba("rutas protegidas con el layout del panel (redirige a /login sin sesión)
         const src = leer(r);
         assert.ok(/<DashboardLayout>/.test(src), `${r} usa DashboardLayout`);
     }
-    assert.ok(/router\.replace\("\/login"\)/.test(leer("components/layout/DashboardLayout/DashboardLayout.tsx")));
+    // La guardia manda a /login (con ?volver= validado en lib/navegacion.ts).
+    assert.ok(/router\.replace\(loginConVolver\(/.test(leer("components/layout/DashboardLayout/DashboardLayout.tsx")));
 });
 
 prueba("navegación: centro -> artículo -> centro y «Volver al panel»", () => {

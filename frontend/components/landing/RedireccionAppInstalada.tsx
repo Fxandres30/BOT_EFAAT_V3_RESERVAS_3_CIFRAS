@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { supabase } from "@/lib/supabase";
+import { RUTA_INICIO } from "@/lib/navegacion";
 
 // ¿Abierta como aplicación instalada (no como pestaña del navegador)?
 function enAppInstalada(): boolean {
@@ -27,7 +28,7 @@ export default function RedireccionAppInstalada() {
     if (!enAppInstalada()) return;
     let vigente = true;
     supabase.auth.getSession().then(({ data }) => {
-      if (vigente && data.session) router.replace("/sesiones");
+      if (vigente && data.session) router.replace(RUTA_INICIO);
     });
     return () => { vigente = false; };
   }, [router]);

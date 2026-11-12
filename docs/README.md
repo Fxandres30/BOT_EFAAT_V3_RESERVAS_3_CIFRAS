@@ -21,6 +21,7 @@
 | [arquitectura/ESTADO_SORTEOS.md](arquitectura/ESTADO_SORTEOS.md) | F2: criterios del estado de un sorteo, consumidores migrados, los que conservan criterio propio, reserva excepcional propuesta y decisiones pendientes |
 | [arquitectura/F3_CIERRE_REAPERTURA.md](arquitectura/F3_CIERRE_REAPERTURA.md) | F3 (implementada y endurecida en local): orquestador central, 12 modalidades conservadas, reapertura con ciclo, normalización, permiso de reservas independiente del estado, riesgos, pruebas, decisiones y auditoría (anexo A) |
 | [arquitectura/F4_CREACION_PUBLICACION.md](arquitectura/F4_CREACION_PUBLICACION.md) | F4-A/B (solo auditoría y diseño): caminos de creación y publicación, duplicaciones, núcleo de activación por entradas, riesgos de concurrencia, C2, plan para independenciaPorPrecio, etapas F4-C a F4-H |
+| [rifas/MOTOR_RIFAS.md](rifas/MOTOR_RIFAS.md) | Motor único de rifas (tablas_rifas + numeros_rifa): diagnóstico, esquema 050, RLS, funciones, integración WhatsApp, plan de migración por fases, pruebas, riesgos y decisiones (preparado, sin aplicar) |
 | [activacion/PROCEDIMIENTO_DIAGNOSTICO_ESTADOS.md](activacion/PROCEDIMIENTO_DIAGNOSTICO_ESTADOS.md) | Cómo ejecutar (con autorización) y leer el diagnóstico de estados contradictorios |
 | [arquitectura/DUPLICACIONES_PENDIENTES.md](arquitectura/DUPLICACIONES_PENDIENTES.md) | D1–D13, con la fase propuesta |
 | [arquitectura/CODIGO_MUERTO_CANDIDATOS.md](arquitectura/CODIGO_MUERTO_CANDIDATOS.md) | Candidatos sin importadores y qué confirmar antes de borrar |

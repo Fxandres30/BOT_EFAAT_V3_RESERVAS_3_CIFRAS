@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 
 import { register } from "@/services/auth/register";
 import { useSesion } from "@/hooks/useSesion";
+import { RUTA_INICIO } from "@/lib/navegacion";
 import { evaluarContrasena, LONGITUD_MINIMA } from "@/lib/auth/seguridadContrasena";
 import { CampoContrasena, MedidorSeguridad, AvisoCoincidencia } from "./CampoContrasena";
 import PantallaCarga from "./PantallaCarga";
@@ -35,7 +36,7 @@ export default function RegisterForm() {
   const coinciden = confirmacion ? confirmacion === password : null;
 
   useEffect(() => {
-    if (sesion === "con_sesion") router.replace("/sesiones");
+    if (sesion === "con_sesion") router.replace(RUTA_INICIO);
   }, [sesion, router]);
 
   async function crearCuenta() {
@@ -81,7 +82,7 @@ export default function RegisterForm() {
     }
 
     if (data.session) {
-      router.replace("/sesiones");
+      router.replace(RUTA_INICIO);
       return;
     }
 

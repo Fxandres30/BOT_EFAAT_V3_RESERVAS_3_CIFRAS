@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 
 import { login } from "@/services/auth/login";
 import { useSesion } from "@/hooks/useSesion";
+import { destinoTrasLogin } from "@/lib/navegacion";
 import { CampoContrasena } from "./CampoContrasena";
 import PantallaCarga from "./PantallaCarga";
 
@@ -39,10 +40,15 @@ export default function LoginForm() {
     () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("clave") === "actualizada"
   );
 
+  // Destino al entrar: el enlace directo que trajo aquí la guardia del panel
+  // (?volver=, solo rutas internas del panel; lib/navegacion.ts) o Reservas.
+  // Se lee de la dirección EN EL MOMENTO de redirigir: al llegar por
+  // router.replace, durante el primer render la dirección aún es la anterior.
+  //
   // Con sesión activa (también al volver del enlace de confirmación de
   // correo) no se muestra el login: se entra directo al área privada.
   useEffect(() => {
-    if (sesion === "con_sesion") router.replace("/sesiones");
+    if (sesion === "con_sesion") router.replace(destinoTrasLogin(window.location.search));
   }, [sesion, router]);
 
   async function iniciarSesion() {
@@ -74,7 +80,7 @@ export default function LoginForm() {
 
     }
 
-    router.replace("/sesiones");
+    router.replace(destinoTrasLogin(window.location.search));
 
   }
 

@@ -43,7 +43,9 @@ const PAQUETES = {
 const REQUIEREN_ENTORNO = {
     "backend/tests/sorteos/capturaRealSorteo.test.js": "abre Chromium contra el panel real (FRONTEND_URL)",
     "backend/tests/seguridad/cuadriculaClienteSqlReal.test.js": "necesita PGlite (PGLITE_MODULE)",
-    "backend/tests/caracterizacion/estadoSorteosSqlReal.test.js": "necesita PGlite (PGLITE_MODULE)"
+    "backend/tests/caracterizacion/estadoSorteosSqlReal.test.js": "necesita PGlite (PGLITE_MODULE)",
+    "backend/tests/rifas/motorRifasSql.test.js": "necesita PGlite (PGLITE_MODULE)",
+    "backend/tests/rifas/concurrenciaRifas.test.js": "necesita un Postgres local desechable (PG_MODULE + PG_PRUEBAS_URL)"
 };
 
 // Fallos conocidos y documentados (docs/pruebas/LINEA_BASE.md). No ocultan
