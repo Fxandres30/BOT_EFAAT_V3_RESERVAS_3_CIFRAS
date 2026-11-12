@@ -28,6 +28,9 @@ function destino(metodo: Metodo, ruta: string[]): string | null {
     }
     if (ruta.length === 2 && UUID.test(a)) {
         if (b === "archivo") return metodo === "GET" ? `/${a}/archivo` : null;
+        // Pantalla original de Tablas sobre la rifa: ventana del número, operación y lote.
+        if (b === "numero") return metodo === "GET" || metodo === "POST" ? `/${a}/numero` : null;
+        if (b === "lote") return metodo === "POST" ? `/${a}/lote` : null;
         if (OPERACIONES.has(b)) return metodo === "POST" ? `/${a}/${b}` : null;
         return null;
     }
@@ -52,7 +55,11 @@ async function reenviar(metodo: Metodo, req: Request, params: Promise<{ ruta?: s
         cuerpo = texto || "{}";
     }
 
-    const consulta = camino === "" && new URL(req.url).searchParams.get("archivadas") === "1" ? "?archivadas=1" : "";
+    const parametros = new URL(req.url).searchParams;
+    const numero = parametros.get("numero");
+    const consulta = camino === "" && parametros.get("archivadas") === "1" ? "?archivadas=1"
+        : metodo === "GET" && camino.endsWith("/numero") && numero && /^\d{1,4}$/.test(numero) ? `?numero=${numero}`
+        : "";
 
     try {
         const res = await fetch(`${API}/rifas${camino}${consulta}`, {

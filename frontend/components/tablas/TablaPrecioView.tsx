@@ -32,16 +32,30 @@ import { esDeOtroSorteo } from "@/services/tablas/seleccionTabla";
 import { calcularResumenTabla } from "@/services/tablas/resumenTabla";
 import { crearSeleccion, type EstadoSeleccion, type Seleccion } from "@/services/tablas/estadoSeleccion";
 
+import { TablaRifaContext } from "./contextoTablaRifa";
+
 import styles from "./TablaPrecioView.module.css";
 
 interface Props {
     precio: number;
+    /** Motor de rifas independientes: la rifa (tabla_id). La pantalla es la
+     *  misma; sus datos son los de ESA rifa. */
+    tablaId?: string | null;
 }
 
-export default function TablaPrecioView({ precio }: Props) {
+export default function TablaPrecioView({ precio, tablaId = null }: Props) {
+    return (
+        <TablaRifaContext.Provider value={tablaId}>
+            <TablaPrecioContenido precio={precio} tablaId={tablaId} />
+        </TablaRifaContext.Provider>
+    );
+}
+
+function TablaPrecioContenido({ precio: precioPedido, tablaId }: Props) {
 
     const {
         config,
+        precio,
         loading,
         error,
         diagnostico,
@@ -66,7 +80,7 @@ export default function TablaPrecioView({ precio }: Props) {
         liberar,
         revisarReinicio,
         reiniciar
-    } = useTablaPrecio(precio);
+    } = useTablaPrecio(precioPedido, tablaId);
 
     // «Reservas recientes»: mismas operaciones del backend. El resultado se
     // avisa con un aviso flotante: éxito solo con la confirmación del

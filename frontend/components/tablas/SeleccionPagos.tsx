@@ -16,6 +16,7 @@ import {
 import { nuevaSolicitudId, obtenerContextoNumero, type ContextoNumero, type DatosReserva, type Resultado } from "@/services/tablas/reservaManual";
 import { anadirSeleccion, numerosLibres } from "@/services/tablas/seleccionTabla";
 import ReservaManualForm, { Aviso } from "./ReservaManualForm";
+import { useTablaRifaId } from "./contextoTablaRifa";
 
 // Mismas opciones que el pago de un número (NumeroDetalleModal).
 const METODOS_PAGO = ["Efectivo", "Nequi", "Daviplata", "Transferencia bancaria", "Otro"];
@@ -334,6 +335,8 @@ export function DialogoReservaLote({ precio, numeros, seleccion, onProcesar, onT
 
     const [{ incluidos, excluidos }] = useState(() => clasificarOperacion(numeros, seleccion, "reservar"));
     const [contexto, setContexto] = useState<ContextoNumero | null>(null);
+    // Rifa abierta (motor de rifas): sorteos y grupos de ESA rifa.
+    const tablaId = useTablaRifaId();
     const [errorContexto, setErrorContexto] = useState<string | null>(null);
     const [procesando, setProcesando] = useState(false);
     const [resultado, setResultado] = useState<ResultadoOperacion | null>(null);
@@ -344,13 +347,13 @@ export function DialogoReservaLote({ precio, numeros, seleccion, onProcesar, onT
     useEffect(() => {
         if (!incluidos.length) return;
         let vigente = true;
-        obtenerContextoNumero(precio, incluidos[0].numero).then(r => {
+        obtenerContextoNumero(precio, incluidos[0].numero, tablaId).then(r => {
             if (!vigente) return;
             if (r.ok) setContexto(r);
             else setErrorContexto(r.mensaje);
         });
         return () => { vigente = false; };
-    }, [precio, incluidos]);
+    }, [precio, incluidos, tablaId]);
 
     async function reservar(datos: DatosReserva): Promise<Resultado> {
         const { solicitudId, ...resto } = datos;

@@ -184,6 +184,8 @@ async function vista(usuarioId, filas) {
         valor: digitos(base.valor),
         premios: Array.isArray(base.premios) ? base.premios : [],
         tabla: base.tabla || null,
+        // Motor de rifas independientes (051): la rifa del sorteo.
+        tabla_id: base.tabla_id || null,
         cantidad_numeros: base.cantidad_numeros || null,
         estado: base.estado || null,
         grupos: filas.map(f => ({ evento_id: f.id, grupo_id: f.grupo_id, grupo_nombre: f.grupo_nombre || null, abierto: f.abierto !== false })),

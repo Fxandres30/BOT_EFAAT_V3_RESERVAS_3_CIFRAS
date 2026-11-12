@@ -24,12 +24,14 @@ interface Props {
     /** null: el estado del sorteo todavía se está consultando. */
     entradas: EntradaEstadoSorteo[] | null;
     ahora: Date;
+    /** Motor de rifas independientes: abre ESA rifa (misma tarjeta). */
+    tablaId?: string | null;
 }
 
 // Tarjeta de un precio en Reservas, con forma de boleto: la cara (precio)
 // y el talón (estado del sorteo) separados por una línea perforada.
 // Solo presentación: recibe el estado ya calculado (estadoSorteoPrecio).
-export default function TarjetaPrecio({ precio, entradas, ahora }: Props) {
+export default function TarjetaPrecio({ precio, entradas, ahora, tablaId = null }: Props) {
 
     const principal = entradas?.[0]?.estado;
     const tono = principal ? ESTADO_TARJETA[principal].tono : styles.consultando;
@@ -37,7 +39,7 @@ export default function TarjetaPrecio({ precio, entradas, ahora }: Props) {
 
     return (
 
-        <Link href={`/tablas/${precio}`} className={cn(styles.tarjeta, tono)}>
+        <Link href={`/tablas/${tablaId ?? precio}`} className={cn(styles.tarjeta, tono)}>
 
             <div className={styles.cara}>
                 <div className={styles.caraFila}>

@@ -8,16 +8,28 @@ interface Props {
     }>;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// /tablas/1500 → la tabla de ese precio (motor de siempre).
+// /tablas/<tabla_id> → la MISMA pantalla sobre esa rifa (motor de rifas
+// independientes): sus propios números, reservas, pagos e historial.
 export default async function TablaPage({ params }: Props) {
 
     const { precio } = await params;
+    const tablaId = UUID.test(precio) ? precio : null;
 
     return (
 
         <DashboardLayout>
 
-            <RedireccionMotorRifas />
-            <TablaPrecioView precio={Number(precio)} />
+            {tablaId ? (
+                <TablaPrecioView precio={0} tablaId={tablaId} />
+            ) : (
+                <>
+                    <RedireccionMotorRifas precio={Number(precio)} />
+                    <TablaPrecioView precio={Number(precio)} />
+                </>
+            )}
 
         </DashboardLayout>
 

@@ -4,7 +4,6 @@ import DashboardLayout from "@/components/layout/DashboardLayout/DashboardLayout
 import IndiceTablas from "@/components/tablas/IndiceTablas";
 import AyudaContextual from "@/components/aprende/AyudaContextual";
 import { PageHeader } from "@/components/ui/PageHeader";
-import RedireccionMotorRifas from "@/components/rifas/RedireccionMotorRifas";
 
 // Índice real de tablas de reservas: los precios de la cuenta de la sesión
 // (tablas_cliente, migración 027; sin ella, los precios base de
@@ -16,8 +15,6 @@ export default function TablasPage() {
         <DashboardLayout>
 
             <div className="max-w-6xl mx-auto min-w-0">
-
-                <RedireccionMotorRifas />
 
                 <PageHeader
                     eyebrow="Operación"

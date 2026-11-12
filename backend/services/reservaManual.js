@@ -1470,6 +1470,8 @@ module.exports = {
     liberarManual,
     operarLote,
     crearContactoManual,
+    // Lo usa también la pantalla de Tablas sobre el motor de rifas (rifas/panel.js).
+    contactoDelCliente,
     olvidarDirectorio,
     normalizarTelefono,
     estadoDeFila

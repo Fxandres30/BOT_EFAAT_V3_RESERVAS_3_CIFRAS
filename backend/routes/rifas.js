@@ -15,6 +15,7 @@ const router = require("express").Router();
 
 const { exigirUsuario } = require("../middleware/autenticacionUsuario");
 const rifas = require("../rifas/repositorio");
+const panel = require("../rifas/panel");
 const { modoMotor, motorNuevo } = require("../rifas/motor");
 const { resultadoEnTexto } = require("../rifas/formato");
 const { vigente } = require("../shared/eventos/estadosGestion");
@@ -197,6 +198,24 @@ router.delete("/:id/grupos/:grupoId", exigirUsuario, cargarRifa, ruta(async (req
 }));
 
 // -------------------------------------------------- operaciones sobre números
+
+// ---- Pantalla ORIGINAL de Tablas sobre la rifa (mismo contrato que /tablas) ---
+// Ventana del número, operación sobre un número y operación por lote, con las
+// respuestas que esa pantalla ya entiende (rifas/panel.js).
+const operador = (req) => ({ id: req.usuarioId, email: req.usuarioEmail || null });
+const responderPanel = (res, r) => res.status(r?.ok ? 200 : (HTTP[r?.motivo] || 409)).json(r);
+
+router.get("/:id/numero", exigirUsuario, cargarRifa, ruta(async (req, res) => {
+    responderPanel(res, await panel.contextoNumero(req.usuarioId, req.rifa, req.query.numero));
+}));
+
+router.post("/:id/numero", exigirUsuario, exigirMotorNuevo, cargarRifa, ruta(async (req, res) => {
+    responderPanel(res, await panel.operarNumero(req.usuarioId, operador(req), req.rifa, req.body || {}));
+}));
+
+router.post("/:id/lote", exigirUsuario, exigirMotorNuevo, cargarRifa, ruta(async (req, res) => {
+    responderPanel(res, await panel.operarLote(req.usuarioId, operador(req), req.rifa, req.body || {}));
+}));
 
 router.post("/:id/reservar", exigirUsuario, exigirMotorNuevo, cargarRifa, ruta(async (req, res) => {
     responder(res, await rifas.reservar(req.usuarioId, req.rifa.id, numerosDelCuerpo(req), datosComprador(req.body),

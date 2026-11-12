@@ -7,6 +7,7 @@ import { SIN_ACCIONES, type NumeroReserva, type PaqueteReserva } from "./types";
 import { ESTADOS_META_VISUAL, estadoVisualSimplificado } from "./estadoVisual";
 import ReservaManualForm, { Aviso } from "./ReservaManualForm";
 import HistorialNumero from "./HistorialNumero";
+import { useTablaRifaId } from "./contextoTablaRifa";
 import {
     nuevaSolicitudId,
     obtenerContextoNumero,
@@ -66,28 +67,31 @@ function DetalleNumero({
     onLiberar
 }: Props & { numero: NumeroReserva }) {
 
+    // Rifa abierta (motor de rifas): la ventana pide los datos de ESA rifa.
+    const tablaId = useTablaRifaId();
+
     const [contexto, setContexto] = useState<ContextoNumero | null>(null);
     const [errorCarga, setErrorCarga] = useState<string | null>(null);
     const [cargando, setCargando] = useState(true);
     const [aviso, setAviso] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
 
     const cargar = useCallback(async () => {
-        const r = await obtenerContextoNumero(precio, numero.numero);
+        const r = await obtenerContextoNumero(precio, numero.numero, tablaId);
         if (r.ok) { setContexto(r); setErrorCarga(null); }
         else setErrorCarga(r.mensaje);
         setCargando(false);
-    }, [precio, numero.numero]);
+    }, [precio, numero.numero, tablaId]);
 
     useEffect(() => {
         let vivo = true;
-        obtenerContextoNumero(precio, numero.numero).then((r) => {
+        obtenerContextoNumero(precio, numero.numero, tablaId).then((r) => {
             if (!vivo) return;
             if (r.ok) setContexto(r);
             else setErrorCarga(r.mensaje);
             setCargando(false);
         });
         return () => { vivo = false; };
-    }, [precio, numero.numero]);
+    }, [precio, numero.numero, tablaId]);
 
     // Tras la respuesta del servidor se relee el estado real del número;
     // mientras tanto sus acciones siguen deshabilitadas (antes «Confirmar

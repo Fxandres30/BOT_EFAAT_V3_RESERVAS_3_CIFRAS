@@ -22,6 +22,7 @@ import { guardarInstantanea, leerInstantanea } from "@/services/tablas/instantan
 import { crearRecargaAgrupada } from "@/services/tablas/recargaAgrupada";
 import { ordenarPorSorteoActivo } from "@/services/tablas/resumenTabla";
 import { obtenerTablasCliente, tablasClienteEnCache, type ConfiguracionTabla } from "@/services/tablas/tablasCliente";
+import { apiRifas, type Rifa } from "@/services/rifas/apiRifas";
 
 import TarjetaPrecio from "./TarjetaPrecio";
 import styles from "./IndiceTablas.module.css";
@@ -54,6 +55,9 @@ export default function IndiceTablas() {
     const [tablas, setTablas] = useState<ConfiguracionTabla[] | null>(() => tablasClienteEnCache(usuarioLocal ?? ultimoUsuarioIndice()) ?? null);
     const fuentes = useDato<FuentesIndice>(usuarioVista ? claveIndiceSorteos(usuarioVista) : null) ?? null;
     const [ahora, setAhora] = useState(() => new Date());
+    // Motor de rifas independientes activo: sus rifas (una tarjeta por
+    // rifa, con su tabla_id). null = motor de siempre (una tarjeta por precio).
+    const [rifasMotor, setRifasMotor] = useState<Rifa[] | null>(null);
 
     // Solo la del usuario de la sesión (leerInstantanea lo exige); se vuelve
     // a elegir si cambia la cuenta.
@@ -83,6 +87,9 @@ export default function IndiceTablas() {
             // Revalidación en segundo plano: lo que hay en pantalla se conserva.
             cargarIndiceSorteos(usuarioId).then(marcarHora);
             obtenerTablasCliente(usuarioId).then((lista) => { if (vivo) setTablas(lista); });
+            apiRifas.listar().then((r) => {
+                if (vivo) setRifasMotor(r.ok && r.modo === "nuevo" ? r.rifas.filter(x => x.activa) : null);
+            });
 
             const forzar = () => cargarIndiceSorteos(usuarioId, { forzar: true }).then(marcarHora);
             recarga = crearRecargaAgrupada(forzar, ESPERA_REALTIME_MS);
@@ -128,12 +135,26 @@ export default function IndiceTablas() {
     const guardada = !servidor && instantanea && instantanea.usuarioId === usuarioVista ? instantanea : null;
     const vistaTablas = tablas ?? guardada?.tablas ?? null;
 
+    // Tarjetas: una por precio (motor de siempre) o una por rifa (motor de
+    // rifas independientes, cada una con su tabla_id y SU sorteo).
+    const filas = rifasMotor
+        ? rifasMotor.map(r => ({ precio: Number(r.precio), tabla: vistaTablas?.find(t => t.precio === Number(r.precio))?.tabla ?? "", tablaId: r.tabla_id as string | null }))
+        : vistaTablas?.map(({ precio, tabla }) => ({ precio, tabla, tablaId: null as string | null })) ?? null;
+
     // Estado de cada precio, calculado una vez para el resumen y las
     // tarjetas (null = se está consultando). Las de sorteo activo, primero.
-    const estados = vistaTablas ? ordenarPorSorteoActivo(vistaTablas.map(({ precio, tabla }) => ({
+    const estados = filas ? ordenarPorSorteoActivo(filas.map(({ precio, tabla, tablaId }) => ({
         precio,
+        tablaId,
         entradas: fuentes && !guardada
-            ? estadoSorteoPrecio({ precio, tabla, activos: fuentes.activos, programados: fuentes.programados, ahora })
+            ? estadoSorteoPrecio({
+                precio,
+                tabla,
+                // Con rifas: solo los sorteos de ESTA rifa.
+                activos: tablaId && fuentes.activos ? fuentes.activos.filter(a => !a.tabla_id || a.tabla_id === tablaId) : fuentes.activos,
+                programados: fuentes.programados,
+                ahora
+            })
             : guardada?.estados.find(e => e.precio === precio)?.entradas ?? null
     }))) : null;
 
@@ -144,7 +165,8 @@ export default function IndiceTablas() {
     // Tras cada lectura CORRECTA del servidor se guarda la instantánea (solo
     // lo que muestran las tarjetas) del usuario de la sesión.
     useEffect(() => {
-        if (!fuentes || fuentes.fallo || !tablas || !usuarioVista || usuarioVista !== usuarioSesionLocal()) return;
+        // La instantánea es por precio: con rifas independientes no se guarda.
+        if (rifasMotor || !fuentes || fuentes.fallo || !tablas || !usuarioVista || usuarioVista !== usuarioSesionLocal()) return;
         const leido = new Date(fuentes.leidoEn);
         guardarInstantanea({
             usuarioId: usuarioVista,
@@ -156,7 +178,7 @@ export default function IndiceTablas() {
             })),
             disponibles: { activos: Boolean(fuentes.activos), programados: Boolean(fuentes.programados) }
         });
-    }, [fuentes, tablas, usuarioVista]);
+    }, [fuentes, tablas, usuarioVista, rifasMotor]);
 
     const hayCuenta = Boolean(estados?.some(({ entradas }) =>
         entradas?.some(e => e.estado === "programado" && e.publicarEn && e.publicarEn > ahora)
@@ -168,7 +190,7 @@ export default function IndiceTablas() {
         return () => clearInterval(reloj);
     }, [hayCuenta]);
 
-    if (!vistaTablas || !estados) {
+    if (!filas || !estados) {
         return (
             <div className={styles.rejilla} role="status" aria-label="Cargando tablas">
                 {[0, 1, 2, 3].map(i => (
@@ -183,7 +205,7 @@ export default function IndiceTablas() {
         );
     }
 
-    if (vistaTablas.length === 0) {
+    if (filas.length === 0) {
         return (
             <EmptyState
                 icon={<Ticket size={22} />}
@@ -216,8 +238,8 @@ export default function IndiceTablas() {
             )}
 
             <div className={styles.rejilla}>
-                {estados.map(({ precio, entradas }) => (
-                    <Tarjeta key={precio} precio={precio} entradas={entradas} ahora={ahora} />
+                {estados.map(({ precio, entradas, tablaId }) => (
+                    <Tarjeta key={tablaId ?? precio} precio={precio} tablaId={tablaId} entradas={entradas} ahora={ahora} />
                 ))}
             </div>
 
@@ -232,6 +254,7 @@ export default function IndiceTablas() {
 // a las tarjetas con cuenta regresiva (programadas).
 const Tarjeta = memo(TarjetaPrecio, (a, b) =>
     a.precio === b.precio
+    && a.tablaId === b.tablaId
     && mismasEntradas(a.entradas, b.entradas)
     && (a.ahora === b.ahora || !b.entradas?.some(e => e.estado === "programado"))
 );

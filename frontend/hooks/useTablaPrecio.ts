@@ -38,6 +38,19 @@ import {
     type AvisoRealtime
 } from "@/services/tablas/cambiosTabla";
 import { procesarOperacion, type DatosOperacion, type NumeroSeleccionable, type OperacionLote, type ResultadoOperacion } from "@/services/tablas/pagoLote";
+// Motor de rifas independientes: la misma pantalla sobre una rifa (tabla_id).
+import {
+    configDeRifa,
+    filaPanel,
+    leerNumerosRifa,
+    obtenerActividadRifa,
+    obtenerEventoActivoRifa,
+    obtenerHistorialRifa,
+    obtenerRifaPanel,
+    reiniciarRifa,
+    revisarReinicioRifa,
+    type RifaPanel
+} from "@/services/tablas/fuenteRifa";
 
 import { derivarPaquetes } from "@/components/tablas/derivarPaquetes";
 import { estadoEfectivo } from "@/components/tablas/estadoVisual";
@@ -78,11 +91,16 @@ const fechaArchivo = (a: FilaArchivo) => a.archivado_en;
 //   - al perder la conexión en tiempo real (canal caído, sin red) y
 //     recuperarla, se vuelve a validar todo (services/tablas/sincronizacionTabla.ts).
 // El servidor sigue siendo la autoridad: cada operación se valida allí.
-export function useTablaPrecio(precio: number) {
+// tablaId (motor de rifas independientes): la pantalla es la de siempre, pero
+// sus números, reservas, pagos, actividad e historial son los de ESA rifa.
+export function useTablaPrecio(precioPedido: number, tablaId?: string | null) {
 
     // Tabla física de este precio SEGÚN EL CLIENTE de la sesión
     // (tablas_cliente); se resuelve al conocer el usuario.
     const [config, setConfig] = useState<TablaConfig | null>(null);
+    // La rifa abierta (solo con tablaId). Su precio es el de la tabla.
+    const [rifa, setRifa] = useState<RifaPanel | null>(null);
+    const precio = rifa ? rifa.precio : precioPedido;
 
     const [usuarioId, setUsuarioId] = useState<string | null>(null);
 
@@ -137,7 +155,26 @@ export function useTablaPrecio(precio: number) {
                 return;
             }
 
-            const cfg = await obtenerTablaConfigCliente(precio, data.user.id);
+            if (tablaId) {
+                let r: RifaPanel | null = null;
+                try {
+                    r = await obtenerRifaPanel(tablaId, data.user.id);
+                } catch {
+                    r = null;
+                }
+                if (!vivo) return;
+                if (!r) {
+                    setError("No existe esta tabla.");
+                    setLoading(false);
+                    return;
+                }
+                setRifa(r);
+                setConfig(configDeRifa(r));
+                setUsuarioId(data.user.id);
+                return;
+            }
+
+            const cfg = await obtenerTablaConfigCliente(precioPedido, data.user.id);
 
             if (!vivo) return;
 
@@ -155,18 +192,22 @@ export function useTablaPrecio(precio: number) {
 
         return () => { vivo = false; };
 
-    }, [precio]);
+    }, [precioPedido, tablaId]);
 
     useEffect(() => {
 
         if (!usuarioId || !config) return;
+
+        // Con tablaId, hasta tener la rifa no se abre nada.
+        if (tablaId && !rifa) return;
 
         const c = abrirTabla({
             precio,
             usuarioId,
             config,
             historialPedido: () => historialPedido.current,
-            vista: { setNumeros, setEventoActivo, setActividad, setEventosHistorial, setContactos, setHistorialCargado, setDiagnostico, setError, setLoading, setDesactualizada }
+            vista: { setNumeros, setEventoActivo, setActividad, setEventosHistorial, setContactos, setHistorialCargado, setDiagnostico, setError, setLoading, setDesactualizada },
+            fuente: rifa ? fuenteDeRifa(rifa) : undefined
         });
 
         control.current = c;
@@ -185,7 +226,7 @@ export function useTablaPrecio(precio: number) {
             setLoading(true);
         };
 
-    }, [usuarioId, config, precio]);
+    }, [usuarioId, config, precio, tablaId, rifa]);
 
     const cargarHistorial = useCallback(() => {
         historialPedido.current = true;
@@ -293,14 +334,14 @@ export function useTablaPrecio(precio: number) {
 
     const reservar = useCallback(async (numero: string, datos: DatosReserva): Promise<Resultado> => {
         if (!usuarioId) return sinSesion;
-        return (await ejecutar(numero, [numero], () => reservarNumeroManual(precio, numero, datos))) ?? enCurso;
-    }, [usuarioId, ejecutar, precio]);
+        return (await ejecutar(numero, [numero], () => reservarNumeroManual(precio, numero, datos, rifa?.id))) ?? enCurso;
+    }, [usuarioId, ejecutar, precio, rifa]);
 
     const marcarPagado = useCallback(async (numero: string, datos?: DatosPago): Promise<Resultado> => {
         if (!usuarioId) return sinSesion;
         // Éxito en cuanto el servidor lo confirma; el número se relee detrás.
-        return (await ejecutar(numero, [numero], () => pagarNumeroManual(precio, numero, datos))) ?? enCurso;
-    }, [usuarioId, ejecutar, precio]);
+        return (await ejecutar(numero, [numero], () => pagarNumeroManual(precio, numero, datos, rifa?.id))) ?? enCurso;
+    }, [usuarioId, ejecutar, precio, rifa]);
 
     // Varios números (o uno, desde las acciones rápidas): UNA solicitud y
     // una escritura en el servidor, y una relectura de esos números al
@@ -313,36 +354,40 @@ export function useTablaPrecio(precio: number) {
         return ejecutar("lote", incluidos.map(n => n.numero), () => procesarOperacion({
             operacion,
             incluidos,
-            enviar: (cuerpo) => operarLote(precio, cuerpo),
+            enviar: (cuerpo) => operarLote(precio, cuerpo, rifa?.id),
             datos,
             solicitudLote
         }));
-    }, [usuarioId, ejecutar, precio]);
+    }, [usuarioId, ejecutar, precio, rifa]);
 
     // Libera una reserva, anula un pago o desbloquea, según el estado real.
     const liberar = useCallback(async (numero: string, datos?: DatosLiberar): Promise<Resultado> => {
         if (!usuarioId) return sinSesion;
-        return (await ejecutar(numero, [numero], () => liberarNumeroManual(precio, numero, datos))) ?? enCurso;
-    }, [usuarioId, ejecutar, precio]);
+        return (await ejecutar(numero, [numero], () => liberarNumeroManual(precio, numero, datos, rifa?.id))) ?? enCurso;
+    }, [usuarioId, ejecutar, precio, rifa]);
 
     // Impacto del reinicio (solo lectura) para el diálogo de confirmación.
+    // En una rifa, solo sus números: ninguna otra tabla se ve afectada.
     const revisarReinicio = useCallback(async (): Promise<RevisionReinicio> => {
         if (!usuarioId) throw new Error("Tu sesión expiró. Vuelve a iniciar sesión.");
-        return revisarReinicioTabla(precio, usuarioId);
-    }, [usuarioId, precio]);
+        return rifa ? revisarReinicioRifa(rifa) : revisarReinicioTabla(precio, usuarioId);
+    }, [usuarioId, precio, rifa]);
 
     // Con números ya existentes exige la confirmación del diálogo (texto,
     // anticipadas aceptadas y la huella revisada). Recarga al terminar.
     const reiniciar = useCallback(async (confirmacion?: ConfirmacionReinicio): Promise<ResultadoReinicio> => {
         if (!usuarioId) throw new Error("Tu sesión expiró. Vuelve a iniciar sesión.");
-        const r = await ejecutar("*", "todo", () => reiniciarTabla(precio, usuarioId, confirmacion));
+        const r = await ejecutar("*", "todo", () => rifa ? reiniciarRifa(rifa, confirmacion) : reiniciarTabla(precio, usuarioId, confirmacion));
         if (!r) throw new Error("Ya se está reiniciando esta tabla. Espera a que termine.");
         return r;
-    }, [usuarioId, ejecutar, precio]);
+    }, [usuarioId, ejecutar, precio, rifa]);
 
     return {
 
         config,
+        // Solo en el motor de rifas: la rifa abierta (tabla_id, nombre, precio).
+        rifa,
+        precio,
         loading,
         error,
         diagnostico,
@@ -397,14 +442,77 @@ interface OpcionesTabla {
     config: TablaConfig;
     historialPedido: () => boolean;
     vista: Vista;
+    /** De dónde salen los datos. Sin ella: la tabla del precio (de siempre). */
+    fuente?: FuenteTabla;
+}
+
+// Lecturas y avisos de UNA tabla. La pantalla es la misma para la tabla del
+// precio (cuadrícula antigua) y para una rifa del motor independiente
+// (tabla_id): solo cambia esta fuente.
+export interface FuenteTabla {
+    /** Para nombrar los canales de tiempo real. */
+    clave: string;
+    leerTodos(): Promise<NumeroReserva[]>;
+    leerNumeros(numeros: string[]): Promise<NumeroReserva[]>;
+    leerEvento(): Promise<EventoActivo | null>;
+    leerActividad(limite: number, desde?: string): Promise<ActividadReserva[]>;
+    leerHistorial(desde?: { auditoria: string | null; archivo: string | null | false }): Promise<EventosHistorial>;
+    /** Solo la tabla del precio: crea la cuadrícula del cliente si no existe. */
+    preparar?: () => Promise<{ nums: NumeroReserva[]; diagnostico: DiagnosticoCuadricula | null }>;
+    numerosRealtime: { table: string; filter: string };
+    /** Aviso de Realtime → misma forma que una fila de la cuadrícula. */
+    adaptarAviso(aviso: AvisoRealtime): AvisoRealtime;
+    /** Aviso de eventos o actividad de OTRA tabla (se descarta). */
+    esDeOtraTabla(aviso: AvisoRealtime): boolean;
+}
+
+function fuentePrecio(precio: number, usuarioId: string, tabla: string): FuenteTabla {
+    return {
+        clave: tabla,
+        leerTodos: () => obtenerTabla(precio, usuarioId),
+        leerNumeros: (numeros) => obtenerNumerosTabla(tabla, usuarioId, numeros),
+        leerEvento: () => obtenerEventoActivo(tabla, usuarioId),
+        leerActividad: (limite, desde) => desde ? obtenerActividadDesde(tabla, usuarioId, desde, limite) : obtenerActividad(tabla, usuarioId, limite),
+        leerHistorial: (desde) => obtenerEventosHistorial(tabla, usuarioId, desde),
+        preparar: async () => {
+            const r = await prepararCuadricula(precio);
+            const nums = r.ok && r.estado === "completa" ? await obtenerTabla(precio, usuarioId) : [];
+            const d = diagnosticar(r, nums.length);
+            return { nums, diagnostico: d.tipo === "lista" ? null : d };
+        },
+        numerosRealtime: { table: tabla, filter: `usuario_id=eq.${usuarioId}` },
+        adaptarAviso: (aviso) => aviso,
+        esDeOtraTabla: (aviso) => esDeOtraTabla(aviso, tabla)
+    };
+}
+
+// Rifa del motor independiente: todo por su tabla_id.
+export function fuenteDeRifa(rifa: RifaPanel): FuenteTabla {
+    const { id, usuario_id: usuarioId, cifras } = rifa;
+    const adaptar = (f: Record<string, unknown> | undefined) => (f && f.numero !== undefined ? (filaPanel(f, cifras) as unknown as Record<string, unknown>) : f);
+    return {
+        clave: `rifa-${id}`,
+        leerTodos: () => leerNumerosRifa(id, usuarioId, cifras),
+        leerNumeros: (numeros) => leerNumerosRifa(id, usuarioId, cifras, numeros),
+        leerEvento: () => obtenerEventoActivoRifa(id, usuarioId),
+        leerActividad: (limite, desde) => obtenerActividadRifa(id, usuarioId, limite, desde),
+        leerHistorial: (desde) => obtenerHistorialRifa(id, usuarioId, cifras, desde),
+        numerosRealtime: { table: "numeros_rifa", filter: `tabla_id=eq.${id}` },
+        adaptarAviso: (aviso) => ({ ...aviso, new: adaptar(aviso.new as Record<string, unknown> | undefined), old: adaptar(aviso.old as Record<string, unknown> | undefined) }) as AvisoRealtime,
+        esDeOtraTabla: (aviso) => {
+            const fila = (aviso.new ?? aviso.old) as { tabla_id?: string | null } | undefined;
+            return !fila || fila.tabla_id !== id;
+        }
+    };
 }
 
 type ControlTabla = ReturnType<typeof abrirTabla>;
 
 // Exportada para las pruebas (tests/tablas/tiempoRealTabla.test.mjs).
-export function abrirTabla({ precio, usuarioId, config, historialPedido, vista }: OpcionesTabla) {
+export function abrirTabla({ precio, usuarioId, config, historialPedido, vista, fuente: fuenteDada }: OpcionesTabla) {
 
     const { tabla } = config;
+    const fuente = fuenteDada ?? fuentePrecio(precio, usuarioId, tabla);
     let cerrada = false;
 
     // Copia de lo que se ve: las fusiones parten de aquí y solo se avisa a
@@ -449,8 +557,8 @@ export function abrirTabla({ precio, usuarioId, config, historialPedido, vista }
     // está abierto); después, solo lo nuevo desde la más reciente.
     function leerActividad(): Promise<ActividadReserva[]> {
         const desde = desdeVentana(datos.actividad, fechaActividad, MARGEN_VENTANA_MS);
-        if (!desde) return obtenerActividad(tabla, usuarioId, historial === "listo" ? LIMITE_HISTORIAL : RECIENTES);
-        return obtenerActividadDesde(tabla, usuarioId, desde, LIMITE_HISTORIAL);
+        if (!desde) return fuente.leerActividad(historial === "listo" ? LIMITE_HISTORIAL : RECIENTES);
+        return fuente.leerActividad(LIMITE_HISTORIAL, desde);
     }
 
     // Cuadrícula + evento activo + actividad nueva. Es la validación tras
@@ -460,8 +568,8 @@ export function abrirTabla({ precio, usuarioId, config, historialPedido, vista }
         const inicio = versiones.iniciarLectura();
 
         const [leidos, evt, act] = await Promise.all([
-            obtenerTabla(precio, usuarioId),
-            obtenerEventoActivo(tabla, usuarioId),
+            fuente.leerTodos(),
+            fuente.leerEvento(),
             leerActividad()
         ]);
 
@@ -472,17 +580,16 @@ export function abrirTabla({ precio, usuarioId, config, historialPedido, vista }
         // Ninguna fila visible no significa "tabla vacía": puede que el
         // cliente aún no tenga cuadrícula (se crea aquí si la base lo
         // permite) o que la base la tenga y no deje leerla.
-        if (nums.length === 0 && !preparado) {
+        if (nums.length === 0 && !preparado && fuente.preparar) {
 
             preparado = true;
 
-            const r = await prepararCuadricula(precio);
-            if (r.ok && r.estado === "completa") nums = await obtenerTabla(precio, usuarioId);
+            const r = await fuente.preparar();
+            nums = r.nums;
 
             if (cerrada) return;
 
-            const d = diagnosticar(r, nums.length);
-            vista.setDiagnostico(d.tipo === "lista" ? null : d);
+            vista.setDiagnostico(r.diagnostico);
 
         } else if (nums.length > 0) {
 
@@ -512,7 +619,7 @@ export function abrirTabla({ precio, usuarioId, config, historialPedido, vista }
 
         if (historial !== "listo") return;
 
-        const h = await obtenerEventosHistorial(tabla, usuarioId, {
+        const h = await fuente.leerHistorial({
             auditoria: desdeVentana(datos.historial.auditoria, fechaAuditoria, MARGEN_VENTANA_MS),
             archivo: conArchivo ? desdeVentana(datos.historial.archivo, fechaArchivo, MARGEN_VENTANA_MS) : false
         });
@@ -533,8 +640,8 @@ export function abrirTabla({ precio, usuarioId, config, historialPedido, vista }
     async function leerHistorialCompleto(): Promise<void> {
 
         const [act, h] = await Promise.all([
-            obtenerActividad(tabla, usuarioId, LIMITE_HISTORIAL),
-            obtenerEventosHistorial(tabla, usuarioId)
+            fuente.leerActividad(LIMITE_HISTORIAL),
+            fuente.leerHistorial()
         ]);
 
         if (cerrada) return;
@@ -576,7 +683,7 @@ export function abrirTabla({ precio, usuarioId, config, historialPedido, vista }
             esperando = null;
 
             const inicio = versiones.iniciarLectura();
-            const filas = await obtenerNumerosTabla(tabla, usuarioId, numerosLeer);
+            const filas = await fuente.leerNumeros(numerosLeer);
 
             if (cerrada) return;
 
@@ -593,7 +700,7 @@ export function abrirTabla({ precio, usuarioId, config, historialPedido, vista }
     const auditoria = crearRecargaAgrupada(() => leerHistorialNuevo(), ESPERA_AUDITORIA_MS);
     const eventoActivo = crearRecargaAgrupada(async () => {
         const inicio = versiones.iniciarLectura();
-        const evt = await obtenerEventoActivo(tabla, usuarioId);
+        const evt = await fuente.leerEvento();
         if (cerrada || inicio <= turnoEvento) return;
         turnoEvento = inicio;
         if (JSON.stringify(datos.evento) !== JSON.stringify(evt)) {
@@ -604,9 +711,11 @@ export function abrirTabla({ precio, usuarioId, config, historialPedido, vista }
 
     // ---- avisos de Realtime --------------------------------------------------
 
-    function alCambiarNumero(aviso: AvisoRealtime) {
+    function alCambiarNumero(avisoRecibido: AvisoRealtime) {
 
         if (cerrada) return;
+
+        const aviso = fuente.adaptarAviso(avisoRecibido);
 
         const actual = aviso.new?.numero !== undefined ? datos.numeros.find(n => n.numero === String(aviso.new?.numero)) : undefined;
         const d = decidirAvisoNumero(aviso, usuarioId, actual, id => datos.numeros.some(n => String(n.id) === String(id)));
@@ -627,12 +736,12 @@ export function abrirTabla({ precio, usuarioId, config, historialPedido, vista }
     }
 
     function alCambiarEvento(aviso: AvisoRealtime) {
-        if (cerrada || esDeOtraTabla(aviso, tabla)) return;
+        if (cerrada || fuente.esDeOtraTabla(aviso)) return;
         eventoActivo.senal();
     }
 
     function alRegistrarActividad(aviso: AvisoRealtime) {
-        if (cerrada || esDeOtraTabla(aviso, tabla)) return;
+        if (cerrada || fuente.esDeOtraTabla(aviso)) return;
         const fila = aviso.new as unknown as ActividadReserva | undefined;
         if (!fila?.id || fila.usuario_id !== usuarioId) return;
         ponerActividad(fusionarPorId(datos.actividad, [fila], fechaActividad, LIMITE_HISTORIAL));
@@ -642,7 +751,7 @@ export function abrirTabla({ precio, usuarioId, config, historialPedido, vista }
     // ---- sincronización --------------------------------------------------------
 
     let perdida = false;
-    const nombres = [`tabla-${tabla}-${usuarioId}`, `eventos-${tabla}-${usuarioId}`, `actividad-${tabla}-${usuarioId}`];
+    const nombres = [`tabla-${fuente.clave}-${usuarioId}`, `eventos-${fuente.clave}-${usuarioId}`, `actividad-${fuente.clave}-${usuarioId}`];
 
     const sync = crearSincronizacion({
         canales: nombres,
@@ -662,7 +771,7 @@ export function abrirTabla({ precio, usuarioId, config, historialPedido, vista }
             .channel(nombres[0])
             .on(
                 "postgres_changes",
-                { event: "*", schema: "public", table: tabla, filter: `usuario_id=eq.${usuarioId}` },
+                { event: "*", schema: "public", table: fuente.numerosRealtime.table, filter: fuente.numerosRealtime.filter },
                 alCambiarNumero
             )
             .subscribe((estado) => sync.canal(nombres[0], estado)),

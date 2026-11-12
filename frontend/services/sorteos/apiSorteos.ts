@@ -260,6 +260,8 @@ export interface SorteoActivo {
     valor: number | null;
     premios: Premio[];
     tabla: string | null;
+    /** Motor de rifas independientes: la rifa del sorteo (null en el motor de siempre). */
+    tabla_id?: string | null;
     cantidad_numeros: number | null;
     estado: string | null;
     grupos: { evento_id: string; grupo_id: string; grupo_nombre: string | null; abierto: boolean }[];

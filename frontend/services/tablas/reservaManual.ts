@@ -167,7 +167,13 @@ export function buscarContactos(q: string) {
     return llamar<{ ok: true; contactos: ContactoBuscado[] }>(`/api/tablas/contactos?q=${encodeURIComponent(q)}`);
 }
 
-export function obtenerContextoNumero(precio: number, numero: string) {
+// Con tablaId (motor de rifas independientes) la MISMA operación va a esa
+// rifa (backend /rifas/:id/numero y /rifas/:id/lote, mismo contrato); sin él,
+// a la tabla del precio como siempre.
+const rutaRifa = (tablaId: string, que: "numero" | "lote") => `/api/rifas/${encodeURIComponent(tablaId)}/${que}`;
+
+export function obtenerContextoNumero(precio: number, numero: string, tablaId?: string | null) {
+    if (tablaId) return llamar<ContextoNumero>(`${rutaRifa(tablaId, "numero")}?numero=${encodeURIComponent(numero)}`);
     return llamar<ContextoNumero>(`/api/tablas/numero?precio=${precio}&numero=${encodeURIComponent(numero)}`);
 }
 
@@ -185,7 +191,8 @@ export interface DatosReserva {
     solicitudId: string;
 }
 
-export function reservarNumeroManual(precio: number, numero: string, datos: DatosReserva) {
+export function reservarNumeroManual(precio: number, numero: string, datos: DatosReserva, tablaId?: string | null) {
+    if (tablaId) return llamar<Exito>(rutaRifa(tablaId, "numero"), json({ numero, accion: "reservar", ...datos }));
     return llamar<Exito>("/api/tablas/numero", json({ precio, numero, accion: "reservar", ...datos }));
 }
 
@@ -196,7 +203,8 @@ export interface DatosPago {
     solicitudId?: string;
 }
 
-export function pagarNumeroManual(precio: number, numero: string, datos: DatosPago = {}) {
+export function pagarNumeroManual(precio: number, numero: string, datos: DatosPago = {}, tablaId?: string | null) {
+    if (tablaId) return llamar<Exito>(rutaRifa(tablaId, "numero"), json({ numero, accion: "pagar", ...datos }));
     return llamar<Exito>("/api/tablas/numero", json({ precio, numero, accion: "pagar", ...datos }));
 }
 
@@ -206,7 +214,8 @@ export interface DatosLiberar {
     solicitudId?: string;
 }
 
-export function liberarNumeroManual(precio: number, numero: string, datos: DatosLiberar = {}) {
+export function liberarNumeroManual(precio: number, numero: string, datos: DatosLiberar = {}, tablaId?: string | null) {
+    if (tablaId) return llamar<Exito>(rutaRifa(tablaId, "numero"), json({ numero, accion: "liberar", confirmar: true, ...datos }));
     return llamar<Exito>("/api/tablas/numero", json({ precio, numero, accion: "liberar", confirmar: true, ...datos }));
 }
 
@@ -230,7 +239,8 @@ export interface RespuestaLote {
 }
 
 /** Varios números en UNA solicitud (backend POST /tablas/:precio/lote). */
-export function operarLote(precio: number, cuerpo: Record<string, unknown>) {
+export function operarLote(precio: number, cuerpo: Record<string, unknown>, tablaId?: string | null) {
+    if (tablaId) return llamar<RespuestaLote>(rutaRifa(tablaId, "lote"), json(cuerpo));
     return llamar<RespuestaLote>("/api/tablas/lote", json({ precio, ...cuerpo }));
 }
 
