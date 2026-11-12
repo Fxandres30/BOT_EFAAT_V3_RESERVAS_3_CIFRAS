@@ -50,6 +50,7 @@ const REQUIEREN_ENTORNO = {
     "backend/tests/rifasApp/repositorioRifas.test.js": "necesita PGlite (PGLITE_MODULE)",
     "backend/tests/rifasApp/botRifas.test.js": "necesita PGlite (PGLITE_MODULE)",
     "backend/tests/rifasApp/rutasRifas.test.js": "necesita PGlite (PGLITE_MODULE)",
+    "backend/tests/rifasApp/panelRifas.test.js": "necesita PGlite (PGLITE_MODULE)",
     "backend/tests/rifas/concurrenciaRifas.test.js": "necesita un Postgres local desechable (PG_MODULE + PG_PRUEBAS_URL)"
 };
 

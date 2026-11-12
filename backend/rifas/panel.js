@@ -157,7 +157,12 @@ async function reservar(usuarioId, operador, rifa, cuerpo, textos) {
     });
     if (r.contactoBloqueado) return { general: fallo("contacto_bloqueado", "Ese contacto está bloqueado. Desbloquéalo antes de reservarle.") };
     if (r.error) return { general: fallo(r.error.code || "error", r.error.message || "No se pudo reservar.") };
-    return { hechos: new Set((r.filas || []).map(f => f.numero)) };
+    // Ya reservado A ESTE MISMO contacto = repetición (sin cambio); a otra
+    // persona = no disponible.
+    const { filas } = await rifas.leerNumeros(usuarioId, rifa.id, { numeros: textos });
+    const suyos = new Set(filas.filter(f => f.estado === "reservado" && f.usuario_global_id === c.contacto.id).map(f => f.numero));
+    const hechos = new Set((r.filas || []).map(f => f.numero));
+    return { hechos, sinCambio: new Set([...suyos].filter(n => !hechos.has(n))) };
 }
 
 async function pagar(usuarioId, operador, rifa, cuerpo, textos) {
@@ -207,7 +212,8 @@ async function operarNumero(usuarioId, operador, rifa, cuerpo) {
         return { ok: true, estado: ESTADO_FINAL[accion], accion };
     }
     const ahora = await filaDe(usuarioId, rifa, numero);
-    if (r.sinCambio?.has(numero) || ahora?.estado === ESTADO_FINAL[accion]) {
+    // Reservar solo es repetición si es del mismo contacto (r.sinCambio).
+    if (r.sinCambio?.has(numero) || (accion !== "reservar" && ahora?.estado === ESTADO_FINAL[accion])) {
         return { ok: true, estado: ahora?.estado || ESTADO_FINAL[accion], idempotente: true, accion };
     }
     return fallo(accion === "reservar" ? "no_disponible" : "estado_invalido",
@@ -233,7 +239,7 @@ async function operarLote(usuarioId, operador, rifa, cuerpo) {
     const estadoDe = new Map(filas.map(f => [f.numero, f.estado]));
     const resultados = textos.map(n => {
         if (r.hechos.has(n)) return { numero: n, estado: "hecho", mensaje: "Hecho." };
-        if (r.sinCambio?.has(n) || estadoDe.get(n) === ESTADO_FINAL[accion]) return { numero: n, estado: "sin_cambio", mensaje: "Ya estaba así.", estadoActual: estadoDe.get(n) };
+        if (r.sinCambio?.has(n) || (accion !== "reservar" && estadoDe.get(n) === ESTADO_FINAL[accion])) return { numero: n, estado: "sin_cambio", mensaje: "Ya estaba así.", estadoActual: estadoDe.get(n) };
         return { numero: n, estado: "omitido", mensaje: "Su estado cambió; no se tocó.", codigo: "estado_cambiado", estadoActual: estadoDe.get(n) };
     });
     const contar = (e) => resultados.filter(x => x.estado === e).length;
