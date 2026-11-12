@@ -6,6 +6,37 @@ Archivos: [050_motor_rifas_centralizado.sql](../../backend/supabase_migrations/0
 [motorRifasSql.test.js](../../backend/tests/rifas/motorRifasSql.test.js) ·
 [concurrenciaRifas.test.js](../../backend/tests/rifas/concurrenciaRifas.test.js)
 
+### Estado al 12/11/2026 (madrugada, después de la limpieza)
+
+- **En producción:** 050, 051 y 052 aplicadas (por el propietario).
+  - Verificado: 16 rifas con 100 números cada una, todos libres y sin datos heredados.
+  - 72 números en el historial de $1.000.
+  - 56 vínculos de grupo; todos los eventos y programados con `tabla_id`; 0 referencias huérfanas.
+- **Limpieza operativa (autorizada, hecha con las funciones del panel):** 12 programaciones abiertas canceladas o archivadas, incluido el programado de $2.000 del 12/11, y el instantáneo `7cff599f`. No se borró ninguna fila y las tablas antiguas siguen intactas.
+- **Falta para el cambio:**
+  1. ejecutar la **053** (reinstala las funciones con su versión actual);
+  2. desplegar el código (Vercel y VPS);
+  3. `MOTOR_RIFAS=nuevo` en el `.env` del VPS y reiniciar. El panel lee el modo del backend.
+- **Aún sin migrar** (siguen leyendo las tablas antiguas, solo historia): Contactos/Perfil, las tarjetas de Eventos y el Historial de números antiguo.
+
+### Estado al 12/11/2026 (noche)
+
+- **Producción (verificado en solo lectura):** la 050 **no** está aplicada (`tablas_rifas` no existe y `reservas_auditoria` no tiene `tabla_id`); la 032 sí.
+  - Hay 2 clientes con los 8 precios fijos sobre las 2 cuadrículas antiguas.
+  - Los únicos ocupados son 72 (70 pagados y 2 reservados) del sorteo de $1.000 ya cerrado (`42c49149`).
+  - No hay sorteos vigentes. Hay un programado de $2.000 (cliente `e5d98ce7`) para el 12/11 a las 11:20 UTC.
+- **SQL listo y probado (sin aplicar):**
+  - 050, con D1 en `rifa_resolver(p_precio)` y las columnas `nombre_evento`/`telefono_bot`;
+  - 051, que añade `tabla_id` a los sorteos y al historial;
+  - 052, la migración de datos de una sola vez.
+- **Decisiones aplicadas:**
+  - D1: el precio solo filtra entre las rifas vinculadas;
+  - D4: una rifa con historial solo se archiva;
+  - D5: varias rifas del mismo precio;
+  - los 72 ocupados pasan al historial del ciclo 1 de la rifa de $1.000 (decisión transmitida por la sesión de código).
+- **Orden:** 032 ✓ → **050 → 051** (ahora: solo añaden; el sistema sigue igual) → código con `MOTOR_RIFAS=legado` desplegado → **ventana** (sin sorteos vigentes, después del programado) → **052** → `MOTOR_RIFAS=nuevo` en el VPS y en Vercel.
+- **Código de aplicación** (backend, bot y panel detrás de `MOTOR_RIFAS`): lo desarrolla otra sesión; todavía no está hecho.
+
 Decisión del propietario (12/11): arquitectura centralizada `tablas_rifas` + `numeros_rifa`. Sustituye la «opción B» (tabla física por precio) del 06/11. La identidad de una rifa es `tabla_id` (UUID) + `usuario_id`. El precio es un dato, nunca un identificador.
 
 ---

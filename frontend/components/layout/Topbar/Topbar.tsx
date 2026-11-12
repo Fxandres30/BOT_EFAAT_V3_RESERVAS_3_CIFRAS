@@ -18,6 +18,7 @@ const OTRAS: Record<string, string> = {
   "/mi-cuenta": "Mi cuenta",
   "/aprende": "Aprende a usar EFAAT",
   "/chats": "Chats",
+  "/rifas": "Mis rifas",
 };
 
 // El usuario y "Cerrar sesión" viven únicamente en el Sidebar para tener

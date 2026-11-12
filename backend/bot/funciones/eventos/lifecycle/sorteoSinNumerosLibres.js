@@ -19,6 +19,14 @@ const { soloDelCliente } = require("../../reservas/filtroCliente");
 
 async function sorteoSinNumerosLibres(evento) {
 
+    // Motor nuevo: la rifa del sorteo (evento.tabla_id). Sin rifa: no se afirma nada.
+    if (require("../../../../rifas/motor").motorNuevo()) {
+        const filas = await require("../../../../rifas/bot").leerFilas(evento);
+        if (filas === null) return null;
+        if (filas.some(f => f.estado === "libre")) return false;
+        return filas.some(f => f.estado !== "libre");
+    }
+
     if (!evento?.tabla) return null;
 
     const { data, error } = await soloDelCliente(

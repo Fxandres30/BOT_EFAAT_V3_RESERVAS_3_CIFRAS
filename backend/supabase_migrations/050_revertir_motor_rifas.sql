@@ -61,7 +61,7 @@ drop function public.rifa_restaurar(uuid, uuid, jsonb);
 drop function public.rifa_eliminar(uuid, uuid, jsonb);
 drop function public.rifa_vincular_grupo(uuid, text, uuid, boolean, jsonb);
 drop function public.rifa_desvincular_grupo(uuid, text, uuid, jsonb);
-drop function public.rifa_resolver(uuid, text, text);
+drop function public.rifa_resolver(uuid, text, text, integer);
 
 -- Primero las funciones auxiliares: algunas reciben filas de las tablas del
 -- motor (dependen de ellas). CASCADE solo alcanza objetos de la 050: sus

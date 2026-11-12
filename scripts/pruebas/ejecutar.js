@@ -45,6 +45,11 @@ const REQUIEREN_ENTORNO = {
     "backend/tests/seguridad/cuadriculaClienteSqlReal.test.js": "necesita PGlite (PGLITE_MODULE)",
     "backend/tests/caracterizacion/estadoSorteosSqlReal.test.js": "necesita PGlite (PGLITE_MODULE)",
     "backend/tests/rifas/motorRifasSql.test.js": "necesita PGlite (PGLITE_MODULE)",
+    "backend/tests/rifas/migracionDatosSql.test.js": "necesita PGlite (PGLITE_MODULE)",
+    "backend/tests/rifas/reinstalarFunciones053.test.js": "necesita PGlite (PGLITE_MODULE) y git",
+    "backend/tests/rifasApp/repositorioRifas.test.js": "necesita PGlite (PGLITE_MODULE)",
+    "backend/tests/rifasApp/botRifas.test.js": "necesita PGlite (PGLITE_MODULE)",
+    "backend/tests/rifasApp/rutasRifas.test.js": "necesita PGlite (PGLITE_MODULE)",
     "backend/tests/rifas/concurrenciaRifas.test.js": "necesita un Postgres local desechable (PG_MODULE + PG_PRUEBAS_URL)"
 };
 

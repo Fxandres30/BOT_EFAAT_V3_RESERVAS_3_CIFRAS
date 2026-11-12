@@ -1,5 +1,7 @@
 const supabase = require("../../../lib/supabase");
 const { soloDelCliente } = require("./filtroCliente");
+const { motorNuevo } = require("../../../rifas/motor");
+const rifasBot = require("../../../rifas/bot");
 
 // Filas de los números pedidos en la cuadrícula del cliente, TODAS. La tabla
 // es el sorteo (UNA TABLA = UN SORTEO, 31/10/2026): ninguna fila se separa
@@ -8,6 +10,9 @@ const { soloDelCliente } = require("./filtroCliente");
 //
 // Devuelve null si no se pudo leer: «no sé» no es lo mismo que «no hay filas».
 async function consultarReservas(evento, numeros) {
+
+    // Motor nuevo: los números de la rifa del sorteo (evento.tabla_id).
+    if (motorNuevo()) return rifasBot.leerFilas(evento, { numeros });
 
     const query = soloDelCliente(
         supabase

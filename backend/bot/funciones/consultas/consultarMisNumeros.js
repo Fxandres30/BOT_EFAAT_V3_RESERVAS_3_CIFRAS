@@ -3,6 +3,8 @@ const { reservaPerteneceAUsuario } = require("../usuarios/obtenerUsuarioGlobal")
 const { soloDelCliente } = require("../reservas/filtroCliente");
 const { vigente } = require("../../../shared/eventos/estadosGestion");
 const { fechaEventoHoy } = require("../eventos/identidadEventoReal");
+const { motorNuevo } = require("../../../rifas/motor");
+const rifasBot = require("../../../rifas/bot");
 
 // ¿Este sorteo es el VIGENTE de su tabla? Solo un sorteo vigente genera
 // obligaciones actuales: activo, sin cierre ni gestión (cerrado, cancelado,
@@ -42,6 +44,15 @@ function sorteoVigente(evento, ahora = new Date()) {
 // evento" — consultarMisNumerosPorEstado() la clasifica por estado y
 // consultarMisNumeros() (compatibilidad) se apoya en esa misma función.
 async function obtenerFilasDelUsuario({ evento, usuario }) {
+
+    // Motor nuevo: sus números en la rifa del sorteo (evento.tabla_id). Se
+    // confirma cada fila con la misma regla de pertenencia de siempre.
+    if (motorNuevo()) {
+        if (!usuario?.id) return [];
+        const filas = await rifasBot.filasDelTitular(evento, usuario);
+        if (filas === null) return null;
+        return filas.filter(f => reservaPerteneceAUsuario(f, usuario));
+    }
 
     if (!evento?.tabla || !usuario?.id) {
         return [];

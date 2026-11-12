@@ -48,7 +48,16 @@ async function consultarEvento(grupoId, usuarioId) {
     // activo=true después de cerrarla (cierre_estado "cerrado") no gana al
     // sorteo en curso. Sin ninguno, el más reciente (historia: el llamador
     // decide qué hacer con un sorteo terminado).
-    return filas.find(vigente) || filas[0] || null;
+    // Motor de rifas (MOTOR_RIFAS=nuevo): con DOS o más sorteos vigentes en
+    // el grupo no se elige «el más reciente»: el mensaje es ambiguo y no se
+    // procesa (docs/rifas/MOTOR_RIFAS.md §6). Se avisa en el registro.
+    const vigentes = filas.filter(vigente);
+    if (vigentes.length > 1 && require("../../../rifas/motor").motorNuevo()) {
+        console.error(`🛑 [RIFAS] el grupo ${grupoId} tiene ${vigentes.length} sorteos vigentes del mismo cliente (${vigentes.map(v => v.id).join(", ")}): mensaje ambiguo, no se procesa. Cierra uno en el panel.`);
+        return null;
+    }
+
+    return vigentes[0] || filas[0] || null;
 
 }
 

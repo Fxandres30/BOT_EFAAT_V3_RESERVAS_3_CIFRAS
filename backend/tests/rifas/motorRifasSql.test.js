@@ -205,6 +205,23 @@ async function esperarError(promesa, patron, nombre) {
     assert.strictEqual((await rpc("rifa_resolver", [A, GRUPO, "A5"])).tabla_id, RIFA_A);
     paso("9. el grupo resuelve la rifa correcta: única, por código o predeterminada; si es ambigua NO elige; el mismo grupo para B solo ve las de B");
 
+    // D1 (12/11): el precio solo filtra ENTRE LAS VINCULADAS; si no queda una, se detiene.
+    const rA10 = await rpc("rifa_crear", [A, "Rifa A 10K", 10000, 2, 100, "{}", null, PANEL_A]);
+    const RIFA_A10 = rA10.tabla_id;
+    assert.strictEqual((await rpc("rifa_resolver", [A, GRUPO, null, 10000])).motivo, "sin_rifa_de_ese_precio", "10K existe pero NO está vinculada");
+    await rpc("rifa_vincular_grupo", [A, GRUPO, RIFA_A10, false, PANEL_A]);
+    res = await rpc("rifa_resolver", [A, GRUPO, null, 10000]);
+    assert.strictEqual(res.tabla_id, RIFA_A10); assert.strictEqual(res.por, "precio");
+    res = await rpc("rifa_resolver", [A, GRUPO, null, 5000]);
+    assert.strictEqual(res.ok, false); assert.strictEqual(res.motivo, "ambigua"); assert.strictEqual(res.candidatas.length, 2,
+        "dos rifas de 5K vinculadas: la predeterminada NO desempata cuando se filtra por precio");
+    assert.strictEqual((await rpc("rifa_resolver", [A, GRUPO, "t5", 5000])).tabla_id, RIFA_A2);
+    assert.strictEqual((await rpc("rifa_resolver", [A, GRUPO, "t5", 10000])).motivo, "codigo_desconocido");
+    assert.strictEqual((await rpc("rifa_resolver", [B, GRUPO, null, 5000])).tabla_id, RIFA_B);
+    assert.strictEqual((await rpc("rifa_resolver", [B, GRUPO, null, 10000])).motivo, "sin_rifa_de_ese_precio", "B nunca ve la 10K de A");
+    await rpc("rifa_desvincular_grupo", [A, GRUPO, RIFA_A10, PANEL_A]);
+    paso("9b. D1: el precio solo filtra entre las rifas vinculadas; 0 o varias → se detiene (la predeterminada no desempata); nunca cruza clientes");
+
     // --------------------------------------------------------------- 10 ---
     const otraVez = await rpc("rifa_reservar", [A, RIFA_A, [25], JSON.stringify({ comprador: "Intruso" }), BOT, false]);
     assert.strictEqual(otraVez.ok, false); assert.deepStrictEqual(otraVez.no_disponibles, [25]);
@@ -233,6 +250,22 @@ async function esperarError(promesa, patron, nombre) {
     assert.strictEqual((await estado(RIFA_B, 25)).estado, "reservado");
     assert.strictEqual((await estado(RIFA_A2, 25)).estado, "reservado");
     paso("11. pagar y liberar en A no toca B ni la otra rifa de A; pago doble no duplica; titular ajeno no paga; un pagado solo se libera a propósito");
+
+    // Vencimiento atómico: el llamador leyó «vencidas» y entretanto alguien
+    // volvió a reservar; rifa_liberar con condiciones NO toca la reserva nueva.
+    await rpc("rifa_reservar", [A, RIFA_A, [60], JSON.stringify({ comprador: "Vieja", identidad_evento_real: "sorteo-1" }), BOT, false]);
+    const corte = (await db.query("select now() + interval '1 second' as t")).rows[0].t;   // ya vencida respecto a este corte
+    const otro = await rpc("rifa_liberar", [A, RIFA_A, [60], "{}", JSON.stringify({ origen: "sistema" }),
+        JSON.stringify({ reservado_antes_de: corte, identidad_evento_real: "otro-sorteo" })]);
+    assert.strictEqual(otro.ok, false, "otro sorteo: no se libera");
+    const antesDe = (await db.query("select now() - interval '1 hour' as t")).rows[0].t;    // la reserva es POSTERIOR al corte
+    assert.strictEqual((await rpc("rifa_liberar", [A, RIFA_A, [60], "{}", JSON.stringify({ origen: "sistema" }),
+        JSON.stringify({ reservado_antes_de: antesDe, identidad_evento_real: "sorteo-1" })])).ok, false, "reserva más nueva que el corte: no se libera");
+    assert.strictEqual((await estado(RIFA_A, 60)).comprador, "Vieja");
+    assert.deepStrictEqual((await rpc("rifa_liberar", [A, RIFA_A, [60], "{}", JSON.stringify({ origen: "sistema" }),
+        JSON.stringify({ reservado_antes_de: corte, identidad_evento_real: "sorteo-1" })])).liberados, [60]);
+    assert.ok((await db.query("select 1 from public.reservas_auditoria where tabla_id = $1 and numero = '60' and codigo = 'no_cumple_condicion'", [RIFA_A])).rows.length);
+    paso("11b. vencimiento atómico: solo libera si, con la fila bloqueada, la reserva sigue siendo anterior al corte y del mismo sorteo");
 
     // --------------------------------------------------------------- 12 ---
     const audit = (await db.query(

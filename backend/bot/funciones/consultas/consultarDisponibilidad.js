@@ -1,5 +1,7 @@
 const supabase = require("../../../lib/supabase");
 const { soloDelCliente } = require("../reservas/filtroCliente");
+const { motorNuevo } = require("../../../rifas/motor");
+const rifasBot = require("../../../rifas/bot");
 
 // READ-ONLY. Devuelve la estructura real completa (sin truncar ni inventar
 // límites): números disponibles y ocupados, siempre separados.
@@ -17,6 +19,17 @@ const { soloDelCliente } = require("../reservas/filtroCliente");
 // Esta lectura NO decide si un sorteo terminó: eso es
 // eventos/lifecycle/sorteoSinNumerosLibres.js, que mira su propio sorteo.
 async function consultarDisponibilidad({ evento }) {
+
+    // Motor nuevo: la rifa del sorteo (evento.tabla_id); sin rifa = error de
+    // lectura (nunca se responde con otra tabla).
+    if (motorNuevo()) {
+        const filas = await rifasBot.leerFilas(evento);
+        if (filas === null) return { numerosDisponibles: [], numerosOcupados: [], errorLectura: true };
+        return {
+            numerosDisponibles: filas.filter(r => r.estado === "libre").map(r => r.numero),
+            numerosOcupados: filas.filter(r => r.estado !== "libre").map(r => r.numero)
+        };
+    }
 
     if (!evento?.tabla) {
         return { numerosDisponibles: [], numerosOcupados: [], errorLectura: true };

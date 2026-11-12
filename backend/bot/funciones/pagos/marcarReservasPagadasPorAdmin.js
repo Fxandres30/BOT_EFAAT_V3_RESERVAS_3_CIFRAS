@@ -94,6 +94,12 @@ function esErrorTriggerCompradoresSinWhatsapp(error) {
 
 async function marcarReservasPagadasPorAdmin({ evento, usuario, realizadoPor }) {
 
+    // Motor nuevo: rifa_pagar en la rifa del sorteo, solo los reservados de
+    // ESTA persona (filtro de titular dentro de la transacción).
+    if (require("../../../rifas/motor").motorNuevo()) {
+        return require("../../../rifas/bot").pagarDelTitular({ evento, usuario, realizadoPor });
+    }
+
     if (!evento?.tabla || !evento?.id || !usuario?.id) {
 
         return { estado: "error", actualizadas: [] };

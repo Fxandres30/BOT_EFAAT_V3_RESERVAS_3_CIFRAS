@@ -6,6 +6,10 @@ const { buscarBloqueo } = require("../bloqueo/bloqueoActivo");
 const { fechaHoraRegistro } = require("../../../shared/tiempo/colombia");
 const { puedeReservar } = require("../../../shared/eventos/estadosGestion");
 const { verificarHoraCierre } = require("../eventos/lifecycle/verificarHoraCierre");
+// Motor de rifas independientes (MOTOR_RIFAS=nuevo): la reserva va a la
+// rifa del sorteo (evento.tabla_id), nunca a la tabla física compartida.
+const { motorNuevo } = require("../../../rifas/motor");
+const rifasBot = require("../../../rifas/bot");
 
 // Devuelve las filas que el UPDATE realmente reservó (array; vacío si no
 // tomó ninguna o si falló). El panel (services/reservaManual.js) usa esta
@@ -148,6 +152,12 @@ async function reservarNumerosDetallado({
         lib
 
     };
+
+    // Motor nuevo: misma validación de arriba (formato, bloqueo); la
+    // escritura la hace rifa_reservar en la rifa del sorteo (auditada allí).
+    if (motorNuevo()) {
+        return rifasBot.reservar({ evento, numeros, usuario, nombre, telefono, lid, lib, origen, operador, auditoria });
+    }
 
     // Solo números LIBRES de la cuadrícula de ESTE cliente (filtroCliente.js).
     let { data, error } = await soloDelCliente(

@@ -660,6 +660,15 @@ async function liberarVencidas({ sock, deps, ahora }) {
             .eq("usuario_id", usuarioId).eq("identidad_evento_real", sorteo.identidad_evento_real).eq("activo", true);
         if (!activos?.length) continue;
 
+        // Motor de rifas (MOTOR_RIFAS=nuevo): vencen las reservas de ESTE
+        // sorteo en SU rifa (sorteos_programados.tabla_id). rifa_liberar solo
+        // libera 'reservado'/'en_proceso' (un pago entretanto nunca se toca) y
+        // escribe la auditoría en la misma transacción.
+        if (require("../rifas/motor").motorNuevo()) {
+            liberados.push(...await liberarVencidasRifa({ sorteo, usuarioId, activos, reservas, ahora, deps }));
+            continue;
+        }
+
         // Lo que se lee de cada fila es también lo que queda en la auditoría.
         const { data: filas, error } = await deps.supabase.from(sorteo.tabla)
             .select("numero, estado, fecha_reserva, hora_reserva, comprador, contacto, nombre, telefono, usuario_global_id, evento_id, identidad_evento_real, grupo_id, grupo_nombre")
@@ -723,6 +732,53 @@ async function liberarVencidas({ sock, deps, ahora }) {
 
     return { ok: true, liberados };
 
+}
+
+async function liberarVencidasRifa({ sorteo, usuarioId, activos, reservas, ahora, deps }) {
+    const rifas = require("../rifas/repositorio");
+    if (!sorteo.tabla_id) {
+        console.error(`🛑 [RIFAS] vencimiento: el sorteo programado ${sorteo.id} no tiene rifa (tabla_id); no se libera nada.`);
+        return [];
+    }
+    let leidas;
+    try {
+        leidas = await rifas.leerNumeros(usuarioId, sorteo.tabla_id, { estados: ["reservado"] });
+    } catch (e) {
+        console.error(`❌ [RIFAS] vencimiento: no se pudo leer la rifa ${sorteo.tabla_id}: ${e.message}`);
+        return [];
+    }
+    const grupos = await repo.gruposDelSorteo(usuarioId, sorteo.id);
+    const publicaciones = (grupos.data || []).map(g => new Date(g.publicado_en).getTime()).filter(Number.isFinite);
+    const publicadoEn = Math.max(new Date(sorteo.publicar_en).getTime() || 0, publicaciones.length ? Math.min(...publicaciones) : 0);
+    const limite = reservas.vencimiento_minutos * 60 * 1000;
+    // Corte: lo reservado antes de este instante (y publicado antes) ya venció.
+    const corte = new Date(ahora.getTime() - limite);
+    if (publicadoEn > corte.getTime()) return [];
+    // Solo las de ESTE sorteo y ya vencidas (una anticipada vence desde la publicación).
+    const vencidas = [];
+    for (const fila of leidas.filas || []) {
+        if (fila.identidad_evento_real !== sorteo.identidad_evento_real || !fila.reservado_en) continue;
+        const desde = Math.max(new Date(fila.reservado_en).getTime(), publicadoEn);
+        if (ahora.getTime() - desde >= limite) vencidas.push(fila);
+    }
+    if (vencidas.length === 0) return [];
+    const r = await rifas.liberar(usuarioId, sorteo.tabla_id, vencidas.map(f => f.numero), {},
+        rifas.actor({ origen: "sistema", motivo: `vencimiento (${reservas.vencimiento_minutos} min)` }),
+        // La base vuelve a comprobar, con la fila bloqueada, que la reserva sigue
+        // siendo anterior al corte y de ESTE sorteo (no libera una reserva nueva).
+        { rifa: leidas.rifa, reservadoAntesDe: corte, identidadEventoReal: sorteo.identidad_evento_real });
+    const hechos = new Set((r.liberados || []).map(n => require("../rifas/formato").aTexto(n, leidas.rifa?.cifras ?? 2)));
+    const liberadas = vencidas.filter(f => hechos.has(f.numero));
+    for (const fila of liberadas) {
+        await deps.supabase.from("reservas_actividad").insert({
+            usuario_id: usuarioId, tabla: sorteo.tabla, tabla_id: sorteo.tabla_id, numero: fila.numero, evento_id: activos[0].id,
+            tipo: "liberado",
+            detalle: { motivo: "vencimiento", minutos: reservas.vencimiento_minutos, comprador: fila.comprador || null, contacto: fila.contacto || null },
+            realizado_por: "bot:vencimiento"
+        });
+    }
+    if (liberadas.length) await deps.actualizarEvento(activos[0]);
+    return liberadas.map(f => ({ sorteo: sorteo.id, numero: f.numero }));
 }
 
 // Recuperación de publicaciones interrumpidas: sorteos/recuperacionPublicacion.js (F4-G).
@@ -804,6 +860,7 @@ module.exports = {
     publicarPendientes,
     procesarPublicados,
     liberarVencidas,
+    liberarVencidasRifa,
     iniciarPublicadorSorteos,
     detenerPublicadorSorteos,
     instanteBogota,

@@ -28,6 +28,13 @@ async function estadoTerminado(evento, { sorteoSinNumerosLibres }) {
 // sorteo nunca reescribe su fila. Ante un error de lectura se responde que sí
 // (lo seguro: se crea una fila nueva y la anterior queda intacta).
 async function sorteoTieneNumeros(evento, { db }) {
+    // Motor nuevo: números ocupados de ESTE sorteo en su rifa. Ante la duda, sí.
+    if (require("../../../../rifas/motor").motorNuevo()) {
+        if (!evento?.identidad_evento_real) return false;
+        const filas = await require("../../../../rifas/bot").leerFilas(evento, { estados: ["reservado", "en_proceso", "pagado", "bloqueado"] });
+        if (filas === null) return true;
+        return filas.some(f => f.identidad_evento_real === evento.identidad_evento_real);
+    }
     if (!evento?.identidad_evento_real || !evento?.tabla || !evento?.usuario_id) return false;
     try {
         const { data, error } = await db

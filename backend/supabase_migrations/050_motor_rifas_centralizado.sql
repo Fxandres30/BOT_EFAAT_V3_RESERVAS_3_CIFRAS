@@ -192,6 +192,8 @@ create table public.numeros_rifa (
     grupo_nombre            text check (grupo_nombre is null or char_length(grupo_nombre) <= 200),
     evento_id               uuid,
     identidad_evento_real   text check (identidad_evento_real is null or char_length(identidad_evento_real) <= 200),
+    nombre_evento           text check (nombre_evento is null or char_length(nombre_evento) <= 200),
+    telefono_bot            text check (telefono_bot is null or char_length(telefono_bot) <= 40),
     origen                  text check (origen is null or origen in ('bot', 'manual', 'sistema', 'migracion')),
     ciclo                   integer,
 
@@ -212,7 +214,8 @@ create table public.numeros_rifa (
         estado <> 'libre' or (
             comprador is null and contacto is null and telefono is null and lid is null
             and lib is null and usuario_global_id is null and evento_id is null
-            and identidad_evento_real is null and reservado_en is null and pagado_en is null)),
+            and identidad_evento_real is null and nombre_evento is null and telefono_bot is null
+            and reservado_en is null and pagado_en is null)),
     constraint numeros_rifa_pagado_con_fecha check (estado <> 'pagado' or pagado_en is not null)
 );
 
@@ -588,7 +591,8 @@ $$;
 
 -- ---------------------------------------------------------- reservar ---
 -- p_datos: comprador, contacto, telefono, lid, lib, usuario_global_id,
---          grupo_id, grupo_nombre, evento_id, identidad_evento_real
+--          grupo_id, grupo_nombre, evento_id, identidad_evento_real, nombre_evento,
+--          telefono_bot
 -- p_todo_o_nada: true = si alguno no está libre, no se reserva ninguno.
 create function public.rifa_reservar(
     p_usuario       uuid,
@@ -657,6 +661,8 @@ begin
             grupo_nombre          = rifas_privado.texto(v_datos, 'grupo_nombre', 200),
             evento_id             = rifas_privado.uuid_o_error(v_datos ->> 'evento_id', 'evento_id'),
             identidad_evento_real = rifas_privado.texto(v_datos, 'identidad_evento_real', 200),
+            nombre_evento         = rifas_privado.texto(v_datos, 'nombre_evento', 200),
+            telefono_bot          = rifas_privado.texto(v_datos, 'telefono_bot', 40),
             origen                = v_origen,
             ciclo                 = v_rifa.ciclo,
             reservado_en          = now(),
@@ -793,7 +799,11 @@ end;
 $$;
 
 -- ------------------------------------------------------------ liberar ---
--- p_opciones: { incluir_pagados: bool, incluir_bloqueados: bool }
+-- p_opciones: { incluir_pagados: bool, incluir_bloqueados: bool,
+--              reservado_antes_de: timestamptz, identidad_evento_real: text }
+-- Las dos últimas son condiciones ATÓMICAS para liberar por vencimiento: solo
+-- se libera si, con la fila bloqueada, la reserva sigue siendo anterior a esa
+-- hora y del sorteo indicado (nunca una reserva nueva hecha entretanto).
 create function public.rifa_liberar(
     p_usuario   uuid,
     p_tabla     uuid,
@@ -836,9 +846,15 @@ begin
         return jsonb_build_object('ok', false, 'motivo', 'sin_numeros');
     end if;
 
-    select coalesce(jsonb_object_agg(numero::text, jsonb_build_object('estado', estado, 'titular', titular)), '{}'::jsonb)
+    select coalesce(jsonb_object_agg(numero::text, jsonb_build_object('estado', estado, 'titular', titular, 'condicion', condicion)), '{}'::jsonb)
       into v_filas
-      from (select n.numero, n.estado, rifas_privado.es_del_titular(n, v_datos -> 'titular') as titular
+      from (select n.numero, n.estado, rifas_privado.es_del_titular(n, v_datos -> 'titular') as titular,
+                     -- Condiciones atómicas (comprobadas con la fila ya bloqueada): evitan liberar
+                     -- una reserva NUEVA hecha entre la lectura del llamador y esta liberación.
+                     ((p_opciones ->> 'reservado_antes_de') is null
+                         or (n.reservado_en is not null and n.reservado_en <= (p_opciones ->> 'reservado_antes_de')::timestamptz))
+                     and ((p_opciones ->> 'identidad_evento_real') is null
+                         or n.identidad_evento_real is not distinct from (p_opciones ->> 'identidad_evento_real')) as condicion
               from public.numeros_rifa n
              where n.tabla_id = v_rifa.id and n.usuario_id = v_rifa.usuario_id and n.numero = any(v_pedidos)
              order by n.numero
@@ -847,6 +863,7 @@ begin
     v_liberables := array(select n from unnest(v_pedidos) n
                            where v_filas #>> array[n::text, 'estado'] = any(v_estados)
                              and (v_filas #>> array[n::text, 'titular'])::boolean
+                             and (v_filas #>> array[n::text, 'condicion'])::boolean
                            order by n);
 
     with u as (
@@ -854,7 +871,8 @@ begin
             estado = 'libre',
             comprador = null, contacto = null, telefono = null, lid = null, lib = null,
             usuario_global_id = null, grupo_id = null, grupo_nombre = null,
-            evento_id = null, identidad_evento_real = null, origen = null, ciclo = null,
+            evento_id = null, identidad_evento_real = null, nombre_evento = null, telefono_bot = null,
+            origen = null, ciclo = null,
             reservado_en = null, pagado_en = null, bloqueado_hasta = null,
             temporal_por = null, observaciones = null
          where tabla_id = v_rifa.id and usuario_id = v_rifa.usuario_id
@@ -873,6 +891,7 @@ begin
                                    when v_filas -> n::text is null then 'fuera_de_rango'
                                    when v_filas #>> array[n::text, 'estado'] = 'libre' then 'ya_libre'
                                    when not (v_filas #>> array[n::text, 'titular'])::boolean then 'otro_titular'
+                                   when not (v_filas #>> array[n::text, 'condicion'])::boolean then 'no_cumple_condicion'
                                    else 'estado_protegido' end))
            from unnest(v_pedidos) n),
         v_datos, p_actor);
@@ -989,7 +1008,8 @@ begin
         estado = 'libre',
         comprador = null, contacto = null, telefono = null, lid = null, lib = null,
         usuario_global_id = null, grupo_id = null, grupo_nombre = null,
-        evento_id = null, identidad_evento_real = null, origen = null, ciclo = null,
+        evento_id = null, identidad_evento_real = null, nombre_evento = null, telefono_bot = null,
+        origen = null, ciclo = null,
         reservado_en = null, pagado_en = null, bloqueado_hasta = null,
         temporal_por = null, observaciones = null
      where tabla_id = v_rifa.id and usuario_id = v_rifa.usuario_id and estado <> 'libre';
@@ -1332,8 +1352,14 @@ $$;
 -- ------------------------------------------------------------ resolver ---
 -- ¿A qué rifa va un mensaje de este grupo, para ESTE cliente?
 -- Solo mira los vínculos explícitos del cliente (grupos_rifa) con rifas
--- activas y no archivadas. NUNCA elige por precio y NUNCA elige al azar:
---   1. con p_codigo: la rifa vinculada con ese código, o "codigo_desconocido";
+-- activas y no archivadas. NUNCA elige por precio entre todas las rifas del
+-- cliente y NUNCA elige al azar:
+--   0. con p_precio (decisión D1, 12/11): el precio SOLO descarta candidatas
+--      entre las rifas VINCULADAS al grupo. Si después del filtro no queda
+--      exactamente una (y no hay código que decida), se detiene:
+--      "sin_rifa_de_ese_precio" o "ambigua". La predeterminada NO desempata.
+--   1. con p_codigo: la rifa vinculada (y del precio, si se dio) con ese
+--      código, o "codigo_desconocido";
 --   2. un solo vínculo: esa rifa;
 --   3. varios: la marcada como predeterminada del grupo;
 --   4. si no: "ambigua" con la lista de candidatas, para avisar al
@@ -1341,7 +1367,8 @@ $$;
 create function public.rifa_resolver(
     p_usuario   uuid,
     p_grupo     text,
-    p_codigo    text default null
+    p_codigo    text default null,
+    p_precio    integer default null
 )
 returns jsonb
 language plpgsql
@@ -1370,6 +1397,22 @@ begin
 
     if v_total = 0 then
         return jsonb_build_object('ok', false, 'motivo', 'sin_rifa');
+    end if;
+
+    if p_precio is not null then
+        select coalesce(jsonb_agg(c), '[]'::jsonb), count(*)
+          into v_candidatas, v_total
+          from jsonb_array_elements(v_candidatas) c
+         where (c ->> 'precio')::integer = p_precio;
+        if v_total = 0 then
+            return jsonb_build_object('ok', false, 'motivo', 'sin_rifa_de_ese_precio', 'precio', p_precio);
+        end if;
+        if nullif(btrim(p_codigo), '') is null then
+            if v_total = 1 then
+                return jsonb_build_object('ok', true, 'tabla_id', v_candidatas -> 0 ->> 'tabla_id', 'por', 'precio');
+            end if;
+            return jsonb_build_object('ok', false, 'motivo', 'ambigua', 'precio', p_precio, 'candidatas', v_candidatas);
+        end if;
     end if;
 
     if nullif(btrim(p_codigo), '') is not null then

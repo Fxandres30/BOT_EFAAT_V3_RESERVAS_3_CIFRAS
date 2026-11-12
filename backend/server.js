@@ -12,6 +12,8 @@ const analiticaRoutes = require("./routes/analitica");
 // Sorteos programados, plantillas y cuentas de pago (panel multiusuario):
 // exigen token de servicio + sesión real del usuario.
 const sorteosRoutes = require("./routes/sorteos");
+// Motor de rifas independientes (050): «Mis rifas» del panel, por tabla_id.
+const rifasRoutes = require("./routes/rifas");
 
 const supabase = require("./lib/supabase");
 
@@ -52,6 +54,7 @@ app.use("/tablas", tablasRoutes);
 app.use("/contactos", contactosRoutes);
 app.use("/bloqueados", bloqueadosRoutes);
 app.use("/sorteos", sorteosRoutes);
+app.use("/rifas", rifasRoutes);
 
 app.listen(4000, async () => {
 

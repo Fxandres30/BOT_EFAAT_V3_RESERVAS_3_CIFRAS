@@ -3,6 +3,9 @@ const { groupMetadata } = require("../../../services/baileys/groupQueue");
 const { crearIdentidadEventoReal, fechaEventoHoy } = require("./identidadEventoReal");
 const { finDelEvento } = require("../../../shared/eventos/estadosGestion");
 const { esPrecioOcupado } = require("../../../shared/eventos/unSorteoPorPrecio");
+// Motor de rifas independientes: cada sorteo lleva la rifa (tabla_id) de su grupo.
+const { motorNuevo } = require("../../../rifas/motor");
+const { rifaParaSorteo } = require("../../../rifas/bot");
 
 // Datos del sorteo: los únicos que una detección o una publicación
 // sincronizan sobre una fila existente, y solo si cambiaron. El ciclo de
@@ -189,6 +192,18 @@ async function guardarEvento({
 
     };
 
+    // Motor nuevo: la rifa del sorteo. Continúa la del sorteo vigente o la
+    // que ya tenía la fila; si no, la vinculada al grupo con este precio.
+    if (motorNuevo() && datos.usuario_id) {
+        datos.tabla_id = await rifaParaSorteo({
+            usuarioId: datos.usuario_id,
+            grupoId,
+            precio: Number(evento.valor),
+            // Un sorteo programado trae la rifa elegida en el panel (sorteos_programados.tabla_id).
+            heredada: sorteoVigente?.tabla_id || eventoAnterior?.tabla_id || evento.tabla_id || null
+        });
+    }
+
     console.log("📋 Resumen del evento");
 
     console.table({
@@ -221,6 +236,10 @@ async function guardarEvento({
         }
 
         const cambios = camposCambiados(eventoAnterior, datos, { grupoLeido });
+
+        // La rifa solo se ASIGNA a una fila que no la tenía; nunca se cambia
+        // (sus reservas pertenecen a la rifa con la que nació).
+        if (datos.tabla_id && !eventoAnterior.tabla_id) cambios.tabla_id = datos.tabla_id;
 
         if (Object.keys(cambios).length === 0) {
 

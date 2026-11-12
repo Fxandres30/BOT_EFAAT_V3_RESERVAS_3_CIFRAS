@@ -1,5 +1,6 @@
 import DashboardLayout from "@/components/layout/DashboardLayout/DashboardLayout";
 import TablaPrecioView from "@/components/tablas/TablaPrecioView";
+import RedireccionMotorRifas from "@/components/rifas/RedireccionMotorRifas";
 
 interface Props {
     params: Promise<{
@@ -15,6 +16,7 @@ export default async function TablaPage({ params }: Props) {
 
         <DashboardLayout>
 
+            <RedireccionMotorRifas />
             <TablaPrecioView precio={Number(precio)} />
 
         </DashboardLayout>

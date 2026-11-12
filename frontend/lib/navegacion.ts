@@ -17,6 +17,7 @@ export const RUTA_INICIO = "/tablas";
 // o cualquier subruta.
 const SECCIONES_PANEL = [
     "/tablas",
+    "/rifas",
     "/sesiones",
     "/mensajes",
     "/variables-globales",

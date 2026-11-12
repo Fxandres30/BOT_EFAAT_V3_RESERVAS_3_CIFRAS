@@ -10,6 +10,13 @@ async function verificarEventoLleno(evento) {
     if (!evento.usuario_id)
         return false;
 
+    // Motor nuevo: reservados + pagados de la rifa del sorteo (evento.tabla_id).
+    if (require("../../../../rifas/motor").motorNuevo()) {
+        const filas = await require("../../../../rifas/bot").leerFilas(evento, { estados: ["reservado", "pagado"] });
+        if (filas === null) return false;
+        return filas.length >= (Number(evento.cantidad_numeros) || Infinity);
+    }
+
     const { count, error } = await supabase
         .from(evento.tabla)
         .select("*", {

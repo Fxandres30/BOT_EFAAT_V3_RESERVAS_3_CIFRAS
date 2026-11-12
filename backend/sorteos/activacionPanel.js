@@ -101,11 +101,13 @@ async function activarDestino({ sock, sorteo, grupo, eventoAnterior = null, delG
                 valor: config.valor,
                 premios: config.premios || [],
                 tabla: sorteo.tabla,
+                // Rifa elegida para el sorteo (051; null en el motor legado).
+                tabla_id: sorteo.tabla_id ?? null,
                 cifras: sorteo.cifras,
                 cantidad_numeros: sorteo.cantidad_numeros
             },
             eventoAnterior,
-            sorteoVigente: { identidad_evento_real: sorteo.identidad_evento_real, fecha_evento: fechaSorteo }
+            sorteoVigente: { identidad_evento_real: sorteo.identidad_evento_real, fecha_evento: fechaSorteo, tabla_id: sorteo.tabla_id ?? null }
         },
         sorteo, grupo, delGrupo, imagen, ahora,
         deps: {
