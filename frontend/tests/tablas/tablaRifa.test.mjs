@@ -210,15 +210,15 @@ await prueba("sorteo activo, actividad e historial: los de ESA rifa (archivo mig
 });
 
 await prueba("reinicio: el impacto solo cuenta ESTA rifa y no menciona otras tablas", async () => {
-    const r = await fuenteRifa.revisarReinicioRifa(db.tablas_rifas.find(x => x.id === R2));
+    const r = await fuenteRifa.revisarReinicioRifa(db.tablas_rifas.find(x => x.id === R2), U);
     assert.strictEqual(r.sinCuadricula, false);
     assert.strictEqual(r.impacto.ocupados, 2);
     assert.deepStrictEqual(r.impacto.porEstado, { reservado: 1, pagado: 1, bloqueado: 0, en_proceso: 0, otros: 0 });
     assert.deepStrictEqual(r.impacto.preciosCompartidos, [], "sin aviso de «también afectará otros precios»");
     assert.deepStrictEqual(r.impacto.sorteosActivos, [{ nombre: "Sorteo R2", valor: 1500 }]);
-    await assert.rejects(fuenteRifa.reiniciarRifa(db.tablas_rifas.find(x => x.id === R2), { texto: "REINICIAR", aceptaAnticipadas: false, huella: "otra" }),
+    await assert.rejects(fuenteRifa.reiniciarRifa(db.tablas_rifas.find(x => x.id === R2), U, { texto: "REINICIAR", aceptaAnticipadas: false, huella: "otra" }),
         /cambió desde que la revisaste/, "si la rifa cambió desde la revisión, no se reinicia");
-    const hecho = await fuenteRifa.reiniciarRifa(db.tablas_rifas.find(x => x.id === R2), { texto: "REINICIAR", aceptaAnticipadas: false, huella: r.impacto.huella });
+    const hecho = await fuenteRifa.reiniciarRifa(db.tablas_rifas.find(x => x.id === R2), U, { texto: "REINICIAR", aceptaAnticipadas: false, huella: r.impacto.huella });
     assert.strictEqual(hecho.accion, "reiniciada");
 });
 

@@ -162,7 +162,8 @@ await prueba("interfaz: barra con «Todos los libres», sin rango, «Ver selecci
     const vista = leer("components/tablas/TablaPrecioView.tsx");
     assert.match(vista, /esDeOtroSorteo\(\{ \.\.\.n, estado \}, coincidePrecio \? eventoActivo : null\)/);
     const hook = leer("hooks/useTablaPrecio.ts");
-    assert.match(hook, /enviar: \(cuerpo\) => operarLote\(precio, cuerpo\)/, "el lote usa la solicitud única");
+    // Con el motor de rifas, la misma solicitud única va a la rifa abierta (rifa?.id).
+    assert.match(hook, /enviar: \(cuerpo\) => operarLote\(precio, cuerpo(, rifa\?\.id)?\)/, "el lote usa la solicitud única");
     assert.ok(!/for \(const n of incluidos\)/.test(leer("services/tablas/pagoLote.ts")), "sin bucle de solicitudes por número");
 });
 

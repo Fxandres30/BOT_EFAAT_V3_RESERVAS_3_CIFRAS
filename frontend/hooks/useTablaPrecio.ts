@@ -174,7 +174,8 @@ export function useTablaPrecio(precioPedido: number, tablaId?: string | null) {
                 return;
             }
 
-            const cfg = await obtenerTablaConfigCliente(precioPedido, data.user.id);
+            const precio = precioPedido;
+            const cfg = await obtenerTablaConfigCliente(precio, data.user.id);
 
             if (!vivo) return;
 
@@ -370,14 +371,14 @@ export function useTablaPrecio(precioPedido: number, tablaId?: string | null) {
     // En una rifa, solo sus números: ninguna otra tabla se ve afectada.
     const revisarReinicio = useCallback(async (): Promise<RevisionReinicio> => {
         if (!usuarioId) throw new Error("Tu sesión expiró. Vuelve a iniciar sesión.");
-        return rifa ? revisarReinicioRifa(rifa) : revisarReinicioTabla(precio, usuarioId);
+        return rifa ? revisarReinicioRifa(rifa, usuarioId) : revisarReinicioTabla(precio, usuarioId);
     }, [usuarioId, precio, rifa]);
 
     // Con números ya existentes exige la confirmación del diálogo (texto,
     // anticipadas aceptadas y la huella revisada). Recarga al terminar.
     const reiniciar = useCallback(async (confirmacion?: ConfirmacionReinicio): Promise<ResultadoReinicio> => {
         if (!usuarioId) throw new Error("Tu sesión expiró. Vuelve a iniciar sesión.");
-        const r = await ejecutar("*", "todo", () => rifa ? reiniciarRifa(rifa, confirmacion) : reiniciarTabla(precio, usuarioId, confirmacion));
+        const r = await ejecutar("*", "todo", () => rifa ? reiniciarRifa(rifa, usuarioId, confirmacion) : reiniciarTabla(precio, usuarioId, confirmacion));
         if (!r) throw new Error("Ya se está reiniciando esta tabla. Espera a que termine.");
         return r;
     }, [usuarioId, ejecutar, precio, rifa]);

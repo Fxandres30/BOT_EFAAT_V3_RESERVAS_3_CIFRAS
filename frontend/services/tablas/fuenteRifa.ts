@@ -176,10 +176,10 @@ async function filasOcupadas(tablaId: string, usuarioId: string, cifras: number)
 
 // Impacto del reinicio de ESTA rifa: solo sus números. Ninguna otra tabla se
 // ve afectada, por eso preciosCompartidos siempre va vacío.
-export async function revisarReinicioRifa(rifa: RifaPanel): Promise<RevisionReinicio> {
-    const ocupadas = await filasOcupadas(rifa.id, rifa.usuario_id, rifa.cifras);
+export async function revisarReinicioRifa(rifa: RifaPanel, usuarioId: string): Promise<RevisionReinicio> {
+    const ocupadas = await filasOcupadas(rifa.id, usuarioId, rifa.cifras);
     const { data: eventos } = await supabase.from("eventos_bot").select("nombre_evento, valor, activo")
-        .eq("tabla_id", rifa.id).eq("usuario_id", rifa.usuario_id).eq("activo", true);
+        .eq("tabla_id", rifa.id).eq("usuario_id", usuarioId).eq("activo", true);
     const cuenta = (e: string) => ocupadas.filter(f => f.estado === e).length;
     const impacto: ImpactoReinicio = {
         tabla: TABLA_RIFA,
@@ -200,8 +200,8 @@ export async function revisarReinicioRifa(rifa: RifaPanel): Promise<RevisionRein
 
 // Reinicia SOLO esta rifa (backend rifa_reiniciar: archiva lo ocupado, sube
 // el ciclo). Si la rifa cambió desde la revisión, no se reinicia.
-export async function reiniciarRifa(rifa: RifaPanel, confirmacion?: ConfirmacionReinicio): Promise<ResultadoReinicio> {
-    const ocupadas = await filasOcupadas(rifa.id, rifa.usuario_id, rifa.cifras);
+export async function reiniciarRifa(rifa: RifaPanel, usuarioId: string, confirmacion?: ConfirmacionReinicio): Promise<ResultadoReinicio> {
+    const ocupadas = await filasOcupadas(rifa.id, usuarioId, rifa.cifras);
     if (ocupadas.length > 0 && (!confirmacion || confirmacion.huella !== huellaFilas(ocupadas))) {
         throw new Error("La tabla cambió desde que la revisaste. Vuelve a revisarla antes de reiniciar.");
     }

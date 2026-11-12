@@ -133,17 +133,17 @@ export default function IndiceTablas() {
     // Tienen prioridad absoluta sobre la instantánea.
     const servidor = fuentes && (fuentes.activos !== null || fuentes.programados !== null) ? fuentes : null;
     const guardada = !servidor && instantanea && instantanea.usuarioId === usuarioVista ? instantanea : null;
-    const vistaTablas = tablas ?? guardada?.tablas ?? null;
+    const tablasConfig = tablas ?? guardada?.tablas ?? null;
 
     // Tarjetas: una por precio (motor de siempre) o una por rifa (motor de
     // rifas independientes, cada una con su tabla_id y SU sorteo).
-    const filas = rifasMotor
-        ? rifasMotor.map(r => ({ precio: Number(r.precio), tabla: vistaTablas?.find(t => t.precio === Number(r.precio))?.tabla ?? "", tablaId: r.tabla_id as string | null }))
-        : vistaTablas?.map(({ precio, tabla }) => ({ precio, tabla, tablaId: null as string | null })) ?? null;
+    const vistaTablas = rifasMotor
+        ? rifasMotor.map(r => ({ precio: Number(r.precio), tabla: tablasConfig?.find(t => t.precio === Number(r.precio))?.tabla ?? "", tablaId: r.tabla_id as string | null }))
+        : tablasConfig?.map(({ precio, tabla }) => ({ precio, tabla, tablaId: null as string | null })) ?? null;
 
     // Estado de cada precio, calculado una vez para el resumen y las
     // tarjetas (null = se está consultando). Las de sorteo activo, primero.
-    const estados = filas ? ordenarPorSorteoActivo(filas.map(({ precio, tabla, tablaId }) => ({
+    const estados = vistaTablas ? ordenarPorSorteoActivo(vistaTablas.map(({ precio, tabla, tablaId }) => ({
         precio,
         tablaId,
         entradas: fuentes && !guardada
@@ -190,7 +190,7 @@ export default function IndiceTablas() {
         return () => clearInterval(reloj);
     }, [hayCuenta]);
 
-    if (!filas || !estados) {
+    if (!vistaTablas || !estados) {
         return (
             <div className={styles.rejilla} role="status" aria-label="Cargando tablas">
                 {[0, 1, 2, 3].map(i => (
@@ -205,7 +205,7 @@ export default function IndiceTablas() {
         );
     }
 
-    if (filas.length === 0) {
+    if (vistaTablas.length === 0) {
         return (
             <EmptyState
                 icon={<Ticket size={22} />}
