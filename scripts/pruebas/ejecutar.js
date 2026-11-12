@@ -52,7 +52,9 @@ const REQUIEREN_ENTORNO = {
     "backend/tests/rifasApp/rutasRifas.test.js": "necesita PGlite (PGLITE_MODULE)",
     "backend/tests/rifasApp/panelRifas.test.js": "necesita PGlite (PGLITE_MODULE)",
     "backend/tests/rifasApp/tablasEditables.test.js": "necesita PGlite (PGLITE_MODULE)",
-    "backend/tests/rifas/concurrenciaRifas.test.js": "necesita un Postgres local desechable (PG_MODULE + PG_PRUEBAS_URL)"
+    "backend/tests/rifas/concurrenciaRifas.test.js": "necesita un Postgres local desechable (PG_MODULE + PG_PRUEBAS_URL)",
+    "backend/tests/rifasApp/sorteosPorRifa.test.js": "necesita PGlite (PGLITE_MODULE)",
+    "backend/tests/rifas/concurrenciaSorteoRifa.test.js": "necesita un Postgres local desechable (PG_MODULE + PG_PRUEBAS_URL)"
 };
 
 // Fallos conocidos y documentados (docs/pruebas/LINEA_BASE.md). No ocultan

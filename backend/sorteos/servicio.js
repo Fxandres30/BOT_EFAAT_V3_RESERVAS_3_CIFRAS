@@ -1204,6 +1204,8 @@ const gestion = (usuarioId) => administracion.listar(usuarioId, { ahora: reloj.a
 const detalle = (usuarioId, id) => administracion.detalle(usuarioId, id, { ahora: reloj.ahora() });
 
 module.exports = {
+    // Validación de la rifa de un sorteo (tests/rifasApp/sorteosPorRifa).
+    _rifaDelSorteo: rifaDelSorteo,
     activos,
     eventos,
     instantaneo,

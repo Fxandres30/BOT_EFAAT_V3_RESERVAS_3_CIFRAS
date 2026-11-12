@@ -44,13 +44,16 @@ const identificador = (s) => {
     return `"${s}"`;
 };
 
-async function crearBase({ usuarios }) {
+// extra: SQL que se aplica después de la 050 y ANTES de leer las firmas
+// (p. ej. tablas base + 030 + 051 + 054 en tests/rifasApp/sorteosPorRifa).
+async function crearBase({ usuarios, extra = [] }) {
     const PGlite = cargarPGlite();
     if (!PGlite) return null;
     const pg = new PGlite();
     await pg.exec(entorno(usuarios));
     await pg.exec(leer("backend/supabase_migrations/032_auditoria_reservas.sql"));
     await pg.exec(leer("backend/supabase_migrations/050_motor_rifas_centralizado.sql"));
+    for (const sql of extra) await pg.exec(sql);
 
     // Tipos reales de los argumentos de cada rifa_*.
     const firmas = new Map();
@@ -109,6 +112,7 @@ async function crearBase({ usuarios }) {
         const b = {
             select(c = "*") { columnas = c === "*" ? "*" : c.split(",").map(x => identificador(x.trim())).join(", "); return b; },
             eq(c, v) { filtros.push(`${identificador(c)} = ${p(typeof v === "boolean" ? v : String(v))}`); return b; },
+            neq(c, v) { filtros.push(`${identificador(c)}::text <> ${p(String(v))}`); return b; },
             in(c, vs) { filtros.push(`${identificador(c)}::text = any(${p(`{${vs.map(String).join(",")}}`)}::text[])`); return b; },
             is(c, v) { filtros.push(`${identificador(c)} is ${v === null ? "null" : v ? "true" : "false"}`); return b; },
             or(expr) {

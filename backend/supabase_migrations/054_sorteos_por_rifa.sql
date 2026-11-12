@@ -22,6 +22,9 @@
 --      de programados sin publicar, reservas sin sorteo atribuible y números
 --      de otro ciclo; conserva los bloqueos manuales salvo autorización.
 --      Todo o nada; nada se borra (numeros_rifa_archivo). Nunca toca otra rifa.
+--   2b. rifa_cambiar_identidad: «Corregir» un sorteo activo traslada sus
+--      reservas y pagos a la identidad nueva EN SU RIFA (antes se escribía en
+--      la cuadrícula antigua). Auditado.
 --   3. Trigger en sorteos_programados: un sorteo nuevo o que pasa a
 --      programarse/publicarse DEBE tener una rifa (tabla_id) del mismo
 --      cliente, no archivada y del mismo precio que su config.valor. Las

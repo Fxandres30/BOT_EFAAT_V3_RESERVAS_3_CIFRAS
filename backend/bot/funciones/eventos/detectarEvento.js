@@ -88,7 +88,16 @@ async function prepararAnuncio(ctx, grupoId) {
         return null;
     }
 
-    const config = await obtenerConfiguracionCliente(duenoSesion, evento.valor);
+    let config = await obtenerConfiguracionCliente(duenoSesion, evento.valor);
+
+    // Motor único de rifas (12/11/2026): el tamaño del sorteo es el de la
+    // RIFA que el grupo resuelve para ese precio (la misma regla que usa
+    // guardarEvento para asignar tabla_id). Una rifa nueva (p. ej. $13.000)
+    // no tiene fila en tablas_cliente y antes el anuncio se descartaba.
+    if (require("../../../rifas/motor").motorNuevo()) {
+        const rifa = await rifaDelAnuncio(duenoSesion, grupoId, evento.valor);
+        if (rifa) config = { tabla: config?.tabla || "numeros_rifa", cifras: rifa.cifras, cantidad: rifa.cantidad };
+    }
 
     if (!config) {
         console.log("❌ No existe configuración para:", evento.valor);
@@ -102,6 +111,20 @@ async function prepararAnuncio(ctx, grupoId) {
         eventoCompleto: { ...evento, tabla: config.tabla, cifras: config.cifras, cantidad_numeros: config.cantidad }
     };
 
+}
+
+// Rifa que el grupo resuelve para el precio del anuncio (o null). Nunca por
+// precio fuera de los vínculos del grupo ni al azar (rifa_resolver, D1).
+async function rifaDelAnuncio(usuarioId, grupoId, valor) {
+    try {
+        const rifas = require("../../../rifas/repositorio");
+        const r = await rifas.resolver(usuarioId, grupoId, { precio: Number(String(valor ?? "").replace(/[^0-9]/g, "")) });
+        if (!r?.ok || !r.tabla_id) return null;
+        return await rifas.obtenerRifa(usuarioId, r.tabla_id);
+    } catch (e) {
+        console.error(`❌ [RIFAS] anuncio en ${grupoId}: no se pudo resolver la rifa (${e.message})`);
+        return null;
+    }
 }
 
 async function detectarEvento(ctx) {
