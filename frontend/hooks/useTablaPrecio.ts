@@ -52,6 +52,7 @@ import {
     type RifaPanel
 } from "@/services/tablas/fuenteRifa";
 import { apiRifas, mensajeMotivo } from "@/services/rifas/apiRifas";
+import { guardar as guardarCache, leer as leerCache } from "@/lib/cache/almacen";
 
 import { derivarPaquetes } from "@/components/tablas/derivarPaquetes";
 import { estadoEfectivo } from "@/components/tablas/estadoVisual";
@@ -77,6 +78,30 @@ const fechaActividad = (a: ActividadReserva) => a.creado_en;
 const fechaAuditoria = (a: FilaAuditoria) => a.creado_en;
 const fechaArchivo = (a: FilaArchivo) => a.archivado_en;
 
+// ---------------------------------------------------------------------------
+// Lo último que se vio de una tabla (caché en memoria del panel, que se vacía
+// al cambiar de usuario o cerrar sesión: lib/cache/sesion.ts). Al volver a la
+// tabla desde otra sección se pinta esto al instante (sin pantalla de carga
+// ni lectura completa extra) y la validación con el servidor, tras conectar
+// el tiempo real, lo pone al día. No es la autoridad: el servidor sí.
+// ---------------------------------------------------------------------------
+
+export interface InstantaneaTabla {
+    usuarioId: string;
+    config: TablaConfig;
+    rifa: RifaPanel | null;
+    numeros: NumeroReserva[];
+    evento: EventoActivo | null;
+    actividad: ActividadReserva[];
+}
+
+export const claveVistaTabla = (tablaId: string | null, precio: number) => `tablaVista|${tablaId ?? `precio:${precio}`}`;
+
+export function leerInstantaneaTabla(clave: string): InstantaneaTabla | null {
+    const d = leerCache<InstantaneaTabla>(clave);
+    return d && d.usuarioId && d.config && d.numeros.length > 0 ? d : null;
+}
+
 // Único hook fuente-de-verdad de la pantalla /tablas/:precio. Todo lo que
 // se ve en pantalla (grid, stats, filtros, reservas recientes, grupos,
 // actividad) sale de aquí — ningún componente vuelve a consultar Supabase
@@ -96,18 +121,24 @@ const fechaArchivo = (a: FilaArchivo) => a.archivado_en;
 // sus números, reservas, pagos, actividad e historial son los de ESA rifa.
 export function useTablaPrecio(precioPedido: number, tablaId?: string | null) {
 
+    // Lo último que se vio de ESTA tabla (memoria de la pestaña, del usuario
+    // de la sesión): al volver de otra sección se pinta al instante, sin
+    // pantalla de carga, y se valida con el servidor en segundo plano.
+    const claveTabla = claveVistaTabla(tablaId ?? null, precioPedido);
+    const [inicial] = useState(() => leerInstantaneaTabla(claveTabla));
+
     // Tabla física de este precio SEGÚN EL CLIENTE de la sesión
     // (tablas_cliente); se resuelve al conocer el usuario.
-    const [config, setConfig] = useState<TablaConfig | null>(null);
+    const [config, setConfig] = useState<TablaConfig | null>(inicial?.config ?? null);
     // La rifa abierta (solo con tablaId). Su precio es el de la tabla.
-    const [rifa, setRifa] = useState<RifaPanel | null>(null);
+    const [rifa, setRifa] = useState<RifaPanel | null>(inicial?.rifa ?? null);
     const precio = rifa ? rifa.precio : precioPedido;
 
-    const [usuarioId, setUsuarioId] = useState<string | null>(null);
+    const [usuarioId, setUsuarioId] = useState<string | null>(inicial?.usuarioId ?? null);
 
-    const [numeros, setNumeros] = useState<NumeroReserva[]>([]);
-    const [eventoActivo, setEventoActivo] = useState<EventoActivo | null>(null);
-    const [actividad, setActividad] = useState<ActividadReserva[]>([]);
+    const [numeros, setNumeros] = useState<NumeroReserva[]>(inicial?.numeros ?? []);
+    const [eventoActivo, setEventoActivo] = useState<EventoActivo | null>(inicial?.evento ?? null);
+    const [actividad, setActividad] = useState<ActividadReserva[]>(inicial?.actividad ?? []);
     const [eventosHistorial, setEventosHistorial] = useState<EventosHistorial>({ auditoria: [], auditoriaDisponible: false, archivo: [] });
     // Auditoría, archivo, actividad completa y directorio: se piden al abrir
     // «Historial de números» (cargarHistorial), no al entrar a la cuadrícula.
@@ -116,7 +147,7 @@ export function useTablaPrecio(precioPedido: number, tablaId?: string | null) {
     // vuelto a validar: lo que se ve puede no estar al día.
     const [desactualizada, setDesactualizada] = useState(false);
 
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(!inicial);
     const [error, setError] = useState<string | null>(null);
     // Operaciones en curso, una clave por número ("lote" = operación por
     // lote, "*" = reinicio): cada número se procesa por su cuenta, así
@@ -139,6 +170,37 @@ export function useTablaPrecio(precioPedido: number, tablaId?: string | null) {
     // Puesta al día de la tabla abierta (una por usuario + tabla física).
     const control = useRef<ControlTabla | null>(null);
     const historialPedido = useRef(false);
+    // Lo que necesita abrirTabla, sin que su identidad reabra la tabla.
+    // (Se actualizan en un efecto declarado ANTES del que abre la tabla: en
+    // el mismo render se ejecuta primero.)
+    const rifaApertura = useRef(rifa);
+    const precioApertura = useRef(precio);
+    useEffect(() => {
+        rifaApertura.current = rifa;
+        precioApertura.current = precio;
+    });
+    // Dueño de lo que se pintó al montar (instantánea en memoria).
+    const usuarioInicial = useRef(inicial?.usuarioId ?? null);
+
+    // Otra tabla en la MISMA pantalla (cambió la dirección): nada de la
+    // anterior se mezcla; se pinta lo guardado de la nueva o se carga.
+    const tablaVista = useRef(claveTabla);
+    useEffect(() => {
+        if (tablaVista.current === claveTabla) return;
+        tablaVista.current = claveTabla;
+        const guardada = leerInstantaneaTabla(claveTabla);
+        setRifa(guardada?.rifa ?? null);
+        setConfig(guardada?.config ?? null);
+        setNumeros(guardada?.numeros ?? []);
+        setEventoActivo(guardada?.evento ?? null);
+        setActividad(guardada?.actividad ?? []);
+        setEventosHistorial({ auditoria: [], auditoriaDisponible: false, archivo: [] });
+        setContactos([]);
+        setHistorialCargado(false);
+        setDesactualizada(false);
+        setError(null);
+        setLoading(!guardada);
+    }, [claveTabla]);
 
     useEffect(() => {
 
@@ -156,6 +218,17 @@ export function useTablaPrecio(precioPedido: number, tablaId?: string | null) {
                 return;
             }
 
+            // Lo guardado era de otra cuenta: no se muestra nada de ello.
+            if (usuarioInicial.current && usuarioInicial.current !== data.user.id) {
+                usuarioInicial.current = null;
+                setNumeros([]);
+                setEventoActivo(null);
+                setActividad([]);
+                setRifa(null);
+                setConfig(null);
+                setLoading(true);
+            }
+
             if (tablaId) {
                 let r: RifaPanel | null = null;
                 try {
@@ -169,8 +242,13 @@ export function useTablaPrecio(precioPedido: number, tablaId?: string | null) {
                     setLoading(false);
                     return;
                 }
-                setRifa(r);
-                setConfig(configDeRifa(r));
+                // Solo si cambió de verdad: la misma rifa no vuelve a abrir
+                // ni repintar la tabla.
+                setRifa(prev => (prev && JSON.stringify(prev) === JSON.stringify(r) ? prev : r));
+                setConfig(prev => {
+                    const nueva = configDeRifa(r);
+                    return prev && JSON.stringify(prev) === JSON.stringify(nueva) ? prev : nueva;
+                });
                 setUsuarioId(data.user.id);
                 return;
             }
@@ -185,7 +263,7 @@ export function useTablaPrecio(precioPedido: number, tablaId?: string | null) {
                 setLoading(false);
             }
 
-            setConfig(cfg);
+            setConfig(prev => (prev && cfg && JSON.stringify(prev) === JSON.stringify(cfg) ? prev : cfg));
             setUsuarioId(data.user.id);
 
         }
@@ -200,43 +278,54 @@ export function useTablaPrecio(precioPedido: number, tablaId?: string | null) {
 
         if (!usuarioId || !config) return;
 
-        // Con tablaId, hasta tener la rifa no se abre nada.
-        if (tablaId && !rifa) return;
+        // Con tablaId, hasta tener ESA rifa (no la de la dirección anterior) no se abre nada.
+        if (tablaId && rifa?.id !== tablaId) return;
+
+        // Lo ya visto de esta misma tabla y usuario: se parte de ahí (sin
+        // pantalla de carga) y solo se pinta lo que cambie.
+        const guardada = leerInstantaneaTabla(claveTabla);
+        const previa = guardada && guardada.usuarioId === usuarioId && guardada.config.tabla === config.tabla && (guardada.rifa?.id ?? null) === (tablaId ?? null) ? guardada : null;
 
         const c = abrirTabla({
-            precio,
+            precio: precioApertura.current,
             usuarioId,
             config,
             historialPedido: () => historialPedido.current,
             vista: { setNumeros, setEventoActivo, setActividad, setEventosHistorial, setContactos, setHistorialCargado, setDiagnostico, setError, setLoading, setDesactualizada },
-            fuente: rifa ? fuenteDeRifa(rifa) : undefined
+            fuente: rifaApertura.current ? fuenteDeRifa(rifaApertura.current) : undefined,
+            inicial: previa ? { numeros: previa.numeros, evento: previa.evento, actividad: previa.actividad } : undefined
         });
 
         control.current = c;
 
+        // Solo se cierran canales y lecturas: lo que se ve se conserva hasta
+        // que llegue lo nuevo (otra tabla u otro usuario se limpian aparte).
         return () => {
             c.cerrar();
             if (control.current === c) control.current = null;
-            // Otra tabla u otro usuario: nada de lo anterior se mezcla.
-            setNumeros([]);
-            setEventoActivo(null);
-            setActividad([]);
-            setEventosHistorial({ auditoria: [], auditoriaDisponible: false, archivo: [] });
-            setContactos([]);
-            setHistorialCargado(false);
-            setDesactualizada(false);
-            setLoading(true);
         };
 
-    }, [usuarioId, config, precio, tablaId, rifa]);
+    // Se vuelve a abrir solo si cambia la IDENTIDAD de la tabla (usuario,
+    // tabla física, rifa por tabla_id, o el precio en la tabla antigua);
+    // editar el valor de una rifa o releerla no repite la carga.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [usuarioId, config?.tabla, rifa?.id, tablaId ? null : precio, tablaId]);
+
+    // Instantánea en memoria de lo que se ve (para volver sin recargar).
+    useEffect(() => {
+        if (loading || !usuarioId || !config || numeros.length === 0) return;
+        guardarCache<InstantaneaTabla>(claveTabla, { usuarioId, config, rifa, numeros, evento: eventoActivo, actividad });
+    }, [claveTabla, loading, usuarioId, config, rifa, numeros, eventoActivo, actividad]);
 
     const cargarHistorial = useCallback(() => {
         historialPedido.current = true;
         control.current?.cargarHistorial();
     }, []);
 
+    // Tabla antigua: el sorteo activo es el de este precio. Rifa: el sorteo
+    // ya se leyó por su tabla_id (es el de ESTA rifa, valga lo que valga).
     const coincidePrecio = Boolean(
-        eventoActivo && Number(eventoActivo.valor) === precio
+        eventoActivo && (rifa ? true : Number(eventoActivo.valor) === precio)
     );
 
     const stats = useMemo(() => {
@@ -392,6 +481,7 @@ export function useTablaPrecio(precioPedido: number, tablaId?: string | null) {
         const r = await apiRifas.editarPrecio(rifa.id, nuevo);
         if (!r.ok) return { ok: false, mensaje: (r as { mensaje?: string }).mensaje || mensajeMotivo(r.motivo) };
         const fresca = await obtenerRifaPanel(rifa.id, usuarioId).catch(() => null);
+        // Misma rifa (mismo tabla_id): no se reabre ni se recarga la tabla.
         if (fresca) setRifa(fresca);
         return { ok: true, gruposAmbiguos: r.grupos_ambiguos ?? 0 };
     }, [rifa, usuarioId]);
@@ -459,6 +549,8 @@ interface OpcionesTabla {
     vista: Vista;
     /** De dónde salen los datos. Sin ella: la tabla del precio (de siempre). */
     fuente?: FuenteTabla;
+    /** Lo último que se vio de esta tabla: se pinta ya y se valida detrás. */
+    inicial?: { numeros: NumeroReserva[]; evento: EventoActivo | null; actividad: ActividadReserva[] };
 }
 
 // Lecturas y avisos de UNA tabla. La pantalla es la misma para la tabla del
@@ -524,7 +616,7 @@ export function fuenteDeRifa(rifa: RifaPanel): FuenteTabla {
 type ControlTabla = ReturnType<typeof abrirTabla>;
 
 // Exportada para las pruebas (tests/tablas/tiempoRealTabla.test.mjs).
-export function abrirTabla({ precio, usuarioId, config, historialPedido, vista, fuente: fuenteDada }: OpcionesTabla) {
+export function abrirTabla({ precio, usuarioId, config, historialPedido, vista, fuente: fuenteDada, inicial }: OpcionesTabla) {
 
     const { tabla } = config;
     const fuente = fuenteDada ?? fuentePrecio(precio, usuarioId, tabla);
@@ -533,9 +625,9 @@ export function abrirTabla({ precio, usuarioId, config, historialPedido, vista, 
     // Copia de lo que se ve: las fusiones parten de aquí y solo se avisa a
     // React si la lista cambió de verdad.
     const datos = {
-        numeros: [] as NumeroReserva[],
-        evento: null as EventoActivo | null,
-        actividad: [] as ActividadReserva[],
+        numeros: (inicial?.numeros ?? []) as NumeroReserva[],
+        evento: (inicial?.evento ?? null) as EventoActivo | null,
+        actividad: (inicial?.actividad ?? []) as ActividadReserva[],
         historial: { auditoria: [], auditoriaDisponible: false, archivo: [] } as EventosHistorial
     };
 
@@ -819,7 +911,11 @@ export function abrirTabla({ precio, usuarioId, config, historialPedido, vista, 
     // ---- carga inicial ---------------------------------------------------------
 
     // La cuadrícula primero; el historial (si su sección está abierta) detrás.
-    const cargaInicial = leerBase();
+    // Con lo ya visto en pantalla no se lee dos veces: la única lectura
+    // completa es la validación tras conectar el tiempo real (o, sin él, a
+    // los pocos segundos), que lo pone al día. Mientras tanto la tabla figura
+    // «validando» y no se opera sobre ella.
+    const cargaInicial = inicial && inicial.numeros.length > 0 ? Promise.resolve() : leerBase();
     cargaInicial
         .then(() => {
             primeraCarga = false;

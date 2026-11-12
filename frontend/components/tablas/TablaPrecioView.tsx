@@ -385,6 +385,7 @@ function TablaPrecioContenido({ precio: precioPedido, tablaId }: Props) {
                 paquetes={paquetes}
                 eventoActivo={eventoActivo}
                 coincidePrecio={coincidePrecio}
+                atenuarLibres={!rifa}
                 coincidentes={coincidentes}
                 accionando={accionando}
                 diseno={diseno}

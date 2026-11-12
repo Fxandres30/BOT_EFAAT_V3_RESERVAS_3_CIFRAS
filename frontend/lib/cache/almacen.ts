@@ -86,6 +86,21 @@ export function cargar<T>(
 
 }
 
+// Guarda `datos` como lo más reciente de `clave`, sin vigencia: la próxima
+// lectura con cargar() irá igualmente al servidor. Sirve para conservar en
+// memoria lo último que se vio de una pantalla (la tabla abierta) y volver a
+// pintarlo al instante al regresar, mientras se valida.
+export function guardar<T>(clave: string, datos: T) {
+    let entrada = entradas.get(clave);
+    if (!entrada) {
+        entrada = { aplicada: 0, validoHasta: 0, enCurso: null };
+        entradas.set(clave, entrada);
+    }
+    entrada.datos = datos;
+    entrada.aplicada = ++ultimaLectura;
+    avisar(clave);
+}
+
 // La próxima lectura sin `forzar` irá al servidor; mientras, se conservan
 // los datos que hay.
 export function invalidar(coincide: (clave: string) => boolean) {

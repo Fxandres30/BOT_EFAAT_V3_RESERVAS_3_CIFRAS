@@ -87,6 +87,9 @@ export function useTablaDiseno(precio: number) {
             }
 
             setUsuarioId(data.user.id);
+            // Tabla por tabla_id: hasta conocer su precio no hay diseño que
+            // pedir (evita una consulta inútil con precio 0).
+            if (!(precio > 0)) return;
             await cargar(data.user.id);
 
         }
@@ -95,7 +98,7 @@ export function useTablaDiseno(precio: number) {
 
         return () => { vivo = false; };
 
-    }, [cargar]);
+    }, [cargar, precio]);
 
     // "Guardar cambios": persiste esta configuración SOLO para esta tabla
     // (usuario + precio). Nunca toca tabla_disenos ni otra fila de

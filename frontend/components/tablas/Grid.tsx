@@ -16,6 +16,10 @@ interface Props {
     paquetes: PaqueteReserva[];
     eventoActivo: EventoActivo | null;
     coincidePrecio: boolean;
+    /** Tabla antigua por precio: sin sorteo de ese precio, los libres se ven
+     *  atenuados. Una rifa (tabla_id) muestra SIEMPRE sus libres como
+     *  disponibles, haya o no sorteo: false. */
+    atenuarLibres?: boolean;
     /** Números que cumplen la búsqueda y los filtros de «Historial de
      *  números» (historialDatos.numerosCoincidentes); null o ausente = todos. */
     coincidentes?: Set<string> | null;
@@ -46,6 +50,7 @@ export default function Grid({
     numeros,
     paquetes,
     coincidePrecio,
+    atenuarLibres = true,
     coincidentes = null,
     accionando = SIN_ACCIONES,
     diseno,
@@ -128,7 +133,7 @@ export default function Grid({
                         // Sin marca «de otro evento»: UNA TABLA = UN SORTEO
                         // (el evento_id de la fila es el del grupo por el que
                         // se reservó, no otro sorteo).
-                        const atenuado = !coincidePrecio && numero.estado === "libre";
+                        const atenuado = atenuarLibres && !coincidePrecio && numero.estado === "libre";
 
                         return (
 
