@@ -213,6 +213,15 @@ router.post("/:id/numero", exigirUsuario, exigirMotorNuevo, cargarRifa, ruta(asy
     responderPanel(res, await panel.operarNumero(req.usuarioId, operador(req), req.rifa, req.body || {}));
 }));
 
+// Crear una tabla (su propio tabla_id) y cambiar su valor conservándolo todo.
+router.post("/tablas", exigirUsuario, exigirMotorNuevo, ruta(async (req, res) => {
+    responderPanel(res, await panel.crearTabla(req.usuarioId, operador(req), req.body || {}));
+}));
+
+router.patch("/:id/precio", exigirUsuario, exigirMotorNuevo, cargarRifa, ruta(async (req, res) => {
+    responderPanel(res, await panel.editarPrecio(req.usuarioId, operador(req), req.rifa, req.body || {}));
+}));
+
 router.post("/:id/lote", exigirUsuario, exigirMotorNuevo, cargarRifa, ruta(async (req, res) => {
     responderPanel(res, await panel.operarLote(req.usuarioId, operador(req), req.rifa, req.body || {}));
 }));

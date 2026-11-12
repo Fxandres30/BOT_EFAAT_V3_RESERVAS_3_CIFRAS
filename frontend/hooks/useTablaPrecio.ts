@@ -51,6 +51,7 @@ import {
     revisarReinicioRifa,
     type RifaPanel
 } from "@/services/tablas/fuenteRifa";
+import { apiRifas, mensajeMotivo } from "@/services/rifas/apiRifas";
 
 import { derivarPaquetes } from "@/components/tablas/derivarPaquetes";
 import { estadoEfectivo } from "@/components/tablas/estadoVisual";
@@ -383,11 +384,24 @@ export function useTablaPrecio(precioPedido: number, tablaId?: string | null) {
         return r;
     }, [usuarioId, ejecutar, precio, rifa]);
 
+    // Solo en el motor de rifas: cambia el VALOR de esta tabla. Es la misma
+    // rifa (mismo tabla_id): sus números, reservas, pagos, historial y grupos
+    // se conservan; solo cambia el precio (y se vuelve a leer).
+    const editarValor = useCallback(async (nuevo: number): Promise<{ ok: true; gruposAmbiguos: number } | { ok: false; mensaje: string }> => {
+        if (!rifa || !usuarioId) return { ok: false, mensaje: "Esta tabla no se puede editar." };
+        const r = await apiRifas.editarPrecio(rifa.id, nuevo);
+        if (!r.ok) return { ok: false, mensaje: (r as { mensaje?: string }).mensaje || mensajeMotivo(r.motivo) };
+        const fresca = await obtenerRifaPanel(rifa.id, usuarioId).catch(() => null);
+        if (fresca) setRifa(fresca);
+        return { ok: true, gruposAmbiguos: r.grupos_ambiguos ?? 0 };
+    }, [rifa, usuarioId]);
+
     return {
 
         config,
         // Solo en el motor de rifas: la rifa abierta (tabla_id, nombre, precio).
         rifa,
+        editarValor,
         precio,
         loading,
         error,

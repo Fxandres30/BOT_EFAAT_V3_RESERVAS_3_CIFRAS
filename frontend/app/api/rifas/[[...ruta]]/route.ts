@@ -23,6 +23,8 @@ function destino(metodo: Metodo, ruta: string[]): string | null {
     if (ruta.length === 1) {
         if (a === "modo") return metodo === "GET" ? "/modo" : null;
         if (a === "avisos") return metodo === "GET" ? "/avisos" : null;
+        // Crear una tabla nueva desde Reservas (su propio tabla_id).
+        if (a === "tablas") return metodo === "POST" ? "/tablas" : null;
         if (UUID.test(a)) return metodo === "GET" || metodo === "PATCH" || metodo === "DELETE" ? `/${a}` : null;
         return null;
     }
@@ -31,6 +33,8 @@ function destino(metodo: Metodo, ruta: string[]): string | null {
         // Pantalla original de Tablas sobre la rifa: ventana del número, operación y lote.
         if (b === "numero") return metodo === "GET" || metodo === "POST" ? `/${a}/numero` : null;
         if (b === "lote") return metodo === "POST" ? `/${a}/lote` : null;
+        // Cambiar el valor de la tabla conservando su tabla_id y sus datos.
+        if (b === "precio") return metodo === "PATCH" ? `/${a}/precio` : null;
         if (OPERACIONES.has(b)) return metodo === "POST" ? `/${a}/${b}` : null;
         return null;
     }

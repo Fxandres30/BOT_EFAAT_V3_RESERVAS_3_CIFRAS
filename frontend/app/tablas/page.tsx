@@ -4,6 +4,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout/DashboardLayout
 import IndiceTablas from "@/components/tablas/IndiceTablas";
 import AyudaContextual from "@/components/aprende/AyudaContextual";
 import { PageHeader } from "@/components/ui/PageHeader";
+import NuevaTablaBoton from "@/components/tablas/NuevaTablaBoton";
 
 // Índice real de tablas de reservas: los precios de la cuenta de la sesión
 // (tablas_cliente, migración 027; sin ella, los precios base de
@@ -21,7 +22,7 @@ export default function TablasPage() {
                     icon={<Ticket size={18} />}
                     title="Reservas"
                     description="Elige una tabla de números por precio para ver sus reservas, pagos y el sorteo en curso."
-                    actions={<AyudaContextual slug="tablas-de-precio" />}
+                    actions={<><NuevaTablaBoton /><AyudaContextual slug="tablas-de-precio" /></>}
                 />
 
                 <IndiceTablas />

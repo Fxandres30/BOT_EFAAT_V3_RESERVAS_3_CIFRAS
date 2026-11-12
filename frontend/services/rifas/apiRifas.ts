@@ -83,6 +83,11 @@ export type AvisoRifas =
 export const apiRifas = {
     modo: () => llamar<{ modo: ModoMotor }>("GET", "/modo"),
     avisos: () => llamar<{ modo: ModoMotor; avisos: AvisoRifas[] }>("GET", "/avisos"),
+    // Reservas: crear una tabla y cambiar su valor (mismo tabla_id y datos).
+    crearTabla: (precio: number, cifras = 2) =>
+        llamar<{ tabla_id: string; precio: number; nombre: string; vinculados: number; sin_vincular: number }>("POST", "/tablas", { precio, cifras }),
+    editarPrecio: (id: string, precio: number) =>
+        llamar<{ tabla_id: string; precio: number; sin_cambios?: boolean; grupos_ambiguos: number }>("PATCH", `/${id}/precio`, { precio }),
     listar: (archivadas = false) => llamar<{ modo: ModoMotor; rifas: Rifa[] }>("GET", archivadas ? "?archivadas=1" : ""),
     crear: (datos: { nombre: string; precio: number; cifras: number; cantidad?: number; codigo?: string | null }) =>
         llamar<{ tabla_id: string }>("POST", "", datos),

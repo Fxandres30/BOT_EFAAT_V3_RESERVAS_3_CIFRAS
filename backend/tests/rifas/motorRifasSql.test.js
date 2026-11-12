@@ -309,9 +309,14 @@ async function esperarError(promesa, patron, nombre) {
     assert.strictEqual(ed.ok, true);
     assert.strictEqual((await db.query("select count(*)::int n, max(numero) m from public.numeros_rifa where tabla_id = $1", [tres.tabla_id])).rows[0].m, 499);
     await rpc("rifa_reservar", [A, tres.tabla_id, [1], "{}", BOT, false]);
-    assert.strictEqual((await rpc("rifa_actualizar", [A, tres.tabla_id, JSON.stringify({ precio: 1 }), PANEL_A])).motivo, "rifa_con_numeros_ocupados");
+    assert.strictEqual((await rpc("rifa_actualizar", [A, tres.tabla_id, JSON.stringify({ cantidad: 400 }), PANEL_A])).motivo, "rifa_con_numeros_ocupados");
+    const conVentas = await rpc("rifa_actualizar", [A, tres.tabla_id, JSON.stringify({ precio: 30000 }), PANEL_A]);
+    assert.strictEqual(conVentas.ok, true, "el precio sí se puede cambiar con ventas");
+    assert.strictEqual(conVentas.tabla_id, tres.tabla_id, "misma rifa, mismo tabla_id");
+    assert.strictEqual((await db.query("select estado from public.numeros_rifa where tabla_id = $1 and numero = 1", [tres.tabla_id])).rows[0].estado, "reservado",
+        "la reserva sigue en su sitio");
     assert.strictEqual((await rpc("rifa_actualizar", [A, tres.tabla_id, JSON.stringify({ usuario_id: B }), PANEL_A])).motivo, "campo_no_permitido");
-    paso("14. editar ajusta números y precio solo sin ventas; el dueño no se puede cambiar");
+    paso("14. editar: cifras y cantidad solo sin ventas; el precio también con ventas (misma rifa); el dueño no se puede cambiar");
 
     const vacia = await rpc("rifa_crear", [A, "Sin uso", 3000, 2, 100, "{}", null, PANEL_A]);
     assert.strictEqual((await rpc("rifa_eliminar", [A, vacia.tabla_id, PANEL_A])).eliminada, true);

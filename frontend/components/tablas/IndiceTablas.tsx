@@ -20,9 +20,10 @@ import {
 } from "@/services/tablas/indiceSorteos";
 import { guardarInstantanea, leerInstantanea } from "@/services/tablas/instantaneaIndice";
 import { crearRecargaAgrupada } from "@/services/tablas/recargaAgrupada";
-import { ordenarPorSorteoActivo } from "@/services/tablas/resumenTabla";
+import { ordenarPorPrecio } from "@/services/tablas/resumenTabla";
 import { obtenerTablasCliente, tablasClienteEnCache, type ConfiguracionTabla } from "@/services/tablas/tablasCliente";
 import { apiRifas, type Rifa } from "@/services/rifas/apiRifas";
+import { EVENTO_TABLAS_CAMBIADAS } from "./NuevaTablaBoton";
 
 import TarjetaPrecio from "./TarjetaPrecio";
 import styles from "./IndiceTablas.module.css";
@@ -70,6 +71,8 @@ export default function IndiceTablas() {
         let intervalo: ReturnType<typeof setInterval> | null = null;
         let recarga: ReturnType<typeof crearRecargaAgrupada> | null = null;
 
+        let alCambiarTablas: (() => void) | null = null;
+
         const marcarHora = () => { if (vivo) setAhora(new Date()); };
 
         (async () => {
@@ -87,9 +90,13 @@ export default function IndiceTablas() {
             // Revalidación en segundo plano: lo que hay en pantalla se conserva.
             cargarIndiceSorteos(usuarioId).then(marcarHora);
             obtenerTablasCliente(usuarioId).then((lista) => { if (vivo) setTablas(lista); });
-            apiRifas.listar().then((r) => {
+            const leerRifas = () => apiRifas.listar().then((r) => {
                 if (vivo) setRifasMotor(r.ok && r.modo === "nuevo" ? r.rifas.filter(x => x.activa) : null);
             });
+            leerRifas();
+            // Tabla creada o editada desde Reservas: aparece al momento en su sitio.
+            alCambiarTablas = () => { leerRifas(); };
+            window.addEventListener(EVENTO_TABLAS_CAMBIADAS, alCambiarTablas);
 
             const forzar = () => cargarIndiceSorteos(usuarioId, { forzar: true }).then(marcarHora);
             recarga = crearRecargaAgrupada(forzar, ESPERA_REALTIME_MS);
@@ -125,6 +132,7 @@ export default function IndiceTablas() {
             recarga?.cancelar();
             if (canal) supabase.removeChannel(canal);
             window.removeEventListener("online", alVolverRed);
+            if (alCambiarTablas) window.removeEventListener(EVENTO_TABLAS_CAMBIADAS, alCambiarTablas);
         };
 
     }, [cambiosUsuario]);
@@ -142,8 +150,8 @@ export default function IndiceTablas() {
         : tablasConfig?.map(({ precio, tabla }) => ({ precio, tabla, tablaId: null as string | null })) ?? null;
 
     // Estado de cada precio, calculado una vez para el resumen y las
-    // tarjetas (null = se está consultando). Las de sorteo activo, primero.
-    const estados = vistaTablas ? ordenarPorSorteoActivo(vistaTablas.map(({ precio, tabla, tablaId }) => ({
+    // tarjetas (null = se está consultando). Siempre por valor ascendente.
+    const estados = vistaTablas ? ordenarPorPrecio(vistaTablas.map(({ precio, tabla, tablaId }) => ({
         precio,
         tablaId,
         entradas: fuentes && !guardada

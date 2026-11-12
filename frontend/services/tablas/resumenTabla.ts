@@ -13,6 +13,19 @@
  * sin cambiar el orden relativo dentro de cada grupo. Sin estado todavía
  * (entradas null), la lista queda como llegó.
  */
+/**
+ * Tarjetas de Reservas por VALOR numérico ascendente ($1.000 → $1.500 →
+ * $2.000 → … → $15.000), nunca por texto. Orden estable: dos tablas del
+ * mismo precio conservan su orden de llegada (creación) y siguen siendo dos
+ * tarjetas distintas.
+ */
+export function ordenarPorPrecio<T extends { precio: number | string }>(lista: T[]): T[] {
+    return lista
+        .map((t, i) => ({ t, i, v: Number(String(t.precio).replace(/[^\d.-]/g, "")) }))
+        .sort((a, b) => (a.v - b.v) || (a.i - b.i))
+        .map(x => x.t);
+}
+
 export function ordenarPorSorteoActivo<T extends { entradas: { estado: string }[] | null }>(lista: T[]): T[] {
     const conActivo = (t: T) => Boolean(t.entradas?.some(e => e.estado === "activo"));
     return [...lista.filter(conActivo), ...lista.filter(t => !conActivo(t))];

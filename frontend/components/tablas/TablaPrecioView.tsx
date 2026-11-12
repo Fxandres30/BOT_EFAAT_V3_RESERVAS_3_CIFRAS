@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
-import { Loader2, AlertTriangle, ArrowLeft, Palette, LibraryBig, Filter } from "lucide-react";
+import { Loader2, AlertTriangle, ArrowLeft, Palette, LibraryBig, Filter, Pencil } from "lucide-react";
 
 import { useTablaPrecio } from "@/hooks/useTablaPrecio";
 import { useTablaDiseno } from "@/hooks/useTablaDiseno";
@@ -33,6 +33,7 @@ import { calcularResumenTabla } from "@/services/tablas/resumenTabla";
 import { crearSeleccion, type EstadoSeleccion, type Seleccion } from "@/services/tablas/estadoSeleccion";
 
 import { TablaRifaContext } from "./contextoTablaRifa";
+import EditarValorTablaModal from "./EditarValorTablaModal";
 
 import styles from "./TablaPrecioView.module.css";
 
@@ -56,6 +57,8 @@ function TablaPrecioContenido({ precio: precioPedido, tablaId }: Props) {
     const {
         config,
         precio,
+        rifa,
+        editarValor,
         loading,
         error,
         diagnostico,
@@ -142,6 +145,7 @@ function TablaPrecioContenido({ precio: precioPedido, tablaId }: Props) {
 
     const [personalizarAbierto, setPersonalizarAbierto] = useState(false);
     const [bibliotecaAbierta, setBibliotecaAbierta] = useState(false);
+    const [editarValorAbierto, setEditarValorAbierto] = useState(false);
 
     // El `div` de la cuadrícula visible: «Compartir» toma de su tarjeta el
     // ancho de la imagen (la imagen se genera con la copia limpia).
@@ -324,6 +328,15 @@ function TablaPrecioContenido({ precio: precioPedido, tablaId }: Props) {
                             subtitulo={personalizada ? "Diseño personalizado" : undefined}
                             onClick={() => setBibliotecaAbierta(true)}
                         />
+                        {rifa && (
+                            <BotonIcono
+                                icon={Pencil}
+                                label="Editar valor"
+                                color="text-gray-600 hover:bg-gray-50 hover:border-gray-300"
+                                mostrarTexto
+                                onClick={() => setEditarValorAbierto(true)}
+                            />
+                        )}
                     </>
                 }
             />
@@ -446,6 +459,15 @@ function TablaPrecioContenido({ precio: precioPedido, tablaId }: Props) {
                 onGuardar={(nuevaConfig) => guardarComoConfigDeTabla(nuevaConfig, disenoOrigenId)}
                 onGuardarComoNuevo={async (nombre, nuevaConfig) => { await guardarComoDisenoNuevo(nombre, nuevaConfig); }}
             />
+
+            {rifa && editarValorAbierto && (
+                <EditarValorTablaModal
+                    open
+                    precioActual={precio}
+                    onClose={() => setEditarValorAbierto(false)}
+                    onGuardar={editarValor}
+                />
+            )}
 
             <BibliotecaDisenosModal
                 open={bibliotecaAbierta}

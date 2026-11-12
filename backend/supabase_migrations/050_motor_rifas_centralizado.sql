@@ -1029,8 +1029,11 @@ $$;
 
 -- --------------------------------------------------------- actualizar ---
 -- p_cambios admite: nombre, codigo, activa, visible, config, precio, cifras,
--- cantidad. precio/cifras/cantidad solo con TODOS los números libres (no se
--- cambia el precio ni el tamaño de una rifa con ventas).
+-- cantidad. Cifras y cantidad solo con TODOS los números libres (cambian la
+-- cuadrícula). El precio se puede cambiar con ventas (12/11/2026, decisión
+-- del propietario): la rifa conserva su tabla_id, números, reservas, pagos,
+-- historial, grupos y configuración; solo se rechaza con un sorteo en curso o
+-- un programado pendiente de esta rifa.
 create function public.rifa_actualizar(
     p_usuario   uuid,
     p_tabla     uuid,
@@ -1047,6 +1050,7 @@ declare
     v_nueva     public.tablas_rifas;
     v_clave     text;
     v_ocupados  integer;
+    v_hay       boolean;
 begin
     perform rifas_privado.origen(p_actor);
     if p_cambios is null or jsonb_typeof(p_cambios) <> 'object' then
@@ -1066,11 +1070,40 @@ begin
         return jsonb_build_object('ok', false, 'motivo', 'rifa_archivada');
     end if;
 
-    if p_cambios ?| array['precio', 'cifras', 'cantidad'] then
+    -- Cifras y cantidad cambian la cuadrícula: solo con TODOS los números libres.
+    if p_cambios ?| array['cifras', 'cantidad'] then
         select count(*) into v_ocupados from public.numeros_rifa
          where tabla_id = v_rifa.id and usuario_id = v_rifa.usuario_id and estado <> 'libre';
         if v_ocupados > 0 then
             return jsonb_build_object('ok', false, 'motivo', 'rifa_con_numeros_ocupados', 'ocupados', v_ocupados);
+        end if;
+    end if;
+
+    -- El PRECIO se puede cambiar conservando números, reservas, pagos e
+    -- historial (misma rifa, mismo tabla_id). No con un sorteo en curso ni un
+    -- programado pendiente de ESTA rifa: su anuncio dice otro precio y el bot
+    -- se detendría. (Tablas de la 051, comprobadas solo si ya existen.)
+    if p_cambios ? 'precio' and (p_cambios ->> 'precio')::integer is distinct from v_rifa.precio then
+        if exists (select 1 from pg_catalog.pg_attribute
+                    where attrelid = to_regclass('public.eventos_bot') and attname = 'tabla_id' and not attisdropped) then
+            execute $q$select exists (select 1 from public.eventos_bot e
+                         where e.tabla_id = $1 and e.usuario_id = $2 and e.activo is true
+                           and coalesce(e.estado, '') not in ('desactivado', 'cancelado', 'eliminado', 'cerrado')
+                           and coalesce(e.cierre_estado, '') <> 'cerrado')$q$
+               into v_hay using v_rifa.id, v_rifa.usuario_id;
+            if v_hay then
+                return jsonb_build_object('ok', false, 'motivo', 'sorteo_en_curso');
+            end if;
+        end if;
+        if exists (select 1 from pg_catalog.pg_attribute
+                    where attrelid = to_regclass('public.sorteos_programados') and attname = 'tabla_id' and not attisdropped) then
+            execute $q$select exists (select 1 from public.sorteos_programados s
+                         where s.tabla_id = $1 and s.usuario_id = $2 and (to_jsonb(s) ->> 'archivado_en') is null
+                           and s.estado in ('borrador', 'programado', 'publicando'))$q$
+               into v_hay using v_rifa.id, v_rifa.usuario_id;
+            if v_hay then
+                return jsonb_build_object('ok', false, 'motivo', 'programado_pendiente');
+            end if;
         end if;
     end if;
 

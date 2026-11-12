@@ -151,7 +151,7 @@ prueba("estático: el resumen usa el estado efectivo y el sorteo activo solo si 
     assert.match(vista, /<StatsBar resumen=\{resumen\} precio=\{precio\} \/>/);
     assert.match(vista, /subtitulo=\{personalizada \? "Diseño personalizado" : undefined\}/, "se conserva el cambio de «Diseños»");
     const indice = fs.readFileSync(path.join(FRONT, "components/tablas/IndiceTablas.tsx"), "utf8");
-    assert.match(indice, /ordenarPorSorteoActivo\(vistaTablas\.map/);
+    assert.match(indice, /ordenarPorPrecio\(vistaTablas\.map/, "el índice ordena por valor ascendente");
     const resumen = fs.readFileSync(path.join(FRONT, "services/tablas/resumenTabla.ts"), "utf8");
     assert.ok(!/supabase|fetch\(|\.update\(|\.insert\(/.test(resumen), "módulo puro: no lee ni escribe en la base");
 });

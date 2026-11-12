@@ -246,4 +246,73 @@ async function operarLote(usuarioId, operador, rifa, cuerpo) {
     return { ok: true, accion, resultados, hechos: contar("hecho"), sinCambio: contar("sin_cambio"), omitidos: contar("omitido"), errores: contar("error") };
 }
 
-module.exports = { contextoNumero, operarNumero, operarLote };
+// ------------------------------------------------- crear y editar tablas ---
+
+const formatoPrecio = (p) => `$${Number(p).toLocaleString("es-CO")}`;
+
+// Grupos (activos) donde OTRA rifa activa del mismo precio ya está vinculada.
+// Con dos vinculadas del mismo precio el bot no sabría cuál usar (D1) y se
+// detendría: ahí no se vincula una nueva.
+async function gruposConOtraDelPrecio(usuarioId, tablaId, precio) {
+    const lista = await rifas.listarRifas(usuarioId);
+    const delPrecio = new Set(lista.filter(r => (r.tabla_id || r.id) !== tablaId && Number(r.precio) === Number(precio) && r.activa).map(r => r.tabla_id || r.id));
+    if (delPrecio.size === 0) return new Set();
+    const { data, error } = await db().from("grupos_rifa").select("grupo_id, tabla_id")
+        .eq("usuario_id", usuarioId).eq("activo", true);
+    if (error) throw new Error(error.message);
+    return new Set((data || []).filter(g => delPrecio.has(g.tabla_id)).map(g => g.grupo_id));
+}
+
+// POST /rifas/tablas { precio, cifras? } → una tabla NUEVA e independiente (su
+// propio tabla_id y sus números, todos libres), aunque ya exista otra de ese
+// precio. Se vincula a los grupos autorizados activos del cliente, salvo
+// donde ya hay otra tabla de ese precio (para no dejar al bot sin saber cuál).
+async function crearTabla(usuarioId, operador, cuerpo) {
+    const precio = Number(String(cuerpo?.precio ?? "").replace(/[^\d]/g, ""));
+    const cifras = Number(cuerpo?.cifras ?? 2);
+    if (!Number.isInteger(precio) || precio <= 0 || precio > 100000000) return fallo("precio_invalido", "Escribe un valor por número válido.");
+    if (![2, 3].includes(cifras)) return fallo("cifras_invalidas", "La tabla debe ser de 2 o 3 cifras.");
+    const nombre = `Tabla ${formatoPrecio(precio)}`;
+    const quien = actorPanel(operador, cuerpo || {});
+
+    const c = await rifas.crearRifa(usuarioId, { nombre, precio, cifras }, quien);
+    if (!c.ok) return fallo(c.motivo || "error", c.error || "No se pudo crear la tabla.");
+
+    const { data: autorizados, error } = await db().from("grupos_autorizados").select("grupo_id, activo").eq("usuario_id", usuarioId);
+    if (error) throw new Error(error.message);
+    const ocupados = await gruposConOtraDelPrecio(usuarioId, c.tabla_id, precio);
+    const vinculados = [];
+    const sinVincular = [];
+    for (const g of (autorizados || []).filter(x => x.activo !== false && x.grupo_id)) {
+        if (ocupados.has(g.grupo_id)) { sinVincular.push(g.grupo_id); continue; }
+        const v = await rifas.vincularGrupo(usuarioId, g.grupo_id, c.tabla_id, {}, quien);
+        if (v.ok) vinculados.push(g.grupo_id);
+    }
+    return { ok: true, tabla_id: c.tabla_id, precio, nombre, numeros: c.numeros, vinculados: vinculados.length, sin_vincular: sinVincular.length };
+}
+
+// PATCH /rifas/:id/precio { precio } → la MISMA rifa (mismo tabla_id, números,
+// reservas, pagos, historial, grupos y configuración) con otro valor. El
+// nombre automático («Tabla $1.500») sigue al precio; uno propio se respeta.
+async function editarPrecio(usuarioId, operador, rifa, cuerpo) {
+    const precio = Number(String(cuerpo?.precio ?? "").replace(/[^\d]/g, ""));
+    if (!Number.isInteger(precio) || precio <= 0 || precio > 100000000) return fallo("precio_invalido", "Escribe un valor por número válido.");
+    if (precio === Number(rifa.precio)) return { ok: true, tabla_id: rifa.id, precio, sin_cambios: true, grupos_ambiguos: 0 };
+    const cambios = { precio };
+    if (rifa.nombre === `Tabla ${formatoPrecio(rifa.precio)}`) cambios.nombre = `Tabla ${formatoPrecio(precio)}`;
+    const r = await rifas.actualizar(usuarioId, rifa.id, cambios, actorPanel(operador, cuerpo || {}));
+    if (!r.ok) {
+        const mensajes = {
+            sorteo_en_curso: "Esta tabla tiene un sorteo en curso: ciérralo antes de cambiar su valor.",
+            programado_pendiente: "Esta tabla tiene un sorteo programado pendiente: cancélalo o espera a que se publique y cierre."
+        };
+        return fallo(r.motivo || "error", mensajes[r.motivo] || r.error || "No se pudo cambiar el valor.");
+    }
+    // ¿Algún grupo de esta tabla tiene ya otra del nuevo precio? El bot se
+    // detendría ahí (D1); se avisa para que el administrador lo resuelva.
+    const otros = await gruposConOtraDelPrecio(usuarioId, rifa.id, precio);
+    const propios = (await rifas.gruposDeRifa(usuarioId, rifa.id)).map(g => g.grupo_id);
+    return { ok: true, tabla_id: rifa.id, precio, grupos_ambiguos: propios.filter(g => otros.has(g)).length };
+}
+
+module.exports = { contextoNumero, operarNumero, operarLote, crearTabla, editarPrecio };
