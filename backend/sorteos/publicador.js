@@ -58,6 +58,28 @@ const { eventoTerminado, ERROR_IMAGEN } = activacionPanel;
 // del panel (fuente única, F1-B).
 const { consultaLiberacion } = require("../bot/funciones/reservas/liberacion");
 const { registrarAuditoria, contextoAuditoriaFila } = require("../bot/funciones/reservas/auditoriaReservas");
+// Motor único de rifas (12/11/2026): la tabla de un sorteo es SU rifa.
+const numerosSorteo = require("../rifas/numerosSorteo");
+const { esUuid } = require("../rifas/formato");
+const motorRifas = require("../rifas/motor");
+
+// Motor nuevo: ¿sigue siendo válida la rifa del sorteo? null = sí; si no,
+// el motivo. La rifa (tabla_id) existe en la cuenta, está activa, no está
+// archivada y tiene el MISMO precio que el anuncio.
+async function problemaDeRifa(usuarioId, sorteo, deps) {
+    if (!esUuid(sorteo.tabla_id)) return "el sorteo no tiene una tabla (rifa) asignada. Edítalo y elige su tabla.";
+    let rifa;
+    try {
+        rifa = await (deps.rifaDe || numerosSorteo.rifaDe)(usuarioId, { tablaId: sorteo.tabla_id });
+    } catch (e) {
+        return `no se pudo leer la tabla (rifa) del sorteo (${e.message}).`;
+    }
+    if (!rifa) return "la tabla (rifa) del sorteo ya no existe en tu cuenta.";
+    if (rifa.archivada_en) return `la tabla «${rifa.nombre}» está archivada.`;
+    if (rifa.activa === false) return `la tabla «${rifa.nombre}» está desactivada.`;
+    if (Number(rifa.precio) !== Number(sorteo.config?.valor)) return `la tabla «${rifa.nombre}» ahora es de $${rifa.precio} y el sorteo anuncia $${sorteo.config?.valor}.`;
+    return null;
+}
 
 // ¿Otra cuenta tiene un sorteo activo en el grupo? (lo que revisarGrupo
 // comprueba después de los sorteos propios).
@@ -176,13 +198,17 @@ async function publicarEnGrupo({ sock, sorteo, grupo, autorizados, deps, ahora, 
     // El evento usa la tabla GUARDADA en el sorteo, y la imagen (como
     // «Compartir») la tabla configurada HOY para ese precio: deben ser la
     // misma. Si la configuración cambió desde que se programó, no se publica.
+    if (motorRifas.motorNuevo()) {
+        const problemaRifa = await problemaDeRifa(usuarioId, sorteo, deps);
+        if (problemaRifa) return { estado: "requiere_revision", ultimo_error: `No se publicó: ${problemaRifa} Revisa Tablas o vuelve a programar el sorteo.` };
+    }
     const tablas = deps.tablasCliente || require("../bot/funciones/eventos/tablasCliente");
-    const confPrecio = await tablas.obtenerConfiguracionCliente(usuarioId, config.valor);
+    const confPrecio = motorRifas.motorNuevo() ? { tabla: sorteo.tabla } : await tablas.obtenerConfiguracionCliente(usuarioId, config.valor);
     if (!confPrecio || confPrecio.tabla !== sorteo.tabla) {
         return { estado: "requiere_revision", ultimo_error: `La tabla configurada para $${config.valor} ya no es la del sorteo (${sorteo.tabla}); no se publicó. Revisa la configuración de Tablas o vuelve a programar el sorteo.` };
     }
 
-    const rt = await revisarTabla({ usuarioId, tabla: sorteo.tabla, cifras: sorteo.cifras, cantidad: sorteo.cantidad_numeros, identidad: sorteo.identidad_evento_real });
+    const rt = await revisarTabla({ usuarioId, tabla: sorteo.tabla, tablaId: sorteo.tabla_id ?? null, cifras: sorteo.cifras, cantidad: sorteo.cantidad_numeros, identidad: sorteo.identidad_evento_real });
     if (rt.bloqueos.length) return { estado: "requiere_revision", ultimo_error: rt.bloqueos.join(" ") };
 
     // El estilo elegido queda SOLO en el sorteo (config.diseno): nunca se
@@ -230,6 +256,8 @@ async function verificarParaReinicio({ usuarioId, sorteo, deps }) {
     if (sorteo.usuario_id !== usuarioId) return "el sorteo no pertenece a esta cuenta.";
     if (sorteo.confirmado_version !== sorteo.version) return "la programación cambió desde que se confirmó.";
     if (sorteo.identidad_evento_real !== identidadDelSorteo(usuarioId, sorteo.config)) return "la programación no corresponde al evento confirmado.";
+
+    if (motorRifas.motorNuevo()) return problemaDeRifa(usuarioId, sorteo, deps);
 
     const tablas = deps.tablasCliente || require("../bot/funciones/eventos/tablasCliente");
     const conf = await tablas.obtenerConfiguracionCliente(usuarioId, sorteo.config.valor);
@@ -312,7 +340,7 @@ async function prepararPublicacion({ usuarioId, sorteo, ahora, deps, estados = [
 
     const reinicio = deps.reinicioTabla || require("./reinicioTabla");
     const tablaCfg = sorteo.config.tabla;
-    const datos = { id: sorteo.id, tabla: sorteo.tabla, liberarBloqueados: tablaCfg.liberar_bloqueados === true };
+    const datos = { id: sorteo.id, tabla: sorteo.tabla, tabla_id: sorteo.tabla_id ?? null, liberarBloqueados: tablaCfg.liberar_bloqueados === true };
 
     let revision = await reinicio.revisarReinicio(usuarioId, { ...datos, config: sorteo.config });
 

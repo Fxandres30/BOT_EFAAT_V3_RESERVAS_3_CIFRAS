@@ -133,11 +133,13 @@ function errorRevision(mensaje, tipo) {
     return Object.assign(new Error(mensaje), { revision: true, tipo });
 }
 
-const leerNumerosReal = (tabla, usuarioId) => require("../automation/repo/tablaEvento").obtenerNumeros(tabla, usuarioId);
+// Números de la RIFA del sorteo (tabla_id): la misma fuente que Reservas y
+// que la vista previa (rifas/numerosSorteo.js). Recibe el sorteo entero.
+const leerNumerosReal = (sorteo, usuarioId) => require("../automation/repo/tablaEvento").obtenerNumeros(sorteo, usuarioId);
 
 // Huella de la tabla del sorteo AHORA.
 async function huellaActual(sorteo, { obtenerNumeros = null } = {}) {
-    return huellaNumeros(await (obtenerNumeros || leerNumerosReal)(sorteo.tabla, sorteo.usuario_id));
+    return huellaNumeros(await (obtenerNumeros || leerNumerosReal)(sorteo, sorteo.usuario_id));
 }
 
 // ==========================================================================
@@ -198,7 +200,7 @@ function perfilDe(sorteo) {
 // -> { png, huella, origen: "panel" | "servidor" }
 async function imagenActualDelSorteo(sorteo, { obtenerNumeros = null, generar = null } = {}) {
 
-    const numeros = await (obtenerNumeros || leerNumerosReal)(sorteo.tabla, sorteo.usuario_id);
+    const numeros = await (obtenerNumeros || leerNumerosReal)(sorteo, sorteo.usuario_id);
     const huella = huellaNumeros(numeros);
     const version = Number(sorteo.confirmado_version);
 

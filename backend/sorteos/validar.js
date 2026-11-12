@@ -108,8 +108,11 @@ function normalizarPremios(lista) {
         .slice(0, LIMITES.premios);
 }
 
-// validarSorteo(entrada, { ahora }) -> { ok, errores, config, tabla, cifras, cantidad }
-function validarSorteo(entrada = {}, { ahora = new Date() } = {}) {
+// validarSorteo(entrada, { ahora, porRifa }) -> { ok, errores, config, tabla, cifras, cantidad }
+// porRifa (motor único de rifas, 12/11/2026): el precio lo valida la RIFA
+// elegida (servicio.prepararSorteo), no la lista fija de precios base: un
+// cliente puede tener rifas de cualquier precio (p. ej. $13.000).
+function validarSorteo(entrada = {}, { ahora = new Date(), porRifa = false } = {}) {
 
     const errores = [];
     const error = (campo, mensaje) => errores.push({ campo, mensaje });
@@ -141,7 +144,7 @@ function validarSorteo(entrada = {}, { ahora = new Date() } = {}) {
     const valor = Number(String(entrada.valor ?? "").replace(/[^\d]/g, ""));
     const tablaConfig = valor > 0 ? obtenerConfiguracion(valor) : null;
     if (!valor) error("valor", "Indica el valor por número.");
-    else if (!tablaConfig) error("valor", "Ese valor no tiene una tabla de números configurada.");
+    else if (!tablaConfig && !porRifa) error("valor", "Ese valor no tiene una tabla de números configurada.");
 
     const premios = normalizarPremios(entrada.premios);
     if (!premios.length) error("premios", "Agrega al menos un premio.");
@@ -279,7 +282,7 @@ function validarPlantilla(entrada = {}) {
         ...entrada.config,
         grupos: ["plantilla@g.us"],
         publicar_en: new Date(Date.now() + 3600 * 1000).toISOString()
-    });
+    }, { porRifa: require("../rifas/motor").motorNuevo() });
 
     const ignorar = new Set(["grupos", "publicar_en", "fecha_sorteo"]);
     errores.push(...base.errores.filter(e => !ignorar.has(e.campo)));

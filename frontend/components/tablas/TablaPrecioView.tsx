@@ -304,6 +304,7 @@ function TablaPrecioContenido({ precio: precioPedido, tablaId }: Props) {
 
             <AccionesTabla
                 precio={precio}
+                tablaId={rifa?.id ?? tablaId ?? null}
                 totalNumeros={stats.total}
                 disponibles={stats.disponibles}
                 usuarioId={usuarioId}

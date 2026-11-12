@@ -50,6 +50,13 @@
 const supabase = require("../lib/supabase");
 const repo = require("./repo");
 const tablasCliente = require("../bot/funciones/eventos/tablasCliente");
+// Motor único de rifas (12/11/2026): los números de un sorteo activo son los
+// de SU rifa (eventos_bot.tabla_id); con MOTOR_RIFAS=legado, su cuadrícula.
+const numerosSorteo = require("../rifas/numerosSorteo");
+const { motorNuevo } = require("../rifas/motor");
+// Fuente de los números de un sorteo: la rifa de su fila (motor nuevo) o la
+// cuadrícula guardada (legado).
+const fuenteDeFila = (fila, tablaLegado = fila?.tabla) => (motorNuevo() ? numerosSorteo.fuenteDe(fila) : tablaLegado);
 const { normalizarPremios, normalizarMetaPublicacion, instanteBogota, partesBogota, HORA, texto, LIMITES } = require("./validar");
 const { metaPublicacion, textoPublicacion, consolidarMensajes, generar, variablesDesconocidas, LIMITE_MENSAJE } = require("./mensajes");
 const { esEstilo, ESTILO_PREDETERMINADO } = require("./estilosMensaje");
@@ -164,7 +171,7 @@ async function vista(usuarioId, filas) {
     const base = filas[0];
     const programado = await sorteoProgramadoDe(usuarioId, base.identidad_evento_real);
     // Sorteo activo: sus números son los de su tabla, vengan de donde vengan.
-    const numeros = await repo.contarNumerosTabla(usuarioId, base.tabla);
+    const numeros = await repo.contarNumerosTabla(usuarioId, fuenteDeFila(base));
     const desdePanel = Boolean(programado);
     // Grupos del sorteo según su programación (fuente de verdad, también los
     // pendientes de publicar); los cancelados ya no son destino.
@@ -439,7 +446,7 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
     }
 
     // Reservas y pagos ANTES: el guardado no toca la tabla de números.
-    const antes = await repo.contarNumerosIdentidad(usuarioId, actual.tabla, actual.identidad);
+    const antes = await repo.contarNumerosIdentidad(usuarioId, fuenteDeFila(filas[0], actual.tabla), actual.identidad);
 
     if (Object.keys(cambiosEvento).length) {
         const { error } = await supabase.from("eventos_bot")
@@ -470,7 +477,7 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
         if (!u.ok) return u;
     }
 
-    const despues = await repo.contarNumerosIdentidad(usuarioId, actual.tabla, actual.identidad);
+    const despues = await repo.contarNumerosIdentidad(usuarioId, fuenteDeFila(filas[0], actual.tabla), actual.identidad);
     if (antes.ok && despues.ok && (antes.reservados !== despues.reservados || antes.pagados !== despues.pagados)) {
         // Solo puede deberse a reservas/pagos reales llegando a la vez (el
         // guardado no escribe en la tabla); se informa, no se revierte nada.
@@ -507,6 +514,20 @@ async function editar(usuarioId, id, entrada = {}, { ahora = new Date(), resolve
 //      recoge una reserva que entrara durante la primera). Si falla, se
 //      restauran las filas del paso 2 y no queda nada a medias;
 //   4. programación del panel (si la hay) y texto guardado del detectado.
+// Reservas y pagos de la identidad anterior pasan a la nueva, en la rifa del
+// sorteo (rifa_cambiar_identidad, 054). -> { error } como supabase-js.
+async function cambiarIdentidadEnRifa(usuarioId, fila, anterior, nueva, nombreEvento) {
+    const f = numerosSorteo.fuenteDe(fila);
+    if (!f.tablaId) return { error: { message: "el sorteo no tiene rifa (tabla_id)" } };
+    const { data, error } = await supabase.rpc("rifa_cambiar_identidad", {
+        p_usuario: usuarioId, p_tabla: f.tablaId, p_anterior: anterior, p_nueva: nueva,
+        p_nombre_evento: nombreEvento, p_actor: { origen: "manual", operador_id: usuarioId, motivo: "corrección del sorteo activo" }
+    });
+    if (error) return { error };
+    if (!data?.ok) return { error: { message: data?.motivo || "respuesta vacía" } };
+    return { error: null };
+}
+
 async function corregirIdentidad(usuarioId, filas, actual, nuevo, programado) {
 
     const base = filas[0];
@@ -532,11 +553,25 @@ async function corregirIdentidad(usuarioId, filas, actual, nuevo, programado) {
     // Tabla del nuevo valor.
     let tabla = actual.tabla;
     let extraTabla = {};
-    if (nuevo.valor !== undefined) {
+    if (nuevo.valor !== undefined && motorNuevo()) {
+        // El precio de un sorteo es el de SU rifa: cambiarlo aquí dejaría el
+        // anuncio con un precio y la rifa con otro. Se cambia en Tablas (sin
+        // sorteo en curso) o se crea un sorteo nuevo.
+        let rifa;
+        try {
+            rifa = await numerosSorteo.rifaDe(usuarioId, base);
+        } catch (e) {
+            return falla("error_supabase", { error: e.message });
+        }
+        if (!rifa) return falla("validacion", { errores: [{ campo: "valor", mensaje: "Este sorteo no tiene una tabla (rifa) asignada: no se puede cambiar su valor." }] });
+        if (Number(rifa.precio) !== Number(digitos(nuevo.valor))) {
+            return falla("validacion", { errores: [{ campo: "valor", mensaje: `El valor de este sorteo es el de su tabla «${rifa.nombre}» ($${Number(rifa.precio).toLocaleString("es-CO")}). Para otro valor, cierra este sorteo y crea uno nuevo con la tabla de ese precio.` }] });
+        }
+    } else if (nuevo.valor !== undefined) {
         const conf = await tablasCliente.obtenerConfiguracionCliente(usuarioId, nuevo.valor);
         if (!conf) return falla("validacion", { errores: [{ campo: "valor", mensaje: `No tienes una tabla configurada para $${nuevo.valor}.` }] });
         if (conf.tabla !== actual.tabla) {
-            const tomados = await repo.contarNumerosIdentidad(usuarioId, actual.tabla, identidadAnterior);
+            const tomados = await repo.contarNumerosIdentidad(usuarioId, fuenteDeFila(base, actual.tabla), identidadAnterior);
             if (!tomados.ok) return falla("error_supabase", { mensaje: SIN_CONTEO });
             if (tomados.reservados + tomados.pagados > 0) {
                 return falla("validacion", { errores: [{ campo: "valor", mensaje: `Ese valor usa otra tabla de números y este sorteo ya tiene ${tomados.reservados} reservado(s) y ${tomados.pagados} pagado(s). Desactívalo y crea un sorteo nuevo con ese valor.` }] });
@@ -544,6 +579,8 @@ async function corregirIdentidad(usuarioId, filas, actual, nuevo, programado) {
             tabla = conf.tabla;
             extraTabla = { tabla: conf.tabla, cifras: conf.cifras, cantidad_numeros: conf.cantidad };
         }
+    }
+    if (nuevo.valor !== undefined) {
         // UN SORTEO POR PRECIO: corregir no es publicar, así que no reemplaza
         // al sorteo activo del nuevo precio; se rechaza (aunque la tabla
         // física sea la misma, p. ej. de $3.000 a $10.000).
@@ -558,7 +595,7 @@ async function corregirIdentidad(usuarioId, filas, actual, nuevo, programado) {
     }
 
     // La identidad nueva no puede tener ya números en la tabla (serían de otro sorteo).
-    const ajenos = await repo.contarNumerosIdentidad(usuarioId, tabla, identidad);
+    const ajenos = await repo.contarNumerosIdentidad(usuarioId, fuenteDeFila(base, tabla), identidad);
     if (!ajenos.ok) return falla("error_supabase", { mensaje: SIN_CONTEO });
     if (ajenos.reservados + ajenos.pagados > 0) {
         return falla("conflicto", { mensaje: "La tabla ya tiene números de un sorteo con esa lotería, fecha, hora y valor. No se cambió nada." });
@@ -575,8 +612,11 @@ async function corregirIdentidad(usuarioId, filas, actual, nuevo, programado) {
     if (identidadAnterior) {
         const cambiosNumeros = { identidad_evento_real: identidad, ...(nuevo.nombre ? { nombre_evento: datos.nombre_evento } : {}) };
         for (let pasada = 0; pasada < 2; pasada++) {
-            const { error: e3 } = await supabase.from(actual.tabla).update(cambiosNumeros)
-                .eq("usuario_id", usuarioId).eq("identidad_evento_real", identidadAnterior);
+            // Motor nuevo: en SU rifa, con la función auditada de la 054.
+            const { error: e3 } = motorNuevo()
+                ? await cambiarIdentidadEnRifa(usuarioId, base, identidadAnterior, identidad, nuevo.nombre ? datos.nombre_evento : null)
+                : await supabase.from(actual.tabla).update(cambiosNumeros)
+                    .eq("usuario_id", usuarioId).eq("identidad_evento_real", identidadAnterior);
             if (e3) {
                 for (const r of respaldo) {
                     const { id, ...campos } = r;

@@ -14,6 +14,12 @@ const supabase = require("../lib/supabase");
 // sin ella, la configuración base de siempre).
 const { obtenerConfiguracionCliente } = require("../bot/funciones/eventos/tablasCliente");
 const tablaEventoRepo = require("../automation/repo/tablaEvento");
+// Motor único de rifas (12/11/2026): los números de la imagen son los de la
+// RIFA (tabla_id) del sorteo, la misma fuente que Reservas. La rifa sale del
+// evento (eventos_bot.tabla_id, firmado en el token) o se pasa explícita;
+// nunca del precio. Con MOTOR_RIFAS=legado, como siempre (tablas_cliente).
+const { motorNuevo } = require("../rifas/motor");
+const { esUuid } = require("../rifas/formato");
 const { disenoDelEvento } = require("../sorteos/repo");
 const { normalizarConfigDiseno } = require("../sorteos/disenoTabla");
 
@@ -21,15 +27,20 @@ const { normalizarConfigDiseno } = require("../sorteos/disenoTabla");
 // publicar. Permite capturar ANTES de que exista su evento, con el mismo
 // resultado que leerlo por el evento.
 // -> { ok: true, data } | { ok: false, status, error }
-async function datosTablaImprimir(usuarioId, precio, eventoId = null, { disenoSorteo = null } = {}) {
+// `tablaId` (opcional): la rifa explícita (motor nuevo).
+async function datosTablaImprimir(usuarioId, precio, eventoId = null, { disenoSorteo = null, tablaId = null } = {}) {
 
-    const config = await obtenerConfiguracionCliente(usuarioId, precio);
+    const fuente = await fuenteDeLaImagen(usuarioId, precio, eventoId, tablaId);
+    if (!fuente.ok) return fuente;
+    const config = fuente.config;
 
-    if (!config) {
-        return { ok: false, status: 404, error: "No existe una tabla configurada para este precio." };
+    let numeros;
+    try {
+        numeros = await tablaEventoRepo.obtenerNumeros(fuente.fuente, usuarioId);
+    } catch (e) {
+        return { ok: false, status: 409, error: `No se pudieron leer los números de la tabla: ${e.message}` };
     }
-
-    const { numerosDisponibles, numerosOcupados, numerosPagados } = await tablaEventoRepo.obtenerNumeros(config.tabla, usuarioId);
+    const { numerosDisponibles, numerosOcupados, numerosPagados } = numeros;
 
     // Estilo: el guardado en el SORTEO programado de ese evento (el mismo
     // que se vio en la vista previa); si el evento no viene de un sorteo
@@ -65,6 +76,41 @@ async function datosTablaImprimir(usuarioId, precio, eventoId = null, { disenoSo
             diseno: normalizarConfigDiseno(diseno)
         }
     };
+
+}
+
+// De dónde salen los números de la imagen.
+// -> { ok: true, fuente, config: { cifras, cantidad } } | { ok: false, status, error }
+async function fuenteDeLaImagen(usuarioId, precio, eventoId, tablaId) {
+
+    if (!motorNuevo()) {
+        const config = await obtenerConfiguracionCliente(usuarioId, precio);
+        if (!config) return { ok: false, status: 404, error: "No existe una tabla configurada para este precio." };
+        return { ok: true, fuente: config.tabla, config };
+    }
+
+    let rifaId = esUuid(tablaId) ? tablaId : null;
+
+    if (!rifaId && eventoId) {
+        const { data, error } = await supabase.from("eventos_bot").select("tabla_id")
+            .eq("usuario_id", usuarioId).eq("id", eventoId).maybeSingle();
+        if (error) return { ok: false, status: 500, error: "No se pudo leer el sorteo de la imagen." };
+        rifaId = esUuid(data?.tabla_id) ? data.tabla_id : null;
+    }
+
+    if (!rifaId) {
+        return { ok: false, status: 409, error: "No se puede saber qué tabla mostrar: el sorteo no tiene una rifa (tabla_id) asignada." };
+    }
+
+    const { data: rifa, error } = await supabase.from("tablas_rifas").select("id, precio, cifras, cantidad")
+        .eq("usuario_id", usuarioId).eq("id", rifaId).maybeSingle();
+    if (error) return { ok: false, status: 500, error: "No se pudo leer la tabla del sorteo." };
+    if (!rifa) return { ok: false, status: 404, error: "La tabla de este sorteo no existe en la cuenta." };
+    if (precio && Number(rifa.precio) !== Number(precio)) {
+        return { ok: false, status: 409, error: `La tabla del sorteo es de $${rifa.precio}, no de $${precio}.` };
+    }
+
+    return { ok: true, fuente: { tablaId: rifa.id }, config: { cifras: rifa.cifras, cantidad: rifa.cantidad } };
 
 }
 

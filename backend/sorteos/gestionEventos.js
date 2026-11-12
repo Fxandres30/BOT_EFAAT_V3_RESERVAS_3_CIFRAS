@@ -40,6 +40,10 @@ const { verificarHoraCierre } = require("../bot/funciones/eventos/lifecycle/veri
 // Orquestador central del cierre (F3): todas las acciones pasan por él.
 const orquestador = require("../bot/funciones/eventos/lifecycle/cerrarEvento");
 const { sorteosActivosDelPrecio } = require("../shared/eventos/unSorteoPorPrecio");
+// Motor único de rifas (12/11/2026): cuenta en la RIFA del sorteo
+// (eventos_bot.tabla_id); con MOTOR_RIFAS=legado, en su cuadrícula.
+const numerosSorteo = require("../rifas/numerosSorteo");
+const fuenteDeFila = (fila) => (require("../rifas/motor").motorNuevo() ? numerosSorteo.fuenteDe(fila) : fila?.tabla);
 const { ESTADOS_EDITABLES } = require("./estadosProgramacion");
 
 const ACCIONES = new Set(["cerrar", "reabrir", "desactivar", "cancelar", "eliminar"]);
@@ -116,8 +120,8 @@ async function listar(usuarioId, { ahora = new Date() } = {}) {
         // En curso: toda su tabla (UNA TABLA = UN SORTEO). Cerrado: la tabla
         // puede ser ya de otro sorteo; solo la identidad de la fila lo recuerda.
         const numeros = filas.some(enCurso)
-            ? await repo.contarNumerosTabla(usuarioId, base.tabla)
-            : await repo.contarNumerosIdentidad(usuarioId, base.tabla, base.identidad_evento_real);
+            ? await repo.contarNumerosTabla(usuarioId, fuenteDeFila(base))
+            : await repo.contarNumerosIdentidad(usuarioId, fuenteDeFila(base), base.identidad_evento_real);
 
         lista.push({
             id: base.id,

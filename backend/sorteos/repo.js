@@ -8,6 +8,8 @@
 // ==========================================================================
 
 const supabase = require("../lib/supabase");
+const numerosSorteo = require("../rifas/numerosSorteo");
+const { motorNuevo } = require("../rifas/motor");
 
 const TABLA_NO_EXISTE = "42P01";
 
@@ -239,11 +241,26 @@ async function eventosPorIdentidad(usuarioId, identidades) {
     return resultado(data || [], error);
 }
 
-// Números NO libres de esas identidades en una tabla física del cliente.
-async function numerosPorIdentidad(usuarioId, tabla, identidades) {
-    if (!tabla || !identidades.length) return { ok: true, data: [] };
-    const { data, error } = await supabase.from(tabla).select("identidad_evento_real, estado")
-        .eq("usuario_id", usuarioId).in("identidad_evento_real", identidades).neq("estado", "libre");
+// MOTOR ÚNICO DE RIFAS (12/11/2026): `fuente` es el sorteo / la fila de
+// eventos_bot (con su tabla_id) o { tablaId, tabla }. Con MOTOR_RIFAS=nuevo
+// se lee la RIFA (numeros_rifa por usuario_id + tabla_id), la misma fuente
+// que Reservas; sin tabla_id no se cuenta (ok=false, nunca «0»). Un texto
+// suelto es una cuadrícula antigua (solo MOTOR_RIFAS=legado).
+async function leerNumerosDe(usuarioId, fuente, columnas, filtrar = (q) => q) {
+    if (motorNuevo()) {
+        if (!numerosSorteo.legible(fuente)) return { data: null, error: { code: "SIN_RIFA", message: "el sorteo no tiene rifa (tabla_id)" } };
+        return numerosSorteo.todasLasPaginas(() => filtrar(numerosSorteo.consulta(usuarioId, fuente, columnas)).order("numero", { ascending: true }));
+    }
+    const q = numerosSorteo.consulta(usuarioId, fuente, columnas);
+    if (!q) return { data: [], error: null, vacia: true };
+    return filtrar(q);
+}
+
+// Números NO libres de esas identidades en la tabla (rifa) del sorteo.
+async function numerosPorIdentidad(usuarioId, fuente, identidades) {
+    if (!identidades.length) return { ok: true, data: [] };
+    const { data, error } = await leerNumerosDe(usuarioId, fuente, "identidad_evento_real, estado",
+        (q) => q.in("identidad_evento_real", identidades).neq("estado", "libre"));
     return resultado(data || [], error);
 }
 
@@ -252,20 +269,21 @@ async function numerosPorIdentidad(usuarioId, tabla, identidades) {
 // sin separar por identidad, evento, grupo u origen. ok=false: no se pudo
 // leer (nunca «0 reservados»). Un sorteo ya cerrado no usa esto: la tabla
 // puede pertenecer ahora a otro, y solo la identidad de la fila lo recuerda.
-async function contarNumerosTabla(usuarioId, tabla) {
-    if (!usuarioId || !tabla) return { ok: true, reservados: 0, pagados: 0 };
-    return conteoDeEstados(await supabase.from(tabla).select("estado").eq("usuario_id", usuarioId), tabla);
+async function contarNumerosTabla(usuarioId, fuente) {
+    if (!usuarioId || (!motorNuevo() && !numerosSorteo.legible(fuente))) return { ok: true, reservados: 0, pagados: 0 };
+    return conteoDeEstados(await leerNumerosDe(usuarioId, fuente, "estado"), etiqueta(fuente));
 }
 
 // Reservados y pagados de UN sorteo por su identidad (sorteos cerrados o
 // comprobaciones antes de corregir un sorteo). FUENTE ÚNICA (F1-B): antes
 // había una copia en gestionEventos.js y otra en sorteosActivos.js.
 // Sin tabla o sin identidad no hay nada que contar: 0 y 0.
-async function contarNumerosIdentidad(usuarioId, tabla, identidad) {
-    if (!tabla || !identidad) return { ok: true, reservados: 0, pagados: 0 };
-    return conteoDeEstados(await supabase.from(tabla).select("estado")
-        .eq("usuario_id", usuarioId).eq("identidad_evento_real", identidad), tabla);
+async function contarNumerosIdentidad(usuarioId, fuente, identidad) {
+    if (!identidad || (!motorNuevo() && !numerosSorteo.legible(fuente))) return { ok: true, reservados: 0, pagados: 0 };
+    return conteoDeEstados(await leerNumerosDe(usuarioId, fuente, "estado", (q) => q.eq("identidad_evento_real", identidad)), etiqueta(fuente));
 }
+
+const etiqueta = (fuente) => { const f = numerosSorteo.fuenteDe(fuente); return f.tablaId ? `rifa ${f.tablaId}` : f.tabla; };
 
 // Sin lectura no hay conteo: ok=false y null, nunca «0 reservados».
 function conteoDeEstados({ data, error }, tabla) {

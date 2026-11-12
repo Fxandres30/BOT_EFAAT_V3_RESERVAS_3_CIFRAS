@@ -21,6 +21,7 @@ import {
     type ResumenGrupos,
     type Sorteo
 } from "@/services/sorteos/apiSorteos";
+import { apiRifas, type Rifa } from "@/services/rifas/apiRifas";
 import { colombiaDesdeIso, isoDesdeColombia } from "./fechas";
 import { listarDisenos } from "@/services/tablas/disenos";
 import { TABLA_DISENO_PRESETS } from "@/services/tablas/disenoDefaults";
@@ -39,6 +40,8 @@ interface Props {
     onGuardado: (sorteo: Sorteo) => void;
     /** Valor por número precargado al crear un sorteo nuevo (p. ej. desde /tablas/[precio]). */
     valorInicial?: number;
+    /** Rifa (tabla) precargada al crear un sorteo nuevo desde su tabla. */
+    tablaIdInicial?: string | null;
     /** «Sorteo instantáneo»: sin hora de publicación; se publica al
      *  confirmarlo en la vista previa (publicar-ahora). */
     instantaneo?: boolean;
@@ -54,6 +57,8 @@ const VACIO = {
     loteriaId: "",
     horaFin: "",
     horaCierre: "",
+    // Rifa (tabla_id) del sorteo: obligatoria; el valor es el de la rifa.
+    tablaId: "",
     valor: "",
     premios: [{ nombre: "", premio: "", tipo: "otro" }] as PremioForm[],
     grupos: [] as string[],
@@ -169,6 +174,7 @@ function aConfig(f: Form, disenoGuardado?: DisenoSorteo | null, inmediato = fals
         publicar_en: inmediato ? null : isoDesdeColombia(f.publicarEn),
         fecha_sorteo: f.fechaSorteo || (inmediato ? hoy : f.publicarEn ? f.publicarEn.slice(0, 10) : null),
         ...(inmediato ? { publicacion_inmediata: true } : {}),
+        tabla_id: f.tablaId || null,
         tabla: { reiniciar: f.reiniciarTabla, liberar_bloqueados: f.reiniciarTabla && f.liberarBloqueados },
         // Publicar siempre reemplaza al sorteo anterior (31/10); se envía
         // para que un backend anterior haga lo mismo en el grupo.
@@ -197,7 +203,7 @@ function nuevaSolicitud(): string {
     return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
-export default function FormularioSorteo({ open, sorteoId = null, onClose, onGuardado, valorInicial, instantaneo = false }: Props) {
+export default function FormularioSorteo({ open, sorteoId = null, onClose, onGuardado, valorInicial, tablaIdInicial = null, instantaneo = false }: Props) {
 
     // Estado inicial al montar: la página remonta este componente (key) cada
     // vez que se abre, así no hay que "reiniciar" estado dentro de un efecto.
@@ -210,7 +216,10 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
     const [carga, setCarga] = useState<CargaSorteo>(edicion ? { tipo: "cargando" } : { tipo: "nuevo" });
     const [intentoCarga, setIntentoCarga] = useState(0);
     const sorteo = carga.tipo === "ok" ? carga.sorteo : null;
-    const [form, setForm] = useState<Form>(() => ({ ...VACIO, valor: valorInicial ? String(valorInicial) : "" }));
+    const [form, setForm] = useState<Form>(() => ({ ...VACIO, tablaId: tablaIdInicial || "", valor: valorInicial ? String(valorInicial) : "" }));
+    // Rifas (tablas) del cliente para elegir la del sorteo. null = cargando.
+    const [rifas, setRifas] = useState<Rifa[] | null>(null);
+    const [errorRifas, setErrorRifas] = useState<string | null>(null);
     // Modalidad: en un sorteo NUEVO la decide quien abre el formulario; al
     // EDITAR manda la guardada (un instantáneo sigue siéndolo y un programado
     // nunca se vuelve instantáneo por abrirse desde otra pantalla). El
@@ -234,7 +243,7 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
                 setCarga({ tipo: "error", mensaje: "Este sorteo ya se publicó en algún grupo o cambió de estado: no se puede editar. Ábrelo en la vista previa." });
                 return;
             }
-            setForm(desdeConfig(r.data.config, { plantillaId: r.data.plantilla_id || "" }));
+            setForm(desdeConfig(r.data.config, { plantillaId: r.data.plantilla_id || "", tablaId: r.data.tabla_id || "" }));
             setCarga({ tipo: "ok", sorteo: r.data });
         });
 
@@ -295,8 +304,24 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
             if (uid) listarDisenos(uid).then(setDisenos).catch(() => setDisenos([]));
         }
 
+        async function cargarRifas() {
+            try {
+                const r = await apiRifas.listar();
+                if (r.ok) {
+                    setRifas(r.rifas.filter(x => !x.archivada_en && x.activa !== false));
+                    setErrorRifas(null);
+                } else {
+                    setRifas([]);
+                    setErrorRifas("No pudimos cargar tus tablas. Cierra y vuelve a abrir el formulario.");
+                }
+            } catch {
+                setRifas([]);
+                setErrorRifas("No pudimos cargar tus tablas. Cierra y vuelve a abrir el formulario.");
+            }
+        }
+
         async function cargarTodo() {
-            await Promise.all([cargarGrupos(), cargarCatalogos()]);
+            await Promise.all([cargarGrupos(), cargarCatalogos(), cargarRifas()]);
         }
 
         cargarTodo();
@@ -397,7 +422,11 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
         const p = plantillas.find(x => x.id === id);
         if (!p) return cambiar("plantillaId", "");
         // La plantilla aporta la configuración; grupos y fecha se eligen aquí.
-        setForm(prev => desdeConfig(p.config, { plantillaId: id, grupos: prev.grupos, publicarEn: prev.publicarEn }));
+        // La rifa elegida se conserva (y con ella su precio).
+        setForm(prev => desdeConfig(p.config, {
+            plantillaId: id, grupos: prev.grupos, publicarEn: prev.publicarEn, tablaId: prev.tablaId,
+            ...(prev.tablaId ? { valor: prev.valor } : {})
+        }));
         // Una plantilla sin texto de mensaje toma el de su diseño.
         setSemillaMensaje(n => n + 1);
     };
@@ -550,8 +579,29 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
                 <div className={styles.fila}>
                     <Input label="Hora del sorteo" type="time" value={form.horaFin} onChange={e => cambiar("horaFin", e.target.value)} error={errorDe("hora_fin")} />
                     <Input label="Cierre de reservas" optional type="time" value={form.horaCierre} onChange={e => cambiar("horaCierre", e.target.value)} error={errorDe("hora_cierre")} hint="Si lo dejas vacío: 4 minutos antes del sorteo." />
-                    <Input label="Valor por número (COP)" type="number" min={0} value={form.valor} onChange={e => cambiar("valor", e.target.value)} error={errorDe("valor")} />
+                    <Input label="Valor por número (COP)" type="number" min={0} value={form.valor} readOnly={Boolean(form.tablaId)} onChange={e => cambiar("valor", e.target.value)} error={errorDe("valor")} hint={form.tablaId ? "Es el precio de la tabla elegida." : undefined} />
                 </div>
+
+                <Select
+                    label="Tabla (rifa) del sorteo"
+                    value={form.tablaId}
+                    onChange={e => {
+                        const elegida = (rifas || []).find(x => x.tabla_id === e.target.value);
+                        setForm(prev => ({ ...prev, tablaId: e.target.value, valor: elegida ? String(elegida.precio) : prev.valor }));
+                    }}
+                    error={errorDe("tabla_id") || errorRifas || undefined}
+                    hint="Los números del sorteo son los de esta tabla: los mismos que ves en Reservas."
+                >
+                    <option value="">{rifas === null ? "Cargando tablas…" : "Elige la tabla"}</option>
+                    {(rifas || []).map(r => (
+                        <option key={r.tabla_id} value={r.tabla_id}>
+                            {r.nombre} — ${r.precio.toLocaleString("es-CO")} ({r.libres}/{r.total} libres)
+                        </option>
+                    ))}
+                    {form.tablaId && rifas && !rifas.some(r => r.tabla_id === form.tablaId) && (
+                        <option value={form.tablaId}>Tabla no disponible (archivada o desactivada)</option>
+                    )}
+                </Select>
 
                 <section className={styles.seccion}>
                     <h3 className={styles.seccionTitulo}>Premios</h3>

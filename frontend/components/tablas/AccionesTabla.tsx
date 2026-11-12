@@ -16,6 +16,8 @@ import type { ConfirmacionReinicio, ResultadoReinicio, RevisionReinicio } from "
 
 interface Props {
     precio: number;
+    /** Rifa (tabla_id) de esta tabla: el sorteo nuevo se crea en ESTA rifa. */
+    tablaId?: string | null;
     /** Ya no se usan aquí (el diálogo de reinicio lee el estado real). */
     totalNumeros?: number;
     disponibles?: number;
@@ -35,6 +37,7 @@ interface Props {
 
 export default function AccionesTabla({
     precio,
+    tablaId = null,
     usuarioId,
     onRevisarReinicio,
     onReiniciar,
@@ -237,7 +240,7 @@ export default function AccionesTabla({
             )}
 
             {editandoAnuncio && (
-                <AnuncioSorteoModal precio={precio} onClose={() => setEditandoAnuncio(false)} />
+                <AnuncioSorteoModal precio={precio} tablaId={tablaId} onClose={() => setEditandoAnuncio(false)} />
             )}
 
         </>

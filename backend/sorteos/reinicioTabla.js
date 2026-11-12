@@ -13,15 +13,29 @@
 
 const supabase = require("../lib/supabase");
 const { anticipadasEnTabla } = require("./reservasAnticipadas");
+// 12/11/2026 — motor único de rifas: con MOTOR_RIFAS=nuevo el reinicio es el
+// de la RIFA del sorteo (rifa_reiniciar_sorteo, migración 054): solo sus
+// números, con las mismas protecciones que la 030 más las reservas
+// anticipadas (comprobadas DENTRO de la transacción) y números de otro
+// ciclo. La 030 (cuadrícula compartida) solo con MOTOR_RIFAS=legado.
+const { motorNuevo } = require("../rifas/motor");
+const numerosSorteo = require("../rifas/numerosSorteo");
 
 const SIN_MIGRACION = new Set(["42883", "42P01", "PGRST202", "PGRST205"]);
+
+// Error real de Supabase en el registro (auditoría 12/11: el 21000 de la 030
+// quedó oculto tras «inténtalo en unos minutos»).
+function registrarError(funcion, sorteo, error) {
+    console.error(`❌ [SORTEOS] ${funcion} (sorteo ${sorteo?.id || "?"}, rifa ${sorteo?.tabla_id || sorteo?.tablaId || "-"}, tabla ${sorteo?.tabla || "-"}): ${error.code || "sin código"} ${error.message || ""}`);
+}
 
 const NOMBRE_CLASE = {
     protegido_activo: "del sorteo activo",
     protegido_sin_sorteo: "que no se pueden atribuir con seguridad a un sorteo terminado",
     protegido_en_proceso: "con pago en proceso",
     protegido_desconocido: "en un estado desconocido",
-    protegido_anticipada: "reservados antes de publicar un sorteo programado"
+    protegido_anticipada: "reservados antes de publicar un sorteo programado",
+    protegido_otro_ciclo: "marcados con otro ciclo de la rifa (revisa la tabla)"
 };
 
 function describirGrupo(g) {
@@ -53,17 +67,19 @@ function explicarReinicio(r) {
 
 }
 
-// sorteo: { id, tabla, liberarBloqueados } (o la fila del sorteo, con config).
+// sorteo: { id, tabla, tabla_id, liberarBloqueados } (o la fila del sorteo, con config).
 async function llamar(usuarioId, sorteo, { huella = null, aplicar }) {
 
     const liberarBloqueados = sorteo.liberarBloqueados ?? sorteo.config?.tabla?.liberar_bloqueados === true;
+
+    if (motorNuevo() && !numerosSorteo.legible(sorteo)) return { ok: false, motivo: "sin_rifa" };
 
     // Reservas anticipadas (sorteo programado sin publicar): la 030 solo
     // protege identidades con evento activo y las archivaría. Mientras haya
     // alguna, ningún reinicio (revisión ni aplicación) sigue adelante. Si no
     // se puede comprobar, tampoco (falla cerrado). Una reserva hecha justo
     // después cambia la huella y la 030 rechaza la aplicación.
-    const anticipadas = await anticipadasEnTabla(usuarioId, sorteo.tabla);
+    const anticipadas = await anticipadasEnTabla(usuarioId, sorteo);
     if (!anticipadas.ok) return { ok: false, motivo: "error_supabase" };
     if (anticipadas.total > 0) {
         return {
@@ -79,19 +95,37 @@ async function llamar(usuarioId, sorteo, { huella = null, aplicar }) {
         };
     }
 
-    const { data, error } = await supabase.rpc("reiniciar_tabla_cliente", {
-        p_usuario: usuarioId,
-        p_tabla: sorteo.tabla,
-        p_huella: huella,
-        p_sorteo: sorteo.id || null,
-        p_aplicar: aplicar,
-        p_liberar_bloqueados: liberarBloqueados === true
-    });
+    const funcion = motorNuevo() ? "rifa_reiniciar_sorteo" : "reiniciar_tabla_cliente";
+    const { data, error } = motorNuevo()
+        ? await supabase.rpc(funcion, {
+            p_usuario: usuarioId,
+            p_tabla: numerosSorteo.fuenteDe(sorteo).tablaId,
+            p_huella: huella,
+            p_sorteo: sorteo.id || null,
+            p_aplicar: aplicar,
+            p_liberar_bloqueados: liberarBloqueados === true,
+            p_actor: { origen: "sistema", motivo: `reinicio al publicar sorteo ${sorteo.id || "sin sorteo"}` }
+        })
+        : await supabase.rpc(funcion, {
+            p_usuario: usuarioId,
+            p_tabla: sorteo.tabla,
+            p_huella: huella,
+            p_sorteo: sorteo.id || null,
+            p_aplicar: aplicar,
+            p_liberar_bloqueados: liberarBloqueados === true
+        });
 
     if (error) {
-        if (SIN_MIGRACION.has(error.code)) return { ok: false, motivo: "migracion_pendiente", migracion: "030_reinicio_tabla_seguro.sql" };
-        console.error("❌ [SORTEOS] error en el reinicio de la tabla:", error.code || error.message);
-        return { ok: false, motivo: "error_supabase" };
+        registrarError(funcion, sorteo, error);
+        if (SIN_MIGRACION.has(error.code)) {
+            return { ok: false, motivo: "migracion_pendiente", migracion: motorNuevo() ? "054_sorteos_por_rifa.sql" : "030_reinicio_tabla_seguro.sql", codigo: error.code };
+        }
+        return { ok: false, motivo: "error_supabase", codigo: error.code || null, error: error.message || null };
+    }
+
+    // La rifa no existe o está archivada: nada que revisar ni aplicar.
+    if (data && data.ok === false && (data.motivo === "rifa_no_encontrada" || data.motivo === "rifa_archivada")) {
+        return { ok: false, motivo: data.motivo };
     }
 
     return { ok: true, data };
@@ -145,10 +179,11 @@ async function aplicarReinicio(usuarioId, sorteo, huella) {
 
 // Números del cliente en estado «bloqueado» (bloqueados a mano). Solo
 // lectura. -> { ok, numeros } | { ok: false }
-async function bloqueadosDeTabla(usuarioId, tabla) {
-    const { data, error } = await supabase.from(tabla).select("numero").eq("usuario_id", usuarioId).eq("estado", "bloqueado");
-    if (error) return { ok: false };
-    return { ok: true, numeros: (data || []).map(f => f.numero) };
+// fuente: el sorteo, { tablaId, tabla } o (legado) el nombre de la cuadrícula.
+async function bloqueadosDeTabla(usuarioId, fuente) {
+    const lectura = await numerosSorteo.leerFilas(usuarioId, fuente);
+    if (!lectura.ok) return { ok: false };
+    return { ok: true, numeros: lectura.filas.filter(f => f.estado === "bloqueado").map(f => f.numero) };
 }
 
 // La tabla TAL COMO LA DEJA LA 030 (vista previa e imagen del anuncio): todo

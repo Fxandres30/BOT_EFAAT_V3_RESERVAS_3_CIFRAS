@@ -1,59 +1,36 @@
 // ==========================================================================
-// repo/tablaEvento.js — SOLO LECTURA de la tabla de reservas REAL del
-// evento (evento.tabla: "reservas_dos_cifras" / "5k_15k_reservas_2_cifras",
-// ver bot/funciones/eventos/configEvento.js), para INITIAL_TABLE (Fase 5).
+// repo/tablaEvento.js — SOLO LECTURA de los números de la tabla de un
+// sorteo para la IMAGEN (publicar, Compartir, imprimir) y la vista previa.
 //
-// Mismo patrón exacto que repo/reservasActividad.js: Automation Engine
-// consulta DIRECTAMENTE la tabla EXISTENTE vía Supabase, sin pasar por
-// bot/ — el Automation Engine nunca requiere nada de bot/ (arquitectura
-// confirmada por tests/automation/eventSessions.test.js "extra"/"extra2" y
-// tests/scheduler/schedulerAutomation.test.js #19). Es la misma consulta
-// que ya hace bot/funciones/consultas/consultarDisponibilidad.js (mismo
-// select, mismo criterio libre/ocupado) — duplicada aquí a propósito,
-// nunca importada desde bot/, para no cruzar esa frontera.
+// 12/11/2026 — motor único de rifas: los números salen de
+// rifas/numerosSorteo.js, la MISMA fuente que Reservas: numeros_rifa por
+// usuario_id + tabla_id (MOTOR_RIFAS=nuevo). La cuadrícula física antigua
+// (evento.tabla) solo con MOTOR_RIFAS=legado. Nunca se importa nada de bot/
+// (frontera del Automation Engine): rifas/ no es bot/.
 // ==========================================================================
 
-const supabase = require("../../lib/supabase");
+const numerosSorteo = require("../../rifas/numerosSorteo");
+const { motorNuevo } = require("../../rifas/motor");
 
-// obtenerNumeros(nombreTabla, usuarioId) -> { numerosDisponibles, numerosOcupados, numerosPagados }
-// numerosPagados es un subconjunto de numerosOcupados: la imagen de la tabla
-// los pinta como «Pagado», igual que Tablas.
+// obtenerNumeros(fuente, usuarioId) -> { numerosDisponibles, numerosOcupados, numerosPagados }
+//   fuente: el sorteo programado, la fila de eventos_bot o { tablaId, tabla }
+//           (un texto suelto es una cuadrícula antigua: solo motor legado).
+// numerosPagados ⊂ numerosOcupados (la imagen los pinta como «Pagado»).
 //
-// nombreTabla es SIEMPRE evento.tabla (el nombre real de la tabla de
-// reservas de ESTE evento) — nunca inventado, nunca hardcodeado aquí.
-//
-// SEGURIDAD (2026-10-21): la tabla física la comparten todos los clientes
-// (100 filas por usuario_id). Antes se leía entera y la imagen de un
-// cliente mezclaba las cuadrículas de todos. usuarioId (el dueño del
-// evento, evento.usuario_id) es OBLIGATORIO: sin él no se devuelve nada.
-async function obtenerNumeros(nombreTabla, usuarioId) {
+// SEGURIDAD: usuarioId (el dueño) es OBLIGATORIO. Con el motor de rifas,
+// sin tabla_id se LANZA un error: nunca se pinta la tabla de otra rifa.
+async function obtenerNumeros(fuente, usuarioId) {
 
-    if (!nombreTabla || !usuarioId) {
+    const f = numerosSorteo.fuenteDe(fuente);
+
+    // Motor legado: como siempre, sin dueño o sin tabla no hay números.
+    if (!motorNuevo() && (!f.tabla || !usuarioId)) {
         return { numerosDisponibles: [], numerosOcupados: [], numerosPagados: [] };
     }
 
-    const { data, error } = await supabase
-        .from(nombreTabla)
-        .select("numero, estado")
-        .eq("usuario_id", usuarioId)
-        .order("numero", { ascending: true });
+    if (!usuarioId) throw Object.assign(new Error("Sin dueño de la rifa no se leen números."), { code: "sin_cliente" });
 
-    if (error) throw error;
-
-    const filas = data || [];
-
-    const numerosDisponibles = filas
-        .filter(r => r.estado === "libre")
-        .map(r => r.numero);
-
-    const numerosOcupados = filas
-        .filter(r => r.estado !== "libre")
-        .map(r => r.numero);
-
-    const numerosPagados = filas
-        .filter(r => r.estado === "pagado")
-        .map(r => r.numero);
-
+    const { numerosDisponibles, numerosOcupados, numerosPagados } = await numerosSorteo.numerosImagen(usuarioId, f);
     return { numerosDisponibles, numerosOcupados, numerosPagados };
 
 }

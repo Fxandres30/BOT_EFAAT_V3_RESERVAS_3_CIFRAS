@@ -338,8 +338,26 @@ async function vincularSorteoDetectado(usuarioId, eventoId, { cuentas } = {}) {
 
     // La tabla del sorteo debe ser la configurada hoy para su precio (la que
     // usará el publicador): si no, se dice y no se crea nada.
-    const conf = await tablasCliente.obtenerConfiguracionCliente(usuarioId, activo.valor);
-    if (!conf || conf.tabla !== activo.tabla) return falla("tabla_distinta", { mensaje: `La tabla configurada para $${activo.valor} ya no es la de este sorteo (${activo.tabla}): no se puede gestionar desde el panel.` });
+    // Motor único de rifas (12/11/2026): la programación hereda la RIFA del
+    // sorteo detectado (eventos_bot.tabla_id); sin ella no se crea nada (la
+    // 054 rechaza en la base cualquier programación sin rifa).
+    let conf;
+    if (require("../rifas/motor").motorNuevo()) {
+        if (!activo.tabla_id) return falla("tabla_distinta", { mensaje: "Este sorteo no tiene una tabla (rifa) asignada: asígnala en Tablas antes de gestionarlo desde el panel." });
+        let rifa;
+        try {
+            rifa = await require("../rifas/numerosSorteo").rifaDe(usuarioId, { tablaId: activo.tabla_id });
+        } catch (e) {
+            return falla("error_supabase", { error: e.message });
+        }
+        if (!rifa || Number(rifa.precio) !== Number(String(activo.valor).replace(/[^0-9]/g, ""))) {
+            return falla("tabla_distinta", { mensaje: `La tabla (rifa) de este sorteo ya no existe o no es de $${activo.valor}: no se puede gestionar desde el panel.` });
+        }
+        conf = { tabla: activo.tabla, cifras: rifa.cifras, cantidad: rifa.cantidad };
+    } else {
+        conf = await tablasCliente.obtenerConfiguracionCliente(usuarioId, activo.valor);
+        if (!conf || conf.tabla !== activo.tabla) return falla("tabla_distinta", { mensaje: `La tabla configurada para $${activo.valor} ya no es la de este sorteo (${activo.tabla}): no se puede gestionar desde el panel.` });
+    }
 
     // Todas las filas ACTIVAS del sorteo (sus grupos), por identidad.
     const { data: filas, error } = await supabase.from("eventos_bot").select("*")
@@ -393,6 +411,7 @@ async function vincularSorteoDetectado(usuarioId, eventoId, { cuentas } = {}) {
         cuentas_snapshot: snapshot,
         plantilla_id: null,
         tabla: activo.tabla,
+        tabla_id: activo.tabla_id ?? null,
         cifras: conf.cifras,
         cantidad_numeros: activo.cantidad_numeros || conf.cantidad,
         publicar_en: config.publicar_en,

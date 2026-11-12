@@ -39,6 +39,11 @@
 // ==========================================================================
 
 const repo = require("./repo");
+// Motor único de rifas (12/11/2026): los números de un sorteo son los de SU
+// rifa (tabla_id); con MOTOR_RIFAS=legado, los de su cuadrícula antigua.
+const numerosSorteo = require("../rifas/numerosSorteo");
+const { motorNuevo } = require("../rifas/motor");
+const claveTabla = (s) => { const f = numerosSorteo.fuenteDe(s); return motorNuevo() ? f.tablaId : f.tabla; };
 const reservasAnticipadas = require("./reservasAnticipadas");
 const { fechaSorteoDe, instanteBogota } = require("./validar");
 const { legible } = require("./disponibilidad");
@@ -86,13 +91,18 @@ async function cargarContexto(usuarioId, sorteos) {
 
     const numeros = [];
     let numerosOk = true;
+    // Una lectura por rifa (o cuadrícula, en legado). Un sorteo sin rifa no
+    // puede tener números en el motor de rifas: no hay nada que leer.
     const porTabla = new Map();
     for (const s of sorteos) {
-        if (!s.tabla || !s.identidad_evento_real) continue;
-        porTabla.set(s.tabla, [...(porTabla.get(s.tabla) || []), s.identidad_evento_real]);
+        const clave = claveTabla(s);
+        if (!clave || !s.identidad_evento_real) continue;
+        const previo = porTabla.get(clave) || { fuente: numerosSorteo.fuenteDe(s), ids: [] };
+        previo.ids.push(s.identidad_evento_real);
+        porTabla.set(clave, previo);
     }
-    for (const [tabla, ids] of porTabla) {
-        const r = await repo.numerosPorIdentidad(usuarioId, tabla, [...new Set(ids)]);
+    for (const [tabla, { fuente, ids }] of porTabla) {
+        const r = await repo.numerosPorIdentidad(usuarioId, fuente, [...new Set(ids)]);
         if (!r.ok) numerosOk = false;
         else numeros.push(...r.data.map(n => ({ ...n, tabla })));
     }
@@ -124,7 +134,7 @@ function propiosDe(sorteo, grupos, ctx) {
 
     return {
         eventos: ctx.eventos.filter(e => e.identidad_evento_real === identidad),
-        numeros: ctx.numeros.filter(n => n.tabla === sorteo.tabla && n.identidad_evento_real === identidad)
+        numeros: ctx.numeros.filter(n => n.tabla === claveTabla(sorteo) && n.identidad_evento_real === identidad)
     };
 
 }

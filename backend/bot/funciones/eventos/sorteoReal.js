@@ -55,6 +55,17 @@ function claveSorteo(evento) {
 // identidad de cada fila de la cuadrícula del tenant.
 async function leerTablaDelSorteo(evento) {
 
+    // Motor único de rifas (12/11/2026): los números del sorteo son los de
+    // SU rifa (eventos_bot.tabla_id), la misma fuente que Reservas. Sin rifa
+    // no se lee nada (ok=false: nunca se cierra ni se recuerda con la tabla
+    // de otro sorteo). La cuadrícula antigua solo con MOTOR_RIFAS=legado.
+    if (require("../../../rifas/motor").motorNuevo()) {
+        if (!evento?.usuario_id) return { ok: false, error: "evento sin dueño", filas: [] };
+        const lectura = await require("../../../rifas/numerosSorteo").leerFilas(evento.usuario_id, evento);
+        if (!lectura.ok) return { ok: false, error: lectura.error || lectura.motivo, filas: [] };
+        return { ok: true, filas: lectura.filas, sinIdentidad: false };
+    }
+
     if (!evento?.tabla) return { ok: false, error: "evento sin tabla", filas: [] };
 
     const construir = (conIdentidad) => {

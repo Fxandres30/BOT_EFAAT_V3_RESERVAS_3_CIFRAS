@@ -14,6 +14,8 @@ import styles from "./AnuncioSorteoModal.module.css";
 
 interface Props {
     precio: number;
+    /** Rifa (tabla_id) de la tabla abierta: los sorteos nuevos se crean en ella. */
+    tablaId?: string | null;
     onClose: () => void;
 }
 
@@ -63,7 +65,7 @@ const MODALIDADES: { valor: ModalidadSorteo; titulo: string; icono: typeof Zap; 
 //      sorteo» y «Crear sorteo nuevo», que pide elegir instantáneo o
 //      programado antes de abrir el formulario.
 // Si algo no carga, error con «Reintentar»: nunca un formulario vacío.
-export default function AnuncioSorteoModal({ precio, onClose }: Props) {
+export default function AnuncioSorteoModal({ precio, tablaId = null, onClose }: Props) {
 
     const [paso, setPaso] = useState<Paso>({ tipo: "buscando" });
     const [intento, setIntento] = useState(0);
@@ -81,12 +83,15 @@ export default function AnuncioSorteoModal({ precio, onClose }: Props) {
             if (!vivo) return;
 
             if (!activos.ok) return setPaso({ tipo: "error", mensaje: describirError(activos) });
-            if (activos.data.length) return setPaso({ tipo: "activo", eventoId: activos.data[0].id });
+            // Con rifa: solo el sorteo de ESTA rifa (dos rifas pueden tener el
+            // mismo precio). Sin rifa (motor anterior): por precio, como antes.
+            const activosDeTabla = tablaId ? activos.data.filter(a => a.tabla_id === tablaId) : activos.data;
+            if (activosDeTabla.length) return setPaso({ tipo: "activo", eventoId: activosDeTabla[0].id });
 
             if (!lista.ok) return setPaso({ tipo: "error", mensaje: describirError(lista) });
 
             const delPrecio = lista.data
-                .filter(s => Number(s.config.valor) === precio && s.estado !== "cancelado")
+                .filter(s => (tablaId ? s.tabla_id === tablaId : Number(s.config.valor) === precio) && s.estado !== "cancelado")
                 .sort((a, b) => new Date(b.publicar_en).getTime() - new Date(a.publicar_en).getTime());
 
             if (!delPrecio.length) return setPaso({ tipo: "sin_editable", publicado: null });
@@ -112,7 +117,7 @@ export default function AnuncioSorteoModal({ precio, onClose }: Props) {
 
         return () => { vivo = false; };
 
-    }, [precio, intento]);
+    }, [precio, tablaId, intento]);
 
     const textoPrecio = `$${precio.toLocaleString("es-CO")}`;
     const enGestion = paso.tipo === "buscando" || paso.tipo === "error" || paso.tipo === "sin_editable" || paso.tipo === "modalidad";
@@ -235,6 +240,7 @@ export default function AnuncioSorteoModal({ precio, onClose }: Props) {
                 // guardada (FormularioSorteo y el backend la conservan).
                 instantaneo={paso.tipo === "formulario" && !paso.sorteoId && paso.modalidad === "instantaneo"}
                 valorInicial={precio}
+                tablaIdInicial={tablaId}
                 onClose={onClose}
                 onGuardado={s => setPaso({ tipo: "vista_previa", sorteoId: s.id })}
             />

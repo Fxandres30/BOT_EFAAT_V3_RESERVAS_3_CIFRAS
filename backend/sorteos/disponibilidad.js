@@ -30,6 +30,7 @@
 
 const supabase = require("../lib/supabase");
 const { numerosEsperados } = require("../bot/funciones/eventos/sorteoReal");
+const numerosSorteo = require("../rifas/numerosSorteo");
 const { instanteBogota, partesBogota, fechaSorteoDe } = require("./validar");
 
 const formatoCorto = new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", dateStyle: "short", timeStyle: "short" });
@@ -73,24 +74,30 @@ function seguiraAbierto(evento, momento, ahora) {
 //   - un número tiene varias filas (no se sabe cuál vale: integridad).
 // El reinicio («Reiniciar la tabla antes de publicar») lo decide y lo
 // protege reinicioTabla.js / la 030, no esta función.
-async function revisarTabla({ usuarioId, tabla, cifras, cantidad, identidad, seReiniciara = false }) {
+// 12/11/2026 — motor único de rifas: los números son los de la RIFA del
+// sorteo (tablaId), leídos con rifas/numerosSorteo.js, la misma fuente que
+// Reservas. `tabla` (cuadrícula antigua) solo cuenta con MOTOR_RIFAS=legado.
+async function revisarTabla({ usuarioId, tabla, tablaId = null, cifras, cantidad, identidad, seReiniciara = false }) {
 
     const bloqueos = [];
     const avisos = [];
 
-    const { data, error } = await supabase
-        .from(tabla)
-        .select("numero, estado, identidad_evento_real")
-        .eq("usuario_id", usuarioId);
+    const lectura = await numerosSorteo.leerFilas(usuarioId, { tablaId, tabla });
 
-    if (error) {
-        console.error("❌ [SORTEOS] no se pudo leer la tabla de números:", error.message);
-        bloqueos.push("No pudimos revisar la tabla de números en este momento. Inténtalo de nuevo en unos minutos.");
+    if (!lectura.ok) {
+        console.error(`❌ [SORTEOS] no se pudo leer la tabla de números (${lectura.motivo}):`, lectura.error);
+        bloqueos.push(lectura.motivo === "sin_rifa"
+            ? "Este sorteo no tiene una tabla (rifa) asignada. Edítalo y elige su tabla antes de publicar."
+            : lectura.motivo === "rifa_no_encontrada"
+                ? "La tabla (rifa) de este sorteo ya no existe en tu cuenta. Edítalo y elige otra."
+                : "No pudimos revisar la tabla de números en este momento. Inténtalo de nuevo en unos minutos.");
         return { bloqueos, avisos, resumen: null };
     }
 
-    const esperados = new Set(numerosEsperados({ cifras, cantidad_numeros: cantidad }));
-    const filas = (data || []).filter(f => esperados.has(String(f.numero)));
+    // La rifa manda sobre su tamaño (motor nuevo); si no, lo guardado.
+    const tam = lectura.rifa ? { cifras: lectura.rifa.cifras, cantidad_numeros: lectura.rifa.cantidad } : { cifras, cantidad_numeros: cantidad };
+    const esperados = new Set(numerosEsperados(tam));
+    const filas = lectura.filas.filter(f => esperados.has(String(f.numero)));
     const presentes = new Set(filas.map(f => String(f.numero)));
 
     const porNumero = new Map();

@@ -92,6 +92,11 @@ async function reinicioTrasReemplazo(usuarioId, sorteo, reinicio, porSorteo) {
 
 }
 const tablasCliente = require("../bot/funciones/eventos/tablasCliente");
+// Motor único de rifas (12/11/2026): todo sorteo pertenece a UNA rifa
+// (tabla_id) y sus números son los de esa rifa (rifas/numerosSorteo.js).
+const { motorNuevo } = require("../rifas/motor");
+const { esUuid } = require("../rifas/formato");
+const numerosSorteo = require("../rifas/numerosSorteo");
 // Sorteo ACTIVO de una tabla, sea cual sea su origen (bot o panel).
 const gestionEventos = require("./gestionEventos");
 const sorteosActivos = require("./sorteosActivos");
@@ -131,15 +136,48 @@ async function resolverDiseno(usuarioId, eleccion, precio) {
 // Valida todo lo que depende de datos del cliente: grupos autorizados,
 // cuentas activas propias y plantilla propia. `anterior`: el sorteo que se
 // edita (su mensaje guardado se conserva si el panel no lo cambia).
+// Rifa elegida para el sorteo: del cliente, activa, sin archivar y del
+// MISMO precio. -> { rifa } | { error: {campo, mensaje} } | { falla }
+async function rifaDelSorteo(usuarioId, tablaId, valor) {
+    if (!tablaId) return { error: { campo: "tabla_id", mensaje: "Elige la tabla (rifa) de este sorteo." } };
+    if (!esUuid(tablaId)) return { error: { campo: "tabla_id", mensaje: "Tabla (rifa) no válida." } };
+    let rifa;
+    try {
+        rifa = await numerosSorteo.rifaDe(usuarioId, { tablaId });
+    } catch (e) {
+        return { falla: falla("error_supabase", { error: e.message }) };
+    }
+    if (!rifa) return { error: { campo: "tabla_id", mensaje: "La tabla elegida no existe en tu cuenta." } };
+    if (rifa.archivada_en) return { error: { campo: "tabla_id", mensaje: `La tabla «${rifa.nombre}» está archivada: restáurala o elige otra.` } };
+    if (rifa.activa === false) return { error: { campo: "tabla_id", mensaje: `La tabla «${rifa.nombre}» está desactivada: actívala o elige otra.` } };
+    if (valor && Number(rifa.precio) !== Number(valor)) {
+        return { error: { campo: "valor", mensaje: `El valor por número (${Number(valor).toLocaleString("es-CO")}) no es el de la tabla «${rifa.nombre}» (${Number(rifa.precio).toLocaleString("es-CO")}).` } };
+    }
+    return { rifa };
+}
+
 async function prepararSorteo(usuarioId, entrada, anterior = null) {
 
-    const v = validarSorteo(entrada, { ahora: reloj.ahora() });
+    const nuevo = motorNuevo();
+    const v = validarSorteo(entrada, { ahora: reloj.ahora(), porRifa: nuevo });
     const errores = [...v.errores];
 
-    // La tabla física sale de la configuración DE ESTE cliente
-    // (tablas_cliente); validarSorteo solo conoce los precios base.
+    // RIFA DEL SORTEO (obligatoria y explícita, también al editar: la elegida
+    // en el formulario o, si el panel no la envía, la que ya tenía). Nunca se
+    // deduce del precio: dos rifas pueden tener el mismo precio. La 054
+    // rechaza en la base cualquier sorteo sin rifa válida.
+    const rifaRes = await rifaDelSorteo(usuarioId, entrada?.tabla_id ?? anterior?.tabla_id ?? null, v.config.valor);
+    if (rifaRes.falla) return rifaRes.falla;
+    if (rifaRes.error) errores.push(rifaRes.error);
+    const rifa = rifaRes.rifa;
+
+    // Cuadrícula antigua: con el motor nuevo es solo una etiqueta histórica
+    // (nunca se leen números de ella); con MOTOR_RIFAS=legado manda, como antes.
     let tablaCliente = null;
-    if (v.tabla) {
+    if (nuevo) {
+        const legado = v.config.valor ? await tablasCliente.obtenerConfiguracionCliente(usuarioId, v.config.valor) : null;
+        if (rifa) tablaCliente = { tabla: legado?.tabla || "numeros_rifa", cifras: rifa.cifras, cantidad: rifa.cantidad };
+    } else if (v.tabla) {
         tablaCliente = await tablasCliente.obtenerConfiguracionCliente(usuarioId, v.config.valor);
         if (!tablaCliente) errores.push({ campo: "valor", mensaje: "Ese valor no tiene una tabla de números configurada en tu cuenta." });
     }
@@ -206,6 +244,7 @@ async function prepararSorteo(usuarioId, entrada, anterior = null) {
             cuentas_snapshot: cuentasSnapshot,
             plantilla_id: plantillaId,
             tabla: tablaCliente.tabla,
+            tabla_id: rifa.id,
             cifras: tablaCliente.cifras,
             cantidad_numeros: tablaCliente.cantidad,
             publicar_en: config.publicar_en,
@@ -294,8 +333,12 @@ async function vistaPrevia(usuarioId, id) {
         if (!rr.ok) {
             reinicio = { posible: false, huella: null, liberables: 0, protegidos: 0, conservados: 0, liberar_bloqueados: false, se_liberarian: [], se_conservan: [], bloqueos: [] };
             bloqueos.push(rr.motivo === "migracion_pendiente"
-                ? "El reinicio seguro de la tabla todavía no está disponible (falta la migración 030). Edita el sorteo y elige «Conservar la tabla actual», o espera a que se active."
-                : "No pudimos revisar la tabla para reiniciarla. Inténtalo de nuevo en unos minutos.");
+                ? `El reinicio seguro de la tabla todavía no está disponible (falta la migración ${String(rr.migracion || "030").slice(0, 3)}). Edita el sorteo y elige «Conservar la tabla actual», o espera a que se active.`
+                : rr.motivo === "sin_rifa"
+                    ? "Este sorteo no tiene una tabla (rifa) asignada: edítalo y elige su tabla antes de reiniciarla."
+                    : rr.motivo === "rifa_no_encontrada" || rr.motivo === "rifa_archivada"
+                        ? "La tabla (rifa) de este sorteo ya no existe o está archivada: edítalo y elige otra."
+                        : `No pudimos revisar la tabla para reiniciarla (${rr.codigo || rr.motivo}). Inténtalo de nuevo en unos minutos; si se repite, avisa a soporte con este código.`);
         } else {
             reinicio = rr.data;
             let porSorteo = rr.porSorteo;
@@ -328,7 +371,7 @@ async function vistaPrevia(usuarioId, id) {
     const seReiniciara = !!reinicio?.posible || !!reinicio?.diferido;
 
     const tabla = await revisarTabla({
-        usuarioId, tabla: sorteo.tabla, cifras: sorteo.cifras, cantidad: sorteo.cantidad_numeros, identidad: sorteo.identidad_evento_real, seReiniciara
+        usuarioId, tabla: sorteo.tabla, tablaId: sorteo.tabla_id ?? null, cifras: sorteo.cifras, cantidad: sorteo.cantidad_numeros, identidad: sorteo.identidad_evento_real, seReiniciara
     });
     bloqueos.push(...tabla.bloqueos);
     avisos.push(...tabla.avisos);
@@ -340,12 +383,21 @@ async function vistaPrevia(usuarioId, id) {
     // pueden leer, no se arriesga una imagen que no corresponda. Si el
     // reinicio YA se hizo (reiniciado_en: reintento tras un fallo), no se
     // repetirá: se pinta la tabla real de ahora.
-    const numeros = await tablaEvento.obtenerNumeros(sorteo.tabla, usuarioId);
+    // Misma fuente que Reservas: la rifa del sorteo (tabla_id). Sin rifa (o
+    // sin poder leerla) no se pinta ninguna tabla: queda bloqueado arriba.
+    let numeros;
+    try {
+        numeros = await tablaEvento.obtenerNumeros(sorteo, usuarioId);
+    } catch (e) {
+        console.error(`❌ [SORTEOS] vista previa ${sorteo.id}: no se pudieron leer los números de su rifa (${e.code || ""} ${e.message})`);
+        numeros = { numerosDisponibles: [], numerosOcupados: [], numerosPagados: [] };
+        if (!tabla.bloqueos.length) bloqueos.push("No pudimos leer los números de la tabla de este sorteo. Inténtalo de nuevo en unos minutos.");
+    }
     let numerosVista = numeros;
     if (seReiniciara && !sorteo.config.tabla?.reiniciado_en) {
         const conservados = sorteo.config.tabla?.liberar_bloqueados === true
             ? { ok: true, numeros: [] }
-            : await reinicioTabla.bloqueadosDeTabla(usuarioId, sorteo.tabla);
+            : await reinicioTabla.bloqueadosDeTabla(usuarioId, sorteo);
         if (!conservados.ok) bloqueos.push("No pudimos leer los números bloqueados de la tabla para mostrarla como quedará tras el reinicio. Inténtalo de nuevo en unos minutos.");
         numerosVista = reinicioTabla.numerosTrasReinicio(numeros, conservados.numeros || []);
     }
@@ -424,6 +476,8 @@ async function vistaPrevia(usuarioId, id) {
             huella_tabla: capturaProgramada.huellaNumeros(numerosVista),
             cantidad_numeros: sorteo.cantidad_numeros,
             tabla_fisica: sorteo.tabla,
+            // La rifa (fuente de los números de la vista previa y la imagen).
+            tabla_id: sorteo.tabla_id ?? null,
             cuentas: sorteo.cuentas_snapshot || [],
             reinicio,
             // Opción elegida en el formulario («Conservar la tabla actual» o
@@ -781,6 +835,7 @@ async function editar(usuarioId, id, entrada = {}) {
         const gruposDespues = p.grupos.map(g => g.grupo_id).sort().join(",");
         const cambia = p.fila.identidad_evento_real !== actual.data.identidad_evento_real
             || p.fila.tabla !== actual.data.tabla
+            || (p.fila.tabla_id ?? null) !== (actual.data.tabla_id ?? null)
             || gruposAntes !== gruposDespues
             || reservasAnticipadas.reinicioPendiente(p.fila.config);
         return cambia

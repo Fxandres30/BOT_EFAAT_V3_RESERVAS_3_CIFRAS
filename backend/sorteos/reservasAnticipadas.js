@@ -19,6 +19,10 @@
 
 const supabase = require("../lib/supabase");
 const { fechaSorteoDe, instanteBogota } = require("./validar");
+// 12/11/2026 — motor único de rifas: las reservas anticipadas están en la
+// RIFA del sorteo (numeros_rifa por tabla_id), no en la cuadrícula antigua.
+const numerosSorteo = require("../rifas/numerosSorteo");
+const { motorNuevo } = require("../rifas/motor");
 
 // Sorteos que todavía pueden publicarse: sus reservas no tienen sorteo
 // activo que las proteja (estadosProgramacion.js, fuente única F1-B).
@@ -54,12 +58,15 @@ async function sinEvento(usuarioId, sorteos) {
 
 // Sorteos programados del cliente que nunca llegaron a publicarse (estado
 // sin publicar y sin ningún evento con su identidad).
-async function sorteosSinPublicar(usuarioId) {
+// tablaId (motor nuevo): solo los programados de ESA rifa.
+async function sorteosSinPublicar(usuarioId, { tablaId = null } = {}) {
 
-    const { data, error } = await supabase.from("sorteos_programados")
-        .select("id, estado, tabla, identidad_evento_real, config")
+    let q = supabase.from("sorteos_programados")
+        .select("id, estado, tabla, tabla_id, identidad_evento_real, config")
         .eq("usuario_id", usuarioId)
         .in("estado", ESTADOS_PENDIENTES_DE_PUBLICAR);
+    if (tablaId) q = q.eq("tabla_id", tablaId);
+    const { data, error } = await q;
 
     if (error) return { ok: false, error };
 
@@ -69,21 +76,23 @@ async function sorteosSinPublicar(usuarioId) {
 
 // Números no libres de la tabla que pertenecen a sorteos sin publicar del
 // cliente. sorteos: lista ya leída (p. ej. un solo sorteo); si se omite, se
-// leen todos los sin publicar.
+// leen todos los sin publicar (de ESA rifa con el motor nuevo).
+// fuente: el sorteo, { tablaId, tabla } o (legado) el nombre de la cuadrícula.
 // { ok, total, porSorteo: [{ sorteoId, nombre, identidad, cantidad, reservados, pagados, otros }] }
-async function anticipadasEnTabla(usuarioId, tabla, { sorteos = null } = {}) {
+async function anticipadasEnTabla(usuarioId, fuente, { sorteos = null } = {}) {
 
-    if (!usuarioId || !tabla) return { ok: false };
+    const f = numerosSorteo.fuenteDe(fuente);
+    if (!usuarioId || !numerosSorteo.legible(f)) return { ok: false };
 
-    const lista = sorteos ? await sinEvento(usuarioId, sorteos) : await sorteosSinPublicar(usuarioId);
+    const lista = sorteos
+        ? await sinEvento(usuarioId, sorteos)
+        : await sorteosSinPublicar(usuarioId, { tablaId: motorNuevo() ? f.tablaId : null });
     if (!lista.ok) return { ok: false };
 
     const porIdentidad = new Map(lista.data.filter(s => s.identidad_evento_real).map(s => [s.identidad_evento_real, s]));
     if (!porIdentidad.size) return { ok: true, total: 0, porSorteo: [] };
 
-    const { data, error } = await supabase.from(tabla)
-        .select("numero, estado, identidad_evento_real")
-        .eq("usuario_id", usuarioId)
+    const { data, error } = await numerosSorteo.consulta(usuarioId, f, "numero, estado, identidad_evento_real")
         .in("identidad_evento_real", [...porIdentidad.keys()])
         .neq("estado", "libre");
 
@@ -108,7 +117,7 @@ async function anticipadasEnTabla(usuarioId, tabla, { sorteos = null } = {}) {
 
 // Reservas anticipadas de UN sorteo (en su tabla).
 function anticipadasDelSorteo(usuarioId, sorteo) {
-    return anticipadasEnTabla(usuarioId, sorteo.tabla, { sorteos: [sorteo] });
+    return anticipadasEnTabla(usuarioId, sorteo, { sorteos: [sorteo] });
 }
 
 function describirAnticipadas(r) {

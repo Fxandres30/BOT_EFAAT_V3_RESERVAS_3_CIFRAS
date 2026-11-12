@@ -27,6 +27,9 @@ export interface DisenoSorteo {
 
 export interface ConfigSorteo {
     modalidad: string;
+    /** Rifa (tabla) del sorteo: OBLIGATORIA. Sus números son los de esa rifa
+     *  (motor único, 12/11/2026); el precio es el de la rifa. */
+    tabla_id?: string | null;
     nombre: string;
     /** Lotería del calendario (opcional: un nombre personalizado no la lleva). */
     loteria_id?: string | null;
@@ -139,6 +142,8 @@ export interface Sorteo {
     config: ConfigSorteo;
     cuentas_snapshot: CuentaPago[];
     tabla: string;
+    /** Rifa del sorteo (null solo en borradores anteriores al 12/11/2026). */
+    tabla_id?: string | null;
     cifras: number;
     cantidad_numeros: number;
     publicar_en: string;

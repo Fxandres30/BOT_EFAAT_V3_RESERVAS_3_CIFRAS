@@ -29,6 +29,25 @@ const repoSorteos = require("../sorteos/repo");
 // (a lo sumo un evento "activo" por tabla+usuario) — reproducido aquí para
 // que el endpoint manual pueda resolver el grupo real sin que el panel
 // tenga que conocerlo de antemano.
+// Motor único de rifas (12/11/2026): el sorteo activo de un PRECIO del
+// cliente (la 043 admite uno solo por precio y cliente) y, con él, SU rifa
+// (eventos_bot.tabla_id). Antes se buscaba por la cuadrícula física, que
+// comparten varios precios: Compartir $2.000 podía tomar el sorteo de $1.000.
+// Con MOTOR_RIFAS=legado, como siempre (por la tabla configurada).
+const { motorNuevo } = require("../rifas/motor");
+const { precioDe } = require("../shared/eventos/unSorteoPorPrecio");
+const { finDelEvento } = require("../shared/eventos/estadosGestion");
+
+async function eventoActivoDelPrecio(usuarioId, precio, config) {
+    if (!motorNuevo()) return config ? obtenerEventoActivoReal(config.tabla, usuarioId) : null;
+    const { data, error } = await supabase.from("eventos_bot").select("*")
+        .eq("usuario_id", usuarioId).eq("activo", true)
+        .order("creado_en", { ascending: false });
+    if (error) throw error;
+    // Sin rifa (tabla_id) no hay tabla que mostrar: se trata como sin sorteo.
+    return (data || []).find(f => !finDelEvento(f) && precioDe(f.valor) === Number(precio) && f.tabla_id) || null;
+}
+
 async function obtenerEventoActivoReal(tabla, usuarioId) {
 
     const { data, error } = await supabase
@@ -96,8 +115,8 @@ const enviosEnCurso = new Set();
 async function tablaYEvento(usuarioId, precio) {
     if (!precioValido(precio)) return { status: 400, cuerpo: { ok: false, enviado: false, motivo: "faltan_parametros" } };
     const config = await obtenerConfiguracionCliente(usuarioId, Number(precio));
-    if (!config) return { status: 404, cuerpo: { ok: false, enviado: false, motivo: "tabla_no_configurada" } };
-    const evento = await obtenerEventoActivoReal(config.tabla, usuarioId);
+    if (!config && !motorNuevo()) return { status: 404, cuerpo: { ok: false, enviado: false, motivo: "tabla_no_configurada" } };
+    const evento = await eventoActivoDelPrecio(usuarioId, Number(precio), config);
     if (!evento) return { status: 404, cuerpo: { ok: false, enviado: false, motivo: "sin_evento_activo" } };
     return { config, evento };
 }
@@ -283,7 +302,7 @@ router.put("/compartir/destinos", exigirUsuario, async (req, res) => {
         // Sorteo del panel activo en la tabla: se cambian SUS grupos (misma
         // operación que «Editar»; también copia los destinos). No publica.
         const config = await obtenerConfiguracionCliente(usuarioId, Number(precio));
-        const evento = config ? await obtenerEventoActivoReal(config.tabla, usuarioId) : null;
+        const evento = await eventoActivoDelPrecio(usuarioId, Number(precio), config);
         const programacion = evento ? await gruposDeLaProgramacion(usuarioId, evento) : null;
         if (programacion) {
             const c = await gruposSorteo.cambiarGrupos(usuarioId, programacion.id, ids, { origen: "tablas" });
@@ -659,11 +678,11 @@ router.post("/compartir", exigirUsuario, async (req, res) => {
 
         const config = await obtenerConfiguracionCliente(usuarioId, precio);
 
-        if (!config) {
+        if (!config && !motorNuevo()) {
             return res.status(404).json({ enviado: false, motivo: "tabla_no_configurada" });
         }
 
-        const evento = await obtenerEventoActivoReal(config.tabla, usuarioId);
+        const evento = await eventoActivoDelPrecio(usuarioId, Number(precio), config);
 
         if (!evento) {
             return res.status(404).json({ enviado: false, motivo: "sin_evento_activo" });
@@ -773,6 +792,14 @@ function responderManual(res, r) {
 
 const NUMERO_VALIDO = /^\d{1,4}$/;
 
+// UN SOLO MOTOR (12/11/2026): con MOTOR_RIFAS=nuevo los números se operan
+// SOLO en la rifa (/rifas/:tabla_id/numero y /rifas/:tabla_id/lote). Estas
+// rutas por precio escriben en la cuadrícula antigua: aceptarlas dejaría dos
+// motores de reservas en paralelo (lo que Reservas no ve).
+const soloMotorLegado = (req, res, next) => (motorNuevo()
+    ? res.status(409).json({ ok: false, motivo: "motor_rifas", mensaje: "Esta cuenta usa el motor de rifas: opera los números desde la tabla (rifa) en Tablas." })
+    : next());
+
 function manejar(nombre, fn) {
     return async (req, res) => {
         try {
@@ -794,13 +821,13 @@ router.get("/contactos/buscar", exigirUsuario, manejar("buscar contactos", (req)
 
 // GET /tablas/:precio/numeros/:numero — estado real, sorteo, grupos,
 // acciones permitidas e historial (auditoría) del número.
-router.get("/:precio/numeros/:numero", exigirUsuario, manejar("contexto de número", (req) =>
+router.get("/:precio/numeros/:numero", exigirUsuario, soloMotorLegado, manejar("contexto de número", (req) =>
     reservaManual.contextoNumero({ usuarioId: req.usuarioId, precio: req.params.precio, numero: req.params.numero })
 ));
 
 // POST /tablas/:precio/numeros/:numero/reservar
 // { contactoId | nuevoContacto: { nombre, telefono }, eventoId | (sorteoProgramadoId + grupoId) | sinSorteo, motivo, observaciones, solicitudId }
-router.post("/:precio/numeros/:numero/reservar", exigirUsuario, manejar("reserva manual", (req) => {
+router.post("/:precio/numeros/:numero/reservar", exigirUsuario, soloMotorLegado, manejar("reserva manual", (req) => {
     const b = req.body || {};
     return reservaManual.reservarManual({
         usuarioId: req.usuarioId,
@@ -820,7 +847,7 @@ router.post("/:precio/numeros/:numero/reservar", exigirUsuario, manejar("reserva
 }));
 
 // POST /tablas/:precio/numeros/:numero/pagar — { metodoPago, observaciones, motivo, solicitudId }
-router.post("/:precio/numeros/:numero/pagar", exigirUsuario, manejar("pago manual", (req) => {
+router.post("/:precio/numeros/:numero/pagar", exigirUsuario, soloMotorLegado, manejar("pago manual", (req) => {
     const b = req.body || {};
     return reservaManual.pagarManual({
         usuarioId: req.usuarioId,
@@ -836,7 +863,7 @@ router.post("/:precio/numeros/:numero/pagar", exigirUsuario, manejar("pago manua
 
 // POST /tablas/:precio/numeros/:numero/liberar — { confirmar: true, motivo, observaciones, solicitudId }
 // Libera una reserva, anula un pago o desbloquea, según el estado real.
-router.post("/:precio/numeros/:numero/liberar", exigirUsuario, manejar("liberar número", (req) => {
+router.post("/:precio/numeros/:numero/liberar", exigirUsuario, soloMotorLegado, manejar("liberar número", (req) => {
     const b = req.body || {};
     return reservaManual.liberarManual({
         usuarioId: req.usuarioId,
@@ -856,7 +883,7 @@ router.post("/:precio/numeros/:numero/liberar", exigirUsuario, manejar("liberar 
 // otrosSorteoAutorizados: al LIBERAR, números de otro sorteo que el
 // administrador incluyó (pagar no lo necesita: una reserva válida se paga
 // venga de donde venga).
-router.post("/:precio/lote", exigirUsuario, manejar("operación por lote", (req) => {
+router.post("/:precio/lote", exigirUsuario, soloMotorLegado, manejar("operación por lote", (req) => {
     const b = req.body || {};
     return reservaManual.operarLote({
         accion: b.accion,
