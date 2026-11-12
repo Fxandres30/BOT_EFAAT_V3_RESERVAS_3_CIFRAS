@@ -166,7 +166,13 @@ async function prepararSorteo(usuarioId, entrada, anterior = null) {
     // en el formulario o, si el panel no la envía, la que ya tenía). Nunca se
     // deduce del precio: dos rifas pueden tener el mismo precio. La 054
     // rechaza en la base cualquier sorteo sin rifa válida.
-    const rifaRes = await rifaDelSorteo(usuarioId, entrada?.tabla_id ?? anterior?.tabla_id ?? null, v.config.valor);
+    // Con MOTOR_RIFAS=legado (vuelta atrás de emergencia) se conserva el
+    // comportamiento anterior: la rifa es opcional y, si llega, se valida y
+    // se guarda (la 054 la exige igualmente en la base).
+    const tablaIdPedida = entrada?.tabla_id ?? anterior?.tabla_id ?? null;
+    const rifaRes = nuevo || tablaIdPedida
+        ? await rifaDelSorteo(usuarioId, tablaIdPedida, v.config.valor)
+        : { rifa: null };
     if (rifaRes.falla) return rifaRes.falla;
     if (rifaRes.error) errores.push(rifaRes.error);
     const rifa = rifaRes.rifa;
@@ -244,7 +250,7 @@ async function prepararSorteo(usuarioId, entrada, anterior = null) {
             cuentas_snapshot: cuentasSnapshot,
             plantilla_id: plantillaId,
             tabla: tablaCliente.tabla,
-            tabla_id: rifa.id,
+            ...(rifa ? { tabla_id: rifa.id } : {}),
             cifras: tablaCliente.cifras,
             cantidad_numeros: tablaCliente.cantidad,
             publicar_en: config.publicar_en,
