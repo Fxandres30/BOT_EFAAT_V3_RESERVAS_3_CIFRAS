@@ -1,4 +1,23 @@
-import { toPng } from "html-to-image";
+import { toPng, getFontEmbedCSS } from "html-to-image";
+
+// Fuentes de la imagen (latencia, 14/11/2026). toPng incrusta en CADA captura
+// todas las @font-face de la página y las vuelve a descargar (cacheBust): 11
+// archivos por clic. Aquí se calcula ese MISMO CSS (getFontEmbedCSS es la
+// función que toPng usa por dentro, con las mismas opciones) una sola vez y se
+// le entrega ya hecho: la imagen es idéntica. Se recalcula si cambian las hojas
+// de estilo de la página o si falló.
+let fuentes: { clave: string; css: Promise<string> } | null = null;
+
+function cssDeFuentes(elemento: HTMLElement): Promise<string> {
+    const clave = Array.from(document.styleSheets).map(s => s.href || "inline").join("|");
+    if (!fuentes || fuentes.clave !== clave) {
+        const css = getFontEmbedCSS(elemento, { cacheBust: true });
+        const entrada = { clave, css };
+        css.catch(() => { if (fuentes === entrada) fuentes = null; });
+        fuentes = entrada;
+    }
+    return fuentes.css;
+}
 
 // Captura de la CUADRÍCULA de números de la pantalla Tablas
 // (components/tablas/Grid.tsx: el mismo `div` que ve el administrador, con
@@ -35,7 +54,10 @@ export async function capturarTabla(elemento: HTMLElement | null): Promise<strin
     const ancho = elemento.offsetWidth;
     const alto = elemento.offsetHeight;
 
+    const fontEmbedCSS = await cssDeFuentes(elemento);
+
     const dataUrl = await toPng(elemento, {
+        fontEmbedCSS,
         // Nítida en móviles sin pasar el límite de tamaño.
         pixelRatio: 2,
         cacheBust: true,

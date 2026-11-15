@@ -10,6 +10,7 @@
 | [LAUNCH_VISIBILITY.md](LAUNCH_VISIBILITY.md) | Qué se muestra y qué está oculto en el lanzamiento comercial, motivos e historial |
 | [LAUNCH_READINESS_AUDIT.md](LAUNCH_READINESS_AUDIT.md) | Fase 3: promesas de la landing frente al sistema, experiencia, navegación, candidatas y riesgos de lanzamiento |
 | [FEATURE_VISIBILITY_REGISTER.md](FEATURE_VISIBILITY_REGISTER.md) | Registro de cada funcionalidad oculta: archivos, estado, qué falta y cómo reactivarla |
+| [LATENCIA_BOTONES_TABLAS.md](LATENCIA_BOTONES_TABLAS.md) | Botones de Tablas (14/11): qué se optimizó, garantías de la imagen preparada, mediciones antes/después y la limitación conocida de la captura en dispositivos lentos |
 | [pruebas/LINEA_BASE.md](pruebas/LINEA_BASE.md) | Cómo ejecutar `npm test` de forma segura, línea base y caracterizaciones C1–C5 |
 
 ## Arquitectura

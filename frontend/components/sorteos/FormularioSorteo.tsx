@@ -42,6 +42,9 @@ interface Props {
     valorInicial?: number;
     /** Rifa (tabla) precargada al crear un sorteo nuevo desde su tabla. */
     tablaIdInicial?: string | null;
+    /** Detalle del sorteo a editar ya leído por quien abre el formulario
+     *  (Tablas → «Editar»): la primera carga lo usa en vez de pedirlo otra vez. */
+    sorteoInicial?: Sorteo | null;
     /** «Sorteo instantáneo»: sin hora de publicación; se publica al
      *  confirmarlo en la vista previa (publicar-ahora). */
     instantaneo?: boolean;
@@ -203,7 +206,7 @@ function nuevaSolicitud(): string {
     return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
-export default function FormularioSorteo({ open, sorteoId = null, onClose, onGuardado, valorInicial, tablaIdInicial = null, instantaneo = false }: Props) {
+export default function FormularioSorteo({ open, sorteoId = null, onClose, onGuardado, valorInicial, tablaIdInicial = null, sorteoInicial = null, instantaneo = false }: Props) {
 
     // Estado inicial al montar: la página remonta este componente (key) cada
     // vez que se abre, así no hay que "reiniciar" estado dentro de un efecto.
@@ -232,7 +235,14 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
 
         let vigente = true;
 
-        apiSorteos.obtener(sorteoId).then(r => {
+        // Primera carga con el detalle recién leído por quien abrió el
+        // formulario (mismo sorteo): no se repite la petición. «Reintentar»
+        // (intentoCarga > 0) siempre va al servidor.
+        const carga: ReturnType<typeof apiSorteos.obtener> = intentoCarga === 0 && sorteoInicial?.id === sorteoId
+            ? Promise.resolve({ ok: true as const, data: sorteoInicial })
+            : apiSorteos.obtener(sorteoId);
+
+        carga.then(r => {
             if (!vigente) return;
             if (!r.ok) {
                 setCarga({ tipo: "error", mensaje: r.motivo === "no_encontrado" ? "No encontramos este sorteo en tu cuenta." : describirError(r) });
@@ -249,7 +259,7 @@ export default function FormularioSorteo({ open, sorteoId = null, onClose, onGua
 
         return () => { vigente = false; };
 
-    }, [open, sorteoId, intentoCarga]);
+    }, [open, sorteoId, intentoCarga, sorteoInicial]);
     const [grupos, setGrupos] = useState<GrupoAutorizado[]>([]);
     const [estadoGrupos, setEstadoGrupos] = useState<EstadoGrupos>({ tipo: "cargando" });
     const [cuentaSesion, setCuentaSesion] = useState<string | null>(null);

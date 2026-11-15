@@ -55,6 +55,18 @@ export interface GeneradorImagenTabla {
     generar: (entrada: EntradaImagenTabla) => Promise<ImagenTabla>;
 }
 
+// Espera a que el navegador pinte el fotograma en curso. Con la pestaña oculta
+// requestAnimationFrame no corre: basta con ceder el turno.
+function cederFotograma(): Promise<void> {
+    return new Promise(res => {
+        if (typeof document === "undefined" || document.visibilityState === "hidden" || typeof requestAnimationFrame !== "function") {
+            setTimeout(res, 0);
+            return;
+        }
+        requestAnimationFrame(() => setTimeout(res, 0));
+    });
+}
+
 export function useGeneradorImagenTabla(): GeneradorImagenTabla {
 
     const ref = useRef<HTMLDivElement>(null);
@@ -79,6 +91,14 @@ export function useGeneradorImagenTabla(): GeneradorImagenTabla {
             try {
                 await montada;
                 await document.fonts?.ready;
+                // Latencia (14/11/2026): la captura es una tarea larga del
+                // navegador (0,8 s en escritorio, varios segundos en móviles
+                // lentos). Antes de empezarla se deja pintar el fotograma en
+                // curso (el spinner del botón, la ventana recién abierta): sin
+                // esto, React ejecuta los efectos del clic en la misma tarea y
+                // la pantalla no cambiaba hasta terminar la imagen. No cambia
+                // la imagen: el mismo capturarTabla sobre la misma copia.
+                await cederFotograma();
                 const imagen = await capturarTabla(ref.current);
                 const huella = await huellaNumeros(entrada.numeros);
                 return { imagen, huella };

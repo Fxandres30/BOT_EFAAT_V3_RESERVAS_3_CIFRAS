@@ -177,9 +177,12 @@ async function filasOcupadas(tablaId: string, usuarioId: string, cifras: number)
 // Impacto del reinicio de ESTA rifa: solo sus números. Ninguna otra tabla se
 // ve afectada, por eso preciosCompartidos siempre va vacío.
 export async function revisarReinicioRifa(rifa: RifaPanel, usuarioId: string): Promise<RevisionReinicio> {
-    const ocupadas = await filasOcupadas(rifa.id, usuarioId, rifa.cifras);
-    const { data: eventos } = await supabase.from("eventos_bot").select("nombre_evento, valor, activo")
-        .eq("tabla_id", rifa.id).eq("usuario_id", usuarioId).eq("activo", true);
+    // Las dos lecturas son independientes: a la vez (antes, una tras otra).
+    const [ocupadas, { data: eventos }] = await Promise.all([
+        filasOcupadas(rifa.id, usuarioId, rifa.cifras),
+        supabase.from("eventos_bot").select("nombre_evento, valor, activo")
+            .eq("tabla_id", rifa.id).eq("usuario_id", usuarioId).eq("activo", true)
+    ]);
     const cuenta = (e: string) => ocupadas.filter(f => f.estado === e).length;
     const impacto: ImpactoReinicio = {
         tabla: TABLA_RIFA,

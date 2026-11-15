@@ -379,8 +379,11 @@ export function useTablaPrecio(precioPedido: number, tablaId?: string | null) {
     // cuanto llega; la clave sigue ocupada hasta que los números operados
     // están releídos en pantalla (también tras un rechazo: el número pudo
     // cambiar entretanto), así no se vuelve a operar sobre un estado viejo.
-    // "todo" (reinicio) espera la recarga completa. null = esa clave ya
-    // estaba en curso.
+    // "todo" (reinicio) recarga la tabla entera, también DESPUÉS de devolver
+    // el resultado del servidor (latencia, 14/11/2026: antes el diálogo
+    // esperaba la recarga, y si esa lectura fallaba mostraba como error un
+    // reinicio ya hecho); la clave sigue ocupada hasta que la tabla nueva está
+    // en pantalla. null = esa clave ya estaba en curso.
     const { iniciar, terminar } = acciones;
 
     const ejecutar = useCallback(async <T,>(clave: string, afectados: string[] | "todo", accion: () => Promise<T>): Promise<T | null> => {
@@ -401,15 +404,6 @@ export function useTablaPrecio(precioPedido: number, tablaId?: string | null) {
             // Sin respuesta clara: los números se releen igualmente.
             ponerAlDia().catch(() => {}).finally(() => terminar(clave));
             throw e;
-        }
-
-        if (afectados === "todo") {
-            try {
-                await ponerAlDia();
-                return resultado;
-            } finally {
-                terminar(clave);
-            }
         }
 
         ponerAlDia().catch(() => {}).finally(() => terminar(clave));
@@ -973,8 +967,8 @@ export function abrirTabla({ precio, usuarioId, config, historialPedido, vista, 
 
         // «Actualizar» y reinicio: todo de nuevo.
         async recargarTodo() {
-            await leerBase();
-            if (historial === "listo") await leerHistorialCompleto();
+            // Independientes: a la vez (antes, el historial esperaba a la base).
+            await Promise.all([leerBase(), historial === "listo" ? leerHistorialCompleto() : null]);
         },
 
         cerrar() {

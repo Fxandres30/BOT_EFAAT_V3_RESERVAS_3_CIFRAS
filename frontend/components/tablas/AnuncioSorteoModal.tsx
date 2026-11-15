@@ -9,7 +9,8 @@ import FormularioSorteo from "@/components/sorteos/FormularioSorteo";
 import VistaPreviaModal from "@/components/sorteos/VistaPreviaModal";
 import EditarSorteoActivoModal from "@/components/sorteos/EditarSorteoActivoModal";
 import { esEditable } from "@/components/sorteos/ListaSorteos";
-import { apiSorteos, describirError } from "@/services/sorteos/apiSorteos";
+import { apiSorteos, describirError, type Sorteo } from "@/services/sorteos/apiSorteos";
+import { apiRifas } from "@/services/rifas/apiRifas";
 import styles from "./AnuncioSorteoModal.module.css";
 
 interface Props {
@@ -34,7 +35,8 @@ type Paso =
     | { tipo: "activo"; eventoId: string }
     // sorteoId = edición (la modalidad es la GUARDADA en el sorteo);
     // sin sorteoId = nuevo con la modalidad elegida.
-    | { tipo: "formulario"; sorteoId: string | null; modalidad: ModalidadSorteo | null }
+    // sorteo: el detalle ya leído al buscarlo (el formulario no lo vuelve a pedir).
+    | { tipo: "formulario"; sorteoId: string | null; modalidad: ModalidadSorteo | null; sorteo?: Sorteo }
     | { tipo: "vista_previa"; sorteoId: string };
 
 const MODALIDADES: { valor: ModalidadSorteo; titulo: string; icono: typeof Zap; descripcion: string; detalle: string }[] = [
@@ -96,9 +98,18 @@ export default function AnuncioSorteoModal({ precio, tablaId = null, onClose }: 
 
             if (!delPrecio.length) return setPaso({ tipo: "sin_editable", publicado: null });
 
-            // El listado no trae los grupos: hacen falta para saber si ya se
-            // publicó en alguno. Un detalle que falla NO se da por editable.
-            const detalles = await Promise.all(delPrecio.map(s => apiSorteos.obtener(s.id)));
+            // Solo puede ser editable un borrador o un programado (esEditable):
+            // únicamente de esos se pide el detalle, que trae los grupos para
+            // saber si ya se publicó en alguno (antes se pedían TODOS, uno a
+            // uno: 12 peticiones con 12 sorteos). Un detalle que falla NO se
+            // da por editable. Mientras tanto se adelantan los catálogos que
+            // pedirá el formulario (lecturas de un solo uso, 10 s).
+            const candidatos = delPrecio.filter(s => s.estado === "borrador" || s.estado === "programado");
+            if (!candidatos.length) return setPaso({ tipo: "sin_editable", publicado: delPrecio[0].id });
+
+            apiSorteos.precargarFormulario();
+            apiRifas.precargarLista();
+            const detalles = await Promise.all(candidatos.map(s => apiSorteos.obtener(s.id)));
 
             if (!vivo) return;
 
@@ -108,8 +119,8 @@ export default function AnuncioSorteoModal({ precio, tablaId = null, onClose }: 
             const completos = detalles.flatMap(d => (d.ok ? [d.data] : []));
             const editable = completos.find(esEditable);
 
-            if (editable) setPaso({ tipo: "formulario", sorteoId: editable.id, modalidad: null });
-            else setPaso({ tipo: "sin_editable", publicado: completos[0]?.id || null });
+            if (editable) setPaso({ tipo: "formulario", sorteoId: editable.id, modalidad: null, sorteo: editable });
+            else setPaso({ tipo: "sin_editable", publicado: delPrecio[0].id });
 
         }
 
@@ -236,6 +247,7 @@ export default function AnuncioSorteoModal({ precio, tablaId = null, onClose }: 
                 key={paso.tipo === "formulario" ? `form-${paso.sorteoId || `nuevo-${paso.modalidad}`}` : "form-cerrado"}
                 open={paso.tipo === "formulario"}
                 sorteoId={paso.tipo === "formulario" ? paso.sorteoId : null}
+                sorteoInicial={paso.tipo === "formulario" ? paso.sorteo ?? null : null}
                 // Solo decide en un sorteo NUEVO; al editar manda la modalidad
                 // guardada (FormularioSorteo y el backend la conservan).
                 instantaneo={paso.tipo === "formulario" && !paso.sorteoId && paso.modalidad === "instantaneo"}

@@ -610,7 +610,39 @@ function olvidarIndice(metodo: string) {
     if (metodo !== "GET") invalidar((c) => c.endsWith("|indiceSorteos"));
 }
 
+// PRECARGA DE UN SOLO USO (14/11/2026, latencia de «Editar»): una lectura GET
+// lanzada antes de que su pantalla la pida (p. ej. los catálogos del
+// formulario mientras se busca el sorteo editable). La primera llamada a esa
+// misma ruta en los VIDA_PRECARGA_MS siguientes recibe esa respuesta y la
+// consume; nadie más la reutiliza. Pasado ese tiempo se descarta y la
+// llamada va al servidor como siempre: nunca se sirve una respuesta vieja.
+const VIDA_PRECARGA_MS = 10_000;
+const precargas = new Map<string, { hasta: number; promesa: Promise<Respuesta<unknown>> }>();
+
+function precargar(rutas: string[]): void {
+    const ahora = Date.now();
+    for (const ruta of rutas) {
+        const previa = precargas.get(ruta);
+        if (previa && previa.hasta > ahora) continue;
+        precargas.set(ruta, { hasta: ahora + VIDA_PRECARGA_MS, promesa: llamarServidor<unknown>("GET", ruta) });
+    }
+}
+
+function tomarPrecarga<T>(ruta: string): Promise<Respuesta<T>> | null {
+    const p = precargas.get(ruta);
+    if (!p) return null;
+    precargas.delete(ruta);
+    return p.hasta > Date.now() ? (p.promesa as Promise<Respuesta<T>>) : null;
+}
+
 async function llamar<T>(metodo: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", ruta: string, cuerpo?: unknown): Promise<Respuesta<T>> {
+    if (metodo === "GET") {
+        const precargada = tomarPrecarga<T>(ruta);
+        if (precargada) return precargada;
+    } else {
+        // Una escritura invalida cualquier lectura adelantada.
+        precargas.clear();
+    }
     try {
         return await llamarServidor<T>(metodo, ruta, cuerpo);
     } finally {
@@ -713,5 +745,8 @@ export const apiSorteos = {
     guardarEstiloPredeterminado: (estilo: string) => llamar<{ estilo: string; disponible: boolean }>("PUT", "/estilos-mensaje/predeterminado", { estilo }),
     /** Vista previa: el MISMO generador que el publicador. Nunca envía nada. */
     generarMensaje: (cuerpo: { estilo?: string; texto?: string; datos: DatosMensaje }) => llamar<MensajeGenerado>("POST", "/mensaje/generar", cuerpo),
-    horarioLoteria: (id: string, fecha: string) => llamar<HorarioLoteria>("GET", `/loterias/${id}/horario?fecha=${encodeURIComponent(fecha)}`)
+    horarioLoteria: (id: string, fecha: string) => llamar<HorarioLoteria>("GET", `/loterias/${id}/horario?fecha=${encodeURIComponent(fecha)}`),
+    /** Adelanta (un solo uso, 10 s) las lecturas que hará el formulario del
+     *  sorteo al abrirse: grupos, cuentas, plantillas, loterías y estilos. */
+    precargarFormulario: () => precargar(["/grupos", "/cuentas", "/plantillas", "/loterias", "/estilos-mensaje"])
 };

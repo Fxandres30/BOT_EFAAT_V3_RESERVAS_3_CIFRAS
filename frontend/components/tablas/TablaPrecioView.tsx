@@ -23,6 +23,7 @@ import BibliotecaDisenosModal from "./BibliotecaDisenosModal";
 import { estadoEfectivo } from "./estadoVisual";
 import { FILTROS_HISTORIAL_VACIOS, numerosCoincidentes, type FiltrosHistorial } from "./historialDatos";
 import { useGeneradorImagenTabla } from "./capturaTabla";
+import { usePrecapturaTabla } from "./usePrecapturaTabla";
 import { numerosDeFilas } from "@/services/tablas/huellaTabla";
 import { medirPerfilCaptura } from "@/services/tablas/perfilCaptura";
 import type { EventoActivo } from "./types";
@@ -189,14 +190,23 @@ function TablaPrecioContenido({ precio: precioPedido, tablaId }: Props) {
     // sin marcas de selección (la cuadrícula interactiva no se fotografía).
     // Mismo diseño de esta tabla y mismo ancho que la tarjeta visible.
     const generadorImagen = useGeneradorImagenTabla();
-    async function capturarTablaCompleta() {
+    // Entrada de la imagen con la tabla de ESTE momento (sin tabla: null).
+    const entradaImagen = useCallback(() => {
+        if (numeros.length === 0) return null;
         const tarjeta = tablaRef.current?.parentElement;
         const ancho = tarjeta?.offsetWidth || medirPerfilCaptura().contenido;
-        const { imagen } = await generadorImagen.generar({
+        return {
             numeros: numerosDeFilas(numeros.map(n => ({ numero: n.numero, estado: estadoEfectivo(n) }))),
             diseno,
             anchoContenido: ancho
-        });
+        };
+    }, [numeros, diseno]);
+    // Opción B (14/11/2026): la imagen se prepara por adelantado en los ratos
+    // de inactividad y solo se usa si es la de la tabla actual (misma clave);
+    // si no, se genera al compartir, como siempre (usePrecapturaTabla).
+    const precaptura = usePrecapturaTabla(generadorImagen.generar, entradaImagen);
+    async function capturarTablaCompleta() {
+        const { imagen } = await precaptura.obtener();
         return imagen;
     }
 

@@ -55,7 +55,32 @@ export interface GrupoRifa { grupo_id: string; predeterminada: boolean }
 
 export type Respuesta<T> = ({ ok: true } & T) | { ok: false; motivo: string; error?: string; [k: string]: unknown };
 
+// Precarga de UN SOLO USO de una lectura GET (mismo criterio que
+// apiSorteos.precargarFormulario): la primera llamada a esa ruta en los
+// 10 s siguientes la consume; después se descarta. Una escritura la anula.
+const VIDA_PRECARGA_MS = 10_000;
+const precargas = new Map<string, { hasta: number; promesa: Promise<unknown> }>();
+
 async function llamar<T>(metodo: "GET" | "POST" | "PATCH" | "DELETE", ruta: string, cuerpo?: unknown): Promise<Respuesta<T>> {
+    if (metodo === "GET") {
+        const p = precargas.get(ruta);
+        if (p) {
+            precargas.delete(ruta);
+            if (p.hasta > Date.now()) return p.promesa as Promise<Respuesta<T>>;
+        }
+    } else {
+        precargas.clear();
+    }
+    return llamarServidor<T>(metodo, ruta, cuerpo);
+}
+
+function precargar(ruta: string): void {
+    const previa = precargas.get(ruta);
+    if (previa && previa.hasta > Date.now()) return;
+    precargas.set(ruta, { hasta: Date.now() + VIDA_PRECARGA_MS, promesa: llamarServidor("GET", ruta) });
+}
+
+async function llamarServidor<T>(metodo: "GET" | "POST" | "PATCH" | "DELETE", ruta: string, cuerpo?: unknown): Promise<Respuesta<T>> {
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
     if (!token) return { ok: false, motivo: "sin_sesion" };
@@ -89,6 +114,8 @@ export const apiRifas = {
     editarPrecio: (id: string, precio: number) =>
         llamar<{ tabla_id: string; precio: number; sin_cambios?: boolean; grupos_ambiguos: number }>("PATCH", `/${id}/precio`, { precio }),
     listar: (archivadas = false) => llamar<{ modo: ModoMotor; rifas: Rifa[] }>("GET", archivadas ? "?archivadas=1" : ""),
+    /** Adelanta (un solo uso, 10 s) la lista de rifas activas que pedirá el formulario del sorteo. */
+    precargarLista: () => precargar(""),
     crear: (datos: { nombre: string; precio: number; cifras: number; cantidad?: number; codigo?: string | null }) =>
         llamar<{ tabla_id: string }>("POST", "", datos),
     obtener: (id: string) => llamar<{ modo: ModoMotor; rifa: RifaDetalle; numeros: NumeroRifa[]; grupos: GrupoRifa[] }>("GET", `/${id}`),
